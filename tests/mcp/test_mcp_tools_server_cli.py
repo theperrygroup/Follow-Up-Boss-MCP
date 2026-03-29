@@ -25,8 +25,8 @@ from followupboss_mcp.mcp_tools import (
     DeleteDealToolInput,
     DeleteNoteToolInput,
     DeleteTaskToolInput,
-    DeleteTextMessageTemplateToolInput,
     DeleteTemplateToolInput,
+    DeleteTextMessageTemplateToolInput,
     DeleteWebhookToolInput,
     FollowUpBossToolAdapter,
     GetAppointmentToolInput,
@@ -36,9 +36,9 @@ from followupboss_mcp.mcp_tools import (
     GetNoteToolInput,
     GetPersonToolInput,
     GetTaskToolInput,
+    GetTemplateToolInput,
     GetTextMessageTemplateToolInput,
     GetTextMessageToolInput,
-    GetTemplateToolInput,
     GetUserToolInput,
     GetWebhookToolInput,
     ServiceBundle,
@@ -48,8 +48,8 @@ from followupboss_mcp.mcp_tools import (
     UpdateNoteToolInput,
     UpdatePersonToolInput,
     UpdateTaskToolInput,
-    UpdateTextMessageTemplateToolInput,
     UpdateTemplateToolInput,
+    UpdateTextMessageTemplateToolInput,
 )
 from followupboss_mcp.models.appointments import (
     AppointmentListRequest,
@@ -75,17 +75,17 @@ from followupboss_mcp.models.identity import IdentityResponse
 from followupboss_mcp.models.notes import CreateNoteRequest, NoteRecord
 from followupboss_mcp.models.people import CreatePersonRequest, PeopleSearchRequest, PersonRecord
 from followupboss_mcp.models.tasks import CreateTaskRequest, TaskListRequest, TaskRecord
+from followupboss_mcp.models.templates import (
+    CreateTemplateRequest,
+    TemplateListRequest,
+    TemplateRecord,
+)
 from followupboss_mcp.models.text_messages import (
     CreateTextMessageTemplateRequest,
     TextMessageListRequest,
     TextMessageRecord,
     TextMessageTemplateListRequest,
     TextMessageTemplateRecord,
-)
-from followupboss_mcp.models.templates import (
-    CreateTemplateRequest,
-    TemplateListRequest,
-    TemplateRecord,
 )
 from followupboss_mcp.models.users import UserListRequest, UserRecord
 from followupboss_mcp.models.webhooks import CreateWebhookRequest, WebhookListRequest, WebhookRecord
@@ -334,7 +334,9 @@ class StubBundle:
             )
 
         async def text_message_templates_get(template_id: int) -> TextMessageTemplateRecord:
-            return TextMessageTemplateRecord(id=template_id, name="Buyer intro text", message="Hi there")
+            return TextMessageTemplateRecord(
+                id=template_id, name="Buyer intro text", message="Hi there"
+            )
 
         async def text_message_templates_create(
             _: CreateTextMessageTemplateRequest,
@@ -573,15 +575,15 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         "deleted": True,
         "templateId": 22,
     }
-    assert (await adapter.list_text_messages(TextMessageListRequest()))["textmessages"][0]["id"] == 31
+    assert (await adapter.list_text_messages(TextMessageListRequest()))["textmessages"][0][
+        "id"
+    ] == 31
     assert (await adapter.get_text_message(GetTextMessageToolInput(text_message_id=32)))["id"] == 32
+    assert (await adapter.list_text_message_templates(TextMessageTemplateListRequest()))[
+        "textmessagetemplates"
+    ][0]["id"] == 32
     assert (
-        await adapter.list_text_message_templates(TextMessageTemplateListRequest())
-    )["textmessagetemplates"][0]["id"] == 32
-    assert (
-        await adapter.get_text_message_template(
-            GetTextMessageTemplateToolInput(template_id=33)
-        )
+        await adapter.get_text_message_template(GetTextMessageTemplateToolInput(template_id=33))
     )["id"] == 33
     assert (
         await adapter.create_text_message_template(
@@ -907,9 +909,9 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     }
     assert (await tools["followupboss_list_text_messages"].fn())["textmessages"][0]["id"] == 50
     assert (await tools["followupboss_get_text_message"].fn(51))["id"] == 51
-    assert (await tools["followupboss_list_text_message_templates"].fn())[
-        "textmessagetemplates"
-    ][0]["id"] == 52
+    assert (await tools["followupboss_list_text_message_templates"].fn())["textmessagetemplates"][
+        0
+    ]["id"] == 52
     assert (await tools["followupboss_get_text_message_template"].fn(53))["id"] == 53
     assert (
         await tools["followupboss_create_text_message_template"].fn(

@@ -10,6 +10,7 @@ The repository now contains:
 - a contributor guide and a repository-local security incident playbook
 - typed appointment collection and CRUD coverage across the SDK, MCP surface, tests, and docs
 - typed deals collection and CRUD coverage plus deal custom field discovery across the SDK, MCP surface, tests, and docs
+- typed text message read support and text message template CRUD coverage across the SDK, MCP surface, tests, and docs
 - typed task collection and CRUD coverage across the SDK, MCP surface, tests, and docs
 - typed email-template collection and CRUD coverage across the SDK, MCP surface, tests, and docs
 - typed call collection and log-entry coverage across the SDK, MCP surface, tests, and docs
@@ -63,6 +64,13 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `PUT /deals/{id}`
 - `DELETE /deals/{id}`
 - `GET /dealCustomFields`
+- `GET /textMessages`
+- `GET /textMessages/{id}`
+- `GET /textMessageTemplates`
+- `GET /textMessageTemplates/{id}`
+- `POST /textMessageTemplates`
+- `PUT /textMessageTemplates/:id`
+- `DELETE /textMessageTemplates/:id`
 - `GET /appointments`
 - `GET /appointments/:id`
 - `POST /appointments`
@@ -94,7 +102,7 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `POST /webhooks`
 - `DELETE /webhooks/:id`
 
-Total implemented official endpoints in this repository scope: `44`
+Total implemented official endpoints in this repository scope: `51`
 
 All additional discovered official endpoints are marked explicitly as deferred in `docs/api-coverage-matrix.md`.
 
@@ -102,7 +110,7 @@ All additional discovered official endpoints are marked explicitly as deferred i
 
 Registered MCP surface:
 
-- tools: `44`
+- tools: `51`
 - resources: `1`
 - prompts: `1`
 
@@ -122,6 +130,13 @@ Registered tools:
 - `followupboss_update_deal`
 - `followupboss_delete_deal`
 - `followupboss_list_deal_custom_fields`
+- `followupboss_list_text_messages`
+- `followupboss_get_text_message`
+- `followupboss_list_text_message_templates`
+- `followupboss_get_text_message_template`
+- `followupboss_create_text_message_template`
+- `followupboss_update_text_message_template`
+- `followupboss_delete_text_message_template`
 - `followupboss_list_appointments`
 - `followupboss_get_appointment`
 - `followupboss_create_appointment`
@@ -180,19 +195,19 @@ make live-identity-check
 ## Final Mypy Status
 
 - `uv run mypy src tests`: passed
-- result: `Success: no issues found in 48 source files`
+- result: `Success: no issues found in 50 source files`
 
 ## Final Test Status
 
 - `uv run pytest`: passed
-- result: `59 passed, 1 skipped`
+- result: `65 passed, 1 skipped`
 
 ## Final Coverage Numbers
 
 - `uv run coverage run --branch -m pytest`: passed
 - `uv run coverage report --fail-under=100`: passed
-- total statements: `1869`
-- total branches: `188`
+- total statements: `2038`
+- total branches: `196`
 - line coverage: `100.00%`
 - branch coverage: `100.00%`
 

@@ -10,7 +10,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `DELETE /customFields/:id` | Deferred | No | No | No | Deferred until explicit custom field admin support is requested. |
 | `DELETE /dealAttachments/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `DELETE /dealCustomFields/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `DELETE /deals/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `DELETE /deals/{id}` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
 | `DELETE /groups/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `DELETE /inboxApps/{inboxAppId}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `DELETE /inboxApps/{inboxAppId}/conversations/{extConversationId}/participants/{participantId}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
@@ -25,7 +25,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `DELETE /tasks/:id` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
 | `DELETE /teams/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `DELETE /templates/:id` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
-| `DELETE /textMessageTemplates/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `DELETE /textMessageTemplates/:id` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
 | `DELETE /users/:id` | Deferred | No | No | No | Deferred until explicitly needed. |
 | `DELETE /webhooks/:id` | Implemented | Input only | Yes | Yes | Delete endpoint exposed through MCP. |
 | `GET /actionPlans` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
@@ -45,10 +45,10 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `GET /customFields` | Implemented | Yes | Yes | Yes | Supports custom field name validation helpers. |
 | `GET /customFields/:id` | Deferred | No | No | No | Deferred until explicit custom field admin support is requested. |
 | `GET /dealAttachments/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /dealCustomFields` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `GET /dealCustomFields` | Implemented | Yes | Yes | Yes | Lists deal custom fields for write-time field-name discovery. |
 | `GET /dealCustomFields/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /deals` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /deals/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `GET /deals` | Implemented | Yes | Yes | Yes | Supports documented deal filters and pagination metadata. |
+| `GET /deals/{id}` | Implemented | Yes | Yes | Yes | Single-deal lookup with dynamic custom field support. |
 | `GET /emCampaigns` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `GET /emEvents` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `GET /events` | Implemented | Yes | Yes | Yes | Supports next-token pagination. |
@@ -84,10 +84,10 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `GET /teams/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `GET /templates` | Implemented | Yes | Yes | Yes | Lists email templates with pagination metadata. |
 | `GET /templates/:id` | Implemented | Yes | Yes | Yes | Single-template lookup with optional mergePersonId support. |
-| `GET /textMessageTemplates` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /textMessageTemplates/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /textMessages` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /textMessages/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `GET /textMessageTemplates` | Implemented | Yes | Yes | Yes | Lists text message templates with pagination metadata. |
+| `GET /textMessageTemplates/{id}` | Implemented | Yes | Yes | Yes | Single text message template lookup. |
+| `GET /textMessages` | Implemented | Yes | Yes | Yes | Lists text messages for a person or phone number. |
+| `GET /textMessages/{id}` | Implemented | Yes | Yes | Yes | Single-text-message lookup. |
 | `GET /threadedReplies/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `GET /timeframes` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `GET /users` | Implemented | Yes | Yes | Yes | Collection query coverage included. |
@@ -104,7 +104,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `POST /customFields` | Deferred | No | No | No | Deferred until explicit custom field admin support is requested. |
 | `POST /dealAttachments` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `POST /dealCustomFields` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `POST /deals` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `POST /deals` | Implemented | Yes | Yes | Yes | Creates a deal and supports dynamic deal custom field values. |
 | `POST /emCampaigns` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `POST /emEvents` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `POST /events` | Implemented | Yes | Yes | Yes | Canonical external lead and lead-activity ingestion path. |
@@ -127,7 +127,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `POST /teams` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `POST /templates` | Implemented | Yes | Yes | Yes | Creates a new email template. |
 | `POST /templates/merge` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `POST /textMessageTemplates` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `POST /textMessageTemplates` | Implemented | Yes | Yes | Yes | Creates a new text message template. |
 | `POST /textMessageTemplates/merge` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `POST /textMessages` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `POST /webhooks` | Implemented | Yes | Yes | Yes | Requires registered system headers and owner-level permissions. |
@@ -140,7 +140,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `PUT /customFields/:id` | Deferred | No | No | No | Deferred until explicit custom field admin support is requested. |
 | `PUT /dealAttachments/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `PUT /dealCustomFields/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `PUT /deals/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `PUT /deals/{id}` | Implemented | Yes | Yes | Yes | Updates a deal and preserves documented custom field semantics. |
 | `PUT /emCampaigns/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `PUT /groups/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `PUT /inboxApps/:inboxAppId/message` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
@@ -155,5 +155,5 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `PUT /tasks/:id` | Implemented | Yes | Yes | Yes | Supports task completion and due-date updates. |
 | `PUT /teams/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `PUT /templates/:id` | Implemented | Yes | Yes | Yes | Updates template name, subject, and body. |
-| `PUT /textMessageTemplates/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `PUT /textMessageTemplates/:id` | Implemented | Yes | Yes | Yes | Updates text message template content and sharing state. |
 | `PUT /webhooks/:id` | Deferred | No | No | No | Deferred until explicitly needed. |

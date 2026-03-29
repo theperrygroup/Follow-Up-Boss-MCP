@@ -9,8 +9,8 @@ from followupboss_mcp.mcp_tools import (
     DeleteDealToolInput,
     DeleteNoteToolInput,
     DeleteTaskToolInput,
-    DeleteTextMessageTemplateToolInput,
     DeleteTemplateToolInput,
+    DeleteTextMessageTemplateToolInput,
     DeleteWebhookToolInput,
     FollowUpBossToolAdapter,
     GetAppointmentToolInput,
@@ -20,9 +20,9 @@ from followupboss_mcp.mcp_tools import (
     GetNoteToolInput,
     GetPersonToolInput,
     GetTaskToolInput,
+    GetTemplateToolInput,
     GetTextMessageTemplateToolInput,
     GetTextMessageToolInput,
-    GetTemplateToolInput,
     GetUserToolInput,
     GetWebhookToolInput,
     UpdateAppointmentToolInput,
@@ -31,8 +31,8 @@ from followupboss_mcp.mcp_tools import (
     UpdateNoteToolInput,
     UpdatePersonToolInput,
     UpdateTaskToolInput,
-    UpdateTextMessageTemplateToolInput,
     UpdateTemplateToolInput,
+    UpdateTextMessageTemplateToolInput,
 )
 from followupboss_mcp.models.appointments import AppointmentListRequest, CreateAppointmentRequest
 from followupboss_mcp.models.calls import CallListRequest, CreateCallRequest
@@ -46,12 +46,12 @@ from followupboss_mcp.models.events import CreateEventRequest, EventSearchReques
 from followupboss_mcp.models.notes import CreateNoteRequest
 from followupboss_mcp.models.people import CreatePersonRequest, PeopleSearchRequest
 from followupboss_mcp.models.tasks import CreateTaskRequest, TaskListRequest
+from followupboss_mcp.models.templates import CreateTemplateRequest, TemplateListRequest
 from followupboss_mcp.models.text_messages import (
     CreateTextMessageTemplateRequest,
     TextMessageListRequest,
     TextMessageTemplateListRequest,
 )
-from followupboss_mcp.models.templates import CreateTemplateRequest, TemplateListRequest
 from followupboss_mcp.models.users import UserListRequest
 from followupboss_mcp.models.webhooks import CreateWebhookRequest, WebhookListRequest
 from mcp.server.fastmcp import FastMCP
@@ -1091,7 +1091,9 @@ def _register_text_message_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter)
 
     @mcp.tool(
         name="followupboss_list_text_messages",
-        description="List Follow Up Boss text messages with documented filters and pagination metadata.",
+        description=(
+            "List Follow Up Boss text messages with documented filters and pagination metadata."
+        ),
     )
     async def followupboss_list_text_messages(
         *,

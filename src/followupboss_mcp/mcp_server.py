@@ -19,11 +19,11 @@ from followupboss_mcp.services.identity import IdentityService
 from followupboss_mcp.services.notes import NotesService
 from followupboss_mcp.services.people import PeopleService
 from followupboss_mcp.services.tasks import TasksService
+from followupboss_mcp.services.templates import TemplatesService
 from followupboss_mcp.services.text_messages import (
     TextMessagesService,
     TextMessageTemplatesService,
 )
-from followupboss_mcp.services.templates import TemplatesService
 from followupboss_mcp.services.users import UsersService
 from followupboss_mcp.services.webhooks import WebhooksService
 from mcp.server.fastmcp import FastMCP
@@ -82,8 +82,8 @@ def create_server(
         "Follow Up Boss MCP",
         instructions=(
             "Use the typed Follow Up Boss tools for identity checks, lead search, lead ingestion, "
-            "appointments, calls, deals, tasks, templates, notes, users, custom fields, and "
-            "webhook administration."
+            "appointments, calls, deals, tasks, templates, text messages, notes, users, custom "
+            "fields, and webhook administration."
         ),
         host=host,
         port=port,

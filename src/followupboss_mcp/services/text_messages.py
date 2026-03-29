@@ -47,7 +47,9 @@ class TextMessagesService:
         items_raw = payload.get("textmessages", [])
         if not isinstance(items_raw, list):
             raise ValueError("Unexpected text messages response.")
-        items = [TextMessageRecord.model_validate(item) for item in items_raw if isinstance(item, dict)]
+        items = [
+            TextMessageRecord.model_validate(item) for item in items_raw if isinstance(item, dict)
+        ]
         metadata = parse_pagination_metadata(payload, item_count=len(items))
         return PageResult(items=items, metadata=metadata)
 
@@ -133,7 +135,9 @@ class TextMessageTemplatesService:
             The created template record.
         """
         payload = request.model_dump(mode="json", by_alias=True, exclude_none=True)
-        response = await self._client.request_json("POST", "/textMessageTemplates", json_body=payload)
+        response = await self._client.request_json(
+            "POST", "/textMessageTemplates", json_body=payload
+        )
         return TextMessageTemplateRecord.model_validate(response)
 
     async def update_text_message_template(

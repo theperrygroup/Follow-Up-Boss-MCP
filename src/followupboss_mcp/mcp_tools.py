@@ -34,17 +34,17 @@ from followupboss_mcp.models.people import (
     UpdatePersonRequest,
 )
 from followupboss_mcp.models.tasks import CreateTaskRequest, TaskListRequest, UpdateTaskRequest
-from followupboss_mcp.models.text_messages import (
-    CreateTextMessageTemplateRequest,
-    TextMessageListRequest,
-    TextMessageTemplateListRequest,
-    UpdateTextMessageTemplateRequest,
-)
 from followupboss_mcp.models.templates import (
     CreateTemplateRequest,
     TemplateListRequest,
     TemplateLookupRequest,
     UpdateTemplateRequest,
+)
+from followupboss_mcp.models.text_messages import (
+    CreateTextMessageTemplateRequest,
+    TextMessageListRequest,
+    TextMessageTemplateListRequest,
+    UpdateTextMessageTemplateRequest,
 )
 from followupboss_mcp.models.users import UserListRequest
 from followupboss_mcp.models.webhooks import CreateWebhookRequest, WebhookListRequest
@@ -57,11 +57,11 @@ from followupboss_mcp.services.identity import IdentityService
 from followupboss_mcp.services.notes import NotesService
 from followupboss_mcp.services.people import PeopleService
 from followupboss_mcp.services.tasks import TasksService
+from followupboss_mcp.services.templates import TemplatesService
 from followupboss_mcp.services.text_messages import (
     TextMessagesService,
     TextMessageTemplatesService,
 )
-from followupboss_mcp.services.templates import TemplatesService
 from followupboss_mcp.services.users import UsersService
 from followupboss_mcp.services.webhooks import WebhooksService
 

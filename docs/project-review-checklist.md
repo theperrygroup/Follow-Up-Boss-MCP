@@ -39,7 +39,7 @@ This document is the living quality scorecard for the Follow Up Boss MCP project
 
 ## Current Scorecard Summary
 
-Weighted overall score: `92.1 / 100`
+Weighted overall score: `92.6 / 100`
 
 Weighted overall grade: `A`
 
@@ -47,10 +47,10 @@ Weighted overall grade: `A`
 | --- | --- | --- | --- | --- | --- |
 | Architecture and layering | `10%` | `A (95/100)` | `B (89/100)` | `Pass` | `2026-03-28` |
 | Follow Up Boss transport correctness and resilience | `18%` | `A (92/100)` | `A (91/100)` | `Pass` | `2026-03-28` |
-| MCP surface and tool design | `14%` | `A (90/100)` | `A (94/100)` | `Pass` | `2026-03-28` |
+| MCP surface and tool design | `14%` | `A (90/100)` | `A (95/100)` | `Pass` | `2026-03-28` |
 | Security and trust boundaries | `14%` | `B (89/100)` | `B (88/100)` | `Pass` | `2026-03-28` |
-| Testing and regression resistance | `16%` | `A (96/100)` | `A (97/100)` | `Pass` | `2026-03-28` |
-| Feature and API coverage breadth | `10%` | `B (82/100)` | `B (91/100)` | `Needs Work` | `2026-03-28` |
+| Testing and regression resistance | `16%` | `A (96/100)` | `A (98/100)` | `Pass` | `2026-03-28` |
+| Feature and API coverage breadth | `10%` | `B (82/100)` | `A (93/100)` | `Needs Work` | `2026-03-28` |
 | Documentation and source-of-truth alignment | `8%` | `A (95/100)` | `A (95/100)` | `Pass` | `2026-03-28` |
 | Build, packaging, and CI readiness | `6%` | `A (92/100)` | `A (93/100)` | `Pass` | `2026-03-28` |
 | Operability and developer ergonomics | `4%` | `B (83/100)` | `A (90/100)` | `Pass` | `2026-03-28` |

@@ -56,6 +56,13 @@ All tools are namespaced with the `followupboss_` prefix.
 | `followupboss_create_template` | Create an email template. |
 | `followupboss_update_template` | Update one email template by ID. |
 | `followupboss_delete_template` | Delete one email template by ID and return a structured confirmation. |
+| `followupboss_list_text_messages` | List text messages with documented filters and pagination metadata. |
+| `followupboss_get_text_message` | Retrieve one text message by ID. |
+| `followupboss_list_text_message_templates` | List text message templates with pagination metadata. |
+| `followupboss_get_text_message_template` | Retrieve one text message template by ID. |
+| `followupboss_create_text_message_template` | Create a text message template. |
+| `followupboss_update_text_message_template` | Update one text message template by ID. |
+| `followupboss_delete_text_message_template` | Delete one text message template by ID and return a structured confirmation. |
 | `followupboss_add_note` | Add a note to a person, optionally waiting for person visibility first. |
 | `followupboss_get_note` | Retrieve one note by ID. |
 | `followupboss_update_note` | Update one note by ID. |
