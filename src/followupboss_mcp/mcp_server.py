@@ -10,6 +10,7 @@ from followupboss_mcp.config import FollowUpBossSettings
 from followupboss_mcp.http_client import FollowUpBossAsyncClient, FollowUpBossClientProtocol
 from followupboss_mcp.mcp_registration import register_server_surface
 from followupboss_mcp.mcp_tools import FollowUpBossToolAdapter, ServiceBundle
+from followupboss_mcp.services.action_plans import ActionPlansService
 from followupboss_mcp.services.appointment_metadata import (
     AppointmentOutcomesService,
     AppointmentTypesService,
@@ -56,6 +57,7 @@ def build_service_bundle(client: FollowUpBossClientProtocol) -> ServiceBundle:
     """
     people_service = PeopleService(client)
     return ServiceBundle(
+        action_plans=ActionPlansService(client),
         appointments=AppointmentsService(client),
         appointment_outcomes=AppointmentOutcomesService(client),
         appointment_types=AppointmentTypesService(client),
@@ -106,9 +108,9 @@ def create_server(
         "Follow Up Boss MCP",
         instructions=(
             "Use the typed Follow Up Boss tools for identity checks, lead search, lead ingestion, "
-            "appointments, appointment types, appointment outcomes, automations, calls, deals, "
-            "groups, pipelines, ponds, smart lists, stages, tasks, teams, templates, text "
-            "messages, notes, users, custom fields, and webhook administration."
+            "action plans, appointments, appointment types, appointment outcomes, automations, "
+            "calls, deals, groups, pipelines, ponds, smart lists, stages, tasks, teams, "
+            "templates, text messages, notes, users, custom fields, and webhook administration."
         ),
         host=host,
         port=port,

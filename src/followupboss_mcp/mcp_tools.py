@@ -7,6 +7,12 @@ from dataclasses import asdict, dataclass
 from typing import Any, cast
 
 from followupboss_mcp.errors import FollowUpBossError, FollowUpBossRateLimitError
+from followupboss_mcp.models.action_plans import (
+    ActionPlanListRequest,
+    ActionPlanPersonListRequest,
+    CreateActionPlanPersonRequest,
+    UpdateActionPlanPersonRequest,
+)
 from followupboss_mcp.models.appointment_metadata import (
     AppointmentOutcomeListRequest,
     AppointmentTypeListRequest,
@@ -93,6 +99,7 @@ from followupboss_mcp.models.text_messages import (
 )
 from followupboss_mcp.models.users import UserListRequest
 from followupboss_mcp.models.webhooks import CreateWebhookRequest, WebhookListRequest
+from followupboss_mcp.services.action_plans import ActionPlansService
 from followupboss_mcp.services.appointment_metadata import (
     AppointmentOutcomesService,
     AppointmentTypesService,
@@ -299,6 +306,12 @@ class UpdateAppointmentTypeToolInput(UpdateAppointmentTypeRequest):
     appointment_type_id: int
 
 
+class UpdateActionPlanPersonToolInput(UpdateActionPlanPersonRequest):
+    """Tool input for updating an action-plan-person relationship."""
+
+    action_plan_person_id: int
+
+
 class UpdateAutomationPersonToolInput(UpdateAutomationPersonRequest):
     """Tool input for updating an automation-person pairing."""
 
@@ -441,6 +454,7 @@ class DeleteWebhookToolInput(RequestModel):
 class ServiceBundle:
     """Service bundle used by the MCP tool adapter."""
 
+    action_plans: ActionPlansService
     appointments: AppointmentsService
     appointment_outcomes: AppointmentOutcomesService
     appointment_types: AppointmentTypesService
@@ -477,6 +491,47 @@ class FollowUpBossToolAdapter:
     async def get_identity(self) -> dict[str, Any]:
         """Return identity information."""
         return await self._single_result(self._services.identity.get_identity)
+
+    async def list_action_plans(self, tool_input: ActionPlanListRequest) -> dict[str, Any]:
+        """List action plans."""
+        return await self._page_result(
+            lambda: self._services.action_plans.list_action_plans(tool_input),
+            key="actionPlans",
+        )
+
+    async def list_action_plan_people(
+        self,
+        tool_input: ActionPlanPersonListRequest,
+    ) -> dict[str, Any]:
+        """List action-plan-person relationships."""
+        return await self._page_result(
+            lambda: self._services.action_plans.list_action_plan_people(tool_input),
+            key="actionPlansPeople",
+        )
+
+    async def apply_action_plan(
+        self,
+        tool_input: CreateActionPlanPersonRequest,
+    ) -> dict[str, Any]:
+        """Apply an action plan to a person."""
+        return await self._single_result(
+            lambda: self._services.action_plans.apply_action_plan(tool_input)
+        )
+
+    async def update_action_plan_person(
+        self,
+        tool_input: UpdateActionPlanPersonToolInput,
+    ) -> dict[str, Any]:
+        """Update an action-plan-person relationship."""
+        request = UpdateActionPlanPersonRequest.model_validate(
+            tool_input.model_dump(exclude={"action_plan_person_id"})
+        )
+        return await self._single_result(
+            lambda: self._services.action_plans.update_action_plan_person(
+                tool_input.action_plan_person_id,
+                request,
+            )
+        )
 
     async def list_automations(self, tool_input: AutomationListRequest) -> dict[str, Any]:
         """List automations."""

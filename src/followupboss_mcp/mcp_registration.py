@@ -5,20 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from followupboss_mcp.mcp_tools import (
-    DeleteAppointmentOutcomeToolInput,
-    DeleteAppointmentToolInput,
-    DeleteAppointmentTypeToolInput,
-    DeleteDealToolInput,
-    DeleteGroupToolInput,
-    DeleteNoteToolInput,
-    DeletePipelineToolInput,
-    DeletePondToolInput,
-    DeleteStageToolInput,
-    DeleteTaskToolInput,
-    DeleteTeamToolInput,
-    DeleteTemplateToolInput,
-    DeleteTextMessageTemplateToolInput,
-    DeleteWebhookToolInput,
     FollowUpBossToolAdapter,
     GetAppointmentOutcomeToolInput,
     GetAppointmentToolInput,
@@ -42,9 +28,24 @@ from followupboss_mcp.mcp_tools import (
     GetTextMessageToolInput,
     GetUserToolInput,
     GetWebhookToolInput,
+    DeleteAppointmentOutcomeToolInput,
+    DeleteAppointmentToolInput,
+    DeleteAppointmentTypeToolInput,
+    DeleteDealToolInput,
+    DeleteGroupToolInput,
+    DeleteNoteToolInput,
+    DeletePipelineToolInput,
+    DeletePondToolInput,
+    DeleteStageToolInput,
+    DeleteTaskToolInput,
+    DeleteTeamToolInput,
+    DeleteTemplateToolInput,
+    DeleteTextMessageTemplateToolInput,
+    DeleteWebhookToolInput,
     UpdateAppointmentOutcomeToolInput,
     UpdateAppointmentToolInput,
     UpdateAppointmentTypeToolInput,
+    UpdateActionPlanPersonToolInput,
     UpdateAutomationPersonToolInput,
     UpdateCallToolInput,
     UpdateDealToolInput,
@@ -58,6 +59,12 @@ from followupboss_mcp.mcp_tools import (
     UpdateTeamToolInput,
     UpdateTemplateToolInput,
     UpdateTextMessageTemplateToolInput,
+)
+from followupboss_mcp.models.action_plans import (
+    ActionPlanListRequest,
+    ActionPlanPersonListRequest,
+    ActionPlanPersonStatus,
+    CreateActionPlanPersonRequest,
 )
 from followupboss_mcp.models.appointment_metadata import (
     AppointmentOutcomeListRequest,
@@ -121,6 +128,7 @@ def register_server_surface(
     _register_identity_tools(mcp, adapter)
     _register_people_tools(mcp, adapter)
     _register_event_tools(mcp, adapter)
+    _register_action_plan_tools(mcp, adapter)
     _register_automation_tools(mcp, adapter)
     _register_group_tools(mcp, adapter)
     _register_user_tools(mcp, adapter)
@@ -425,6 +433,90 @@ def _register_event_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> Non
             }
         )
         return await adapter.send_event(tool_input)
+
+
+def _register_action_plan_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+    """Register action-plan-related MCP tools.
+
+    Args:
+        mcp: The FastMCP server instance.
+        adapter: The typed Follow Up Boss tool adapter.
+    """
+
+    @mcp.tool(
+        name="followupboss_list_action_plans",
+        description="List Follow Up Boss action plans with documented filters and pagination metadata.",
+    )
+    async def followupboss_list_action_plans(
+        *,
+        ids: list[int] | None = None,
+        limit: int | None = None,
+        names: list[str] | None = None,
+        offset: int | None = None,
+        sort: str | None = None,
+        status: str | None = None,
+    ) -> dict[str, object]:
+        return await adapter.list_action_plans(
+            ActionPlanListRequest(
+                ids=ids,
+                limit=limit,
+                names=names,
+                offset=offset,
+                sort=sort,
+                status=status,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_list_action_plan_people",
+        description="List Follow Up Boss action-plan-person relationships with documented filters.",
+    )
+    async def followupboss_list_action_plan_people(
+        *,
+        action_plan_id: int | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+        person_id: int | None = None,
+    ) -> dict[str, object]:
+        return await adapter.list_action_plan_people(
+            ActionPlanPersonListRequest(
+                action_plan_id=action_plan_id,
+                limit=limit,
+                offset=offset,
+                person_id=person_id,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_apply_action_plan",
+        description="Apply a Follow Up Boss action plan to a specific person.",
+    )
+    async def followupboss_apply_action_plan(
+        action_plan_id: int,
+        person_id: int,
+    ) -> dict[str, object]:
+        return await adapter.apply_action_plan(
+            CreateActionPlanPersonRequest(
+                action_plan_id=action_plan_id,
+                person_id=person_id,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_update_action_plan_person",
+        description="Pause or resume a Follow Up Boss action-plan-person relationship by ID.",
+    )
+    async def followupboss_update_action_plan_person(
+        action_plan_person_id: int,
+        *,
+        status: ActionPlanPersonStatus,
+    ) -> dict[str, object]:
+        return await adapter.update_action_plan_person(
+            UpdateActionPlanPersonToolInput(
+                action_plan_person_id=action_plan_person_id,
+                status=status,
+            )
+        )
 
 
 def _register_automation_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:

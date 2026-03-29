@@ -12,6 +12,12 @@ from pydantic import ValidationError
 
 from followupboss_mcp.errors import FollowUpBossNotFoundError, FollowUpBossValidationError
 from followupboss_mcp.http_client import JsonPayload
+from followupboss_mcp.models.action_plans import (
+    ActionPlanListRequest,
+    ActionPlanPersonListRequest,
+    CreateActionPlanPersonRequest,
+    UpdateActionPlanPersonRequest,
+)
 from followupboss_mcp.models.appointment_metadata import (
     AppointmentOutcomeListRequest,
     AppointmentTypeListRequest,
@@ -102,6 +108,7 @@ from followupboss_mcp.models.text_messages import (
 )
 from followupboss_mcp.models.users import UserListRequest
 from followupboss_mcp.models.webhooks import CreateWebhookRequest, WebhookListRequest
+from followupboss_mcp.services.action_plans import ActionPlansService
 from followupboss_mcp.services.appointment_metadata import (
     AppointmentOutcomesService,
     AppointmentTypesService,
@@ -453,6 +460,109 @@ async def test_automations_service() -> None:
     )
     assert updated.id == 6
     assert client.calls[5].json_body == {"status": "Paused"}
+
+
+@pytest.mark.asyncio
+async def test_action_plans_service() -> None:
+    """Action plans service should map queries, bodies, and relationship updates correctly."""
+    client = StubClient(
+        [
+            {
+                "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                "actionPlans": [
+                    {
+                        "id": 6,
+                        "created": "2014-08-24T22:12:53Z",
+                        "updated": "2014-08-24T22:12:53Z",
+                        "name": "Qualify buyer leads",
+                        "status": "Active",
+                    }
+                ],
+            },
+            {
+                "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                "actionPlansPeople": [
+                    {
+                        "id": 2,
+                        "created": "2014-08-19T18:31:43Z",
+                        "updated": "2014-08-19T18:31:43Z",
+                        "personId": 10810,
+                        "actionPlanId": 2,
+                        "status": "Running",
+                    }
+                ],
+            },
+            {},
+            {
+                "id": 3,
+                "created": "2014-08-19T18:31:43Z",
+                "updated": "2014-08-19T18:31:43Z",
+                "personId": 10810,
+                "actionPlanId": 2,
+                "status": "Paused",
+            },
+        ]
+    )
+    service = ActionPlansService(client)
+
+    action_plans_page = await service.list_action_plans(
+        ActionPlanListRequest(
+            ids=[6, 7],
+            limit=5,
+            names=["Qualify buyer leads", "Nurture seller leads"],
+            offset=10,
+            sort="-id",
+            status="Active",
+        )
+    )
+    assert action_plans_page.items[0].name == "Qualify buyer leads"
+    assert client.calls[0].params == {
+        "ids": "6,7",
+        "limit": "5",
+        "names[]": "Qualify buyer leads,Nurture seller leads",
+        "offset": "10",
+        "sort": "-id",
+        "status": "Active",
+    }
+
+    action_plan_people_page = await service.list_action_plan_people(
+        ActionPlanPersonListRequest(action_plan_id=2, limit=5, offset=10, person_id=10810)
+    )
+    assert action_plan_people_page.items[0].action_plan_id == 2
+    assert client.calls[1].params == {
+        "actionPlanId": "2",
+        "limit": "5",
+        "offset": "10",
+        "personId": "10810",
+    }
+
+    applied = await service.apply_action_plan(
+        CreateActionPlanPersonRequest(action_plan_id=2, person_id=10810)
+    )
+    assert applied.id is None
+    assert client.calls[2].json_body == {"actionPlanId": 2, "personId": 10810}
+
+    updated = await service.update_action_plan_person(
+        3,
+        UpdateActionPlanPersonRequest(status="Paused"),
+    )
+    assert updated.id == 3
+    assert client.calls[3].json_body == {"status": "Paused"}
+
+    invalid_service = ActionPlansService(StubClient([[], {"actionPlansPeople": {}}, [], []]))
+    with pytest.raises(ValueError, match="Unexpected action plans response"):
+        await invalid_service.list_action_plans()
+    with pytest.raises(ValueError, match="Unexpected actionPlansPeople response"):
+        await invalid_service.list_action_plan_people()
+    with pytest.raises(ValueError, match="Unexpected actionPlansPeople response"):
+        await invalid_service.apply_action_plan(
+            CreateActionPlanPersonRequest(action_plan_id=2, person_id=10810)
+        )
+    with pytest.raises(ValueError, match="Unexpected actionPlansPeople response"):
+        await invalid_service.update_action_plan_person(
+            3,
+            UpdateActionPlanPersonRequest(status="Paused"),
+        )
 
 
 @pytest.mark.asyncio
@@ -1934,6 +2044,8 @@ async def test_events_users_notes_and_webhooks_services() -> None:
             {"appointmenttypes": {}},
             ValueError,
         ),
+        (lambda client: ActionPlansService(client), [], ValueError),
+        (lambda client: ActionPlansService(client), {"actionPlans": {}}, ValueError),
         (lambda client: GroupsService(client), [], ValueError),
         (lambda client: GroupsService(client), {"groups": {}}, ValueError),
         (lambda client: DealsService(client), [], ValueError),
@@ -1995,6 +2107,9 @@ async def test_collection_services_raise_for_non_dict_payload(
     elif isinstance(service, AppointmentTypesService):
         with pytest.raises(exception_type):
             await service.list_appointment_types()
+    elif isinstance(service, ActionPlansService):
+        with pytest.raises(exception_type):
+            await service.list_action_plans()
     elif isinstance(service, GroupsService):
         with pytest.raises(exception_type):
             await service.list_groups()

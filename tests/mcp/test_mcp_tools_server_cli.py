@@ -21,20 +21,6 @@ from followupboss_mcp.config import FollowUpBossSettings
 from followupboss_mcp.errors import FollowUpBossRateLimitError, FollowUpBossValidationError
 from followupboss_mcp.mcp_server import create_server
 from followupboss_mcp.mcp_tools import (
-    DeleteAppointmentOutcomeToolInput,
-    DeleteAppointmentToolInput,
-    DeleteAppointmentTypeToolInput,
-    DeleteDealToolInput,
-    DeleteGroupToolInput,
-    DeleteNoteToolInput,
-    DeletePipelineToolInput,
-    DeletePondToolInput,
-    DeleteStageToolInput,
-    DeleteTaskToolInput,
-    DeleteTeamToolInput,
-    DeleteTemplateToolInput,
-    DeleteTextMessageTemplateToolInput,
-    DeleteWebhookToolInput,
     FollowUpBossToolAdapter,
     GetAppointmentOutcomeToolInput,
     GetAppointmentToolInput,
@@ -59,6 +45,21 @@ from followupboss_mcp.mcp_tools import (
     GetUserToolInput,
     GetWebhookToolInput,
     ServiceBundle,
+    DeleteAppointmentOutcomeToolInput,
+    DeleteAppointmentToolInput,
+    DeleteAppointmentTypeToolInput,
+    DeleteDealToolInput,
+    DeleteGroupToolInput,
+    DeleteNoteToolInput,
+    DeletePipelineToolInput,
+    DeletePondToolInput,
+    DeleteStageToolInput,
+    DeleteTaskToolInput,
+    DeleteTeamToolInput,
+    DeleteTemplateToolInput,
+    DeleteTextMessageTemplateToolInput,
+    DeleteWebhookToolInput,
+    UpdateActionPlanPersonToolInput,
     UpdateAppointmentOutcomeToolInput,
     UpdateAppointmentToolInput,
     UpdateAppointmentTypeToolInput,
@@ -75,6 +76,13 @@ from followupboss_mcp.mcp_tools import (
     UpdateTeamToolInput,
     UpdateTemplateToolInput,
     UpdateTextMessageTemplateToolInput,
+)
+from followupboss_mcp.models.action_plans import (
+    ActionPlanListRequest,
+    ActionPlanPersonListRequest,
+    ActionPlanPersonRecord,
+    ActionPlanRecord,
+    CreateActionPlanPersonRequest,
 )
 from followupboss_mcp.models.appointment_metadata import (
     AppointmentOutcomeListRequest,
@@ -220,6 +228,50 @@ class StubBundle:
 
         async def events_get(event_id: int) -> EventRecord:
             return EventRecord(id=event_id, personId=2, type="Inquiry")
+
+        async def action_plans_list(_: ActionPlanListRequest) -> PageResult[ActionPlanRecord]:
+            return PageResult(
+                items=[
+                    ActionPlanRecord(
+                        id=5,
+                        name="Qualify buyer leads",
+                        status="Active",
+                    )
+                ],
+                metadata=_page_metadata(),
+            )
+
+        async def action_plan_people_list(
+            _: ActionPlanPersonListRequest,
+        ) -> PageResult[ActionPlanPersonRecord]:
+            return PageResult(
+                items=[
+                    ActionPlanPersonRecord(
+                        id=6,
+                        actionPlanId=5,
+                        personId=10810,
+                        status="Running",
+                    )
+                ],
+                metadata=_page_metadata(),
+            )
+
+        async def action_plans_apply(
+            _: CreateActionPlanPersonRequest,
+        ) -> ActionPlanPersonRecord:
+            return ActionPlanPersonRecord(id=7, actionPlanId=5, personId=10810, status="Running")
+
+        async def action_plan_people_update(
+            action_plan_person_id: int,
+            request: object,
+        ) -> ActionPlanPersonRecord:
+            del request
+            return ActionPlanPersonRecord(
+                id=action_plan_person_id,
+                actionPlanId=5,
+                personId=10810,
+                status="Paused",
+            )
 
         async def automations_list(_: AutomationListRequest) -> PageResult[AutomationRecord]:
             return PageResult(
@@ -760,6 +812,12 @@ class StubBundle:
             del webhook_id
 
         self.bundle = ServiceBundle(
+            action_plans=_service_stub(
+                list_action_plans=action_plans_list,
+                list_action_plan_people=action_plan_people_list,
+                apply_action_plan=action_plans_apply,
+                update_action_plan_person=action_plan_people_update,
+            ),
             appointments=_service_stub(
                 list_appointments=appointments_list,
                 get_appointment=appointments_get,
