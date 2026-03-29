@@ -11,7 +11,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `DELETE /dealAttachments/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `DELETE /dealCustomFields/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `DELETE /deals/{id}` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
-| `DELETE /groups/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `DELETE /groups/:id` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
 | `DELETE /inboxApps/{inboxAppId}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `DELETE /inboxApps/{inboxAppId}/conversations/{extConversationId}/participants/{participantId}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `DELETE /notes/:id` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
@@ -53,9 +53,9 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `GET /emEvents` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `GET /events` | Implemented | Yes | Yes | Yes | Supports next-token pagination. |
 | `GET /events/:id` | Implemented | Yes | Yes | Yes | Single-event lookup. |
-| `GET /groups` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /groups/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /groups/roundRobin` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `GET /groups` | Implemented | Yes | Yes | Yes | Lists groups with documented type and sort filters plus pagination metadata. |
+| `GET /groups/:id` | Implemented | Yes | Yes | Yes | Single-group lookup. |
+| `GET /groups/roundRobin` | Implemented | Yes | Yes | Yes | Lists groups and includes round-robin assignment details. |
 | `GET /identity` | Implemented | Yes | Yes | Yes | Used as the health check path. |
 | `GET /inboxApps/installedApps/{publishedInboxAppId}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `GET /inboxApps/{inboxAppId}/conversations/{extConversationId}/participants` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
@@ -108,7 +108,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `POST /emCampaigns` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `POST /emEvents` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `POST /events` | Implemented | Yes | Yes | Yes | Canonical external lead and lead-activity ingestion path. |
-| `POST /groups` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `POST /groups` | Implemented | Yes | Yes | Yes | Creates a group with distribution and first-to-claim defaults where needed. |
 | `POST /inboxApps/install` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `POST /inboxApps/{inboxAppId}/conversations/{extConversationId}/participants` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `POST /inboxApps/{inboxAppId}/message` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
@@ -142,7 +142,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `PUT /dealCustomFields/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `PUT /deals/{id}` | Implemented | Yes | Yes | Yes | Updates a deal and preserves documented custom field semantics. |
 | `PUT /emCampaigns/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `PUT /groups/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `PUT /groups/:id` | Implemented | Yes | Yes | Yes | Updates group metadata and member assignment defaults. |
 | `PUT /inboxApps/:inboxAppId/message` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `PUT /inboxApps/{inboxAppId}/conversations/{extConversationId}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `PUT /notes/:id` | Implemented | Yes | Yes | Yes | Single-note update. |

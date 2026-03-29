@@ -25,6 +25,7 @@ from followupboss_mcp.mcp_tools import (
     DeleteAppointmentToolInput,
     DeleteAppointmentTypeToolInput,
     DeleteDealToolInput,
+    DeleteGroupToolInput,
     DeleteNoteToolInput,
     DeletePipelineToolInput,
     DeletePondToolInput,
@@ -41,6 +42,7 @@ from followupboss_mcp.mcp_tools import (
     GetCallToolInput,
     GetDealToolInput,
     GetEventToolInput,
+    GetGroupToolInput,
     GetNoteToolInput,
     GetPersonToolInput,
     GetPipelineToolInput,
@@ -60,6 +62,7 @@ from followupboss_mcp.mcp_tools import (
     UpdateAppointmentTypeToolInput,
     UpdateCallToolInput,
     UpdateDealToolInput,
+    UpdateGroupToolInput,
     UpdateNoteToolInput,
     UpdatePersonToolInput,
     UpdatePipelineToolInput,
@@ -97,6 +100,12 @@ from followupboss_mcp.models.events import (
     EventPersonInput,
     EventRecord,
     EventSearchRequest,
+)
+from followupboss_mcp.models.groups import (
+    CreateGroupRequest,
+    GroupListRequest,
+    GroupRecord,
+    GroupUserSummary,
 )
 from followupboss_mcp.models.identity import IdentityResponse
 from followupboss_mcp.models.notes import CreateNoteRequest, NoteRecord
@@ -201,6 +210,48 @@ class StubBundle:
 
         async def events_get(event_id: int) -> EventRecord:
             return EventRecord(id=event_id, personId=2, type="Inquiry")
+
+        async def groups_list(_: GroupListRequest) -> PageResult[GroupRecord]:
+            return PageResult(
+                items=[
+                    GroupRecord(
+                        id=6,
+                        name="Eastside",
+                        type="Agent",
+                        distribution="round-robin",
+                        users=[GroupUserSummary(id=199, name="Daniel Corkill")],
+                    )
+                ],
+                metadata=_page_metadata(),
+            )
+
+        async def groups_round_robin_list(_: GroupListRequest) -> PageResult[GroupRecord]:
+            return PageResult(
+                items=[
+                    GroupRecord(
+                        id=7,
+                        name="Round Robin",
+                        type="Agent",
+                        distribution="round-robin",
+                        nextRoundRobinUser=334,
+                        users=[GroupUserSummary(id=200, name="Beverly Crusher")],
+                    )
+                ],
+                metadata=_page_metadata(),
+            )
+
+        async def groups_get(group_id: int) -> GroupRecord:
+            return GroupRecord(id=group_id, name="Eastside", type="Agent")
+
+        async def groups_create(_: CreateGroupRequest) -> GroupRecord:
+            return GroupRecord(id=11, name="Westside", type="Agent")
+
+        async def groups_update(group_id: int, request: object) -> GroupRecord:
+            del request
+            return GroupRecord(id=group_id, name="Westside Plus", type="Agent")
+
+        async def groups_delete(group_id: int) -> None:
+            del group_id
 
         async def users_list(_: UserListRequest) -> PageResult[UserRecord]:
             return PageResult(items=[UserRecord(id=6, name="Geordi")], metadata=_page_metadata())
@@ -682,6 +733,14 @@ class StubBundle:
                 get_event=events_get,
                 send_event=events_send,
             ),
+            groups=_service_stub(
+                list_groups=groups_list,
+                list_round_robin_groups=groups_round_robin_list,
+                get_group=groups_get,
+                create_group=groups_create,
+                update_group=groups_update,
+                delete_group=groups_delete,
+            ),
             identity=_service_stub(get_identity=identity_get),
             notes=_service_stub(
                 add_note=notes_add,
@@ -845,6 +904,25 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         "deleted": True,
         "appointmentTypeId": 12,
     }
+    assert (await adapter.list_groups(GroupListRequest(type="Agent")))["groups"][0]["id"] == 6
+    assert (await adapter.list_round_robin_groups(GroupListRequest(type="Agent")))["groups"][0][
+        "id"
+    ] == 7
+    assert (await adapter.get_group(GetGroupToolInput(group_id=11)))["id"] == 11
+    assert (
+        await adapter.create_group(
+            CreateGroupRequest(name="Westside", users=[200, 201], distribution="round-robin")
+        )
+    )["id"] == 11
+    assert (
+        await adapter.update_group(
+            UpdateGroupToolInput(group_id=12, name="Westside Plus", users=[200, 201])
+        )
+    )["id"] == 12
+    assert (await adapter.delete_group(DeleteGroupToolInput(group_id=13))) == {
+        "deleted": True,
+        "groupId": 13,
+    }
     assert (await adapter.list_custom_fields(CustomFieldListRequest()))["customfields"][0][
         "id"
     ] == 7
@@ -940,9 +1018,7 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
             )
         )
     )["id"] == 84
-    assert (
-        await adapter.delete_team(DeleteTeamToolInput(team_id=85, move_to_team_id=82))
-    ) == {
+    assert (await adapter.delete_team(DeleteTeamToolInput(team_id=85, move_to_team_id=82))) == {
         "deleted": True,
         "teamId": 85,
     }
@@ -1085,6 +1161,7 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         custom_fields=services.custom_fields,
         deals=services.deals,
         events=services.events,
+        groups=services.groups,
         identity=_service_stub(get_identity=boom),
         notes=_service_stub(
             add_note=services.notes.add_note,
@@ -1177,6 +1254,12 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                 {"id": 95, "name": "Buyer Consult", "orderWeight": 1000},
                 {"id": 96, "name": "Listing Consult", "orderWeight": 2000},
                 {"id": 97, "name": "Showing", "orderWeight": 3000},
+                {},
+                {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "groups": [{"id": 99}]},
+                {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "groups": [{"id": 100}]},
+                {"id": 101, "name": "Eastside", "type": "Agent"},
+                {"id": 102, "name": "Westside", "type": "Agent"},
+                {"id": 103, "name": "Westside Plus", "type": "Agent"},
                 {},
                 {
                     "_metadata": {"limit": 10, "offset": 0, "total": 1},
@@ -1289,6 +1372,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_create_appointment_type",
         "followupboss_create_call",
         "followupboss_create_deal",
+        "followupboss_create_group",
         "followupboss_create_person",
         "followupboss_create_pipeline",
         "followupboss_create_pond",
@@ -1302,6 +1386,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_delete_appointment_outcome",
         "followupboss_delete_appointment_type",
         "followupboss_delete_deal",
+        "followupboss_delete_group",
         "followupboss_delete_note",
         "followupboss_delete_pipeline",
         "followupboss_delete_pond",
@@ -1317,6 +1402,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_get_call",
         "followupboss_get_deal",
         "followupboss_get_event",
+        "followupboss_get_group",
         "followupboss_get_identity",
         "followupboss_get_note",
         "followupboss_get_person",
@@ -1338,8 +1424,10 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_list_custom_fields",
         "followupboss_list_deal_custom_fields",
         "followupboss_list_deals",
+        "followupboss_list_groups",
         "followupboss_list_pipelines",
         "followupboss_list_ponds",
+        "followupboss_list_round_robin_groups",
         "followupboss_list_smart_lists",
         "followupboss_list_stages",
         "followupboss_list_tasks",
@@ -1357,6 +1445,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_update_appointment_type",
         "followupboss_update_call",
         "followupboss_update_deal",
+        "followupboss_update_group",
         "followupboss_update_note",
         "followupboss_update_person",
         "followupboss_update_pipeline",
@@ -1418,6 +1507,17 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     assert await tools["followupboss_delete_appointment_type"].fn(98, 95) == {
         "deleted": True,
         "appointmentTypeId": 98,
+    }
+    assert (await tools["followupboss_list_groups"].fn(type="Agent"))["groups"][0]["id"] == 99
+    assert (await tools["followupboss_list_round_robin_groups"].fn(type="Agent"))["groups"][0][
+        "id"
+    ] == 100
+    assert (await tools["followupboss_get_group"].fn(101))["id"] == 101
+    assert (await tools["followupboss_create_group"].fn("Westside", [200, 201]))["id"] == 102
+    assert (await tools["followupboss_update_group"].fn(103, name="Westside Plus"))["id"] == 103
+    assert await tools["followupboss_delete_group"].fn(104) == {
+        "deleted": True,
+        "groupId": 104,
     }
     assert (await tools["followupboss_list_custom_fields"].fn())["customfields"][0]["id"] == 11
     assert (await tools["followupboss_list_deals"].fn())["deals"][0]["id"] == 40

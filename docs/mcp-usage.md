@@ -64,6 +64,12 @@ All tools are namespaced with the `followupboss_` prefix.
 | `followupboss_create_appointment_type` | Create an appointment type. |
 | `followupboss_update_appointment_type` | Update one appointment type by ID. |
 | `followupboss_delete_appointment_type` | Delete one appointment type by ID, require a reassignment target, and return a structured confirmation. |
+| `followupboss_list_groups` | List groups with documented filters and pagination metadata. |
+| `followupboss_list_round_robin_groups` | List groups including round-robin assignment details. |
+| `followupboss_get_group` | Retrieve one group by ID. |
+| `followupboss_create_group` | Create a group. |
+| `followupboss_update_group` | Update one group by ID. |
+| `followupboss_delete_group` | Delete one group by ID and return a structured confirmation. |
 | `followupboss_list_teams` | List teams with pagination metadata. |
 | `followupboss_get_team` | Retrieve one team by ID. |
 | `followupboss_create_team` | Create a team. |

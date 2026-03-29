@@ -36,6 +36,11 @@ from followupboss_mcp.models.deals import (
     UpdateDealRequest,
 )
 from followupboss_mcp.models.events import CreateEventRequest, EventSearchRequest
+from followupboss_mcp.models.groups import (
+    CreateGroupRequest,
+    GroupListRequest,
+    UpdateGroupRequest,
+)
 from followupboss_mcp.models.notes import CreateNoteRequest, UpdateNoteRequest
 from followupboss_mcp.models.people import (
     CreatePersonRequest,
@@ -91,6 +96,7 @@ from followupboss_mcp.services.calls import CallsService
 from followupboss_mcp.services.custom_fields import CustomFieldsService
 from followupboss_mcp.services.deals import DealsService
 from followupboss_mcp.services.events import EventsService
+from followupboss_mcp.services.groups import GroupsService
 from followupboss_mcp.services.identity import IdentityService
 from followupboss_mcp.services.notes import NotesService
 from followupboss_mcp.services.people import PeopleService
@@ -223,6 +229,12 @@ class GetEventToolInput(RequestModel):
     event_id: int
 
 
+class GetGroupToolInput(RequestModel):
+    """Tool input for fetching a group by ID."""
+
+    group_id: int
+
+
 class GetWebhookToolInput(RequestModel):
     """Tool input for fetching a webhook by ID."""
 
@@ -263,6 +275,12 @@ class UpdateAppointmentTypeToolInput(UpdateAppointmentTypeRequest):
     """Tool input for updating an appointment type."""
 
     appointment_type_id: int
+
+
+class UpdateGroupToolInput(UpdateGroupRequest):
+    """Tool input for updating a group."""
+
+    group_id: int
 
 
 class UpdateDealToolInput(UpdateDealRequest):
@@ -343,6 +361,12 @@ class DeleteAppointmentTypeToolInput(DeleteAppointmentTypeRequest):
     appointment_type_id: int
 
 
+class DeleteGroupToolInput(RequestModel):
+    """Tool input for deleting a group."""
+
+    group_id: int
+
+
 class DeleteDealToolInput(RequestModel):
     """Tool input for deleting a deal."""
 
@@ -396,6 +420,7 @@ class ServiceBundle:
     custom_fields: CustomFieldsService
     deals: DealsService
     events: EventsService
+    groups: GroupsService
     identity: IdentityService
     notes: NotesService
     people: PeopleService
@@ -590,6 +615,45 @@ class FollowUpBossToolAdapter:
     async def send_event(self, tool_input: CreateEventRequest) -> dict[str, Any]:
         """Send an event."""
         return await self._single_result(lambda: self._services.events.send_event(tool_input))
+
+    async def list_groups(self, tool_input: GroupListRequest) -> dict[str, Any]:
+        """List groups."""
+        return await self._page_result(
+            lambda: self._services.groups.list_groups(tool_input),
+            key="groups",
+        )
+
+    async def list_round_robin_groups(self, tool_input: GroupListRequest) -> dict[str, Any]:
+        """List groups with round-robin details."""
+        return await self._page_result(
+            lambda: self._services.groups.list_round_robin_groups(tool_input),
+            key="groups",
+        )
+
+    async def get_group(self, tool_input: GetGroupToolInput) -> dict[str, Any]:
+        """Get a group."""
+        return await self._single_result(
+            lambda: self._services.groups.get_group(tool_input.group_id)
+        )
+
+    async def create_group(self, tool_input: CreateGroupRequest) -> dict[str, Any]:
+        """Create a group."""
+        return await self._single_result(lambda: self._services.groups.create_group(tool_input))
+
+    async def update_group(self, tool_input: UpdateGroupToolInput) -> dict[str, Any]:
+        """Update a group."""
+        request = UpdateGroupRequest.model_validate(tool_input.model_dump(exclude={"group_id"}))
+        return await self._single_result(
+            lambda: self._services.groups.update_group(tool_input.group_id, request)
+        )
+
+    async def delete_group(self, tool_input: DeleteGroupToolInput) -> dict[str, Any]:
+        """Delete a group."""
+        return await self._delete_result(
+            lambda: self._services.groups.delete_group(tool_input.group_id),
+            identifier_key="groupId",
+            identifier_value=tool_input.group_id,
+        )
 
     async def list_users(self, tool_input: UserListRequest) -> dict[str, Any]:
         """List users."""

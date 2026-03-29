@@ -38,6 +38,11 @@ from followupboss_mcp.models.deals import (
     UpdateDealRequest,
 )
 from followupboss_mcp.models.events import CreateEventRequest, EventPersonInput, EventSearchRequest
+from followupboss_mcp.models.groups import (
+    CreateGroupRequest,
+    GroupListRequest,
+    UpdateGroupRequest,
+)
 from followupboss_mcp.models.identity import IdentityResponse
 from followupboss_mcp.models.notes import CreateNoteRequest, UpdateNoteRequest
 from followupboss_mcp.models.people import (
@@ -100,6 +105,7 @@ from followupboss_mcp.services.calls import CallsService
 from followupboss_mcp.services.custom_fields import CustomFieldsService
 from followupboss_mcp.services.deals import DealsService
 from followupboss_mcp.services.events import EventsService
+from followupboss_mcp.services.groups import GroupsService
 from followupboss_mcp.services.identity import IdentityService
 from followupboss_mcp.services.notes import NotesService
 from followupboss_mcp.services.people import PeopleService
@@ -317,6 +323,135 @@ async def test_appointment_types_service() -> None:
         match="At least one appointment metadata field must be provided",
     ):
         UpdateAppointmentTypeRequest()
+
+
+@pytest.mark.asyncio
+async def test_groups_service() -> None:
+    """Groups service should map queries, bodies, and delete behavior correctly."""
+    client = StubClient(
+        [
+            {
+                "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                "groups": [
+                    {
+                        "id": 1,
+                        "name": "Eastside",
+                        "type": "Agent",
+                        "distribution": "first-to-claim",
+                        "defaultUserId": None,
+                        "defaultPondId": None,
+                        "defaultGroupId": None,
+                        "claimWindow": 900,
+                        "nextRoundRobinUser": None,
+                        "isPrimary": False,
+                        "users": [
+                            {
+                                "id": 199,
+                                "name": "Daniel Corkill",
+                                "firstName": "Daniel",
+                                "lastName": "Corkill",
+                                "role": "Broker",
+                                "pauseLeadDistribution": True,
+                            }
+                        ],
+                    }
+                ],
+            },
+            {
+                "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                "groups": [
+                    {
+                        "id": 2,
+                        "name": "Round Robin",
+                        "type": "Agent",
+                        "distribution": "round-robin",
+                        "nextRoundRobinUser": 334,
+                    }
+                ],
+            },
+            {
+                "id": 3,
+                "name": "Eastside",
+                "type": "Agent",
+                "distribution": "first-to-claim",
+                "users": [{"id": 199, "name": "Daniel Corkill"}],
+            },
+            {
+                "id": 4,
+                "name": "Westside",
+                "type": "Agent",
+                "distribution": "round-robin",
+                "users": [{"id": 200, "name": "Beverly Crusher"}],
+            },
+            {
+                "id": 5,
+                "name": "Westside Plus",
+                "type": "Agent",
+                "distribution": "first-to-claim",
+                "claimWindow": 1800,
+                "defaultUserId": 7,
+                "users": [{"id": 200, "name": "Beverly Crusher"}],
+            },
+            {},
+        ]
+    )
+    service = GroupsService(client)
+
+    groups_page = await service.list_groups(GroupListRequest(type="Agent", sort="-name"))
+    assert groups_page.items[0].name == "Eastside"
+    assert groups_page.items[0].users[0].first_name == "Daniel"
+    assert client.calls[0].params == {"type": "Agent", "sort": "-name"}
+
+    round_robin_page = await service.list_round_robin_groups(
+        GroupListRequest(type="Agent", sort="name")
+    )
+    assert round_robin_page.items[0].next_round_robin_user == 334
+    assert client.calls[1].path == "/groups/roundRobin"
+    assert client.calls[1].params == {"type": "Agent", "sort": "name"}
+
+    group = await service.get_group(3)
+    assert group.id == 3
+
+    created = await service.create_group(
+        CreateGroupRequest(
+            name="Westside",
+            users=[200, 201],
+            distribution="round-robin",
+            type="Agent",
+        )
+    )
+    assert created.id == 4
+    assert client.calls[3].json_body == {
+        "name": "Westside",
+        "users": [200, 201],
+        "distribution": "round-robin",
+        "type": "Agent",
+    }
+
+    updated = await service.update_group(
+        5,
+        UpdateGroupRequest(
+            name="Westside Plus",
+            users=[200, 201],
+            distribution="first-to-claim",
+            claim_window=1800,
+            default_user_id=7,
+        ),
+    )
+    assert updated.id == 5
+    assert client.calls[4].json_body == {
+        "name": "Westside Plus",
+        "users": [200, 201],
+        "distribution": "first-to-claim",
+        "claimWindow": 1800,
+        "defaultUserId": 7,
+    }
+
+    await service.delete_group(6)
+    assert client.calls[5].path == "/groups/6"
+
+    with pytest.raises(ValidationError, match="At least one group field must be provided"):
+        UpdateGroupRequest()
 
 
 @pytest.mark.asyncio
@@ -1661,6 +1796,8 @@ async def test_events_users_notes_and_webhooks_services() -> None:
             {"appointmenttypes": {}},
             ValueError,
         ),
+        (lambda client: GroupsService(client), [], ValueError),
+        (lambda client: GroupsService(client), {"groups": {}}, ValueError),
         (lambda client: DealsService(client), [], ValueError),
         (lambda client: DealsService(client), {"deals": {}}, ValueError),
         (lambda client: PondsService(client), [], ValueError),
@@ -1714,6 +1851,9 @@ async def test_collection_services_raise_for_non_dict_payload(
     elif isinstance(service, AppointmentTypesService):
         with pytest.raises(exception_type):
             await service.list_appointment_types()
+    elif isinstance(service, GroupsService):
+        with pytest.raises(exception_type):
+            await service.list_groups()
     elif isinstance(service, DealsService):
         with pytest.raises(exception_type):
             await service.list_deals()

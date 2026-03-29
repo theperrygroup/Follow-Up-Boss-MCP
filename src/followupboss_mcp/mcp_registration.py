@@ -9,6 +9,7 @@ from followupboss_mcp.mcp_tools import (
     DeleteAppointmentToolInput,
     DeleteAppointmentTypeToolInput,
     DeleteDealToolInput,
+    DeleteGroupToolInput,
     DeleteNoteToolInput,
     DeletePipelineToolInput,
     DeletePondToolInput,
@@ -25,6 +26,7 @@ from followupboss_mcp.mcp_tools import (
     GetCallToolInput,
     GetDealToolInput,
     GetEventToolInput,
+    GetGroupToolInput,
     GetNoteToolInput,
     GetPersonToolInput,
     GetPipelineToolInput,
@@ -43,6 +45,7 @@ from followupboss_mcp.mcp_tools import (
     UpdateAppointmentTypeToolInput,
     UpdateCallToolInput,
     UpdateDealToolInput,
+    UpdateGroupToolInput,
     UpdateNoteToolInput,
     UpdatePersonToolInput,
     UpdatePipelineToolInput,
@@ -68,6 +71,7 @@ from followupboss_mcp.models.deals import (
     DealListRequest,
 )
 from followupboss_mcp.models.events import CreateEventRequest, EventSearchRequest
+from followupboss_mcp.models.groups import CreateGroupRequest, GroupListRequest
 from followupboss_mcp.models.notes import CreateNoteRequest
 from followupboss_mcp.models.people import CreatePersonRequest, PeopleSearchRequest
 from followupboss_mcp.models.pipelines import (
@@ -107,6 +111,7 @@ def register_server_surface(
     _register_identity_tools(mcp, adapter)
     _register_people_tools(mcp, adapter)
     _register_event_tools(mcp, adapter)
+    _register_group_tools(mcp, adapter)
     _register_user_tools(mcp, adapter)
     _register_custom_field_tools(mcp, adapter)
     _register_deal_tools(mcp, adapter)
@@ -409,6 +414,109 @@ def _register_event_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> Non
             }
         )
         return await adapter.send_event(tool_input)
+
+
+def _register_group_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+    """Register group-related MCP tools.
+
+    Args:
+        mcp: The FastMCP server instance.
+        adapter: The typed Follow Up Boss tool adapter.
+    """
+
+    @mcp.tool(
+        name="followupboss_list_groups",
+        description="List Follow Up Boss groups with documented filters and pagination metadata.",
+    )
+    async def followupboss_list_groups(
+        *,
+        sort: str | None = None,
+        type: str | None = None,
+    ) -> dict[str, object]:
+        return await adapter.list_groups(GroupListRequest(sort=sort, type=type))
+
+    @mcp.tool(
+        name="followupboss_list_round_robin_groups",
+        description="List Follow Up Boss groups including round-robin assignment details.",
+    )
+    async def followupboss_list_round_robin_groups(
+        *,
+        sort: str | None = None,
+        type: str | None = None,
+    ) -> dict[str, object]:
+        return await adapter.list_round_robin_groups(GroupListRequest(sort=sort, type=type))
+
+    @mcp.tool(
+        name="followupboss_get_group",
+        description="Fetch a single Follow Up Boss group by ID.",
+    )
+    async def followupboss_get_group(group_id: int) -> dict[str, object]:
+        return await adapter.get_group(GetGroupToolInput(group_id=group_id))
+
+    @mcp.tool(
+        name="followupboss_create_group",
+        description="Create a Follow Up Boss group.",
+    )
+    async def followupboss_create_group(
+        name: str,
+        users: list[int],
+        *,
+        claim_window: int | None = None,
+        default_group_id: int | None = None,
+        default_pond_id: int | None = None,
+        default_user_id: int | None = None,
+        distribution: str | None = None,
+        type: str | None = None,
+    ) -> dict[str, object]:
+        return await adapter.create_group(
+            CreateGroupRequest(
+                name=name,
+                users=users,
+                claim_window=claim_window,
+                default_group_id=default_group_id,
+                default_pond_id=default_pond_id,
+                default_user_id=default_user_id,
+                distribution=distribution,
+                type=type,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_update_group",
+        description="Update a Follow Up Boss group by ID.",
+    )
+    async def followupboss_update_group(
+        group_id: int,
+        *,
+        claim_window: int | None = None,
+        default_group_id: int | None = None,
+        default_pond_id: int | None = None,
+        default_user_id: int | None = None,
+        distribution: str | None = None,
+        name: str | None = None,
+        type: str | None = None,
+        users: list[int] | None = None,
+    ) -> dict[str, object]:
+        return await adapter.update_group(
+            UpdateGroupToolInput(
+                group_id=group_id,
+                claim_window=claim_window,
+                default_group_id=default_group_id,
+                default_pond_id=default_pond_id,
+                default_user_id=default_user_id,
+                distribution=distribution,
+                name=name,
+                type=type,
+                users=users,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_delete_group",
+        description="Delete a Follow Up Boss group by ID.",
+    )
+    async def followupboss_delete_group(group_id: int) -> dict[str, object]:
+        return await adapter.delete_group(DeleteGroupToolInput(group_id=group_id))
 
 
 def _register_user_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:

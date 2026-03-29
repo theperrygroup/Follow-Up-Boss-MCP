@@ -15,6 +15,8 @@ The repository now contains:
 - typed smart-list collection and lookup coverage across the SDK, MCP surface, tests, and docs
 - typed stage collection and CRUD coverage with explicit reassignment semantics on delete across the SDK, MCP surface, tests, and docs
 - typed appointment outcome and appointment type collection and CRUD coverage across the SDK, MCP surface, tests, and docs
+- typed group collection, round-robin reads, and CRUD coverage across the SDK, MCP surface, tests, and docs
+- typed team collection and CRUD coverage with optional member-migration semantics on delete across the SDK, MCP surface, tests, and docs
 - typed text message read support and text message template CRUD coverage across the SDK, MCP surface, tests, and docs
 - typed task collection and CRUD coverage across the SDK, MCP surface, tests, and docs
 - typed email-template collection and CRUD coverage across the SDK, MCP surface, tests, and docs
@@ -66,6 +68,12 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `POST /appointmentTypes`
 - `PUT /appointmentTypes/{id}`
 - `DELETE /appointmentTypes/{id}`
+- `GET /groups`
+- `GET /groups/:id`
+- `POST /groups`
+- `PUT /groups/:id`
+- `DELETE /groups/:id`
+- `GET /groups/roundRobin`
 - `GET /people`
 - `POST /people`
 - `GET /people/:id`
@@ -120,6 +128,11 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `POST /tasks`
 - `PUT /tasks/:id`
 - `DELETE /tasks/:id`
+- `GET /teams`
+- `GET /teams/:id`
+- `POST /teams`
+- `PUT /teams/:id`
+- `DELETE /teams/:id`
 - `GET /templates`
 - `GET /templates/:id`
 - `POST /templates`
@@ -134,7 +147,7 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `POST /webhooks`
 - `DELETE /webhooks/:id`
 
-Total implemented official endpoints in this repository scope: `78`
+Total implemented official endpoints in this repository scope: `89`
 
 All additional discovered official endpoints are marked explicitly as deferred in `docs/api-coverage-matrix.md`.
 
@@ -142,7 +155,7 @@ All additional discovered official endpoints are marked explicitly as deferred i
 
 Registered MCP surface:
 
-- tools: `78`
+- tools: `89`
 - resources: `1`
 - prompts: `1`
 
@@ -204,6 +217,12 @@ Registered tools:
 - `followupboss_create_appointment_type`
 - `followupboss_update_appointment_type`
 - `followupboss_delete_appointment_type`
+- `followupboss_list_groups`
+- `followupboss_list_round_robin_groups`
+- `followupboss_get_group`
+- `followupboss_create_group`
+- `followupboss_update_group`
+- `followupboss_delete_group`
 - `followupboss_list_calls`
 - `followupboss_get_call`
 - `followupboss_create_call`
@@ -218,6 +237,11 @@ Registered tools:
 - `followupboss_create_template`
 - `followupboss_update_template`
 - `followupboss_delete_template`
+- `followupboss_list_teams`
+- `followupboss_get_team`
+- `followupboss_create_team`
+- `followupboss_update_team`
+- `followupboss_delete_team`
 - `followupboss_add_note`
 - `followupboss_get_note`
 - `followupboss_update_note`
@@ -254,19 +278,19 @@ make live-identity-check
 ## Final Mypy Status
 
 - `uv run mypy src tests`: passed
-- result: `Success: no issues found in 60 source files`
+- result: `Success: no issues found in 64 source files`
 
 ## Final Test Status
 
 - `uv run pytest`: passed
-- result: `83 passed, 1 skipped`
+- result: `89 passed, 1 skipped`
 
 ## Final Coverage Numbers
 
 - `uv run coverage run --branch -m pytest`: passed
 - `uv run coverage report --fail-under=100`: passed
-- total statements: `2561`
-- total branches: `226`
+- total statements: `2791`
+- total branches: `240`
 - line coverage: `100.00%`
 - branch coverage: `100.00%`
 

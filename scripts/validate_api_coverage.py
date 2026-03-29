@@ -88,6 +88,48 @@ COVERAGE_MAP: dict[str, dict[str, str]] = {
         "notes": "Delete requires assignTypeId and returns structured deletion confirmation.",
         "tests": "Yes",
     },
+    "GET /groups": {
+        "implementation": "Implemented",
+        "mcp": "Yes",
+        "models": "Yes",
+        "notes": "Lists groups with documented type and sort filters plus pagination metadata.",
+        "tests": "Yes",
+    },
+    "GET /groups/:id": {
+        "implementation": "Implemented",
+        "mcp": "Yes",
+        "models": "Yes",
+        "notes": "Single-group lookup.",
+        "tests": "Yes",
+    },
+    "POST /groups": {
+        "implementation": "Implemented",
+        "mcp": "Yes",
+        "models": "Yes",
+        "notes": "Creates a group with distribution and first-to-claim defaults where needed.",
+        "tests": "Yes",
+    },
+    "PUT /groups/:id": {
+        "implementation": "Implemented",
+        "mcp": "Yes",
+        "models": "Yes",
+        "notes": "Updates group metadata and member assignment defaults.",
+        "tests": "Yes",
+    },
+    "DELETE /groups/:id": {
+        "implementation": "Implemented",
+        "mcp": "Yes",
+        "models": "Input only",
+        "notes": "Delete returns structured deletion confirmation.",
+        "tests": "Yes",
+    },
+    "GET /groups/roundRobin": {
+        "implementation": "Implemented",
+        "mcp": "Yes",
+        "models": "Yes",
+        "notes": "Lists groups and includes round-robin assignment details.",
+        "tests": "Yes",
+    },
     "GET /people": {
         "implementation": "Implemented",
         "mcp": "Yes",
@@ -547,14 +589,18 @@ COVERAGE_MAP: dict[str, dict[str, str]] = {
         "implementation": "Implemented",
         "mcp": "Yes",
         "models": "Yes",
-        "notes": "Updates team metadata and expects complete member and leader replacement semantics.",
+        "notes": (
+            "Updates team metadata and expects complete member and leader replacement semantics."
+        ),
         "tests": "Yes",
     },
     "DELETE /teams/:id": {
         "implementation": "Implemented",
         "mcp": "Yes",
         "models": "Input only",
-        "notes": "Delete optionally supports moveToTeamId and returns structured deletion confirmation.",
+        "notes": (
+            "Delete optionally supports moveToTeamId and returns structured deletion confirmation."
+        ),
         "tests": "Yes",
     },
     "GET /textMessages": {
