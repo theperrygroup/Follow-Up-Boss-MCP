@@ -18,7 +18,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `DELETE /people/:id` | Deferred | No | No | No | Not part of the requested MCP tool surface. |
 | `DELETE /peopleRelationships/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `DELETE /personAttachments/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `DELETE /pipelines/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `DELETE /pipelines/:id` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
 | `DELETE /ponds/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `DELETE /reactions/{refType}/{refId}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `DELETE /stages/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
@@ -68,8 +68,8 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `GET /peopleRelationships` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `GET /peopleRelationships/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `GET /personAttachments/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /pipelines` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /pipelines/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `GET /pipelines` | Implemented | Yes | Yes | Yes | Lists pipelines with exact-name filtering and pagination metadata. |
+| `GET /pipelines/{id}` | Implemented | Yes | Yes | Yes | Single-pipeline lookup including stage definitions. |
 | `GET /ponds` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `GET /ponds/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `GET /reactions/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
@@ -119,7 +119,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `POST /people/ignoreUnclaimed` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `POST /peopleRelationships` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `POST /personAttachments` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `POST /pipelines` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `POST /pipelines` | Implemented | Yes | Yes | Yes | Creates a pipeline with optional ordered stages. |
 | `POST /ponds` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `POST /reactions/{refType}/{refId}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `POST /stages` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
@@ -149,7 +149,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `PUT /people/:id` | Implemented | Yes | Yes | Yes | Supports mergeTags query semantics. |
 | `PUT /peopleRelationships/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `PUT /personAttachments/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `PUT /pipelines/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `PUT /pipelines/{id}` | Implemented | Yes | Yes | Yes | Updates pipeline metadata and supports stage create-or-update semantics. |
 | `PUT /ponds/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `PUT /stages/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `PUT /tasks/:id` | Implemented | Yes | Yes | Yes | Supports task completion and due-date updates. |

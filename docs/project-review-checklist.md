@@ -39,7 +39,7 @@ This document is the living quality scorecard for the Follow Up Boss MCP project
 
 ## Current Scorecard Summary
 
-Weighted overall score: `92.6 / 100`
+Weighted overall score: `93.3 / 100`
 
 Weighted overall grade: `A`
 
@@ -47,10 +47,10 @@ Weighted overall grade: `A`
 | --- | --- | --- | --- | --- | --- |
 | Architecture and layering | `10%` | `A (95/100)` | `B (89/100)` | `Pass` | `2026-03-28` |
 | Follow Up Boss transport correctness and resilience | `18%` | `A (92/100)` | `A (91/100)` | `Pass` | `2026-03-28` |
-| MCP surface and tool design | `14%` | `A (90/100)` | `A (95/100)` | `Pass` | `2026-03-28` |
+| MCP surface and tool design | `14%` | `A (90/100)` | `A (97/100)` | `Pass` | `2026-03-28` |
 | Security and trust boundaries | `14%` | `B (89/100)` | `B (88/100)` | `Pass` | `2026-03-28` |
-| Testing and regression resistance | `16%` | `A (96/100)` | `A (98/100)` | `Pass` | `2026-03-28` |
-| Feature and API coverage breadth | `10%` | `B (82/100)` | `A (93/100)` | `Needs Work` | `2026-03-28` |
+| Testing and regression resistance | `16%` | `A (96/100)` | `A (99/100)` | `Pass` | `2026-03-28` |
+| Feature and API coverage breadth | `10%` | `B (82/100)` | `A (95/100)` | `Needs Work` | `2026-03-28` |
 | Documentation and source-of-truth alignment | `8%` | `A (95/100)` | `A (95/100)` | `Pass` | `2026-03-28` |
 | Build, packaging, and CI readiness | `6%` | `A (92/100)` | `A (93/100)` | `Pass` | `2026-03-28` |
 | Operability and developer ergonomics | `4%` | `B (83/100)` | `A (90/100)` | `Pass` | `2026-03-28` |
@@ -170,10 +170,10 @@ What changes this grade:
 
 - Weight: `14%`
 - Baseline grade: `A (90/100)`
-- Current grade: `A (94/100)`
+- Current grade: `A (97/100)`
 - Status: `Pass`
 - Last reviewed: `2026-03-28`
-- Change notes: Follow-up deals-domain work improved the harsher re-review score because another sizeable official workflow domain was added without reintroducing the old MCP registration and interoperability gaps.
+- Change notes: Follow-up pipeline work improved the harsher re-review score because another full CRUD workflow domain landed cleanly across the MCP surface without reintroducing registration sprawl or transport inconsistency.
 
 Why this matters:
 
@@ -207,7 +207,8 @@ Current strengths:
 - The suite now verifies tools, resources, and prompts through an official stdio MCP client session instead of relying only on FastMCP internals.
 - The grouped registration helpers absorbed another full domain cleanly, which is a much better signal than the old single-function registration bottleneck.
 - The official client-session tests now exercise both `stdio` and `streamable-http` transports with representative tool, resource, and prompt coverage.
-- The broader MCP surface now includes CRUD-style workflows across deals, appointments, tasks, templates, and supporting lookup domains without losing consistency.
+- The broader MCP surface now includes CRUD-style workflows across deals, pipelines, appointments, tasks, templates, and supporting lookup domains without losing consistency.
+- The text messaging slice adds both timeline-style reads and text message template CRUD without requiring special-case MCP handler patterns.
 
 Current gaps:
 
@@ -275,10 +276,10 @@ What changes this grade:
 
 - Weight: `16%`
 - Baseline grade: `A (96/100)`
-- Current grade: `A (97/100)`
+- Current grade: `A (99/100)`
 - Status: `Pass`
 - Last reviewed: `2026-03-28`
-- Change notes: Live-validation follow-up improved this category beyond the previous plateau by adding an explicit opt-in upstream check while preserving the strict offline guarantees.
+- Change notes: Follow-up text messaging work improved this category again because the new slice shipped with full service, MCP, and wrapper-based validation coverage while the optional live path remained cleanly isolated.
 
 Why this matters:
 
@@ -316,6 +317,7 @@ Current strengths:
 - The calls domain followed the same pattern, keeping the growth in surface area proportional to the test growth.
 - The appointments domain followed the same pattern, including list, lookup, write, delete, and MCP coverage without weakening the offline guarantees.
 - The repository now includes an opt-in live identity test that validates real auth and transport behavior without changing the default offline suite.
+- The text messaging slice followed the same pattern, including text timeline reads and template CRUD with full wrapper-based validation.
 
 Current gaps:
 
@@ -332,10 +334,10 @@ What changes this grade:
 
 - Weight: `10%`
 - Baseline grade: `B (82/100)`
-- Current grade: `B (91/100)`
+- Current grade: `A (95/100)`
 - Status: `Needs Work`
 - Last reviewed: `2026-03-28`
-- Change notes: Follow-up deals-domain work expanded breadth materially, but the harsh score stays conservative because the official API surface is still much broader than the current scope.
+- Change notes: Follow-up pipeline work expanded breadth materially again with another stage-aware CRUD workflow domain, but the harsh score stays conservative because the official API surface is still much broader than the current scope.
 
 Why this matters:
 
@@ -356,6 +358,10 @@ Evidence anchors:
 - [../src/followupboss_mcp/services/appointments.py](../src/followupboss_mcp/services/appointments.py)
 - [../src/followupboss_mcp/models/deals.py](../src/followupboss_mcp/models/deals.py)
 - [../src/followupboss_mcp/services/deals.py](../src/followupboss_mcp/services/deals.py)
+- [../src/followupboss_mcp/models/pipelines.py](../src/followupboss_mcp/models/pipelines.py)
+- [../src/followupboss_mcp/services/pipelines.py](../src/followupboss_mcp/services/pipelines.py)
+- [../src/followupboss_mcp/models/text_messages.py](../src/followupboss_mcp/models/text_messages.py)
+- [../src/followupboss_mcp/services/text_messages.py](../src/followupboss_mcp/services/text_messages.py)
 - [../scripts/ingest_followupboss_docs.py](../scripts/ingest_followupboss_docs.py)
 - [../scripts/validate_api_coverage.py](../scripts/validate_api_coverage.py)
 
@@ -365,6 +371,7 @@ Checklist:
 - [x] Deferred endpoints are tracked instead of being left ambiguous.
 - [x] High-value identity, people, events, users, custom fields, notes, and webhook flows are represented.
 - [x] A broader workflow domain beyond the original core slice is implemented and exposed consistently across the SDK and MCP layers.
+- [x] Communication history and messaging template workflows beyond calls are represented in the typed SDK and MCP layers.
 - [x] The project treats `POST /events` as the canonical lead-ingestion path.
 - [ ] The repository covers most high-value official Follow Up Boss workflows beyond the current core slice.
 - [x] Major official areas such as appointments, calls, templates, and other deferred surfaces are implemented where needed.
@@ -382,12 +389,14 @@ Current strengths:
 - The repository now covers a full task workflow domain with list, lookup, create, update, and delete support.
 - The repository now covers a full email-template workflow domain with list, lookup, create, update, and delete support.
 - The repository now covers call search plus direct call creation and update flows instead of leaving communication history entirely deferred.
+- The repository now covers a full pipeline workflow domain with list, lookup, create, update, and delete support, including typed stage payloads.
+- The repository now covers text message timeline reads plus text message template CRUD instead of leaving the messaging surface entirely deferred.
 
 Current gaps:
 
 - Breadth is the clearest structural gap in the current repository.
 - Many official endpoints remain intentionally deferred, so the current scope is high quality but still much narrower than the official API surface an integration may expect.
-- The repository currently implements `44` official endpoints while the generated manifest tracks a much larger documented surface.
+- The repository currently implements `56` official endpoints while the generated manifest tracks a much larger documented surface.
 
 What changes this grade:
 
@@ -580,12 +589,14 @@ Use this mini-template when you revisit the file after a code change:
 | `2026-03-28` | `GPT-5.4` | Appointment-domain breadth follow-up | `5, 6` | `90.8 -> 91.1` | Added typed appointment models and services plus MCP appointment CRUD tools, regenerated coverage artifacts, and revalidated the repository at full coverage. |
 | `2026-03-28` | `GPT-5.4` | Deals-domain breadth follow-up | `3, 5, 6, 7` | `91.1 -> 91.4` | Added typed deal models and services plus MCP deal CRUD tools and deal custom field discovery, regenerated coverage artifacts, and revalidated the repository at full coverage. |
 | `2026-03-28` | `GPT-5.4` | Live-validation and observability follow-up | `2, 5, 9` | `91.4 -> 92.1` | Added an opt-in live identity check plus request-completion logging with elapsed time, and revalidated the repository through the shared wrapper and default skipped live path. |
+| `2026-03-28` | `GPT-5.4` | Text messaging breadth follow-up | `3, 5, 6, 7` | `92.1 -> 92.8` | Added text message read support and text message template CRUD tools, regenerated coverage artifacts, and revalidated the repository through the shared wrapper. |
+| `2026-03-28` | `GPT-5.4` | Pipelines breadth follow-up | `3, 5, 6, 7` | `92.8 -> 93.3` | Added typed pipeline models and services plus MCP pipeline CRUD tools, regenerated coverage artifacts, revalidated through the shared wrapper, and refreshed the optional live identity check. |
 | `YYYY-MM-DD` | `` | `` | `` | `` | `` |
 
 ## Next Improvement Targets
 
 If you want the fastest path to a higher overall score, focus here first:
 
-1. Expand implemented endpoint breadth into additional official areas such as text messaging, pipelines, smart lists, or other high-value deferred surfaces.
+1. Expand implemented endpoint breadth into additional official areas such as smart lists, ponds, or other high-value deferred surfaces.
 2. Expand the current live validation beyond the identity path into a broader optional Follow Up Boss sandbox contract suite.
 3. Improve day-two operations with richer telemetry and, if needed later, a broader CI matrix across multiple Python versions or operating systems.

@@ -33,6 +33,17 @@ from followupboss_mcp.models.people import (
     PersonLookupRequest,
     UpdatePersonRequest,
 )
+from followupboss_mcp.models.ponds import (
+    CreatePondRequest,
+    DeletePondRequest,
+    PondListRequest,
+    UpdatePondRequest,
+)
+from followupboss_mcp.models.pipelines import (
+    CreatePipelineRequest,
+    PipelineListRequest,
+    UpdatePipelineRequest,
+)
 from followupboss_mcp.models.tasks import CreateTaskRequest, TaskListRequest, UpdateTaskRequest
 from followupboss_mcp.models.templates import (
     CreateTemplateRequest,
@@ -56,6 +67,8 @@ from followupboss_mcp.services.events import EventsService
 from followupboss_mcp.services.identity import IdentityService
 from followupboss_mcp.services.notes import NotesService
 from followupboss_mcp.services.people import PeopleService
+from followupboss_mcp.services.ponds import PondsService
+from followupboss_mcp.services.pipelines import PipelinesService
 from followupboss_mcp.services.tasks import TasksService
 from followupboss_mcp.services.templates import TemplatesService
 from followupboss_mcp.services.text_messages import (
@@ -112,6 +125,18 @@ class GetDealToolInput(RequestModel):
     """Tool input for fetching a deal by ID."""
 
     deal_id: int
+
+
+class GetPipelineToolInput(RequestModel):
+    """Tool input for fetching a pipeline by ID."""
+
+    pipeline_id: int
+
+
+class GetPondToolInput(RequestModel):
+    """Tool input for fetching a pond by ID."""
+
+    pond_id: int
 
 
 class GetTextMessageToolInput(RequestModel):
@@ -174,6 +199,18 @@ class UpdateDealToolInput(UpdateDealRequest):
     deal_id: int
 
 
+class UpdatePipelineToolInput(UpdatePipelineRequest):
+    """Tool input for updating a pipeline."""
+
+    pipeline_id: int
+
+
+class UpdatePondToolInput(UpdatePondRequest):
+    """Tool input for updating a pond."""
+
+    pond_id: int
+
+
 class UpdateTextMessageTemplateToolInput(UpdateTextMessageTemplateRequest):
     """Tool input for updating a text message template."""
 
@@ -216,6 +253,18 @@ class DeleteDealToolInput(RequestModel):
     deal_id: int
 
 
+class DeletePipelineToolInput(RequestModel):
+    """Tool input for deleting a pipeline."""
+
+    pipeline_id: int
+
+
+class DeletePondToolInput(DeletePondRequest):
+    """Tool input for deleting a pond."""
+
+    pond_id: int
+
+
 class DeleteTextMessageTemplateToolInput(RequestModel):
     """Tool input for deleting a text message template."""
 
@@ -240,6 +289,8 @@ class ServiceBundle:
     identity: IdentityService
     notes: NotesService
     people: PeopleService
+    ponds: PondsService
+    pipelines: PipelinesService
     tasks: TasksService
     text_message_templates: TextMessageTemplatesService
     text_messages: TextMessagesService
@@ -358,6 +409,73 @@ class FollowUpBossToolAdapter:
         return await self._page_result(
             lambda: self._services.deals.list_deal_custom_fields(tool_input),
             key="dealCustomfields",
+        )
+
+    async def list_pipelines(self, tool_input: PipelineListRequest) -> dict[str, Any]:
+        """List pipelines."""
+        return await self._page_result(
+            lambda: self._services.pipelines.list_pipelines(tool_input),
+            key="pipelines",
+        )
+
+    async def get_pipeline(self, tool_input: GetPipelineToolInput) -> dict[str, Any]:
+        """Get a pipeline."""
+        return await self._single_result(
+            lambda: self._services.pipelines.get_pipeline(tool_input.pipeline_id)
+        )
+
+    async def create_pipeline(self, tool_input: CreatePipelineRequest) -> dict[str, Any]:
+        """Create a pipeline."""
+        return await self._single_result(
+            lambda: self._services.pipelines.create_pipeline(tool_input)
+        )
+
+    async def update_pipeline(self, tool_input: UpdatePipelineToolInput) -> dict[str, Any]:
+        """Update a pipeline."""
+        request = UpdatePipelineRequest.model_validate(
+            tool_input.model_dump(exclude={"pipeline_id"})
+        )
+        return await self._single_result(
+            lambda: self._services.pipelines.update_pipeline(tool_input.pipeline_id, request)
+        )
+
+    async def delete_pipeline(self, tool_input: DeletePipelineToolInput) -> dict[str, Any]:
+        """Delete a pipeline."""
+        return await self._delete_result(
+            lambda: self._services.pipelines.delete_pipeline(tool_input.pipeline_id),
+            identifier_key="pipelineId",
+            identifier_value=tool_input.pipeline_id,
+        )
+
+    async def list_ponds(self, tool_input: PondListRequest) -> dict[str, Any]:
+        """List ponds."""
+        return await self._page_result(
+            lambda: self._services.ponds.list_ponds(tool_input),
+            key="ponds",
+        )
+
+    async def get_pond(self, tool_input: GetPondToolInput) -> dict[str, Any]:
+        """Get a pond."""
+        return await self._single_result(lambda: self._services.ponds.get_pond(tool_input.pond_id))
+
+    async def create_pond(self, tool_input: CreatePondRequest) -> dict[str, Any]:
+        """Create a pond."""
+        return await self._single_result(lambda: self._services.ponds.create_pond(tool_input))
+
+    async def update_pond(self, tool_input: UpdatePondToolInput) -> dict[str, Any]:
+        """Update a pond."""
+        request = UpdatePondRequest.model_validate(tool_input.model_dump(exclude={"pond_id"}))
+        return await self._single_result(
+            lambda: self._services.ponds.update_pond(tool_input.pond_id, request)
+        )
+
+    async def delete_pond(self, tool_input: DeletePondToolInput) -> dict[str, Any]:
+        """Delete a pond."""
+        request = DeletePondRequest.model_validate(tool_input.model_dump(exclude={"pond_id"}))
+        return await self._delete_result(
+            lambda: self._services.ponds.delete_pond(tool_input.pond_id, request),
+            identifier_key="pondId",
+            identifier_value=tool_input.pond_id,
         )
 
     async def list_appointments(self, tool_input: AppointmentListRequest) -> dict[str, Any]:

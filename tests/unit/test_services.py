@@ -37,6 +37,12 @@ from followupboss_mcp.models.people import (
     PersonRecord,
     UpdatePersonRequest,
 )
+from followupboss_mcp.models.pipelines import (
+    CreatePipelineRequest,
+    PipelineListRequest,
+    PipelineStageInput,
+    UpdatePipelineRequest,
+)
 from followupboss_mcp.models.tasks import (
     CreateTaskRequest,
     TaskListRequest,
@@ -64,6 +70,7 @@ from followupboss_mcp.services.events import EventsService
 from followupboss_mcp.services.identity import IdentityService
 from followupboss_mcp.services.notes import NotesService
 from followupboss_mcp.services.people import PeopleService
+from followupboss_mcp.services.pipelines import PipelinesService
 from followupboss_mcp.services.tasks import TasksService
 from followupboss_mcp.services.templates import TemplatesService
 from followupboss_mcp.services.text_messages import (
@@ -640,6 +647,146 @@ async def test_deals_service() -> None:
 
 
 @pytest.mark.asyncio
+async def test_pipelines_service() -> None:
+    """Pipelines service should map queries, bodies, and delete behavior correctly."""
+    client = StubClient(
+        [
+            {
+                "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                "pipelines": [
+                    {
+                        "id": 1,
+                        "name": "Buyer pipeline",
+                        "description": "Buyer flow",
+                        "orderWeight": 1000,
+                        "stages": [
+                            {
+                                "id": 10,
+                                "name": "New lead",
+                                "description": "Just created",
+                                "orderWeight": 1000,
+                                "color": "#00FF00",
+                                "closedStage": False,
+                            }
+                        ],
+                    }
+                ],
+            },
+            {
+                "id": 2,
+                "name": "Buyer pipeline",
+                "description": "Buyer flow",
+                "orderWeight": 1000,
+                "stages": [
+                    {
+                        "id": 10,
+                        "name": "New lead",
+                        "description": "Just created",
+                        "orderWeight": 1000,
+                        "color": "#00FF00",
+                        "closedStage": False,
+                    }
+                ],
+            },
+            {
+                "id": 3,
+                "name": "New pipeline",
+                "description": "New flow",
+                "orderWeight": 2000,
+                "stages": [{"id": 11, "name": "Warm", "closedStage": False}],
+            },
+            {
+                "id": 4,
+                "name": "Updated pipeline",
+                "description": "Updated flow",
+                "orderWeight": 3000,
+                "stages": [{"id": 12, "name": "Closed won", "closedStage": True}],
+            },
+            {},
+        ]
+    )
+    service = PipelinesService(client)
+
+    pipelines_page = await service.list_pipelines(PipelineListRequest(name="Buyer pipeline"))
+    assert pipelines_page.items[0].name == "Buyer pipeline"
+    assert client.calls[0].params == {"name": "Buyer pipeline"}
+
+    pipeline = await service.get_pipeline(2)
+    assert pipeline.id == 2
+    assert pipeline.stages[0].closed_stage is False
+
+    created = await service.create_pipeline(
+        CreatePipelineRequest(
+            name="New pipeline",
+            description="New flow",
+            order_weight=2000,
+            stages=[
+                PipelineStageInput(
+                    name="Warm",
+                    description="Qualified",
+                    order_weight=2000,
+                    color="#00FF00",
+                    closed_stage=False,
+                )
+            ],
+        )
+    )
+    assert created.id == 3
+    assert client.calls[2].json_body == {
+        "name": "New pipeline",
+        "description": "New flow",
+        "orderWeight": 2000,
+        "stages": [
+            {
+                "name": "Warm",
+                "description": "Qualified",
+                "orderWeight": 2000,
+                "color": "#00FF00",
+                "closedStage": False,
+            }
+        ],
+    }
+
+    updated = await service.update_pipeline(
+        4,
+        UpdatePipelineRequest(
+            name="Updated pipeline",
+            description="Updated flow",
+            order_weight=3000,
+            stages=[
+                PipelineStageInput(
+                    id=12,
+                    name="Closed won",
+                    description="Finished",
+                    order_weight=4000,
+                    color="#0000FF",
+                    closed_stage=True,
+                )
+            ],
+        ),
+    )
+    assert updated.id == 4
+    assert client.calls[3].json_body == {
+        "name": "Updated pipeline",
+        "description": "Updated flow",
+        "orderWeight": 3000,
+        "stages": [
+            {
+                "id": 12,
+                "name": "Closed won",
+                "description": "Finished",
+                "orderWeight": 4000,
+                "color": "#0000FF",
+                "closedStage": True,
+            }
+        ],
+    }
+
+    await service.delete_pipeline(5)
+    assert client.calls[4].path == "/pipelines/5"
+
+
+@pytest.mark.asyncio
 async def test_text_messages_service() -> None:
     """Text messages service should map list and lookup behavior correctly."""
     client = StubClient(
@@ -1072,6 +1219,8 @@ async def test_events_users_notes_and_webhooks_services() -> None:
         ),
         (lambda client: DealsService(client), [], ValueError),
         (lambda client: DealsService(client), {"deals": {}}, ValueError),
+        (lambda client: PipelinesService(client), [], ValueError),
+        (lambda client: PipelinesService(client), {"pipelines": {}}, ValueError),
         (lambda client: AppointmentsService(client), [], ValueError),
         (lambda client: AppointmentsService(client), {"appointments": {}}, ValueError),
         (lambda client: CallsService(client), [], ValueError),
@@ -1110,6 +1259,9 @@ async def test_collection_services_raise_for_non_dict_payload(
     elif isinstance(service, DealsService):
         with pytest.raises(exception_type):
             await service.list_deals()
+    elif isinstance(service, PipelinesService):
+        with pytest.raises(exception_type):
+            await service.list_pipelines()
     elif isinstance(service, AppointmentsService):
         with pytest.raises(exception_type):
             await service.list_appointments()

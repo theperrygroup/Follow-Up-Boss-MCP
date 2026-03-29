@@ -10,6 +10,7 @@ The repository now contains:
 - a contributor guide and a repository-local security incident playbook
 - typed appointment collection and CRUD coverage across the SDK, MCP surface, tests, and docs
 - typed deals collection and CRUD coverage plus deal custom field discovery across the SDK, MCP surface, tests, and docs
+- typed pipeline collection and CRUD coverage with stage-aware payload support across the SDK, MCP surface, tests, and docs
 - typed text message read support and text message template CRUD coverage across the SDK, MCP surface, tests, and docs
 - typed task collection and CRUD coverage across the SDK, MCP surface, tests, and docs
 - typed email-template collection and CRUD coverage across the SDK, MCP surface, tests, and docs
@@ -64,6 +65,11 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `PUT /deals/{id}`
 - `DELETE /deals/{id}`
 - `GET /dealCustomFields`
+- `GET /pipelines`
+- `GET /pipelines/{id}`
+- `POST /pipelines`
+- `PUT /pipelines/{id}`
+- `DELETE /pipelines/:id`
 - `GET /textMessages`
 - `GET /textMessages/{id}`
 - `GET /textMessageTemplates`
@@ -102,7 +108,7 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `POST /webhooks`
 - `DELETE /webhooks/:id`
 
-Total implemented official endpoints in this repository scope: `51`
+Total implemented official endpoints in this repository scope: `56`
 
 All additional discovered official endpoints are marked explicitly as deferred in `docs/api-coverage-matrix.md`.
 
@@ -110,7 +116,7 @@ All additional discovered official endpoints are marked explicitly as deferred i
 
 Registered MCP surface:
 
-- tools: `51`
+- tools: `56`
 - resources: `1`
 - prompts: `1`
 
@@ -130,6 +136,11 @@ Registered tools:
 - `followupboss_update_deal`
 - `followupboss_delete_deal`
 - `followupboss_list_deal_custom_fields`
+- `followupboss_list_pipelines`
+- `followupboss_get_pipeline`
+- `followupboss_create_pipeline`
+- `followupboss_update_pipeline`
+- `followupboss_delete_pipeline`
 - `followupboss_list_text_messages`
 - `followupboss_get_text_message`
 - `followupboss_list_text_message_templates`
@@ -195,19 +206,19 @@ make live-identity-check
 ## Final Mypy Status
 
 - `uv run mypy src tests`: passed
-- result: `Success: no issues found in 50 source files`
+- result: `Success: no issues found in 52 source files`
 
 ## Final Test Status
 
 - `uv run pytest`: passed
-- result: `65 passed, 1 skipped`
+- result: `68 passed, 1 skipped`
 
 ## Final Coverage Numbers
 
 - `uv run coverage run --branch -m pytest`: passed
 - `uv run coverage report --fail-under=100`: passed
-- total statements: `2038`
-- total branches: `196`
+- total statements: `2145`
+- total branches: `200`
 - line coverage: `100.00%`
 - branch coverage: `100.00%`
 

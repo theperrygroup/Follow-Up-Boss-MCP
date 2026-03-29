@@ -8,6 +8,7 @@ from followupboss_mcp.mcp_tools import (
     DeleteAppointmentToolInput,
     DeleteDealToolInput,
     DeleteNoteToolInput,
+    DeletePipelineToolInput,
     DeleteTaskToolInput,
     DeleteTemplateToolInput,
     DeleteTextMessageTemplateToolInput,
@@ -19,6 +20,7 @@ from followupboss_mcp.mcp_tools import (
     GetEventToolInput,
     GetNoteToolInput,
     GetPersonToolInput,
+    GetPipelineToolInput,
     GetTaskToolInput,
     GetTemplateToolInput,
     GetTextMessageTemplateToolInput,
@@ -30,6 +32,7 @@ from followupboss_mcp.mcp_tools import (
     UpdateDealToolInput,
     UpdateNoteToolInput,
     UpdatePersonToolInput,
+    UpdatePipelineToolInput,
     UpdateTaskToolInput,
     UpdateTemplateToolInput,
     UpdateTextMessageTemplateToolInput,
@@ -45,6 +48,11 @@ from followupboss_mcp.models.deals import (
 from followupboss_mcp.models.events import CreateEventRequest, EventSearchRequest
 from followupboss_mcp.models.notes import CreateNoteRequest
 from followupboss_mcp.models.people import CreatePersonRequest, PeopleSearchRequest
+from followupboss_mcp.models.pipelines import (
+    CreatePipelineRequest,
+    PipelineListRequest,
+    PipelineStageInput,
+)
 from followupboss_mcp.models.tasks import CreateTaskRequest, TaskListRequest
 from followupboss_mcp.models.templates import CreateTemplateRequest, TemplateListRequest
 from followupboss_mcp.models.text_messages import (
@@ -78,6 +86,7 @@ def register_server_surface(
     _register_deal_tools(mcp, adapter)
     _register_appointment_tools(mcp, adapter)
     _register_call_tools(mcp, adapter)
+    _register_pipeline_tools(mcp, adapter)
     _register_task_tools(mcp, adapter)
     _register_template_tools(mcp, adapter)
     _register_text_message_tools(mcp, adapter)
@@ -858,6 +867,94 @@ def _register_call_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
                 user_id=user_id,
             )
         )
+
+
+def _register_pipeline_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+    """Register pipeline-related MCP tools.
+
+    Args:
+        mcp: The FastMCP server instance.
+        adapter: The typed Follow Up Boss tool adapter.
+    """
+
+    @mcp.tool(
+        name="followupboss_list_pipelines",
+        description=(
+            "List Follow Up Boss pipelines with exact-name filtering and pagination metadata."
+        ),
+    )
+    async def followupboss_list_pipelines(*, name: str | None = None) -> dict[str, object]:
+        return await adapter.list_pipelines(PipelineListRequest(name=name))
+
+    @mcp.tool(
+        name="followupboss_get_pipeline",
+        description="Fetch a single Follow Up Boss pipeline by ID.",
+    )
+    async def followupboss_get_pipeline(pipeline_id: int) -> dict[str, object]:
+        return await adapter.get_pipeline(GetPipelineToolInput(pipeline_id=pipeline_id))
+
+    @mcp.tool(
+        name="followupboss_create_pipeline",
+        description="Create a Follow Up Boss pipeline. Owner permissions are required upstream.",
+    )
+    async def followupboss_create_pipeline(
+        name: str,
+        *,
+        description: str | None = None,
+        order_weight: int | None = None,
+        stages: list[dict[str, object]] | None = None,
+    ) -> dict[str, object]:
+        stage_inputs = (
+            [PipelineStageInput.model_validate(stage) for stage in stages]
+            if stages is not None
+            else None
+        )
+        return await adapter.create_pipeline(
+            CreatePipelineRequest(
+                name=name,
+                description=description,
+                order_weight=order_weight,
+                stages=stage_inputs,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_update_pipeline",
+        description=(
+            "Update a Follow Up Boss pipeline by ID. Owner permissions are required upstream."
+        ),
+    )
+    async def followupboss_update_pipeline(
+        pipeline_id: int,
+        *,
+        description: str | None = None,
+        name: str | None = None,
+        order_weight: int | None = None,
+        stages: list[dict[str, object]] | None = None,
+    ) -> dict[str, object]:
+        stage_inputs = (
+            [PipelineStageInput.model_validate(stage) for stage in stages]
+            if stages is not None
+            else None
+        )
+        return await adapter.update_pipeline(
+            UpdatePipelineToolInput(
+                pipeline_id=pipeline_id,
+                name=name,
+                description=description,
+                order_weight=order_weight,
+                stages=stage_inputs,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_delete_pipeline",
+        description=(
+            "Delete a Follow Up Boss pipeline by ID. Owner permissions are required upstream."
+        ),
+    )
+    async def followupboss_delete_pipeline(pipeline_id: int) -> dict[str, object]:
+        return await adapter.delete_pipeline(DeletePipelineToolInput(pipeline_id=pipeline_id))
 
 
 def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:

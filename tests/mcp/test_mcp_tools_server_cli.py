@@ -24,6 +24,7 @@ from followupboss_mcp.mcp_tools import (
     DeleteAppointmentToolInput,
     DeleteDealToolInput,
     DeleteNoteToolInput,
+    DeletePipelineToolInput,
     DeleteTaskToolInput,
     DeleteTemplateToolInput,
     DeleteTextMessageTemplateToolInput,
@@ -35,6 +36,7 @@ from followupboss_mcp.mcp_tools import (
     GetEventToolInput,
     GetNoteToolInput,
     GetPersonToolInput,
+    GetPipelineToolInput,
     GetTaskToolInput,
     GetTemplateToolInput,
     GetTextMessageTemplateToolInput,
@@ -47,6 +49,7 @@ from followupboss_mcp.mcp_tools import (
     UpdateDealToolInput,
     UpdateNoteToolInput,
     UpdatePersonToolInput,
+    UpdatePipelineToolInput,
     UpdateTaskToolInput,
     UpdateTemplateToolInput,
     UpdateTextMessageTemplateToolInput,
@@ -74,6 +77,12 @@ from followupboss_mcp.models.events import (
 from followupboss_mcp.models.identity import IdentityResponse
 from followupboss_mcp.models.notes import CreateNoteRequest, NoteRecord
 from followupboss_mcp.models.people import CreatePersonRequest, PeopleSearchRequest, PersonRecord
+from followupboss_mcp.models.pipelines import (
+    CreatePipelineRequest,
+    PipelineListRequest,
+    PipelineRecord,
+    PipelineStageInput,
+)
 from followupboss_mcp.models.tasks import CreateTaskRequest, TaskListRequest, TaskRecord
 from followupboss_mcp.models.templates import (
     CreateTemplateRequest,
@@ -208,6 +217,27 @@ class StubBundle:
                 ],
                 metadata=_page_metadata(),
             )
+
+        async def pipelines_list(_: PipelineListRequest) -> PageResult[PipelineRecord]:
+            return PageResult(
+                items=[PipelineRecord(id=11, name="Buyer pipeline", description="Buyer flow")],
+                metadata=_page_metadata(),
+            )
+
+        async def pipelines_get(pipeline_id: int) -> PipelineRecord:
+            return PipelineRecord(id=pipeline_id, name="Buyer pipeline", description="Buyer flow")
+
+        async def pipelines_create(_: CreatePipelineRequest) -> PipelineRecord:
+            return PipelineRecord(id=12, name="New pipeline", description="New flow")
+
+        async def pipelines_update(pipeline_id: int, request: object) -> PipelineRecord:
+            del request
+            return PipelineRecord(
+                id=pipeline_id, name="Updated pipeline", description="Updated flow"
+            )
+
+        async def pipelines_delete(pipeline_id: int) -> None:
+            del pipeline_id
 
         async def appointments_list(_: AppointmentListRequest) -> PageResult[AppointmentRecord]:
             return PageResult(
@@ -427,6 +457,13 @@ class StubBundle:
                 create_person=people_create,
                 update_person=people_update,
             ),
+            pipelines=_service_stub(
+                list_pipelines=pipelines_list,
+                get_pipeline=pipelines_get,
+                create_pipeline=pipelines_create,
+                update_pipeline=pipelines_update,
+                delete_pipeline=pipelines_delete,
+            ),
             tasks=_service_stub(
                 list_tasks=tasks_list,
                 get_task=tasks_get,
@@ -505,6 +542,30 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert (await adapter.list_deal_custom_fields(DealCustomFieldListRequest()))[
         "dealCustomfields"
     ][0]["id"] == 10
+    assert (await adapter.list_pipelines(PipelineListRequest()))["pipelines"][0]["id"] == 11
+    assert (await adapter.get_pipeline(GetPipelineToolInput(pipeline_id=12)))["id"] == 12
+    assert (
+        await adapter.create_pipeline(
+            CreatePipelineRequest(
+                name="New pipeline",
+                description="New flow",
+                stages=[PipelineStageInput(name="Warm", closed_stage=False)],
+            )
+        )
+    )["id"] == 12
+    assert (
+        await adapter.update_pipeline(
+            UpdatePipelineToolInput(
+                pipeline_id=13,
+                name="Updated pipeline",
+                stages=[PipelineStageInput(id=21, name="Closed won", closed_stage=True)],
+            )
+        )
+    )["id"] == 13
+    assert (await adapter.delete_pipeline(DeletePipelineToolInput(pipeline_id=14))) == {
+        "deleted": True,
+        "pipelineId": 14,
+    }
     assert (await adapter.list_appointments(AppointmentListRequest()))["appointments"][0]["id"] == 8
     assert (await adapter.get_appointment(GetAppointmentToolInput(appointment_id=9)))["id"] == 9
     assert (
@@ -659,6 +720,7 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
             create_person=services.people.create_person,
             update_person=services.people.update_person,
         ),
+        pipelines=services.pipelines,
         tasks=services.tasks,
         text_message_templates=services.text_message_templates,
         text_messages=services.text_messages,
@@ -736,6 +798,11 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                         }
                     ],
                 },
+                {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "pipelines": [{"id": 60}]},
+                {"id": 61, "name": "Buyer pipeline", "description": "Buyer flow"},
+                {"id": 62, "name": "New pipeline", "description": "New flow"},
+                {"id": 63, "name": "Updated pipeline", "description": "Updated flow"},
+                {},
                 {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "calls": [{"id": 12}]},
                 {"id": 13, "personId": 2, "phone": "555-0000", "userName": "Data"},
                 {"id": 14, "personId": 2, "phone": "555-0000", "userName": "Data"},
@@ -799,6 +866,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_create_call",
         "followupboss_create_deal",
         "followupboss_create_person",
+        "followupboss_create_pipeline",
         "followupboss_create_task",
         "followupboss_create_template",
         "followupboss_create_text_message_template",
@@ -806,6 +874,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_delete_appointment",
         "followupboss_delete_deal",
         "followupboss_delete_note",
+        "followupboss_delete_pipeline",
         "followupboss_delete_task",
         "followupboss_delete_template",
         "followupboss_delete_text_message_template",
@@ -817,6 +886,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_get_identity",
         "followupboss_get_note",
         "followupboss_get_person",
+        "followupboss_get_pipeline",
         "followupboss_get_task",
         "followupboss_get_template",
         "followupboss_get_text_message",
@@ -828,6 +898,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_list_custom_fields",
         "followupboss_list_deal_custom_fields",
         "followupboss_list_deals",
+        "followupboss_list_pipelines",
         "followupboss_list_tasks",
         "followupboss_list_templates",
         "followupboss_list_text_message_templates",
@@ -842,6 +913,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_update_deal",
         "followupboss_update_note",
         "followupboss_update_person",
+        "followupboss_update_pipeline",
         "followupboss_update_task",
         "followupboss_update_template",
         "followupboss_update_text_message_template",
@@ -875,6 +947,14 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     assert (await tools["followupboss_list_deal_custom_fields"].fn())["dealCustomfields"][0][
         "id"
     ] == 44
+    assert (await tools["followupboss_list_pipelines"].fn())["pipelines"][0]["id"] == 60
+    assert (await tools["followupboss_get_pipeline"].fn(61))["id"] == 61
+    assert (await tools["followupboss_create_pipeline"].fn(name="New pipeline"))["id"] == 62
+    assert (await tools["followupboss_update_pipeline"].fn(63, name="Updated pipeline"))["id"] == 63
+    assert await tools["followupboss_delete_pipeline"].fn(64) == {
+        "deleted": True,
+        "pipelineId": 64,
+    }
     assert (await tools["followupboss_list_calls"].fn())["calls"][0]["id"] == 12
     assert (await tools["followupboss_get_call"].fn(13))["id"] == 13
     assert (await tools["followupboss_create_call"].fn(1, "555-0000", True))["id"] == 14
