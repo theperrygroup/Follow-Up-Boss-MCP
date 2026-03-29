@@ -62,6 +62,12 @@ from followupboss_mcp.models.stages import (
     UpdateStageRequest,
 )
 from followupboss_mcp.models.tasks import CreateTaskRequest, TaskListRequest, UpdateTaskRequest
+from followupboss_mcp.models.teams import (
+    CreateTeamRequest,
+    DeleteTeamRequest,
+    TeamListRequest,
+    UpdateTeamRequest,
+)
 from followupboss_mcp.models.templates import (
     CreateTemplateRequest,
     TemplateListRequest,
@@ -93,6 +99,7 @@ from followupboss_mcp.services.ponds import PondsService
 from followupboss_mcp.services.smart_lists import SmartListsService
 from followupboss_mcp.services.stages import StagesService
 from followupboss_mcp.services.tasks import TasksService
+from followupboss_mcp.services.teams import TeamsService
 from followupboss_mcp.services.templates import TemplatesService
 from followupboss_mcp.services.text_messages import (
     TextMessagesService,
@@ -186,6 +193,12 @@ class GetStageToolInput(RequestModel):
     stage_id: int
 
 
+class GetTeamToolInput(RequestModel):
+    """Tool input for fetching a team by ID."""
+
+    team_id: int
+
+
 class GetTextMessageToolInput(RequestModel):
     """Tool input for fetching a text message by ID."""
 
@@ -276,6 +289,12 @@ class UpdateStageToolInput(UpdateStageRequest):
     stage_id: int
 
 
+class UpdateTeamToolInput(UpdateTeamRequest):
+    """Tool input for updating a team."""
+
+    team_id: int
+
+
 class UpdateTextMessageTemplateToolInput(UpdateTextMessageTemplateRequest):
     """Tool input for updating a text message template."""
 
@@ -348,6 +367,12 @@ class DeleteStageToolInput(DeleteStageRequest):
     stage_id: int
 
 
+class DeleteTeamToolInput(DeleteTeamRequest):
+    """Tool input for deleting a team."""
+
+    team_id: int
+
+
 class DeleteTextMessageTemplateToolInput(RequestModel):
     """Tool input for deleting a text message template."""
 
@@ -379,6 +404,7 @@ class ServiceBundle:
     smart_lists: SmartListsService
     stages: StagesService
     tasks: TasksService
+    teams: TeamsService
     text_message_templates: TextMessageTemplatesService
     text_messages: TextMessagesService
     templates: TemplatesService
@@ -733,6 +759,37 @@ class FollowUpBossToolAdapter:
             lambda: self._services.stages.delete_stage(tool_input.stage_id, request),
             identifier_key="stageId",
             identifier_value=tool_input.stage_id,
+        )
+
+    async def list_teams(self, tool_input: TeamListRequest) -> dict[str, Any]:
+        """List teams."""
+        return await self._page_result(
+            lambda: self._services.teams.list_teams(tool_input),
+            key="teams",
+        )
+
+    async def get_team(self, tool_input: GetTeamToolInput) -> dict[str, Any]:
+        """Get a team."""
+        return await self._single_result(lambda: self._services.teams.get_team(tool_input.team_id))
+
+    async def create_team(self, tool_input: CreateTeamRequest) -> dict[str, Any]:
+        """Create a team."""
+        return await self._single_result(lambda: self._services.teams.create_team(tool_input))
+
+    async def update_team(self, tool_input: UpdateTeamToolInput) -> dict[str, Any]:
+        """Update a team."""
+        request = UpdateTeamRequest.model_validate(tool_input.model_dump(exclude={"team_id"}))
+        return await self._single_result(
+            lambda: self._services.teams.update_team(tool_input.team_id, request)
+        )
+
+    async def delete_team(self, tool_input: DeleteTeamToolInput) -> dict[str, Any]:
+        """Delete a team."""
+        request = DeleteTeamRequest.model_validate(tool_input.model_dump(exclude={"team_id"}))
+        return await self._delete_result(
+            lambda: self._services.teams.delete_team(tool_input.team_id, request),
+            identifier_key="teamId",
+            identifier_value=tool_input.team_id,
         )
 
     async def list_appointments(self, tool_input: AppointmentListRequest) -> dict[str, Any]:

@@ -23,7 +23,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `DELETE /reactions/{refType}/{refId}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `DELETE /stages/:id` | Implemented | Input only | Yes | Yes | Delete requires assignStageId and returns structured deletion confirmation. |
 | `DELETE /tasks/:id` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
-| `DELETE /teams/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `DELETE /teams/:id` | Implemented | Input only | Yes | Yes | Delete optionally supports moveToTeamId and returns structured deletion confirmation. |
 | `DELETE /templates/:id` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
 | `DELETE /textMessageTemplates/:id` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
 | `DELETE /users/:id` | Deferred | No | No | No | Deferred until explicitly needed. |
@@ -80,8 +80,8 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `GET /tasks` | Implemented | Yes | Yes | Yes | Supports documented task filters and pagination metadata. |
 | `GET /tasks/:id` | Implemented | Yes | Yes | Yes | Single-task lookup. |
 | `GET /teamInboxes` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /teams` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /teams/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `GET /teams` | Implemented | Yes | Yes | Yes | Lists teams with pagination metadata. |
+| `GET /teams/:id` | Implemented | Yes | Yes | Yes | Single-team lookup. |
 | `GET /templates` | Implemented | Yes | Yes | Yes | Lists email templates with pagination metadata. |
 | `GET /templates/:id` | Implemented | Yes | Yes | Yes | Single-template lookup with optional mergePersonId support. |
 | `GET /textMessageTemplates` | Implemented | Yes | Yes | Yes | Lists text message templates with pagination metadata. |
@@ -124,7 +124,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `POST /reactions/{refType}/{refId}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `POST /stages` | Implemented | Yes | Yes | Yes | Creates a stage with optional orderWeight support. |
 | `POST /tasks` | Implemented | Yes | Yes | Yes | Requires a related person and an assignee. |
-| `POST /teams` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `POST /teams` | Implemented | Yes | Yes | Yes | Creates a team with members and optional leader IDs. |
 | `POST /templates` | Implemented | Yes | Yes | Yes | Creates a new email template. |
 | `POST /templates/merge` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `POST /textMessageTemplates` | Implemented | Yes | Yes | Yes | Creates a new text message template. |
@@ -153,7 +153,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `PUT /ponds/:id` | Implemented | Yes | Yes | Yes | Updates pond metadata and expects complete member replacement semantics. |
 | `PUT /stages/:id` | Implemented | Yes | Yes | Yes | Updates stage metadata with documented orderWeight behavior. |
 | `PUT /tasks/:id` | Implemented | Yes | Yes | Yes | Supports task completion and due-date updates. |
-| `PUT /teams/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `PUT /teams/:id` | Implemented | Yes | Yes | Yes | Updates team metadata and expects complete member and leader replacement semantics. |
 | `PUT /templates/:id` | Implemented | Yes | Yes | Yes | Updates template name, subject, and body. |
 | `PUT /textMessageTemplates/:id` | Implemented | Yes | Yes | Yes | Updates text message template content and sharing state. |
 | `PUT /webhooks/:id` | Deferred | No | No | No | Deferred until explicitly needed. |

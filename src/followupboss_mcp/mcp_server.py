@@ -27,6 +27,7 @@ from followupboss_mcp.services.ponds import PondsService
 from followupboss_mcp.services.smart_lists import SmartListsService
 from followupboss_mcp.services.stages import StagesService
 from followupboss_mcp.services.tasks import TasksService
+from followupboss_mcp.services.teams import TeamsService
 from followupboss_mcp.services.templates import TemplatesService
 from followupboss_mcp.services.text_messages import (
     TextMessagesService,
@@ -65,6 +66,7 @@ def build_service_bundle(client: FollowUpBossClientProtocol) -> ServiceBundle:
         smart_lists=SmartListsService(client),
         stages=StagesService(client),
         tasks=TasksService(client),
+        teams=TeamsService(client),
         text_message_templates=TextMessageTemplatesService(client),
         text_messages=TextMessagesService(client),
         templates=TemplatesService(client),
@@ -97,8 +99,8 @@ def create_server(
         instructions=(
             "Use the typed Follow Up Boss tools for identity checks, lead search, lead ingestion, "
             "appointments, appointment types, appointment outcomes, calls, deals, pipelines, "
-            "ponds, smart lists, stages, tasks, templates, text messages, notes, users, custom "
-            "fields, and webhook administration."
+            "ponds, smart lists, stages, tasks, teams, templates, text messages, notes, users, "
+            "custom fields, and webhook administration."
         ),
         host=host,
         port=port,

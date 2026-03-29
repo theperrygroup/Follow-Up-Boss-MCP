@@ -14,6 +14,7 @@ from followupboss_mcp.mcp_tools import (
     DeletePondToolInput,
     DeleteStageToolInput,
     DeleteTaskToolInput,
+    DeleteTeamToolInput,
     DeleteTemplateToolInput,
     DeleteTextMessageTemplateToolInput,
     DeleteWebhookToolInput,
@@ -31,6 +32,7 @@ from followupboss_mcp.mcp_tools import (
     GetSmartListToolInput,
     GetStageToolInput,
     GetTaskToolInput,
+    GetTeamToolInput,
     GetTemplateToolInput,
     GetTextMessageTemplateToolInput,
     GetTextMessageToolInput,
@@ -47,6 +49,7 @@ from followupboss_mcp.mcp_tools import (
     UpdatePondToolInput,
     UpdateStageToolInput,
     UpdateTaskToolInput,
+    UpdateTeamToolInput,
     UpdateTemplateToolInput,
     UpdateTextMessageTemplateToolInput,
 )
@@ -76,6 +79,7 @@ from followupboss_mcp.models.ponds import CreatePondRequest, PondListRequest
 from followupboss_mcp.models.smart_lists import SmartListListRequest
 from followupboss_mcp.models.stages import CreateStageRequest, StageListRequest
 from followupboss_mcp.models.tasks import CreateTaskRequest, TaskListRequest
+from followupboss_mcp.models.teams import CreateTeamRequest, TeamListRequest
 from followupboss_mcp.models.templates import CreateTemplateRequest, TemplateListRequest
 from followupboss_mcp.models.text_messages import (
     CreateTextMessageTemplateRequest,
@@ -114,6 +118,7 @@ def register_server_surface(
     _register_smart_list_tools(mcp, adapter)
     _register_stage_tools(mcp, adapter)
     _register_task_tools(mcp, adapter)
+    _register_team_tools(mcp, adapter)
     _register_template_tools(mcp, adapter)
     _register_text_message_tools(mcp, adapter)
     _register_note_tools(mcp, adapter)
@@ -1457,6 +1462,86 @@ def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
     )
     async def followupboss_delete_task(task_id: int) -> dict[str, object]:
         return await adapter.delete_task(DeleteTaskToolInput(task_id=task_id))
+
+
+def _register_team_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+    """Register team-related MCP tools.
+
+    Args:
+        mcp: The FastMCP server instance.
+        adapter: The typed Follow Up Boss tool adapter.
+    """
+
+    @mcp.tool(
+        name="followupboss_list_teams",
+        description="List Follow Up Boss teams with pagination metadata.",
+    )
+    async def followupboss_list_teams(
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> dict[str, object]:
+        return await adapter.list_teams(TeamListRequest(limit=limit, offset=offset))
+
+    @mcp.tool(
+        name="followupboss_get_team",
+        description="Fetch a single Follow Up Boss team by ID.",
+    )
+    async def followupboss_get_team(team_id: int) -> dict[str, object]:
+        return await adapter.get_team(GetTeamToolInput(team_id=team_id))
+
+    @mcp.tool(
+        name="followupboss_create_team",
+        description="Create a Follow Up Boss team.",
+    )
+    async def followupboss_create_team(
+        name: str,
+        user_ids: list[int],
+        *,
+        leader_ids: list[int] | None = None,
+    ) -> dict[str, object]:
+        return await adapter.create_team(
+            CreateTeamRequest(
+                name=name,
+                user_ids=user_ids,
+                leader_ids=leader_ids,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_update_team",
+        description="Update a Follow Up Boss team by ID.",
+    )
+    async def followupboss_update_team(
+        team_id: int,
+        *,
+        leader_ids: list[int] | None = None,
+        name: str | None = None,
+        user_ids: list[int] | None = None,
+    ) -> dict[str, object]:
+        return await adapter.update_team(
+            UpdateTeamToolInput(
+                team_id=team_id,
+                leader_ids=leader_ids,
+                name=name,
+                user_ids=user_ids,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_delete_team",
+        description="Delete a Follow Up Boss team by ID, optionally moving members first.",
+    )
+    async def followupboss_delete_team(
+        team_id: int,
+        move_to_team_id: int | None = None,
+    ) -> dict[str, object]:
+        return await adapter.delete_team(
+            DeleteTeamToolInput(
+                team_id=team_id,
+                move_to_team_id=move_to_team_id,
+            )
+        )
 
 
 def _register_template_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:

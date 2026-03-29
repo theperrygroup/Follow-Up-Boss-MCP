@@ -71,6 +71,12 @@ from followupboss_mcp.models.tasks import (
     TaskListRequest,
     UpdateTaskRequest,
 )
+from followupboss_mcp.models.teams import (
+    CreateTeamRequest,
+    DeleteTeamRequest,
+    TeamListRequest,
+    UpdateTeamRequest,
+)
 from followupboss_mcp.models.templates import (
     CreateTemplateRequest,
     TemplateListRequest,
@@ -102,6 +108,7 @@ from followupboss_mcp.services.ponds import PondsService
 from followupboss_mcp.services.smart_lists import SmartListsService
 from followupboss_mcp.services.stages import StagesService
 from followupboss_mcp.services.tasks import TasksService
+from followupboss_mcp.services.teams import TeamsService
 from followupboss_mcp.services.templates import TemplatesService
 from followupboss_mcp.services.text_messages import (
     TextMessagesService,
@@ -934,6 +941,9 @@ async def test_pipelines_service() -> None:
     await service.delete_pipeline(5)
     assert client.calls[4].path == "/pipelines/5"
 
+    with pytest.raises(ValidationError, match="At least one pipeline field must be provided"):
+        UpdatePipelineRequest()
+
 
 @pytest.mark.asyncio
 async def test_ponds_service() -> None:
@@ -1130,6 +1140,82 @@ async def test_stages_service() -> None:
 
     with pytest.raises(ValidationError, match="At least one stage field must be provided"):
         UpdateStageRequest()
+
+
+@pytest.mark.asyncio
+async def test_teams_service() -> None:
+    """Teams service should map queries, bodies, and delete behavior correctly."""
+    client = StubClient(
+        [
+            {
+                "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                "teams": [
+                    {
+                        "id": 1,
+                        "name": "Listing Team",
+                        "userIds": [5, 6],
+                        "leaderIds": [5],
+                    }
+                ],
+            },
+            {
+                "id": 2,
+                "name": "Listing Team",
+                "userIds": [5, 6],
+                "leaderIds": [5],
+            },
+            {
+                "id": 3,
+                "name": "Buyer Team",
+                "userIds": [7, 8],
+                "leaderIds": [7],
+            },
+            {
+                "id": 4,
+                "name": "Updated Team",
+                "userIds": [9, 10],
+                "leaderIds": [9],
+            },
+            {},
+        ]
+    )
+    service = TeamsService(client)
+
+    teams_page = await service.list_teams(TeamListRequest(limit=5, offset=10))
+    assert teams_page.items[0].name == "Listing Team"
+    assert client.calls[0].params == {"limit": "5", "offset": "10"}
+
+    team = await service.get_team(2)
+    assert team.id == 2
+    assert team.user_ids == [5, 6]
+
+    created = await service.create_team(
+        CreateTeamRequest(name="Buyer Team", user_ids=[7, 8], leader_ids=[7])
+    )
+    assert created.id == 3
+    assert client.calls[2].json_body == {
+        "name": "Buyer Team",
+        "userIds": [7, 8],
+        "leaderIds": [7],
+    }
+
+    updated = await service.update_team(
+        4,
+        UpdateTeamRequest(name="Updated Team", user_ids=[9, 10], leader_ids=[9]),
+    )
+    assert updated.id == 4
+    assert client.calls[3].json_body == {
+        "name": "Updated Team",
+        "userIds": [9, 10],
+        "leaderIds": [9],
+    }
+
+    await service.delete_team(5, DeleteTeamRequest(move_to_team_id=11))
+    assert client.calls[4].path == "/teams/5"
+    assert client.calls[4].params == {"moveToTeamId": "11"}
+
+    with pytest.raises(ValidationError, match="At least one team field must be provided"):
+        UpdateTeamRequest()
 
 
 @pytest.mark.asyncio
@@ -1589,6 +1675,8 @@ async def test_events_users_notes_and_webhooks_services() -> None:
         (lambda client: AppointmentsService(client), {"appointments": {}}, ValueError),
         (lambda client: CallsService(client), [], ValueError),
         (lambda client: CallsService(client), {"calls": {}}, ValueError),
+        (lambda client: TeamsService(client), [], ValueError),
+        (lambda client: TeamsService(client), {"teams": {}}, ValueError),
         (lambda client: EventsService(client), [], ValueError),
         (lambda client: EventsService(client), {"events": {}}, ValueError),
         (lambda client: TasksService(client), [], ValueError),
@@ -1647,6 +1735,9 @@ async def test_collection_services_raise_for_non_dict_payload(
     elif isinstance(service, CallsService):
         with pytest.raises(exception_type):
             await service.list_calls()
+    elif isinstance(service, TeamsService):
+        with pytest.raises(exception_type):
+            await service.list_teams()
     elif isinstance(service, EventsService):
         with pytest.raises(exception_type):
             await service.search_events()

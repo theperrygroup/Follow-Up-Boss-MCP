@@ -30,6 +30,7 @@ from followupboss_mcp.mcp_tools import (
     DeletePondToolInput,
     DeleteStageToolInput,
     DeleteTaskToolInput,
+    DeleteTeamToolInput,
     DeleteTemplateToolInput,
     DeleteTextMessageTemplateToolInput,
     DeleteWebhookToolInput,
@@ -47,6 +48,7 @@ from followupboss_mcp.mcp_tools import (
     GetSmartListToolInput,
     GetStageToolInput,
     GetTaskToolInput,
+    GetTeamToolInput,
     GetTemplateToolInput,
     GetTextMessageTemplateToolInput,
     GetTextMessageToolInput,
@@ -64,6 +66,7 @@ from followupboss_mcp.mcp_tools import (
     UpdatePondToolInput,
     UpdateStageToolInput,
     UpdateTaskToolInput,
+    UpdateTeamToolInput,
     UpdateTemplateToolInput,
     UpdateTextMessageTemplateToolInput,
 )
@@ -112,6 +115,7 @@ from followupboss_mcp.models.stages import (
     StageRecord,
 )
 from followupboss_mcp.models.tasks import CreateTaskRequest, TaskListRequest, TaskRecord
+from followupboss_mcp.models.teams import CreateTeamRequest, TeamListRequest, TeamRecord
 from followupboss_mcp.models.templates import (
     CreateTemplateRequest,
     TemplateListRequest,
@@ -428,6 +432,37 @@ class StubBundle:
         async def stages_delete(stage_id: int, request: object) -> None:
             del stage_id, request
 
+        async def teams_list(_: TeamListRequest) -> PageResult[TeamRecord]:
+            return PageResult(
+                items=[
+                    TeamRecord(
+                        id=82,
+                        name="Listing Team",
+                        userIds=[5, 6],
+                        leaderIds=[5],
+                    )
+                ],
+                metadata=_page_metadata(),
+            )
+
+        async def teams_get(team_id: int) -> TeamRecord:
+            return TeamRecord(
+                id=team_id,
+                name="Listing Team",
+                userIds=[5, 6],
+                leaderIds=[5],
+            )
+
+        async def teams_create(_: CreateTeamRequest) -> TeamRecord:
+            return TeamRecord(id=83, name="Buyer Team", userIds=[7, 8], leaderIds=[7])
+
+        async def teams_update(team_id: int, request: object) -> TeamRecord:
+            del request
+            return TeamRecord(id=team_id, name="Updated Team", userIds=[9, 10], leaderIds=[9])
+
+        async def teams_delete(team_id: int, request: object) -> None:
+            del team_id, request
+
         async def appointments_list(_: AppointmentListRequest) -> PageResult[AppointmentRecord]:
             return PageResult(
                 items=[
@@ -692,6 +727,13 @@ class StubBundle:
                 update_task=tasks_update,
                 delete_task=tasks_delete,
             ),
+            teams=_service_stub(
+                list_teams=teams_list,
+                get_team=teams_get,
+                create_team=teams_create,
+                update_team=teams_update,
+                delete_team=teams_delete,
+            ),
             text_message_templates=_service_stub(
                 list_text_message_templates=text_message_templates_list,
                 get_text_message_template=text_message_templates_get,
@@ -881,6 +923,29 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         "deleted": True,
         "stageId": 81,
     }
+    assert (await adapter.list_teams(TeamListRequest()))["teams"][0]["id"] == 82
+    assert (await adapter.get_team(GetTeamToolInput(team_id=83)))["id"] == 83
+    assert (
+        await adapter.create_team(
+            CreateTeamRequest(name="Buyer Team", user_ids=[7, 8], leader_ids=[7])
+        )
+    )["id"] == 83
+    assert (
+        await adapter.update_team(
+            UpdateTeamToolInput(
+                team_id=84,
+                name="Updated Team",
+                user_ids=[9, 10],
+                leader_ids=[9],
+            )
+        )
+    )["id"] == 84
+    assert (
+        await adapter.delete_team(DeleteTeamToolInput(team_id=85, move_to_team_id=82))
+    ) == {
+        "deleted": True,
+        "teamId": 85,
+    }
     assert (await adapter.list_appointments(AppointmentListRequest()))["appointments"][0]["id"] == 8
     assert (await adapter.get_appointment(GetAppointmentToolInput(appointment_id=9)))["id"] == 9
     assert (
@@ -1042,6 +1107,7 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         smart_lists=services.smart_lists,
         stages=services.stages,
         tasks=services.tasks,
+        teams=services.teams,
         text_message_templates=services.text_message_templates,
         text_messages=services.text_messages,
         templates=services.templates,
@@ -1154,6 +1220,11 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                 {"id": 80, "name": "Qualified", "orderWeight": 2000, "isProtected": False},
                 {"id": 81, "name": "Updated Stage", "orderWeight": 3000, "isProtected": False},
                 {},
+                {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "teams": [{"id": 83}]},
+                {"id": 84, "name": "Listing Team", "userIds": [5, 6], "leaderIds": [5]},
+                {"id": 85, "name": "Buyer Team", "userIds": [7, 8], "leaderIds": [7]},
+                {"id": 86, "name": "Updated Team", "userIds": [9, 10], "leaderIds": [9]},
+                {},
                 {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "calls": [{"id": 12}]},
                 {"id": 13, "personId": 2, "phone": "555-0000", "userName": "Data"},
                 {"id": 14, "personId": 2, "phone": "555-0000", "userName": "Data"},
@@ -1223,6 +1294,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_create_pond",
         "followupboss_create_stage",
         "followupboss_create_task",
+        "followupboss_create_team",
         "followupboss_create_template",
         "followupboss_create_text_message_template",
         "followupboss_create_webhook",
@@ -1235,6 +1307,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_delete_pond",
         "followupboss_delete_stage",
         "followupboss_delete_task",
+        "followupboss_delete_team",
         "followupboss_delete_template",
         "followupboss_delete_text_message_template",
         "followupboss_delete_webhook",
@@ -1252,6 +1325,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_get_smart_list",
         "followupboss_get_stage",
         "followupboss_get_task",
+        "followupboss_get_team",
         "followupboss_get_template",
         "followupboss_get_text_message",
         "followupboss_get_text_message_template",
@@ -1269,6 +1343,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_list_smart_lists",
         "followupboss_list_stages",
         "followupboss_list_tasks",
+        "followupboss_list_teams",
         "followupboss_list_templates",
         "followupboss_list_text_message_templates",
         "followupboss_list_text_messages",
@@ -1288,6 +1363,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_update_pond",
         "followupboss_update_stage",
         "followupboss_update_task",
+        "followupboss_update_team",
         "followupboss_update_template",
         "followupboss_update_text_message_template",
     ]
@@ -1377,6 +1453,14 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     assert await tools["followupboss_delete_stage"].fn(82, 11) == {
         "deleted": True,
         "stageId": 82,
+    }
+    assert (await tools["followupboss_list_teams"].fn())["teams"][0]["id"] == 83
+    assert (await tools["followupboss_get_team"].fn(84))["id"] == 84
+    assert (await tools["followupboss_create_team"].fn("Buyer Team", [7, 8]))["id"] == 85
+    assert (await tools["followupboss_update_team"].fn(86, name="Updated Team"))["id"] == 86
+    assert await tools["followupboss_delete_team"].fn(87) == {
+        "deleted": True,
+        "teamId": 87,
     }
     assert (await tools["followupboss_list_calls"].fn())["calls"][0]["id"] == 12
     assert (await tools["followupboss_get_call"].fn(13))["id"] == 13

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from followupboss_mcp.models.common import QueryModel, RequestModel, ResponseModel
 
@@ -40,6 +40,25 @@ class UpdatePipelineRequest(RequestModel):
     name: str | None = None
     order_weight: int | None = Field(default=None, serialization_alias="orderWeight")
     stages: list[PipelineStageInput] | None = None
+
+    @model_validator(mode="after")
+    def _require_mutation(self) -> UpdatePipelineRequest:
+        """Require at least one writable pipeline field.
+
+        Returns:
+            The validated request instance.
+
+        Raises:
+            ValueError: If no pipeline fields are provided for the update.
+        """
+        if (
+            self.description is None
+            and self.name is None
+            and self.order_weight is None
+            and self.stages is None
+        ):
+            raise ValueError("At least one pipeline field must be provided.")
+        return self
 
 
 class PipelineStageRecord(ResponseModel):
