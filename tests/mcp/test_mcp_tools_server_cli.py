@@ -21,22 +21,31 @@ from followupboss_mcp.config import FollowUpBossSettings
 from followupboss_mcp.errors import FollowUpBossRateLimitError, FollowUpBossValidationError
 from followupboss_mcp.mcp_server import create_server
 from followupboss_mcp.mcp_tools import (
+    DeleteAppointmentOutcomeToolInput,
     DeleteAppointmentToolInput,
+    DeleteAppointmentTypeToolInput,
     DeleteDealToolInput,
     DeleteNoteToolInput,
     DeletePipelineToolInput,
+    DeletePondToolInput,
+    DeleteStageToolInput,
     DeleteTaskToolInput,
     DeleteTemplateToolInput,
     DeleteTextMessageTemplateToolInput,
     DeleteWebhookToolInput,
     FollowUpBossToolAdapter,
+    GetAppointmentOutcomeToolInput,
     GetAppointmentToolInput,
+    GetAppointmentTypeToolInput,
     GetCallToolInput,
     GetDealToolInput,
     GetEventToolInput,
     GetNoteToolInput,
     GetPersonToolInput,
     GetPipelineToolInput,
+    GetPondToolInput,
+    GetSmartListToolInput,
+    GetStageToolInput,
     GetTaskToolInput,
     GetTemplateToolInput,
     GetTextMessageTemplateToolInput,
@@ -44,15 +53,27 @@ from followupboss_mcp.mcp_tools import (
     GetUserToolInput,
     GetWebhookToolInput,
     ServiceBundle,
+    UpdateAppointmentOutcomeToolInput,
     UpdateAppointmentToolInput,
+    UpdateAppointmentTypeToolInput,
     UpdateCallToolInput,
     UpdateDealToolInput,
     UpdateNoteToolInput,
     UpdatePersonToolInput,
     UpdatePipelineToolInput,
+    UpdatePondToolInput,
+    UpdateStageToolInput,
     UpdateTaskToolInput,
     UpdateTemplateToolInput,
     UpdateTextMessageTemplateToolInput,
+)
+from followupboss_mcp.models.appointment_metadata import (
+    AppointmentOutcomeListRequest,
+    AppointmentOutcomeRecord,
+    AppointmentTypeListRequest,
+    AppointmentTypeRecord,
+    CreateAppointmentOutcomeRequest,
+    CreateAppointmentTypeRequest,
 )
 from followupboss_mcp.models.appointments import (
     AppointmentListRequest,
@@ -82,6 +103,13 @@ from followupboss_mcp.models.pipelines import (
     PipelineListRequest,
     PipelineRecord,
     PipelineStageInput,
+)
+from followupboss_mcp.models.ponds import CreatePondRequest, PondListRequest, PondRecord
+from followupboss_mcp.models.smart_lists import SmartListListRequest, SmartListRecord
+from followupboss_mcp.models.stages import (
+    CreateStageRequest,
+    StageListRequest,
+    StageRecord,
 )
 from followupboss_mcp.models.tasks import CreateTaskRequest, TaskListRequest, TaskRecord
 from followupboss_mcp.models.templates import (
@@ -176,6 +204,82 @@ class StubBundle:
         async def users_get(user_id: int) -> UserRecord:
             return UserRecord(id=user_id, name="Crusher")
 
+        async def appointment_outcomes_list(
+            _: AppointmentOutcomeListRequest,
+        ) -> PageResult[AppointmentOutcomeRecord]:
+            return PageResult(
+                items=[AppointmentOutcomeRecord(id=7, name="Completed", orderWeight=1000)],
+                metadata=_page_metadata(),
+            )
+
+        async def appointment_outcomes_get(
+            appointment_outcome_id: int,
+        ) -> AppointmentOutcomeRecord:
+            return AppointmentOutcomeRecord(
+                id=appointment_outcome_id,
+                name="Completed",
+                orderWeight=1000,
+            )
+
+        async def appointment_outcomes_create(
+            _: CreateAppointmentOutcomeRequest,
+        ) -> AppointmentOutcomeRecord:
+            return AppointmentOutcomeRecord(id=8, name="No Show", orderWeight=2000)
+
+        async def appointment_outcomes_update(
+            appointment_outcome_id: int,
+            request: object,
+        ) -> AppointmentOutcomeRecord:
+            del request
+            return AppointmentOutcomeRecord(
+                id=appointment_outcome_id,
+                name="Rescheduled",
+                orderWeight=3000,
+            )
+
+        async def appointment_outcomes_delete(
+            appointment_outcome_id: int,
+            request: object,
+        ) -> None:
+            del appointment_outcome_id, request
+
+        async def appointment_types_list(
+            _: AppointmentTypeListRequest,
+        ) -> PageResult[AppointmentTypeRecord]:
+            return PageResult(
+                items=[AppointmentTypeRecord(id=9, name="Buyer Consult", orderWeight=1000)],
+                metadata=_page_metadata(),
+            )
+
+        async def appointment_types_get(appointment_type_id: int) -> AppointmentTypeRecord:
+            return AppointmentTypeRecord(
+                id=appointment_type_id,
+                name="Buyer Consult",
+                orderWeight=1000,
+            )
+
+        async def appointment_types_create(
+            _: CreateAppointmentTypeRequest,
+        ) -> AppointmentTypeRecord:
+            return AppointmentTypeRecord(id=10, name="Listing Consult", orderWeight=2000)
+
+        async def appointment_types_update(
+            appointment_type_id: int,
+            request: object,
+        ) -> AppointmentTypeRecord:
+            del request
+            return AppointmentTypeRecord(
+                id=appointment_type_id,
+                name="Showing",
+                orderWeight=3000,
+            )
+
+        async def appointment_types_delete(
+            appointment_type_id: int,
+            request: object,
+        ) -> None:
+            del appointment_type_id, request
+
         async def custom_fields_list(_: CustomFieldListRequest) -> PageResult[CustomFieldRecord]:
             return PageResult(
                 items=[
@@ -238,6 +342,91 @@ class StubBundle:
 
         async def pipelines_delete(pipeline_id: int) -> None:
             del pipeline_id
+
+        async def ponds_list(_: PondListRequest) -> PageResult[PondRecord]:
+            return PageResult(
+                items=[PondRecord(id=70, name="Round Robin", userId=6, userIds=[6, 7])],
+                metadata=_page_metadata(),
+            )
+
+        async def ponds_get(pond_id: int) -> PondRecord:
+            return PondRecord(id=pond_id, name="Round Robin", userId=6, userIds=[6, 7])
+
+        async def ponds_create(_: CreatePondRequest) -> PondRecord:
+            return PondRecord(id=71, name="Sphere Builders", userId=8, userIds=[8, 9])
+
+        async def ponds_update(pond_id: int, request: object) -> PondRecord:
+            del request
+            return PondRecord(id=pond_id, name="Updated Pond", userId=9, userIds=[9, 10])
+
+        async def ponds_delete(pond_id: int, request: object) -> None:
+            del pond_id, request
+
+        async def smart_lists_list(_: SmartListListRequest) -> PageResult[SmartListRecord]:
+            return PageResult(
+                items=[
+                    SmartListRecord(
+                        id=74,
+                        name="Active Buyers",
+                        description="All active buyers",
+                        isFub2=True,
+                    )
+                ],
+                metadata=_page_metadata(),
+            )
+
+        async def smart_lists_get(smart_list_id: int) -> SmartListRecord:
+            return SmartListRecord(
+                id=smart_list_id,
+                name="Active Buyers",
+                description="All active buyers",
+                isFub2=True,
+            )
+
+        async def stages_list(_: StageListRequest) -> PageResult[StageRecord]:
+            return PageResult(
+                items=[
+                    StageRecord(
+                        id=78,
+                        name="Prospect",
+                        orderWeight=1000,
+                        isProtected=False,
+                        peopleCount=12,
+                    )
+                ],
+                metadata=_page_metadata(),
+            )
+
+        async def stages_get(stage_id: int) -> StageRecord:
+            return StageRecord(
+                id=stage_id,
+                name="Prospect",
+                orderWeight=1000,
+                isProtected=False,
+                peopleCount=12,
+            )
+
+        async def stages_create(_: CreateStageRequest) -> StageRecord:
+            return StageRecord(
+                id=79,
+                name="Qualified",
+                orderWeight=2000,
+                isProtected=False,
+                peopleCount=8,
+            )
+
+        async def stages_update(stage_id: int, request: object) -> StageRecord:
+            del request
+            return StageRecord(
+                id=stage_id,
+                name="Updated Stage",
+                orderWeight=3000,
+                isProtected=False,
+                peopleCount=5,
+            )
+
+        async def stages_delete(stage_id: int, request: object) -> None:
+            del stage_id, request
 
         async def appointments_list(_: AppointmentListRequest) -> PageResult[AppointmentRecord]:
             return PageResult(
@@ -424,6 +613,20 @@ class StubBundle:
                 update_appointment=appointments_update,
                 delete_appointment=appointments_delete,
             ),
+            appointment_outcomes=_service_stub(
+                list_appointment_outcomes=appointment_outcomes_list,
+                get_appointment_outcome=appointment_outcomes_get,
+                create_appointment_outcome=appointment_outcomes_create,
+                update_appointment_outcome=appointment_outcomes_update,
+                delete_appointment_outcome=appointment_outcomes_delete,
+            ),
+            appointment_types=_service_stub(
+                list_appointment_types=appointment_types_list,
+                get_appointment_type=appointment_types_get,
+                create_appointment_type=appointment_types_create,
+                update_appointment_type=appointment_types_update,
+                delete_appointment_type=appointment_types_delete,
+            ),
             calls=_service_stub(
                 list_calls=calls_list,
                 get_call=calls_get,
@@ -463,6 +666,24 @@ class StubBundle:
                 create_pipeline=pipelines_create,
                 update_pipeline=pipelines_update,
                 delete_pipeline=pipelines_delete,
+            ),
+            ponds=_service_stub(
+                list_ponds=ponds_list,
+                get_pond=ponds_get,
+                create_pond=ponds_create,
+                update_pond=ponds_update,
+                delete_pond=ponds_delete,
+            ),
+            smart_lists=_service_stub(
+                list_smart_lists=smart_lists_list,
+                get_smart_list=smart_lists_get,
+            ),
+            stages=_service_stub(
+                list_stages=stages_list,
+                get_stage=stages_get,
+                create_stage=stages_create,
+                update_stage=stages_update,
+                delete_stage=stages_delete,
             ),
             tasks=_service_stub(
                 list_tasks=tasks_list,
@@ -520,6 +741,68 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     )["id"] == 5
     assert (await adapter.list_users(UserListRequest()))["users"][0]["id"] == 6
     assert (await adapter.get_user(GetUserToolInput(user_id=7)))["id"] == 7
+    assert (await adapter.list_appointment_outcomes(AppointmentOutcomeListRequest()))[
+        "appointmentoutcomes"
+    ][0]["id"] == 7
+    assert (
+        await adapter.get_appointment_outcome(
+            GetAppointmentOutcomeToolInput(appointment_outcome_id=8)
+        )
+    )["id"] == 8
+    assert (
+        await adapter.create_appointment_outcome(
+            CreateAppointmentOutcomeRequest(name="No Show", order_weight=2000)
+        )
+    )["id"] == 8
+    assert (
+        await adapter.update_appointment_outcome(
+            UpdateAppointmentOutcomeToolInput(
+                appointment_outcome_id=9,
+                name="Rescheduled",
+            )
+        )
+    )["id"] == 9
+    assert (
+        await adapter.delete_appointment_outcome(
+            DeleteAppointmentOutcomeToolInput(
+                appointment_outcome_id=10,
+                assign_outcome_id=7,
+            )
+        )
+    ) == {
+        "deleted": True,
+        "appointmentOutcomeId": 10,
+    }
+    assert (await adapter.list_appointment_types(AppointmentTypeListRequest()))["appointmenttypes"][
+        0
+    ]["id"] == 9
+    assert (
+        await adapter.get_appointment_type(GetAppointmentTypeToolInput(appointment_type_id=10))
+    )["id"] == 10
+    assert (
+        await adapter.create_appointment_type(
+            CreateAppointmentTypeRequest(name="Listing Consult", order_weight=2000)
+        )
+    )["id"] == 10
+    assert (
+        await adapter.update_appointment_type(
+            UpdateAppointmentTypeToolInput(
+                appointment_type_id=11,
+                name="Showing",
+            )
+        )
+    )["id"] == 11
+    assert (
+        await adapter.delete_appointment_type(
+            DeleteAppointmentTypeToolInput(
+                appointment_type_id=12,
+                assign_type_id=9,
+            )
+        )
+    ) == {
+        "deleted": True,
+        "appointmentTypeId": 12,
+    }
     assert (await adapter.list_custom_fields(CustomFieldListRequest()))["customfields"][0][
         "id"
     ] == 7
@@ -565,6 +848,38 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert (await adapter.delete_pipeline(DeletePipelineToolInput(pipeline_id=14))) == {
         "deleted": True,
         "pipelineId": 14,
+    }
+    assert (await adapter.list_ponds(PondListRequest()))["ponds"][0]["id"] == 70
+    assert (await adapter.get_pond(GetPondToolInput(pond_id=71)))["id"] == 71
+    assert (
+        await adapter.create_pond(
+            CreatePondRequest(name="Sphere Builders", user_id=8, user_ids=[8, 9])
+        )
+    )["id"] == 71
+    assert (
+        await adapter.update_pond(
+            UpdatePondToolInput(pond_id=72, name="Updated Pond", user_ids=[9, 10])
+        )
+    )["id"] == 72
+    assert (await adapter.delete_pond(DeletePondToolInput(pond_id=73, assign_to=6))) == {
+        "deleted": True,
+        "pondId": 73,
+    }
+    assert (await adapter.list_smart_lists(SmartListListRequest()))["smartlists"][0]["id"] == 74
+    assert (await adapter.get_smart_list(GetSmartListToolInput(smart_list_id=75)))["id"] == 75
+    assert (await adapter.list_stages(StageListRequest()))["stages"][0]["id"] == 78
+    assert (await adapter.get_stage(GetStageToolInput(stage_id=79)))["id"] == 79
+    assert (await adapter.create_stage(CreateStageRequest(name="Qualified", order_weight=2000)))[
+        "id"
+    ] == 79
+    assert (
+        await adapter.update_stage(
+            UpdateStageToolInput(stage_id=80, name="Updated Stage", order_weight=3000)
+        )
+    )["id"] == 80
+    assert (await adapter.delete_stage(DeleteStageToolInput(stage_id=81, assign_stage_id=11))) == {
+        "deleted": True,
+        "stageId": 81,
     }
     assert (await adapter.list_appointments(AppointmentListRequest()))["appointments"][0]["id"] == 8
     assert (await adapter.get_appointment(GetAppointmentToolInput(appointment_id=9)))["id"] == 9
@@ -699,6 +1014,8 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
 
     failing = ServiceBundle(
         appointments=services.appointments,
+        appointment_outcomes=services.appointment_outcomes,
+        appointment_types=services.appointment_types,
         calls=services.calls,
         custom_fields=services.custom_fields,
         deals=services.deals,
@@ -720,7 +1037,10 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
             create_person=services.people.create_person,
             update_person=services.people.update_person,
         ),
+        ponds=services.ponds,
         pipelines=services.pipelines,
+        smart_lists=services.smart_lists,
+        stages=services.stages,
         tasks=services.tasks,
         text_message_templates=services.text_message_templates,
         text_messages=services.text_messages,
@@ -778,6 +1098,22 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                 {"id": 10},
                 {
                     "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                    "appointmentoutcomes": [{"id": 90, "name": "Completed"}],
+                },
+                {"id": 91, "name": "Completed", "orderWeight": 1000},
+                {"id": 92, "name": "No Show", "orderWeight": 2000},
+                {"id": 93, "name": "Rescheduled", "orderWeight": 3000},
+                {},
+                {
+                    "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                    "appointmenttypes": [{"id": 94, "name": "Buyer Consult"}],
+                },
+                {"id": 95, "name": "Buyer Consult", "orderWeight": 1000},
+                {"id": 96, "name": "Listing Consult", "orderWeight": 2000},
+                {"id": 97, "name": "Showing", "orderWeight": 3000},
+                {},
+                {
+                    "_metadata": {"limit": 10, "offset": 0, "total": 1},
                     "customfields": [
                         {"id": 11, "label": "Birthday", "name": "customBirthday", "type": "date"}
                     ],
@@ -802,6 +1138,21 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                 {"id": 61, "name": "Buyer pipeline", "description": "Buyer flow"},
                 {"id": 62, "name": "New pipeline", "description": "New flow"},
                 {"id": 63, "name": "Updated pipeline", "description": "Updated flow"},
+                {},
+                {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "ponds": [{"id": 65}]},
+                {"id": 66, "name": "Round Robin", "userId": 9, "userIds": [9, 10]},
+                {"id": 67, "name": "Sphere Builders", "userId": 8, "userIds": [8, 9]},
+                {"id": 68, "name": "Updated Pond", "userId": 9, "userIds": [9, 10]},
+                {},
+                {
+                    "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                    "smartlists": [{"id": 76, "name": "Active Buyers"}],
+                },
+                {"id": 77, "name": "Active Buyers", "isFub2": True},
+                {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "stages": [{"id": 78}]},
+                {"id": 79, "name": "Prospect", "orderWeight": 1000, "isProtected": False},
+                {"id": 80, "name": "Qualified", "orderWeight": 2000, "isProtected": False},
+                {"id": 81, "name": "Updated Stage", "orderWeight": 3000, "isProtected": False},
                 {},
                 {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "calls": [{"id": 12}]},
                 {"id": 13, "personId": 2, "phone": "555-0000", "userName": "Data"},
@@ -863,23 +1214,33 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     assert sorted(tools) == [
         "followupboss_add_note",
         "followupboss_create_appointment",
+        "followupboss_create_appointment_outcome",
+        "followupboss_create_appointment_type",
         "followupboss_create_call",
         "followupboss_create_deal",
         "followupboss_create_person",
         "followupboss_create_pipeline",
+        "followupboss_create_pond",
+        "followupboss_create_stage",
         "followupboss_create_task",
         "followupboss_create_template",
         "followupboss_create_text_message_template",
         "followupboss_create_webhook",
         "followupboss_delete_appointment",
+        "followupboss_delete_appointment_outcome",
+        "followupboss_delete_appointment_type",
         "followupboss_delete_deal",
         "followupboss_delete_note",
         "followupboss_delete_pipeline",
+        "followupboss_delete_pond",
+        "followupboss_delete_stage",
         "followupboss_delete_task",
         "followupboss_delete_template",
         "followupboss_delete_text_message_template",
         "followupboss_delete_webhook",
         "followupboss_get_appointment",
+        "followupboss_get_appointment_outcome",
+        "followupboss_get_appointment_type",
         "followupboss_get_call",
         "followupboss_get_deal",
         "followupboss_get_event",
@@ -887,18 +1248,26 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_get_note",
         "followupboss_get_person",
         "followupboss_get_pipeline",
+        "followupboss_get_pond",
+        "followupboss_get_smart_list",
+        "followupboss_get_stage",
         "followupboss_get_task",
         "followupboss_get_template",
         "followupboss_get_text_message",
         "followupboss_get_text_message_template",
         "followupboss_get_user",
         "followupboss_get_webhook",
+        "followupboss_list_appointment_outcomes",
+        "followupboss_list_appointment_types",
         "followupboss_list_appointments",
         "followupboss_list_calls",
         "followupboss_list_custom_fields",
         "followupboss_list_deal_custom_fields",
         "followupboss_list_deals",
         "followupboss_list_pipelines",
+        "followupboss_list_ponds",
+        "followupboss_list_smart_lists",
+        "followupboss_list_stages",
         "followupboss_list_tasks",
         "followupboss_list_templates",
         "followupboss_list_text_message_templates",
@@ -909,11 +1278,15 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_search_people",
         "followupboss_send_event",
         "followupboss_update_appointment",
+        "followupboss_update_appointment_outcome",
+        "followupboss_update_appointment_type",
         "followupboss_update_call",
         "followupboss_update_deal",
         "followupboss_update_note",
         "followupboss_update_person",
         "followupboss_update_pipeline",
+        "followupboss_update_pond",
+        "followupboss_update_stage",
         "followupboss_update_task",
         "followupboss_update_template",
         "followupboss_update_text_message_template",
@@ -938,6 +1311,38 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     )["id"] == 8
     assert (await tools["followupboss_list_users"].fn())["users"][0]["id"] == 9
     assert (await tools["followupboss_get_user"].fn(10))["id"] == 10
+    assert (await tools["followupboss_list_appointment_outcomes"].fn())["appointmentoutcomes"][0][
+        "id"
+    ] == 90
+    assert (await tools["followupboss_get_appointment_outcome"].fn(91))["id"] == 91
+    assert (await tools["followupboss_create_appointment_outcome"].fn(name="No Show"))["id"] == 92
+    assert (
+        await tools["followupboss_update_appointment_outcome"].fn(
+            93,
+            name="Rescheduled",
+        )
+    )["id"] == 93
+    assert await tools["followupboss_delete_appointment_outcome"].fn(94, 91) == {
+        "deleted": True,
+        "appointmentOutcomeId": 94,
+    }
+    assert (await tools["followupboss_list_appointment_types"].fn())["appointmenttypes"][0][
+        "id"
+    ] == 94
+    assert (await tools["followupboss_get_appointment_type"].fn(95))["id"] == 95
+    assert (await tools["followupboss_create_appointment_type"].fn(name="Listing Consult"))[
+        "id"
+    ] == 96
+    assert (
+        await tools["followupboss_update_appointment_type"].fn(
+            97,
+            name="Showing",
+        )
+    )["id"] == 97
+    assert await tools["followupboss_delete_appointment_type"].fn(98, 95) == {
+        "deleted": True,
+        "appointmentTypeId": 98,
+    }
     assert (await tools["followupboss_list_custom_fields"].fn())["customfields"][0]["id"] == 11
     assert (await tools["followupboss_list_deals"].fn())["deals"][0]["id"] == 40
     assert (await tools["followupboss_get_deal"].fn(41))["id"] == 41
@@ -954,6 +1359,24 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     assert await tools["followupboss_delete_pipeline"].fn(64) == {
         "deleted": True,
         "pipelineId": 64,
+    }
+    assert (await tools["followupboss_list_ponds"].fn())["ponds"][0]["id"] == 65
+    assert (await tools["followupboss_get_pond"].fn(66))["id"] == 66
+    assert (await tools["followupboss_create_pond"].fn("Sphere Builders", 8, [8, 9]))["id"] == 67
+    assert (await tools["followupboss_update_pond"].fn(68, name="Updated Pond"))["id"] == 68
+    assert await tools["followupboss_delete_pond"].fn(69, 9) == {
+        "deleted": True,
+        "pondId": 69,
+    }
+    assert (await tools["followupboss_list_smart_lists"].fn())["smartlists"][0]["id"] == 76
+    assert (await tools["followupboss_get_smart_list"].fn(77))["id"] == 77
+    assert (await tools["followupboss_list_stages"].fn())["stages"][0]["id"] == 78
+    assert (await tools["followupboss_get_stage"].fn(79))["id"] == 79
+    assert (await tools["followupboss_create_stage"].fn("Qualified"))["id"] == 80
+    assert (await tools["followupboss_update_stage"].fn(81, name="Updated Stage"))["id"] == 81
+    assert await tools["followupboss_delete_stage"].fn(82, 11) == {
+        "deleted": True,
+        "stageId": 82,
     }
     assert (await tools["followupboss_list_calls"].fn())["calls"][0]["id"] == 12
     assert (await tools["followupboss_get_call"].fn(13))["id"] == 13

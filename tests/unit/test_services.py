@@ -12,6 +12,16 @@ from pydantic import ValidationError
 
 from followupboss_mcp.errors import FollowUpBossNotFoundError, FollowUpBossValidationError
 from followupboss_mcp.http_client import JsonPayload
+from followupboss_mcp.models.appointment_metadata import (
+    AppointmentOutcomeListRequest,
+    AppointmentTypeListRequest,
+    CreateAppointmentOutcomeRequest,
+    CreateAppointmentTypeRequest,
+    DeleteAppointmentOutcomeRequest,
+    DeleteAppointmentTypeRequest,
+    UpdateAppointmentOutcomeRequest,
+    UpdateAppointmentTypeRequest,
+)
 from followupboss_mcp.models.appointments import (
     AppointmentInviteeInput,
     AppointmentListRequest,
@@ -43,6 +53,19 @@ from followupboss_mcp.models.pipelines import (
     PipelineStageInput,
     UpdatePipelineRequest,
 )
+from followupboss_mcp.models.ponds import (
+    CreatePondRequest,
+    DeletePondRequest,
+    PondListRequest,
+    UpdatePondRequest,
+)
+from followupboss_mcp.models.smart_lists import SmartListListRequest
+from followupboss_mcp.models.stages import (
+    CreateStageRequest,
+    DeleteStageRequest,
+    StageListRequest,
+    UpdateStageRequest,
+)
 from followupboss_mcp.models.tasks import (
     CreateTaskRequest,
     TaskListRequest,
@@ -62,6 +85,10 @@ from followupboss_mcp.models.text_messages import (
 )
 from followupboss_mcp.models.users import UserListRequest
 from followupboss_mcp.models.webhooks import CreateWebhookRequest, WebhookListRequest
+from followupboss_mcp.services.appointment_metadata import (
+    AppointmentOutcomesService,
+    AppointmentTypesService,
+)
 from followupboss_mcp.services.appointments import AppointmentsService
 from followupboss_mcp.services.calls import CallsService
 from followupboss_mcp.services.custom_fields import CustomFieldsService
@@ -71,6 +98,9 @@ from followupboss_mcp.services.identity import IdentityService
 from followupboss_mcp.services.notes import NotesService
 from followupboss_mcp.services.people import PeopleService
 from followupboss_mcp.services.pipelines import PipelinesService
+from followupboss_mcp.services.ponds import PondsService
+from followupboss_mcp.services.smart_lists import SmartListsService
+from followupboss_mcp.services.stages import StagesService
 from followupboss_mcp.services.tasks import TasksService
 from followupboss_mcp.services.templates import TemplatesService
 from followupboss_mcp.services.text_messages import (
@@ -161,6 +191,125 @@ async def test_custom_fields_service() -> None:
     assert client.calls[0].params == {"label": "Birthday"}
     with pytest.raises(FollowUpBossValidationError):
         await service.list_custom_fields()
+
+
+@pytest.mark.asyncio
+async def test_appointment_outcomes_service() -> None:
+    """Appointment outcomes service should map queries, bodies, and delete behavior correctly."""
+    client = StubClient(
+        [
+            {
+                "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                "appointmentoutcomes": [{"id": 1, "name": "Completed", "orderWeight": 1000}],
+            },
+            {"id": 2, "name": "Completed", "orderWeight": 1000},
+            {"id": 3, "name": "No Show", "orderWeight": 2000},
+            {"id": 4, "name": "Rescheduled", "orderWeight": 3000},
+            {},
+        ]
+    )
+    service = AppointmentOutcomesService(client)
+
+    outcomes_page = await service.list_appointment_outcomes(
+        AppointmentOutcomeListRequest(limit=5, offset=10, sort="-orderWeight")
+    )
+    assert outcomes_page.items[0].name == "Completed"
+    assert client.calls[0].params == {
+        "limit": "5",
+        "offset": "10",
+        "sort": "-orderWeight",
+    }
+
+    outcome = await service.get_appointment_outcome(2)
+    assert outcome.id == 2
+
+    created = await service.create_appointment_outcome(
+        CreateAppointmentOutcomeRequest(name="No Show", order_weight=2000)
+    )
+    assert created.id == 3
+    assert client.calls[2].json_body == {"name": "No Show", "orderWeight": 2000}
+
+    updated = await service.update_appointment_outcome(
+        4,
+        UpdateAppointmentOutcomeRequest(name="Rescheduled", order_weight=3000),
+    )
+    assert updated.id == 4
+    assert client.calls[3].json_body == {
+        "name": "Rescheduled",
+        "orderWeight": 3000,
+    }
+
+    await service.delete_appointment_outcome(
+        5, DeleteAppointmentOutcomeRequest(assign_outcome_id=11)
+    )
+    assert client.calls[4].path == "/appointmentOutcomes/5"
+    assert client.calls[4].params == {"assignOutcomeId": "11"}
+
+    with pytest.raises(
+        ValidationError,
+        match="At least one appointment metadata field must be provided",
+    ):
+        UpdateAppointmentOutcomeRequest()
+
+
+@pytest.mark.asyncio
+async def test_appointment_types_service() -> None:
+    """Appointment types service should map queries, bodies, and delete behavior correctly."""
+    client = StubClient(
+        [
+            {
+                "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                "appointmenttypes": [{"id": 1, "name": "Buyer Consult", "orderWeight": 1000}],
+            },
+            {"id": 2, "name": "Buyer Consult", "orderWeight": 1000},
+            {"id": 3, "name": "Listing Consult", "orderWeight": 2000},
+            {"id": 4, "name": "Showing", "orderWeight": 3000},
+            {},
+        ]
+    )
+    service = AppointmentTypesService(client)
+
+    types_page = await service.list_appointment_types(
+        AppointmentTypeListRequest(limit=5, offset=10, sort="-orderWeight")
+    )
+    assert types_page.items[0].name == "Buyer Consult"
+    assert client.calls[0].params == {
+        "limit": "5",
+        "offset": "10",
+        "sort": "-orderWeight",
+    }
+
+    appointment_type = await service.get_appointment_type(2)
+    assert appointment_type.id == 2
+
+    created = await service.create_appointment_type(
+        CreateAppointmentTypeRequest(name="Listing Consult", order_weight=2000)
+    )
+    assert created.id == 3
+    assert client.calls[2].json_body == {
+        "name": "Listing Consult",
+        "orderWeight": 2000,
+    }
+
+    updated = await service.update_appointment_type(
+        4,
+        UpdateAppointmentTypeRequest(name="Showing", order_weight=3000),
+    )
+    assert updated.id == 4
+    assert client.calls[3].json_body == {
+        "name": "Showing",
+        "orderWeight": 3000,
+    }
+
+    await service.delete_appointment_type(5, DeleteAppointmentTypeRequest(assign_type_id=12))
+    assert client.calls[4].path == "/appointmentTypes/5"
+    assert client.calls[4].params == {"assignTypeId": "12"}
+
+    with pytest.raises(
+        ValidationError,
+        match="At least one appointment metadata field must be provided",
+    ):
+        UpdateAppointmentTypeRequest()
 
 
 @pytest.mark.asyncio
@@ -787,6 +936,203 @@ async def test_pipelines_service() -> None:
 
 
 @pytest.mark.asyncio
+async def test_ponds_service() -> None:
+    """Ponds service should map queries, bodies, and delete behavior correctly."""
+    client = StubClient(
+        [
+            {
+                "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                "ponds": [
+                    {
+                        "id": 1,
+                        "name": "Round Robin",
+                        "userId": 5,
+                        "userIds": [5, 6],
+                    }
+                ],
+            },
+            {
+                "id": 2,
+                "name": "Round Robin",
+                "userId": 5,
+                "userIds": [5, 6],
+            },
+            {
+                "id": 3,
+                "name": "Sphere Builders",
+                "userId": 7,
+                "userIds": [7, 8],
+            },
+            {
+                "id": 4,
+                "name": "Updated Pond",
+                "userId": 9,
+                "userIds": [9, 10],
+            },
+            {},
+        ]
+    )
+    service = PondsService(client)
+
+    ponds_page = await service.list_ponds(PondListRequest(limit=5, offset=10))
+    assert ponds_page.items[0].name == "Round Robin"
+    assert client.calls[0].params == {"limit": "5", "offset": "10"}
+
+    pond = await service.get_pond(2)
+    assert pond.id == 2
+    assert pond.user_ids == [5, 6]
+
+    created = await service.create_pond(
+        CreatePondRequest(name="Sphere Builders", user_id=7, user_ids=[7, 8])
+    )
+    assert created.id == 3
+    assert client.calls[2].json_body == {
+        "name": "Sphere Builders",
+        "userId": 7,
+        "userIds": [7, 8],
+    }
+
+    updated = await service.update_pond(
+        4,
+        UpdatePondRequest(
+            name="Updated Pond",
+            user_id=9,
+            user_ids=[9, 10],
+        ),
+    )
+    assert updated.id == 4
+    assert client.calls[3].json_body == {
+        "name": "Updated Pond",
+        "userId": 9,
+        "userIds": [9, 10],
+    }
+
+    await service.delete_pond(5, DeletePondRequest(assign_to=11))
+    assert client.calls[4].path == "/ponds/5"
+    assert client.calls[4].params == {"assignTo": "11"}
+
+    with pytest.raises(ValidationError, match="At least one pond field must be provided"):
+        UpdatePondRequest()
+
+
+@pytest.mark.asyncio
+async def test_smart_lists_service() -> None:
+    """Smart lists service should map queries and lookup behavior correctly."""
+    client = StubClient(
+        [
+            {
+                "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                "smartlists": [
+                    {
+                        "id": 1,
+                        "name": "Active Buyers",
+                        "description": "All active buyers",
+                        "isFub2": True,
+                        "defaultSmartListId": 7,
+                    }
+                ],
+            },
+            {
+                "id": 2,
+                "name": "Active Buyers",
+                "description": "All active buyers",
+                "isFub2": True,
+                "defaultSmartListId": 7,
+            },
+        ]
+    )
+    service = SmartListsService(client)
+
+    smart_lists_page = await service.list_smart_lists(
+        SmartListListRequest(limit=5, offset=10, fub2=True, include_all=False)
+    )
+    assert smart_lists_page.items[0].name == "Active Buyers"
+    assert client.calls[0].params == {
+        "limit": "5",
+        "offset": "10",
+        "fub2": "true",
+        "all": "false",
+    }
+
+    smart_list = await service.get_smart_list(2)
+    assert smart_list.id == 2
+    assert smart_list.is_fub2 is True
+
+
+@pytest.mark.asyncio
+async def test_stages_service() -> None:
+    """Stages service should map queries, bodies, and delete behavior correctly."""
+    client = StubClient(
+        [
+            {
+                "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                "stages": [
+                    {
+                        "id": 1,
+                        "name": "Prospect",
+                        "orderWeight": 1000,
+                        "isProtected": False,
+                        "peopleCount": 12,
+                    }
+                ],
+            },
+            {
+                "id": 2,
+                "name": "Prospect",
+                "orderWeight": 1000,
+                "isProtected": False,
+                "peopleCount": 12,
+            },
+            {
+                "id": 3,
+                "name": "Qualified",
+                "orderWeight": 2000,
+                "isProtected": False,
+                "peopleCount": 8,
+            },
+            {
+                "id": 4,
+                "name": "Updated Stage",
+                "orderWeight": 3000,
+                "isProtected": False,
+                "peopleCount": 5,
+            },
+            {},
+        ]
+    )
+    service = StagesService(client)
+
+    stages_page = await service.list_stages(StageListRequest(limit=5, offset=10, sort="-id"))
+    assert stages_page.items[0].name == "Prospect"
+    assert client.calls[0].params == {"limit": "5", "offset": "10", "sort": "-id"}
+
+    stage = await service.get_stage(2)
+    assert stage.id == 2
+    assert stage.people_count == 12
+
+    created = await service.create_stage(CreateStageRequest(name="Qualified", order_weight=2000))
+    assert created.id == 3
+    assert client.calls[2].json_body == {"name": "Qualified", "orderWeight": 2000}
+
+    updated = await service.update_stage(
+        4,
+        UpdateStageRequest(name="Updated Stage", order_weight=3000),
+    )
+    assert updated.id == 4
+    assert client.calls[3].json_body == {
+        "name": "Updated Stage",
+        "orderWeight": 3000,
+    }
+
+    await service.delete_stage(5, DeleteStageRequest(assign_stage_id=11))
+    assert client.calls[4].path == "/stages/5"
+    assert client.calls[4].params == {"assignStageId": "11"}
+
+    with pytest.raises(ValidationError, match="At least one stage field must be provided"):
+        UpdateStageRequest()
+
+
+@pytest.mark.asyncio
 async def test_text_messages_service() -> None:
     """Text messages service should map list and lookup behavior correctly."""
     client = StubClient(
@@ -1217,10 +1563,28 @@ async def test_events_users_notes_and_webhooks_services() -> None:
             {"customfields": {}},
             FollowUpBossValidationError,
         ),
+        (lambda client: AppointmentOutcomesService(client), [], ValueError),
+        (
+            lambda client: AppointmentOutcomesService(client),
+            {"appointmentoutcomes": {}},
+            ValueError,
+        ),
+        (lambda client: AppointmentTypesService(client), [], ValueError),
+        (
+            lambda client: AppointmentTypesService(client),
+            {"appointmenttypes": {}},
+            ValueError,
+        ),
         (lambda client: DealsService(client), [], ValueError),
         (lambda client: DealsService(client), {"deals": {}}, ValueError),
+        (lambda client: PondsService(client), [], ValueError),
+        (lambda client: PondsService(client), {"ponds": {}}, ValueError),
         (lambda client: PipelinesService(client), [], ValueError),
         (lambda client: PipelinesService(client), {"pipelines": {}}, ValueError),
+        (lambda client: SmartListsService(client), [], ValueError),
+        (lambda client: SmartListsService(client), {"smartlists": {}}, ValueError),
+        (lambda client: StagesService(client), [], ValueError),
+        (lambda client: StagesService(client), {"stages": {}}, ValueError),
         (lambda client: AppointmentsService(client), [], ValueError),
         (lambda client: AppointmentsService(client), {"appointments": {}}, ValueError),
         (lambda client: CallsService(client), [], ValueError),
@@ -1256,12 +1620,27 @@ async def test_collection_services_raise_for_non_dict_payload(
     if isinstance(service, CustomFieldsService):
         with pytest.raises(exception_type):
             await service.list_custom_fields()
+    elif isinstance(service, AppointmentOutcomesService):
+        with pytest.raises(exception_type):
+            await service.list_appointment_outcomes()
+    elif isinstance(service, AppointmentTypesService):
+        with pytest.raises(exception_type):
+            await service.list_appointment_types()
     elif isinstance(service, DealsService):
         with pytest.raises(exception_type):
             await service.list_deals()
+    elif isinstance(service, PondsService):
+        with pytest.raises(exception_type):
+            await service.list_ponds()
     elif isinstance(service, PipelinesService):
         with pytest.raises(exception_type):
             await service.list_pipelines()
+    elif isinstance(service, SmartListsService):
+        with pytest.raises(exception_type):
+            await service.list_smart_lists()
+    elif isinstance(service, StagesService):
+        with pytest.raises(exception_type):
+            await service.list_stages()
     elif isinstance(service, AppointmentsService):
         with pytest.raises(exception_type):
             await service.list_appointments()

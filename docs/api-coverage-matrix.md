@@ -4,8 +4,8 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 
 | Endpoint | Implementation | Models | MCP | Tests | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `DELETE /appointmentOutcomes/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `DELETE /appointmentTypes/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `DELETE /appointmentOutcomes/{id}` | Implemented | Input only | Yes | Yes | Delete requires assignOutcomeId and returns structured deletion confirmation. |
+| `DELETE /appointmentTypes/{id}` | Implemented | Input only | Yes | Yes | Delete requires assignTypeId and returns structured deletion confirmation. |
 | `DELETE /appointments/:id` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
 | `DELETE /customFields/:id` | Deferred | No | No | No | Deferred until explicit custom field admin support is requested. |
 | `DELETE /dealAttachments/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
@@ -19,9 +19,9 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `DELETE /peopleRelationships/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `DELETE /personAttachments/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `DELETE /pipelines/:id` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
-| `DELETE /ponds/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `DELETE /ponds/:id` | Implemented | Input only | Yes | Yes | Delete requires assignTo and returns structured deletion confirmation. |
 | `DELETE /reactions/{refType}/{refId}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `DELETE /stages/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `DELETE /stages/:id` | Implemented | Input only | Yes | Yes | Delete requires assignStageId and returns structured deletion confirmation. |
 | `DELETE /tasks/:id` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
 | `DELETE /teams/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `DELETE /templates/:id` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
@@ -30,10 +30,10 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `DELETE /webhooks/:id` | Implemented | Input only | Yes | Yes | Delete endpoint exposed through MCP. |
 | `GET /actionPlans` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `GET /actionPlansPeople` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /appointmentOutcomes` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /appointmentOutcomes/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /appointmentTypes` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /appointmentTypes/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `GET /appointmentOutcomes` | Implemented | Yes | Yes | Yes | Lists appointment outcomes with pagination metadata and sort support. |
+| `GET /appointmentOutcomes/{id}` | Implemented | Yes | Yes | Yes | Single-appointment-outcome lookup. |
+| `GET /appointmentTypes` | Implemented | Yes | Yes | Yes | Lists appointment types with pagination metadata and sort support. |
+| `GET /appointmentTypes/{id}` | Implemented | Yes | Yes | Yes | Single-appointment-type lookup. |
 | `GET /appointments` | Implemented | Yes | Yes | Yes | Supports documented appointment filters and pagination metadata. |
 | `GET /appointments/:id` | Implemented | Yes | Yes | Yes | Single-appointment lookup. |
 | `GET /automations` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
@@ -70,13 +70,13 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `GET /personAttachments/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `GET /pipelines` | Implemented | Yes | Yes | Yes | Lists pipelines with exact-name filtering and pagination metadata. |
 | `GET /pipelines/{id}` | Implemented | Yes | Yes | Yes | Single-pipeline lookup including stage definitions. |
-| `GET /ponds` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /ponds/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `GET /ponds` | Implemented | Yes | Yes | Yes | Lists ponds with documented pagination metadata. |
+| `GET /ponds/:id` | Implemented | Yes | Yes | Yes | Single-pond lookup. |
 | `GET /reactions/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /smartLists` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /smartLists/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /stages` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /stages/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `GET /smartLists` | Implemented | Yes | Yes | Yes | Lists smart lists with pagination metadata and documented fub2/all filters. |
+| `GET /smartLists/:id` | Implemented | Yes | Yes | Yes | Single-smart-list lookup. |
+| `GET /stages` | Implemented | Yes | Yes | Yes | Lists stages with pagination metadata and documented sort support. |
+| `GET /stages/:id` | Implemented | Yes | Yes | Yes | Single-stage lookup. |
 | `GET /tasks` | Implemented | Yes | Yes | Yes | Supports documented task filters and pagination metadata. |
 | `GET /tasks/:id` | Implemented | Yes | Yes | Yes | Single-task lookup. |
 | `GET /teamInboxes` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
@@ -96,8 +96,8 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `GET /webhooks` | Implemented | Yes | Yes | Yes | Requires registered system headers. |
 | `GET /webhooks/:id` | Implemented | Yes | Yes | Yes | Single-webhook lookup. |
 | `POST /actionPlansPeople` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `POST /appointmentOutcomes` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `POST /appointmentTypes` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `POST /appointmentOutcomes` | Implemented | Yes | Yes | Yes | Creates an appointment outcome with optional orderWeight support. |
+| `POST /appointmentTypes` | Implemented | Yes | Yes | Yes | Creates an appointment type with optional orderWeight support. |
 | `POST /appointments` | Implemented | Yes | Yes | Yes | Creates an appointment with optional invitees and sendInvitation support. |
 | `POST /automationsPeople` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `POST /calls` | Implemented | Yes | Yes | Yes | Creates a call log entry for a related person. |
@@ -120,9 +120,9 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `POST /peopleRelationships` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `POST /personAttachments` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `POST /pipelines` | Implemented | Yes | Yes | Yes | Creates a pipeline with optional ordered stages. |
-| `POST /ponds` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `POST /ponds` | Implemented | Yes | Yes | Yes | Creates a pond with a lead agent and full member list. |
 | `POST /reactions/{refType}/{refId}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `POST /stages` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `POST /stages` | Implemented | Yes | Yes | Yes | Creates a stage with optional orderWeight support. |
 | `POST /tasks` | Implemented | Yes | Yes | Yes | Requires a related person and an assignee. |
 | `POST /teams` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `POST /templates` | Implemented | Yes | Yes | Yes | Creates a new email template. |
@@ -132,8 +132,8 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `POST /textMessages` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `POST /webhooks` | Implemented | Yes | Yes | Yes | Requires registered system headers and owner-level permissions. |
 | `PUT /actionPlansPeople/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `PUT /appointmentOutcomes/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `PUT /appointmentTypes/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `PUT /appointmentOutcomes/{id}` | Implemented | Yes | Yes | Yes | Updates appointment outcome metadata with documented orderWeight behavior. |
+| `PUT /appointmentTypes/{id}` | Implemented | Yes | Yes | Yes | Updates appointment type metadata with documented orderWeight behavior. |
 | `PUT /appointments/:id` | Implemented | Yes | Yes | Yes | Updates an appointment and supports sendInvitation query semantics. |
 | `PUT /automationsPeople/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `PUT /calls/:id` | Implemented | Yes | Yes | Yes | Updates a call log entry. |
@@ -150,8 +150,8 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `PUT /peopleRelationships/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `PUT /personAttachments/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `PUT /pipelines/{id}` | Implemented | Yes | Yes | Yes | Updates pipeline metadata and supports stage create-or-update semantics. |
-| `PUT /ponds/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `PUT /stages/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `PUT /ponds/:id` | Implemented | Yes | Yes | Yes | Updates pond metadata and expects complete member replacement semantics. |
+| `PUT /stages/:id` | Implemented | Yes | Yes | Yes | Updates stage metadata with documented orderWeight behavior. |
 | `PUT /tasks/:id` | Implemented | Yes | Yes | Yes | Supports task completion and due-date updates. |
 | `PUT /teams/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `PUT /templates/:id` | Implemented | Yes | Yes | Yes | Updates template name, subject, and body. |

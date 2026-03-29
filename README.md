@@ -38,7 +38,7 @@ More detail is in [docs/architecture.md](docs/architecture.md).
 - 429 handling with `Retry-After`
 - truncated exponential backoff with jitter for retryable 5xx failures and transport errors
 - reusable pagination helpers supporting both `next` token flow and `offset` fallback
-- typed services for Identity, People, Events, Users, Custom Fields, Deals, Pipelines, Appointments, Calls, Tasks, Templates, Text Messages, Notes, and Webhooks
+- typed services for Identity, People, Events, Users, Custom Fields, Deals, Pipelines, Ponds, Smart Lists, Stages, Appointments, Appointment Outcomes, Appointment Types, Calls, Tasks, Templates, Text Messages, Notes, and Webhooks
 - explicit webhook signature verification using the exact raw request body
 - MCP tools, one resource, and one lead-event composition prompt
 - stdio and streamable HTTP transports

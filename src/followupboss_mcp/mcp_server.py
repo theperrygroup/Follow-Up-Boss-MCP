@@ -10,6 +10,10 @@ from followupboss_mcp.config import FollowUpBossSettings
 from followupboss_mcp.http_client import FollowUpBossAsyncClient, FollowUpBossClientProtocol
 from followupboss_mcp.mcp_registration import register_server_surface
 from followupboss_mcp.mcp_tools import FollowUpBossToolAdapter, ServiceBundle
+from followupboss_mcp.services.appointment_metadata import (
+    AppointmentOutcomesService,
+    AppointmentTypesService,
+)
 from followupboss_mcp.services.appointments import AppointmentsService
 from followupboss_mcp.services.calls import CallsService
 from followupboss_mcp.services.custom_fields import CustomFieldsService
@@ -19,6 +23,9 @@ from followupboss_mcp.services.identity import IdentityService
 from followupboss_mcp.services.notes import NotesService
 from followupboss_mcp.services.people import PeopleService
 from followupboss_mcp.services.pipelines import PipelinesService
+from followupboss_mcp.services.ponds import PondsService
+from followupboss_mcp.services.smart_lists import SmartListsService
+from followupboss_mcp.services.stages import StagesService
 from followupboss_mcp.services.tasks import TasksService
 from followupboss_mcp.services.templates import TemplatesService
 from followupboss_mcp.services.text_messages import (
@@ -44,6 +51,8 @@ def build_service_bundle(client: FollowUpBossClientProtocol) -> ServiceBundle:
     people_service = PeopleService(client)
     return ServiceBundle(
         appointments=AppointmentsService(client),
+        appointment_outcomes=AppointmentOutcomesService(client),
+        appointment_types=AppointmentTypesService(client),
         calls=CallsService(client),
         custom_fields=CustomFieldsService(client),
         deals=DealsService(client),
@@ -51,7 +60,10 @@ def build_service_bundle(client: FollowUpBossClientProtocol) -> ServiceBundle:
         identity=IdentityService(client),
         notes=NotesService(client, people_service=people_service),
         people=people_service,
+        ponds=PondsService(client),
         pipelines=PipelinesService(client),
+        smart_lists=SmartListsService(client),
+        stages=StagesService(client),
         tasks=TasksService(client),
         text_message_templates=TextMessageTemplatesService(client),
         text_messages=TextMessagesService(client),
@@ -84,8 +96,9 @@ def create_server(
         "Follow Up Boss MCP",
         instructions=(
             "Use the typed Follow Up Boss tools for identity checks, lead search, lead ingestion, "
-            "appointments, calls, deals, pipelines, tasks, templates, text messages, notes, "
-            "users, custom fields, and webhook administration."
+            "appointments, appointment types, appointment outcomes, calls, deals, pipelines, "
+            "ponds, smart lists, stages, tasks, templates, text messages, notes, users, custom "
+            "fields, and webhook administration."
         ),
         host=host,
         port=port,

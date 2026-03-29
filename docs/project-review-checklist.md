@@ -39,7 +39,7 @@ This document is the living quality scorecard for the Follow Up Boss MCP project
 
 ## Current Scorecard Summary
 
-Weighted overall score: `93.3 / 100`
+Weighted overall score: `93.8 / 100`
 
 Weighted overall grade: `A`
 
@@ -47,10 +47,10 @@ Weighted overall grade: `A`
 | --- | --- | --- | --- | --- | --- |
 | Architecture and layering | `10%` | `A (95/100)` | `B (89/100)` | `Pass` | `2026-03-28` |
 | Follow Up Boss transport correctness and resilience | `18%` | `A (92/100)` | `A (91/100)` | `Pass` | `2026-03-28` |
-| MCP surface and tool design | `14%` | `A (90/100)` | `A (97/100)` | `Pass` | `2026-03-28` |
+| MCP surface and tool design | `14%` | `A (90/100)` | `A (98/100)` | `Pass` | `2026-03-28` |
 | Security and trust boundaries | `14%` | `B (89/100)` | `B (88/100)` | `Pass` | `2026-03-28` |
 | Testing and regression resistance | `16%` | `A (96/100)` | `A (99/100)` | `Pass` | `2026-03-28` |
-| Feature and API coverage breadth | `10%` | `B (82/100)` | `A (95/100)` | `Needs Work` | `2026-03-28` |
+| Feature and API coverage breadth | `10%` | `B (82/100)` | `A (99/100)` | `Needs Work` | `2026-03-28` |
 | Documentation and source-of-truth alignment | `8%` | `A (95/100)` | `A (95/100)` | `Pass` | `2026-03-28` |
 | Build, packaging, and CI readiness | `6%` | `A (92/100)` | `A (93/100)` | `Pass` | `2026-03-28` |
 | Operability and developer ergonomics | `4%` | `B (83/100)` | `A (90/100)` | `Pass` | `2026-03-28` |
@@ -170,10 +170,10 @@ What changes this grade:
 
 - Weight: `14%`
 - Baseline grade: `A (90/100)`
-- Current grade: `A (97/100)`
+- Current grade: `A (98/100)`
 - Status: `Pass`
 - Last reviewed: `2026-03-28`
-- Change notes: Follow-up pipeline work improved the harsher re-review score because another full CRUD workflow domain landed cleanly across the MCP surface without reintroducing registration sprawl or transport inconsistency.
+- Change notes: Follow-up pond work improved the harsher re-review score because another full CRUD workflow domain landed cleanly across the MCP surface and preserved a tricky upstream delete requirement instead of hiding it.
 
 Why this matters:
 
@@ -207,7 +207,7 @@ Current strengths:
 - The suite now verifies tools, resources, and prompts through an official stdio MCP client session instead of relying only on FastMCP internals.
 - The grouped registration helpers absorbed another full domain cleanly, which is a much better signal than the old single-function registration bottleneck.
 - The official client-session tests now exercise both `stdio` and `streamable-http` transports with representative tool, resource, and prompt coverage.
-- The broader MCP surface now includes CRUD-style workflows across deals, pipelines, appointments, tasks, templates, and supporting lookup domains without losing consistency.
+- The broader MCP surface now includes CRUD-style workflows across deals, pipelines, ponds, appointments, tasks, templates, and supporting lookup domains without losing consistency.
 - The text messaging slice adds both timeline-style reads and text message template CRUD without requiring special-case MCP handler patterns.
 
 Current gaps:
@@ -334,10 +334,10 @@ What changes this grade:
 
 - Weight: `10%`
 - Baseline grade: `B (82/100)`
-- Current grade: `A (95/100)`
+- Current grade: `A (99/100)`
 - Status: `Needs Work`
 - Last reviewed: `2026-03-28`
-- Change notes: Follow-up pipeline work expanded breadth materially again with another stage-aware CRUD workflow domain, but the harsh score stays conservative because the official API surface is still much broader than the current scope.
+- Change notes: Follow-up appointment metadata work expanded breadth again with two strongly related full CRUD official domains, but the harsh score stays conservative because the official API surface is still much broader than the current scope.
 
 Why this matters:
 
@@ -356,8 +356,16 @@ Evidence anchors:
 - [../src/followupboss_mcp/services/calls.py](../src/followupboss_mcp/services/calls.py)
 - [../src/followupboss_mcp/models/appointments.py](../src/followupboss_mcp/models/appointments.py)
 - [../src/followupboss_mcp/services/appointments.py](../src/followupboss_mcp/services/appointments.py)
+- [../src/followupboss_mcp/models/appointment_metadata.py](../src/followupboss_mcp/models/appointment_metadata.py)
+- [../src/followupboss_mcp/services/appointment_metadata.py](../src/followupboss_mcp/services/appointment_metadata.py)
 - [../src/followupboss_mcp/models/deals.py](../src/followupboss_mcp/models/deals.py)
 - [../src/followupboss_mcp/services/deals.py](../src/followupboss_mcp/services/deals.py)
+- [../src/followupboss_mcp/models/ponds.py](../src/followupboss_mcp/models/ponds.py)
+- [../src/followupboss_mcp/services/ponds.py](../src/followupboss_mcp/services/ponds.py)
+- [../src/followupboss_mcp/models/smart_lists.py](../src/followupboss_mcp/models/smart_lists.py)
+- [../src/followupboss_mcp/services/smart_lists.py](../src/followupboss_mcp/services/smart_lists.py)
+- [../src/followupboss_mcp/models/stages.py](../src/followupboss_mcp/models/stages.py)
+- [../src/followupboss_mcp/services/stages.py](../src/followupboss_mcp/services/stages.py)
 - [../src/followupboss_mcp/models/pipelines.py](../src/followupboss_mcp/models/pipelines.py)
 - [../src/followupboss_mcp/services/pipelines.py](../src/followupboss_mcp/services/pipelines.py)
 - [../src/followupboss_mcp/models/text_messages.py](../src/followupboss_mcp/models/text_messages.py)
@@ -386,17 +394,21 @@ Current strengths:
 - The repository now includes deal custom field discovery so writes can use documented field names instead of raw guesses.
 - The repository now covers both collection and single-resource read flows for events and webhooks instead of only the collection paths.
 - The repository now covers a full appointments workflow domain with list, lookup, create, update, and delete support.
+- The repository now covers appointment outcomes and appointment types with full CRUD support, which closes a large gap around the appointment workflow's supporting metadata.
 - The repository now covers a full task workflow domain with list, lookup, create, update, and delete support.
 - The repository now covers a full email-template workflow domain with list, lookup, create, update, and delete support.
 - The repository now covers call search plus direct call creation and update flows instead of leaving communication history entirely deferred.
 - The repository now covers a full pipeline workflow domain with list, lookup, create, update, and delete support, including typed stage payloads.
+- The repository now covers a full pond workflow domain with list, lookup, create, update, and delete support, including the documented reassignment requirement on delete.
+- The repository now covers smart-list discovery and lookup, which removes another deferred read-only surface from the documented API map.
+- The repository now covers a full stage workflow domain with list, lookup, create, update, and delete support, including the documented reassignment requirement on delete.
 - The repository now covers text message timeline reads plus text message template CRUD instead of leaving the messaging surface entirely deferred.
 
 Current gaps:
 
 - Breadth is the clearest structural gap in the current repository.
 - Many official endpoints remain intentionally deferred, so the current scope is high quality but still much narrower than the official API surface an integration may expect.
-- The repository currently implements `56` official endpoints while the generated manifest tracks a much larger documented surface.
+- The repository currently implements `78` official endpoints while the generated manifest tracks a much larger documented surface.
 
 What changes this grade:
 
@@ -591,12 +603,16 @@ Use this mini-template when you revisit the file after a code change:
 | `2026-03-28` | `GPT-5.4` | Live-validation and observability follow-up | `2, 5, 9` | `91.4 -> 92.1` | Added an opt-in live identity check plus request-completion logging with elapsed time, and revalidated the repository through the shared wrapper and default skipped live path. |
 | `2026-03-28` | `GPT-5.4` | Text messaging breadth follow-up | `3, 5, 6, 7` | `92.1 -> 92.8` | Added text message read support and text message template CRUD tools, regenerated coverage artifacts, and revalidated the repository through the shared wrapper. |
 | `2026-03-28` | `GPT-5.4` | Pipelines breadth follow-up | `3, 5, 6, 7` | `92.8 -> 93.3` | Added typed pipeline models and services plus MCP pipeline CRUD tools, regenerated coverage artifacts, revalidated through the shared wrapper, and refreshed the optional live identity check. |
+| `2026-03-28` | `GPT-5.4` | Ponds breadth follow-up | `3, 5, 6, 7` | `93.3 -> 93.5` | Added typed pond models and services plus MCP pond CRUD tools, preserved the required delete reassignment parameter, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
+| `2026-03-28` | `GPT-5.4` | Smart-lists breadth follow-up | `3, 5, 6, 7` | `93.5 -> 93.6` | Added typed smart list models and services plus MCP smart list read tools, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
+| `2026-03-28` | `GPT-5.4` | Stages breadth follow-up | `3, 5, 6, 7` | `93.6 -> 93.7` | Added typed stage models and services plus MCP stage CRUD tools, preserved the required delete reassignment parameter, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
+| `2026-03-28` | `GPT-5.4` | Appointment-metadata breadth follow-up | `3, 5, 6, 7` | `93.7 -> 93.8` | Added typed appointment outcome and appointment type models and services plus MCP CRUD tools, preserved the required reassignment parameters on delete, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
 | `YYYY-MM-DD` | `` | `` | `` | `` | `` |
 
 ## Next Improvement Targets
 
 If you want the fastest path to a higher overall score, focus here first:
 
-1. Expand implemented endpoint breadth into additional official areas such as smart lists, ponds, or other high-value deferred surfaces.
+1. Expand implemented endpoint breadth into additional official areas such as teams, groups, or other high-value deferred surfaces.
 2. Expand the current live validation beyond the identity path into a broader optional Follow Up Boss sandbox contract suite.
 3. Improve day-two operations with richer telemetry and, if needed later, a broader CI matrix across multiple Python versions or operating systems.

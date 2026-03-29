@@ -11,6 +11,10 @@ The repository now contains:
 - typed appointment collection and CRUD coverage across the SDK, MCP surface, tests, and docs
 - typed deals collection and CRUD coverage plus deal custom field discovery across the SDK, MCP surface, tests, and docs
 - typed pipeline collection and CRUD coverage with stage-aware payload support across the SDK, MCP surface, tests, and docs
+- typed pond collection and CRUD coverage with explicit reassignment semantics on delete across the SDK, MCP surface, tests, and docs
+- typed smart-list collection and lookup coverage across the SDK, MCP surface, tests, and docs
+- typed stage collection and CRUD coverage with explicit reassignment semantics on delete across the SDK, MCP surface, tests, and docs
+- typed appointment outcome and appointment type collection and CRUD coverage across the SDK, MCP surface, tests, and docs
 - typed text message read support and text message template CRUD coverage across the SDK, MCP surface, tests, and docs
 - typed task collection and CRUD coverage across the SDK, MCP surface, tests, and docs
 - typed email-template collection and CRUD coverage across the SDK, MCP surface, tests, and docs
@@ -52,6 +56,16 @@ The repository implementation and documentation were aligned to the official MCP
 Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 
 - `GET /identity`
+- `GET /appointmentOutcomes`
+- `GET /appointmentOutcomes/{id}`
+- `POST /appointmentOutcomes`
+- `PUT /appointmentOutcomes/{id}`
+- `DELETE /appointmentOutcomes/{id}`
+- `GET /appointmentTypes`
+- `GET /appointmentTypes/{id}`
+- `POST /appointmentTypes`
+- `PUT /appointmentTypes/{id}`
+- `DELETE /appointmentTypes/{id}`
 - `GET /people`
 - `POST /people`
 - `GET /people/:id`
@@ -70,6 +84,18 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `POST /pipelines`
 - `PUT /pipelines/{id}`
 - `DELETE /pipelines/:id`
+- `GET /ponds`
+- `GET /ponds/:id`
+- `POST /ponds`
+- `PUT /ponds/:id`
+- `DELETE /ponds/:id`
+- `GET /smartLists`
+- `GET /smartLists/:id`
+- `GET /stages`
+- `GET /stages/:id`
+- `POST /stages`
+- `PUT /stages/:id`
+- `DELETE /stages/:id`
 - `GET /textMessages`
 - `GET /textMessages/{id}`
 - `GET /textMessageTemplates`
@@ -108,7 +134,7 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `POST /webhooks`
 - `DELETE /webhooks/:id`
 
-Total implemented official endpoints in this repository scope: `56`
+Total implemented official endpoints in this repository scope: `78`
 
 All additional discovered official endpoints are marked explicitly as deferred in `docs/api-coverage-matrix.md`.
 
@@ -116,7 +142,7 @@ All additional discovered official endpoints are marked explicitly as deferred i
 
 Registered MCP surface:
 
-- tools: `56`
+- tools: `78`
 - resources: `1`
 - prompts: `1`
 
@@ -141,6 +167,18 @@ Registered tools:
 - `followupboss_create_pipeline`
 - `followupboss_update_pipeline`
 - `followupboss_delete_pipeline`
+- `followupboss_list_ponds`
+- `followupboss_get_pond`
+- `followupboss_create_pond`
+- `followupboss_update_pond`
+- `followupboss_delete_pond`
+- `followupboss_list_smart_lists`
+- `followupboss_get_smart_list`
+- `followupboss_list_stages`
+- `followupboss_get_stage`
+- `followupboss_create_stage`
+- `followupboss_update_stage`
+- `followupboss_delete_stage`
 - `followupboss_list_text_messages`
 - `followupboss_get_text_message`
 - `followupboss_list_text_message_templates`
@@ -156,6 +194,16 @@ Registered tools:
 - `followupboss_list_users`
 - `followupboss_get_user`
 - `followupboss_list_custom_fields`
+- `followupboss_list_appointment_outcomes`
+- `followupboss_get_appointment_outcome`
+- `followupboss_create_appointment_outcome`
+- `followupboss_update_appointment_outcome`
+- `followupboss_delete_appointment_outcome`
+- `followupboss_list_appointment_types`
+- `followupboss_get_appointment_type`
+- `followupboss_create_appointment_type`
+- `followupboss_update_appointment_type`
+- `followupboss_delete_appointment_type`
 - `followupboss_list_calls`
 - `followupboss_get_call`
 - `followupboss_create_call`
@@ -206,19 +254,19 @@ make live-identity-check
 ## Final Mypy Status
 
 - `uv run mypy src tests`: passed
-- result: `Success: no issues found in 52 source files`
+- result: `Success: no issues found in 60 source files`
 
 ## Final Test Status
 
 - `uv run pytest`: passed
-- result: `68 passed, 1 skipped`
+- result: `83 passed, 1 skipped`
 
 ## Final Coverage Numbers
 
 - `uv run coverage run --branch -m pytest`: passed
 - `uv run coverage report --fail-under=100`: passed
-- total statements: `2145`
-- total branches: `200`
+- total statements: `2561`
+- total branches: `226`
 - line coverage: `100.00%`
 - branch coverage: `100.00%`
 

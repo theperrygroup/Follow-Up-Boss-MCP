@@ -42,6 +42,28 @@ All tools are namespaced with the `followupboss_` prefix.
 | `followupboss_create_pipeline` | Create a pipeline. |
 | `followupboss_update_pipeline` | Update one pipeline by ID. |
 | `followupboss_delete_pipeline` | Delete one pipeline by ID and return a structured confirmation. |
+| `followupboss_list_ponds` | List ponds with pagination metadata. |
+| `followupboss_get_pond` | Retrieve one pond by ID. |
+| `followupboss_create_pond` | Create a pond. |
+| `followupboss_update_pond` | Update one pond by ID. |
+| `followupboss_delete_pond` | Delete one pond by ID, require a reassignment target, and return a structured confirmation. |
+| `followupboss_list_smart_lists` | List smart lists with documented filters and pagination metadata. |
+| `followupboss_get_smart_list` | Retrieve one smart list by ID. |
+| `followupboss_list_stages` | List stages with documented filters and pagination metadata. |
+| `followupboss_get_stage` | Retrieve one stage by ID. |
+| `followupboss_create_stage` | Create a stage. |
+| `followupboss_update_stage` | Update one stage by ID. |
+| `followupboss_delete_stage` | Delete one stage by ID, require a reassignment target, and return a structured confirmation. |
+| `followupboss_list_appointment_outcomes` | List appointment outcomes with pagination metadata. |
+| `followupboss_get_appointment_outcome` | Retrieve one appointment outcome by ID. |
+| `followupboss_create_appointment_outcome` | Create an appointment outcome. |
+| `followupboss_update_appointment_outcome` | Update one appointment outcome by ID. |
+| `followupboss_delete_appointment_outcome` | Delete one appointment outcome by ID, require a reassignment target, and return a structured confirmation. |
+| `followupboss_list_appointment_types` | List appointment types with pagination metadata. |
+| `followupboss_get_appointment_type` | Retrieve one appointment type by ID. |
+| `followupboss_create_appointment_type` | Create an appointment type. |
+| `followupboss_update_appointment_type` | Update one appointment type by ID. |
+| `followupboss_delete_appointment_type` | Delete one appointment type by ID, require a reassignment target, and return a structured confirmation. |
 | `followupboss_list_appointments` | List appointments with documented filters and pagination metadata. |
 | `followupboss_get_appointment` | Retrieve one appointment by ID. |
 | `followupboss_create_appointment` | Create an appointment. |

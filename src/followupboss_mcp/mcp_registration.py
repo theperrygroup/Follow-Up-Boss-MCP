@@ -5,37 +5,56 @@ from __future__ import annotations
 from pathlib import Path
 
 from followupboss_mcp.mcp_tools import (
+    DeleteAppointmentOutcomeToolInput,
     DeleteAppointmentToolInput,
+    DeleteAppointmentTypeToolInput,
     DeleteDealToolInput,
     DeleteNoteToolInput,
     DeletePipelineToolInput,
+    DeletePondToolInput,
+    DeleteStageToolInput,
     DeleteTaskToolInput,
     DeleteTemplateToolInput,
     DeleteTextMessageTemplateToolInput,
     DeleteWebhookToolInput,
     FollowUpBossToolAdapter,
+    GetAppointmentOutcomeToolInput,
     GetAppointmentToolInput,
+    GetAppointmentTypeToolInput,
     GetCallToolInput,
     GetDealToolInput,
     GetEventToolInput,
     GetNoteToolInput,
     GetPersonToolInput,
     GetPipelineToolInput,
+    GetPondToolInput,
+    GetSmartListToolInput,
+    GetStageToolInput,
     GetTaskToolInput,
     GetTemplateToolInput,
     GetTextMessageTemplateToolInput,
     GetTextMessageToolInput,
     GetUserToolInput,
     GetWebhookToolInput,
+    UpdateAppointmentOutcomeToolInput,
     UpdateAppointmentToolInput,
+    UpdateAppointmentTypeToolInput,
     UpdateCallToolInput,
     UpdateDealToolInput,
     UpdateNoteToolInput,
     UpdatePersonToolInput,
     UpdatePipelineToolInput,
+    UpdatePondToolInput,
+    UpdateStageToolInput,
     UpdateTaskToolInput,
     UpdateTemplateToolInput,
     UpdateTextMessageTemplateToolInput,
+)
+from followupboss_mcp.models.appointment_metadata import (
+    AppointmentOutcomeListRequest,
+    AppointmentTypeListRequest,
+    CreateAppointmentOutcomeRequest,
+    CreateAppointmentTypeRequest,
 )
 from followupboss_mcp.models.appointments import AppointmentListRequest, CreateAppointmentRequest
 from followupboss_mcp.models.calls import CallListRequest, CreateCallRequest
@@ -53,6 +72,9 @@ from followupboss_mcp.models.pipelines import (
     PipelineListRequest,
     PipelineStageInput,
 )
+from followupboss_mcp.models.ponds import CreatePondRequest, PondListRequest
+from followupboss_mcp.models.smart_lists import SmartListListRequest
+from followupboss_mcp.models.stages import CreateStageRequest, StageListRequest
 from followupboss_mcp.models.tasks import CreateTaskRequest, TaskListRequest
 from followupboss_mcp.models.templates import CreateTemplateRequest, TemplateListRequest
 from followupboss_mcp.models.text_messages import (
@@ -84,9 +106,13 @@ def register_server_surface(
     _register_user_tools(mcp, adapter)
     _register_custom_field_tools(mcp, adapter)
     _register_deal_tools(mcp, adapter)
+    _register_appointment_metadata_tools(mcp, adapter)
     _register_appointment_tools(mcp, adapter)
     _register_call_tools(mcp, adapter)
     _register_pipeline_tools(mcp, adapter)
+    _register_pond_tools(mcp, adapter)
+    _register_smart_list_tools(mcp, adapter)
+    _register_stage_tools(mcp, adapter)
     _register_task_tools(mcp, adapter)
     _register_template_tools(mcp, adapter)
     _register_text_message_tools(mcp, adapter)
@@ -432,6 +458,160 @@ def _register_user_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
     )
     async def followupboss_get_user(user_id: int) -> dict[str, object]:
         return await adapter.get_user(GetUserToolInput(user_id=user_id))
+
+
+def _register_appointment_metadata_tools(
+    mcp: FastMCP,
+    adapter: FollowUpBossToolAdapter,
+) -> None:
+    """Register appointment outcome and appointment type MCP tools.
+
+    Args:
+        mcp: The FastMCP server instance.
+        adapter: The typed Follow Up Boss tool adapter.
+    """
+
+    @mcp.tool(
+        name="followupboss_list_appointment_outcomes",
+        description="List Follow Up Boss appointment outcomes with pagination metadata.",
+    )
+    async def followupboss_list_appointment_outcomes(
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+        sort: str | None = None,
+    ) -> dict[str, object]:
+        return await adapter.list_appointment_outcomes(
+            AppointmentOutcomeListRequest(limit=limit, offset=offset, sort=sort)
+        )
+
+    @mcp.tool(
+        name="followupboss_get_appointment_outcome",
+        description="Fetch a single Follow Up Boss appointment outcome by ID.",
+    )
+    async def followupboss_get_appointment_outcome(
+        appointment_outcome_id: int,
+    ) -> dict[str, object]:
+        return await adapter.get_appointment_outcome(
+            GetAppointmentOutcomeToolInput(appointment_outcome_id=appointment_outcome_id)
+        )
+
+    @mcp.tool(
+        name="followupboss_create_appointment_outcome",
+        description="Create a Follow Up Boss appointment outcome.",
+    )
+    async def followupboss_create_appointment_outcome(
+        name: str,
+        *,
+        order_weight: int | None = None,
+    ) -> dict[str, object]:
+        return await adapter.create_appointment_outcome(
+            CreateAppointmentOutcomeRequest(name=name, order_weight=order_weight)
+        )
+
+    @mcp.tool(
+        name="followupboss_update_appointment_outcome",
+        description="Update a Follow Up Boss appointment outcome by ID.",
+    )
+    async def followupboss_update_appointment_outcome(
+        appointment_outcome_id: int,
+        *,
+        name: str | None = None,
+        order_weight: int | None = None,
+    ) -> dict[str, object]:
+        return await adapter.update_appointment_outcome(
+            UpdateAppointmentOutcomeToolInput(
+                appointment_outcome_id=appointment_outcome_id,
+                name=name,
+                order_weight=order_weight,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_delete_appointment_outcome",
+        description="Delete a Follow Up Boss appointment outcome by ID and reassign appointments.",
+    )
+    async def followupboss_delete_appointment_outcome(
+        appointment_outcome_id: int,
+        assign_outcome_id: int,
+    ) -> dict[str, object]:
+        return await adapter.delete_appointment_outcome(
+            DeleteAppointmentOutcomeToolInput(
+                appointment_outcome_id=appointment_outcome_id,
+                assign_outcome_id=assign_outcome_id,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_list_appointment_types",
+        description="List Follow Up Boss appointment types with pagination metadata.",
+    )
+    async def followupboss_list_appointment_types(
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+        sort: str | None = None,
+    ) -> dict[str, object]:
+        return await adapter.list_appointment_types(
+            AppointmentTypeListRequest(limit=limit, offset=offset, sort=sort)
+        )
+
+    @mcp.tool(
+        name="followupboss_get_appointment_type",
+        description="Fetch a single Follow Up Boss appointment type by ID.",
+    )
+    async def followupboss_get_appointment_type(
+        appointment_type_id: int,
+    ) -> dict[str, object]:
+        return await adapter.get_appointment_type(
+            GetAppointmentTypeToolInput(appointment_type_id=appointment_type_id)
+        )
+
+    @mcp.tool(
+        name="followupboss_create_appointment_type",
+        description="Create a Follow Up Boss appointment type.",
+    )
+    async def followupboss_create_appointment_type(
+        name: str,
+        *,
+        order_weight: int | None = None,
+    ) -> dict[str, object]:
+        return await adapter.create_appointment_type(
+            CreateAppointmentTypeRequest(name=name, order_weight=order_weight)
+        )
+
+    @mcp.tool(
+        name="followupboss_update_appointment_type",
+        description="Update a Follow Up Boss appointment type by ID.",
+    )
+    async def followupboss_update_appointment_type(
+        appointment_type_id: int,
+        *,
+        name: str | None = None,
+        order_weight: int | None = None,
+    ) -> dict[str, object]:
+        return await adapter.update_appointment_type(
+            UpdateAppointmentTypeToolInput(
+                appointment_type_id=appointment_type_id,
+                name=name,
+                order_weight=order_weight,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_delete_appointment_type",
+        description="Delete a Follow Up Boss appointment type by ID and reassign appointments.",
+    )
+    async def followupboss_delete_appointment_type(
+        appointment_type_id: int,
+        assign_type_id: int,
+    ) -> dict[str, object]:
+        return await adapter.delete_appointment_type(
+            DeleteAppointmentTypeToolInput(
+                appointment_type_id=appointment_type_id,
+                assign_type_id=assign_type_id,
+            )
+        )
 
 
 def _register_custom_field_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
@@ -955,6 +1135,192 @@ def _register_pipeline_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> 
     )
     async def followupboss_delete_pipeline(pipeline_id: int) -> dict[str, object]:
         return await adapter.delete_pipeline(DeletePipelineToolInput(pipeline_id=pipeline_id))
+
+
+def _register_pond_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+    """Register pond-related MCP tools.
+
+    Args:
+        mcp: The FastMCP server instance.
+        adapter: The typed Follow Up Boss tool adapter.
+    """
+
+    @mcp.tool(
+        name="followupboss_list_ponds",
+        description="List Follow Up Boss ponds with pagination metadata.",
+    )
+    async def followupboss_list_ponds(
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> dict[str, object]:
+        return await adapter.list_ponds(PondListRequest(limit=limit, offset=offset))
+
+    @mcp.tool(
+        name="followupboss_get_pond",
+        description="Fetch a single Follow Up Boss pond by ID.",
+    )
+    async def followupboss_get_pond(pond_id: int) -> dict[str, object]:
+        return await adapter.get_pond(GetPondToolInput(pond_id=pond_id))
+
+    @mcp.tool(
+        name="followupboss_create_pond",
+        description="Create a Follow Up Boss pond.",
+    )
+    async def followupboss_create_pond(
+        name: str,
+        user_id: int,
+        user_ids: list[int],
+    ) -> dict[str, object]:
+        return await adapter.create_pond(
+            CreatePondRequest(
+                name=name,
+                user_id=user_id,
+                user_ids=user_ids,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_update_pond",
+        description="Update a Follow Up Boss pond by ID.",
+    )
+    async def followupboss_update_pond(
+        pond_id: int,
+        *,
+        name: str | None = None,
+        user_id: int | None = None,
+        user_ids: list[int] | None = None,
+    ) -> dict[str, object]:
+        return await adapter.update_pond(
+            UpdatePondToolInput(
+                pond_id=pond_id,
+                name=name,
+                user_id=user_id,
+                user_ids=user_ids,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_delete_pond",
+        description="Delete a Follow Up Boss pond by ID and reassign its contacts.",
+    )
+    async def followupboss_delete_pond(pond_id: int, assign_to: int) -> dict[str, object]:
+        return await adapter.delete_pond(
+            DeletePondToolInput(
+                pond_id=pond_id,
+                assign_to=assign_to,
+            )
+        )
+
+
+def _register_smart_list_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+    """Register smart-list-related MCP tools.
+
+    Args:
+        mcp: The FastMCP server instance.
+        adapter: The typed Follow Up Boss tool adapter.
+    """
+
+    @mcp.tool(
+        name="followupboss_list_smart_lists",
+        description=(
+            "List Follow Up Boss smart lists with documented filters and pagination metadata."
+        ),
+    )
+    async def followupboss_list_smart_lists(
+        *,
+        fub2: bool | None = None,
+        include_all: bool | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> dict[str, object]:
+        return await adapter.list_smart_lists(
+            SmartListListRequest(
+                fub2=fub2,
+                include_all=include_all,
+                limit=limit,
+                offset=offset,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_get_smart_list",
+        description="Fetch a single Follow Up Boss smart list by ID.",
+    )
+    async def followupboss_get_smart_list(smart_list_id: int) -> dict[str, object]:
+        return await adapter.get_smart_list(GetSmartListToolInput(smart_list_id=smart_list_id))
+
+
+def _register_stage_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+    """Register stage-related MCP tools.
+
+    Args:
+        mcp: The FastMCP server instance.
+        adapter: The typed Follow Up Boss tool adapter.
+    """
+
+    @mcp.tool(
+        name="followupboss_list_stages",
+        description="List Follow Up Boss stages with documented filters and pagination metadata.",
+    )
+    async def followupboss_list_stages(
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+        sort: str | None = None,
+    ) -> dict[str, object]:
+        return await adapter.list_stages(StageListRequest(limit=limit, offset=offset, sort=sort))
+
+    @mcp.tool(
+        name="followupboss_get_stage",
+        description="Fetch a single Follow Up Boss stage by ID.",
+    )
+    async def followupboss_get_stage(stage_id: int) -> dict[str, object]:
+        return await adapter.get_stage(GetStageToolInput(stage_id=stage_id))
+
+    @mcp.tool(
+        name="followupboss_create_stage",
+        description="Create a Follow Up Boss stage.",
+    )
+    async def followupboss_create_stage(
+        name: str,
+        *,
+        order_weight: int | None = None,
+    ) -> dict[str, object]:
+        return await adapter.create_stage(CreateStageRequest(name=name, order_weight=order_weight))
+
+    @mcp.tool(
+        name="followupboss_update_stage",
+        description="Update a Follow Up Boss stage by ID.",
+    )
+    async def followupboss_update_stage(
+        stage_id: int,
+        *,
+        name: str | None = None,
+        order_weight: int | None = None,
+    ) -> dict[str, object]:
+        return await adapter.update_stage(
+            UpdateStageToolInput(
+                stage_id=stage_id,
+                name=name,
+                order_weight=order_weight,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_delete_stage",
+        description="Delete a Follow Up Boss stage by ID and reassign linked action plans.",
+    )
+    async def followupboss_delete_stage(
+        stage_id: int,
+        assign_stage_id: int,
+    ) -> dict[str, object]:
+        return await adapter.delete_stage(
+            DeleteStageToolInput(
+                stage_id=stage_id,
+                assign_stage_id=assign_stage_id,
+            )
+        )
 
 
 def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:

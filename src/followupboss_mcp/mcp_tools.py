@@ -7,6 +7,16 @@ from dataclasses import asdict, dataclass
 from typing import Any, cast
 
 from followupboss_mcp.errors import FollowUpBossError, FollowUpBossRateLimitError
+from followupboss_mcp.models.appointment_metadata import (
+    AppointmentOutcomeListRequest,
+    AppointmentTypeListRequest,
+    CreateAppointmentOutcomeRequest,
+    CreateAppointmentTypeRequest,
+    DeleteAppointmentOutcomeRequest,
+    DeleteAppointmentTypeRequest,
+    UpdateAppointmentOutcomeRequest,
+    UpdateAppointmentTypeRequest,
+)
 from followupboss_mcp.models.appointments import (
     AppointmentListRequest,
     CreateAppointmentRequest,
@@ -33,16 +43,23 @@ from followupboss_mcp.models.people import (
     PersonLookupRequest,
     UpdatePersonRequest,
 )
+from followupboss_mcp.models.pipelines import (
+    CreatePipelineRequest,
+    PipelineListRequest,
+    UpdatePipelineRequest,
+)
 from followupboss_mcp.models.ponds import (
     CreatePondRequest,
     DeletePondRequest,
     PondListRequest,
     UpdatePondRequest,
 )
-from followupboss_mcp.models.pipelines import (
-    CreatePipelineRequest,
-    PipelineListRequest,
-    UpdatePipelineRequest,
+from followupboss_mcp.models.smart_lists import SmartListListRequest
+from followupboss_mcp.models.stages import (
+    CreateStageRequest,
+    DeleteStageRequest,
+    StageListRequest,
+    UpdateStageRequest,
 )
 from followupboss_mcp.models.tasks import CreateTaskRequest, TaskListRequest, UpdateTaskRequest
 from followupboss_mcp.models.templates import (
@@ -59,6 +76,10 @@ from followupboss_mcp.models.text_messages import (
 )
 from followupboss_mcp.models.users import UserListRequest
 from followupboss_mcp.models.webhooks import CreateWebhookRequest, WebhookListRequest
+from followupboss_mcp.services.appointment_metadata import (
+    AppointmentOutcomesService,
+    AppointmentTypesService,
+)
 from followupboss_mcp.services.appointments import AppointmentsService
 from followupboss_mcp.services.calls import CallsService
 from followupboss_mcp.services.custom_fields import CustomFieldsService
@@ -67,8 +88,10 @@ from followupboss_mcp.services.events import EventsService
 from followupboss_mcp.services.identity import IdentityService
 from followupboss_mcp.services.notes import NotesService
 from followupboss_mcp.services.people import PeopleService
-from followupboss_mcp.services.ponds import PondsService
 from followupboss_mcp.services.pipelines import PipelinesService
+from followupboss_mcp.services.ponds import PondsService
+from followupboss_mcp.services.smart_lists import SmartListsService
+from followupboss_mcp.services.stages import StagesService
 from followupboss_mcp.services.tasks import TasksService
 from followupboss_mcp.services.templates import TemplatesService
 from followupboss_mcp.services.text_messages import (
@@ -121,6 +144,18 @@ class GetAppointmentToolInput(RequestModel):
     appointment_id: int
 
 
+class GetAppointmentOutcomeToolInput(RequestModel):
+    """Tool input for fetching an appointment outcome by ID."""
+
+    appointment_outcome_id: int
+
+
+class GetAppointmentTypeToolInput(RequestModel):
+    """Tool input for fetching an appointment type by ID."""
+
+    appointment_type_id: int
+
+
 class GetDealToolInput(RequestModel):
     """Tool input for fetching a deal by ID."""
 
@@ -137,6 +172,18 @@ class GetPondToolInput(RequestModel):
     """Tool input for fetching a pond by ID."""
 
     pond_id: int
+
+
+class GetSmartListToolInput(RequestModel):
+    """Tool input for fetching a smart list by ID."""
+
+    smart_list_id: int
+
+
+class GetStageToolInput(RequestModel):
+    """Tool input for fetching a stage by ID."""
+
+    stage_id: int
 
 
 class GetTextMessageToolInput(RequestModel):
@@ -193,6 +240,18 @@ class UpdateAppointmentToolInput(UpdateAppointmentRequest):
     appointment_id: int
 
 
+class UpdateAppointmentOutcomeToolInput(UpdateAppointmentOutcomeRequest):
+    """Tool input for updating an appointment outcome."""
+
+    appointment_outcome_id: int
+
+
+class UpdateAppointmentTypeToolInput(UpdateAppointmentTypeRequest):
+    """Tool input for updating an appointment type."""
+
+    appointment_type_id: int
+
+
 class UpdateDealToolInput(UpdateDealRequest):
     """Tool input for updating a deal."""
 
@@ -209,6 +268,12 @@ class UpdatePondToolInput(UpdatePondRequest):
     """Tool input for updating a pond."""
 
     pond_id: int
+
+
+class UpdateStageToolInput(UpdateStageRequest):
+    """Tool input for updating a stage."""
+
+    stage_id: int
 
 
 class UpdateTextMessageTemplateToolInput(UpdateTextMessageTemplateRequest):
@@ -247,6 +312,18 @@ class DeleteAppointmentToolInput(RequestModel):
     appointment_id: int
 
 
+class DeleteAppointmentOutcomeToolInput(DeleteAppointmentOutcomeRequest):
+    """Tool input for deleting an appointment outcome."""
+
+    appointment_outcome_id: int
+
+
+class DeleteAppointmentTypeToolInput(DeleteAppointmentTypeRequest):
+    """Tool input for deleting an appointment type."""
+
+    appointment_type_id: int
+
+
 class DeleteDealToolInput(RequestModel):
     """Tool input for deleting a deal."""
 
@@ -263,6 +340,12 @@ class DeletePondToolInput(DeletePondRequest):
     """Tool input for deleting a pond."""
 
     pond_id: int
+
+
+class DeleteStageToolInput(DeleteStageRequest):
+    """Tool input for deleting a stage."""
+
+    stage_id: int
 
 
 class DeleteTextMessageTemplateToolInput(RequestModel):
@@ -282,6 +365,8 @@ class ServiceBundle:
     """Service bundle used by the MCP tool adapter."""
 
     appointments: AppointmentsService
+    appointment_outcomes: AppointmentOutcomesService
+    appointment_types: AppointmentTypesService
     calls: CallsService
     custom_fields: CustomFieldsService
     deals: DealsService
@@ -291,6 +376,8 @@ class ServiceBundle:
     people: PeopleService
     ponds: PondsService
     pipelines: PipelinesService
+    smart_lists: SmartListsService
+    stages: StagesService
     tasks: TasksService
     text_message_templates: TextMessageTemplatesService
     text_messages: TextMessagesService
@@ -309,6 +396,130 @@ class FollowUpBossToolAdapter:
     async def get_identity(self) -> dict[str, Any]:
         """Return identity information."""
         return await self._single_result(self._services.identity.get_identity)
+
+    async def list_appointment_outcomes(
+        self,
+        tool_input: AppointmentOutcomeListRequest,
+    ) -> dict[str, Any]:
+        """List appointment outcomes."""
+        return await self._page_result(
+            lambda: self._services.appointment_outcomes.list_appointment_outcomes(tool_input),
+            key="appointmentoutcomes",
+        )
+
+    async def get_appointment_outcome(
+        self,
+        tool_input: GetAppointmentOutcomeToolInput,
+    ) -> dict[str, Any]:
+        """Get an appointment outcome."""
+        return await self._single_result(
+            lambda: self._services.appointment_outcomes.get_appointment_outcome(
+                tool_input.appointment_outcome_id
+            )
+        )
+
+    async def create_appointment_outcome(
+        self,
+        tool_input: CreateAppointmentOutcomeRequest,
+    ) -> dict[str, Any]:
+        """Create an appointment outcome."""
+        return await self._single_result(
+            lambda: self._services.appointment_outcomes.create_appointment_outcome(tool_input)
+        )
+
+    async def update_appointment_outcome(
+        self,
+        tool_input: UpdateAppointmentOutcomeToolInput,
+    ) -> dict[str, Any]:
+        """Update an appointment outcome."""
+        request = UpdateAppointmentOutcomeRequest.model_validate(
+            tool_input.model_dump(exclude={"appointment_outcome_id"})
+        )
+        return await self._single_result(
+            lambda: self._services.appointment_outcomes.update_appointment_outcome(
+                tool_input.appointment_outcome_id,
+                request,
+            )
+        )
+
+    async def delete_appointment_outcome(
+        self,
+        tool_input: DeleteAppointmentOutcomeToolInput,
+    ) -> dict[str, Any]:
+        """Delete an appointment outcome."""
+        request = DeleteAppointmentOutcomeRequest.model_validate(
+            tool_input.model_dump(exclude={"appointment_outcome_id"})
+        )
+        return await self._delete_result(
+            lambda: self._services.appointment_outcomes.delete_appointment_outcome(
+                tool_input.appointment_outcome_id,
+                request,
+            ),
+            identifier_key="appointmentOutcomeId",
+            identifier_value=tool_input.appointment_outcome_id,
+        )
+
+    async def list_appointment_types(
+        self,
+        tool_input: AppointmentTypeListRequest,
+    ) -> dict[str, Any]:
+        """List appointment types."""
+        return await self._page_result(
+            lambda: self._services.appointment_types.list_appointment_types(tool_input),
+            key="appointmenttypes",
+        )
+
+    async def get_appointment_type(
+        self,
+        tool_input: GetAppointmentTypeToolInput,
+    ) -> dict[str, Any]:
+        """Get an appointment type."""
+        return await self._single_result(
+            lambda: self._services.appointment_types.get_appointment_type(
+                tool_input.appointment_type_id
+            )
+        )
+
+    async def create_appointment_type(
+        self,
+        tool_input: CreateAppointmentTypeRequest,
+    ) -> dict[str, Any]:
+        """Create an appointment type."""
+        return await self._single_result(
+            lambda: self._services.appointment_types.create_appointment_type(tool_input)
+        )
+
+    async def update_appointment_type(
+        self,
+        tool_input: UpdateAppointmentTypeToolInput,
+    ) -> dict[str, Any]:
+        """Update an appointment type."""
+        request = UpdateAppointmentTypeRequest.model_validate(
+            tool_input.model_dump(exclude={"appointment_type_id"})
+        )
+        return await self._single_result(
+            lambda: self._services.appointment_types.update_appointment_type(
+                tool_input.appointment_type_id,
+                request,
+            )
+        )
+
+    async def delete_appointment_type(
+        self,
+        tool_input: DeleteAppointmentTypeToolInput,
+    ) -> dict[str, Any]:
+        """Delete an appointment type."""
+        request = DeleteAppointmentTypeRequest.model_validate(
+            tool_input.model_dump(exclude={"appointment_type_id"})
+        )
+        return await self._delete_result(
+            lambda: self._services.appointment_types.delete_appointment_type(
+                tool_input.appointment_type_id,
+                request,
+            ),
+            identifier_key="appointmentTypeId",
+            identifier_value=tool_input.appointment_type_id,
+        )
 
     async def search_people(self, tool_input: PeopleSearchRequest) -> dict[str, Any]:
         """Search people."""
@@ -476,6 +687,52 @@ class FollowUpBossToolAdapter:
             lambda: self._services.ponds.delete_pond(tool_input.pond_id, request),
             identifier_key="pondId",
             identifier_value=tool_input.pond_id,
+        )
+
+    async def list_smart_lists(self, tool_input: SmartListListRequest) -> dict[str, Any]:
+        """List smart lists."""
+        return await self._page_result(
+            lambda: self._services.smart_lists.list_smart_lists(tool_input),
+            key="smartlists",
+        )
+
+    async def get_smart_list(self, tool_input: GetSmartListToolInput) -> dict[str, Any]:
+        """Get a smart list."""
+        return await self._single_result(
+            lambda: self._services.smart_lists.get_smart_list(tool_input.smart_list_id)
+        )
+
+    async def list_stages(self, tool_input: StageListRequest) -> dict[str, Any]:
+        """List stages."""
+        return await self._page_result(
+            lambda: self._services.stages.list_stages(tool_input),
+            key="stages",
+        )
+
+    async def get_stage(self, tool_input: GetStageToolInput) -> dict[str, Any]:
+        """Get a stage."""
+        return await self._single_result(
+            lambda: self._services.stages.get_stage(tool_input.stage_id)
+        )
+
+    async def create_stage(self, tool_input: CreateStageRequest) -> dict[str, Any]:
+        """Create a stage."""
+        return await self._single_result(lambda: self._services.stages.create_stage(tool_input))
+
+    async def update_stage(self, tool_input: UpdateStageToolInput) -> dict[str, Any]:
+        """Update a stage."""
+        request = UpdateStageRequest.model_validate(tool_input.model_dump(exclude={"stage_id"}))
+        return await self._single_result(
+            lambda: self._services.stages.update_stage(tool_input.stage_id, request)
+        )
+
+    async def delete_stage(self, tool_input: DeleteStageToolInput) -> dict[str, Any]:
+        """Delete a stage."""
+        request = DeleteStageRequest.model_validate(tool_input.model_dump(exclude={"stage_id"}))
+        return await self._delete_result(
+            lambda: self._services.stages.delete_stage(tool_input.stage_id, request),
+            identifier_key="stageId",
+            identifier_value=tool_input.stage_id,
         )
 
     async def list_appointments(self, tool_input: AppointmentListRequest) -> dict[str, Any]:
