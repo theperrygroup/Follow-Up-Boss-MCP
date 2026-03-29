@@ -28,6 +28,12 @@ from followupboss_mcp.models.appointments import (
     CreateAppointmentRequest,
     UpdateAppointmentRequest,
 )
+from followupboss_mcp.models.automations import (
+    AutomationListRequest,
+    AutomationPeopleListRequest,
+    CreateAutomationPersonRequest,
+    UpdateAutomationPersonRequest,
+)
 from followupboss_mcp.models.calls import CallListRequest, CreateCallRequest, UpdateCallRequest
 from followupboss_mcp.models.common import EmailAddress
 from followupboss_mcp.models.custom_fields import CustomFieldListRequest
@@ -101,6 +107,10 @@ from followupboss_mcp.services.appointment_metadata import (
     AppointmentTypesService,
 )
 from followupboss_mcp.services.appointments import AppointmentsService
+from followupboss_mcp.services.automations import (
+    AutomationPeopleService,
+    AutomationsService,
+)
 from followupboss_mcp.services.calls import CallsService
 from followupboss_mcp.services.custom_fields import CustomFieldsService
 from followupboss_mcp.services.deals import DealsService
@@ -323,6 +333,126 @@ async def test_appointment_types_service() -> None:
         match="At least one appointment metadata field must be provided",
     ):
         UpdateAppointmentTypeRequest()
+
+
+@pytest.mark.asyncio
+async def test_automations_service() -> None:
+    """Automations services should map queries, bodies, and pairing updates correctly."""
+    client = StubClient(
+        [
+            {
+                "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                "automations": [{"id": 1, "name": "Test Automation", "status": "Active"}],
+            },
+            {"id": 2, "name": "Test Automation", "status": "Active"},
+            {
+                "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                "automationsPeople": [
+                    {
+                        "id": 3,
+                        "created": "2023-08-09T21:36:05Z",
+                        "updated": "2023-08-09T21:36:05Z",
+                        "createdById": -1,
+                        "updatedById": -1,
+                        "createdBy": "Follow Up Boss",
+                        "updatedBy": "Follow Up Boss",
+                        "personId": 2,
+                        "automationId": 1,
+                        "status": "Completed",
+                        "automationName": "Test Automation",
+                    }
+                ],
+            },
+            {
+                "id": 4,
+                "created": "2023-08-09T21:36:05Z",
+                "updated": "2023-08-09T21:36:05Z",
+                "createdById": -1,
+                "updatedById": -1,
+                "createdBy": "Follow Up Boss",
+                "updatedBy": "Follow Up Boss",
+                "personId": 2,
+                "automationId": 1,
+                "status": "Completed",
+                "automationName": "Test Automation",
+            },
+            {
+                "id": 5,
+                "created": "2023-08-09T21:36:05Z",
+                "updated": "2023-08-09T21:36:05Z",
+                "createdById": -1,
+                "updatedById": -1,
+                "createdBy": "Follow Up Boss",
+                "updatedBy": "Follow Up Boss",
+                "personId": 3,
+                "automationId": 1,
+                "status": "Running",
+                "automationName": "Test Automation",
+            },
+            {
+                "id": 6,
+                "created": "2023-08-09T21:36:05Z",
+                "updated": "2023-08-09T21:36:05Z",
+                "createdById": -1,
+                "updatedById": -1,
+                "createdBy": "Follow Up Boss",
+                "updatedBy": "Follow Up Boss",
+                "personId": 3,
+                "automationId": 1,
+                "status": "Paused",
+                "automationName": "Test Automation",
+            },
+        ]
+    )
+    automations_service = AutomationsService(client)
+    automation_people_service = AutomationPeopleService(client)
+
+    automations_page = await automations_service.list_automations(
+        AutomationListRequest(
+            enabled_only=True,
+            limit=5,
+            manual_only=False,
+            offset=10,
+            status="Active",
+        )
+    )
+    assert automations_page.items[0].name == "Test Automation"
+    assert client.calls[0].params == {
+        "enabledOnly": "true",
+        "limit": "5",
+        "manualOnly": "false",
+        "offset": "10",
+        "status": "Active",
+    }
+
+    automation = await automations_service.get_automation(2)
+    assert automation.id == 2
+
+    automation_people_page = await automation_people_service.list_automation_people(
+        AutomationPeopleListRequest(automation_id=1, person_id=2, status="Completed")
+    )
+    assert automation_people_page.items[0].automation_name == "Test Automation"
+    assert client.calls[2].params == {
+        "automationId": "1",
+        "personId": "2",
+        "status": "Completed",
+    }
+
+    automation_person = await automation_people_service.get_automation_person(4)
+    assert automation_person.id == 4
+
+    created = await automation_people_service.create_automation_person(
+        CreateAutomationPersonRequest(automation_id=1, person_id=3)
+    )
+    assert created.id == 5
+    assert client.calls[4].json_body == {"automationId": 1, "personId": 3}
+
+    updated = await automation_people_service.update_automation_person(
+        6,
+        UpdateAutomationPersonRequest(status="Paused"),
+    )
+    assert updated.id == 6
+    assert client.calls[5].json_body == {"status": "Paused"}
 
 
 @pytest.mark.asyncio
@@ -1784,6 +1914,14 @@ async def test_events_users_notes_and_webhooks_services() -> None:
             {"customfields": {}},
             FollowUpBossValidationError,
         ),
+        (lambda client: AutomationsService(client), [], ValueError),
+        (lambda client: AutomationsService(client), {"automations": {}}, ValueError),
+        (lambda client: AutomationPeopleService(client), [], ValueError),
+        (
+            lambda client: AutomationPeopleService(client),
+            {"automationsPeople": {}},
+            ValueError,
+        ),
         (lambda client: AppointmentOutcomesService(client), [], ValueError),
         (
             lambda client: AppointmentOutcomesService(client),
@@ -1845,6 +1983,12 @@ async def test_collection_services_raise_for_non_dict_payload(
     if isinstance(service, CustomFieldsService):
         with pytest.raises(exception_type):
             await service.list_custom_fields()
+    elif isinstance(service, AutomationsService):
+        with pytest.raises(exception_type):
+            await service.list_automations()
+    elif isinstance(service, AutomationPeopleService):
+        with pytest.raises(exception_type):
+            await service.list_automation_people()
     elif isinstance(service, AppointmentOutcomesService):
         with pytest.raises(exception_type):
             await service.list_appointment_outcomes()

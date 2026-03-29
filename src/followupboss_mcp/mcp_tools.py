@@ -22,6 +22,12 @@ from followupboss_mcp.models.appointments import (
     CreateAppointmentRequest,
     UpdateAppointmentRequest,
 )
+from followupboss_mcp.models.automations import (
+    AutomationListRequest,
+    AutomationPeopleListRequest,
+    CreateAutomationPersonRequest,
+    UpdateAutomationPersonRequest,
+)
 from followupboss_mcp.models.calls import (
     CallListRequest,
     CreateCallRequest,
@@ -92,6 +98,10 @@ from followupboss_mcp.services.appointment_metadata import (
     AppointmentTypesService,
 )
 from followupboss_mcp.services.appointments import AppointmentsService
+from followupboss_mcp.services.automations import (
+    AutomationPeopleService,
+    AutomationsService,
+)
 from followupboss_mcp.services.calls import CallsService
 from followupboss_mcp.services.custom_fields import CustomFieldsService
 from followupboss_mcp.services.deals import DealsService
@@ -155,6 +165,18 @@ class GetAppointmentToolInput(RequestModel):
     """Tool input for fetching an appointment by ID."""
 
     appointment_id: int
+
+
+class GetAutomationToolInput(RequestModel):
+    """Tool input for fetching an automation by ID."""
+
+    automation_id: int
+
+
+class GetAutomationPersonToolInput(RequestModel):
+    """Tool input for fetching an automation-person pairing by ID."""
+
+    automation_person_id: int
 
 
 class GetAppointmentOutcomeToolInput(RequestModel):
@@ -275,6 +297,12 @@ class UpdateAppointmentTypeToolInput(UpdateAppointmentTypeRequest):
     """Tool input for updating an appointment type."""
 
     appointment_type_id: int
+
+
+class UpdateAutomationPersonToolInput(UpdateAutomationPersonRequest):
+    """Tool input for updating an automation-person pairing."""
+
+    automation_person_id: int
 
 
 class UpdateGroupToolInput(UpdateGroupRequest):
@@ -416,6 +444,8 @@ class ServiceBundle:
     appointments: AppointmentsService
     appointment_outcomes: AppointmentOutcomesService
     appointment_types: AppointmentTypesService
+    automation_people: AutomationPeopleService
+    automations: AutomationsService
     calls: CallsService
     custom_fields: CustomFieldsService
     deals: DealsService
@@ -447,6 +477,64 @@ class FollowUpBossToolAdapter:
     async def get_identity(self) -> dict[str, Any]:
         """Return identity information."""
         return await self._single_result(self._services.identity.get_identity)
+
+    async def list_automations(self, tool_input: AutomationListRequest) -> dict[str, Any]:
+        """List automations."""
+        return await self._page_result(
+            lambda: self._services.automations.list_automations(tool_input),
+            key="automations",
+        )
+
+    async def get_automation(self, tool_input: GetAutomationToolInput) -> dict[str, Any]:
+        """Get an automation."""
+        return await self._single_result(
+            lambda: self._services.automations.get_automation(tool_input.automation_id)
+        )
+
+    async def list_automation_people(
+        self,
+        tool_input: AutomationPeopleListRequest,
+    ) -> dict[str, Any]:
+        """List automation-person pairings."""
+        return await self._page_result(
+            lambda: self._services.automation_people.list_automation_people(tool_input),
+            key="automationsPeople",
+        )
+
+    async def get_automation_person(
+        self,
+        tool_input: GetAutomationPersonToolInput,
+    ) -> dict[str, Any]:
+        """Get an automation-person pairing."""
+        return await self._single_result(
+            lambda: self._services.automation_people.get_automation_person(
+                tool_input.automation_person_id
+            )
+        )
+
+    async def trigger_automation(
+        self,
+        tool_input: CreateAutomationPersonRequest,
+    ) -> dict[str, Any]:
+        """Trigger an automation for a person."""
+        return await self._single_result(
+            lambda: self._services.automation_people.create_automation_person(tool_input)
+        )
+
+    async def update_automation_person(
+        self,
+        tool_input: UpdateAutomationPersonToolInput,
+    ) -> dict[str, Any]:
+        """Update an automation-person pairing."""
+        request = UpdateAutomationPersonRequest.model_validate(
+            tool_input.model_dump(exclude={"automation_person_id"})
+        )
+        return await self._single_result(
+            lambda: self._services.automation_people.update_automation_person(
+                tool_input.automation_person_id,
+                request,
+            )
+        )
 
     async def list_appointment_outcomes(
         self,

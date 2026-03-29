@@ -64,6 +64,12 @@ All tools are namespaced with the `followupboss_` prefix.
 | `followupboss_create_appointment_type` | Create an appointment type. |
 | `followupboss_update_appointment_type` | Update one appointment type by ID. |
 | `followupboss_delete_appointment_type` | Delete one appointment type by ID, require a reassignment target, and return a structured confirmation. |
+| `followupboss_list_automations` | List automations with documented filters and pagination metadata. |
+| `followupboss_get_automation` | Retrieve one automation by ID. |
+| `followupboss_list_automation_people` | List automation-person pairings with documented filters and pagination metadata. |
+| `followupboss_get_automation_person` | Retrieve one automation-person pairing by ID. |
+| `followupboss_trigger_automation` | Trigger an automation for a specific person. |
+| `followupboss_update_automation_person` | Pause or resume one automation-person pairing by ID. |
 | `followupboss_list_groups` | List groups with documented filters and pagination metadata. |
 | `followupboss_list_round_robin_groups` | List groups including round-robin assignment details. |
 | `followupboss_get_group` | Retrieve one group by ID. |

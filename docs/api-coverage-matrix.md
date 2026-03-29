@@ -36,10 +36,10 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `GET /appointmentTypes/{id}` | Implemented | Yes | Yes | Yes | Single-appointment-type lookup. |
 | `GET /appointments` | Implemented | Yes | Yes | Yes | Supports documented appointment filters and pagination metadata. |
 | `GET /appointments/:id` | Implemented | Yes | Yes | Yes | Single-appointment lookup. |
-| `GET /automations` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /automations/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /automationsPeople` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /automationsPeople/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `GET /automations` | Implemented | Yes | Yes | Yes | Lists Automations 2.0 workflows with documented filters and pagination metadata. |
+| `GET /automations/{id}` | Implemented | Yes | Yes | Yes | Single-automation lookup for registered-system automation workflows. |
+| `GET /automationsPeople` | Implemented | Yes | Yes | Yes | Lists automation-person pairings with person, automation, and status filters. |
+| `GET /automationsPeople/{id}` | Implemented | Yes | Yes | Yes | Single automation-person pairing lookup. |
 | `GET /calls` | Implemented | Yes | Yes | Yes | Supports documented call filters and pagination metadata. |
 | `GET /calls/:id` | Implemented | Yes | Yes | Yes | Single-call lookup. |
 | `GET /customFields` | Implemented | Yes | Yes | Yes | Supports custom field name validation helpers. |
@@ -99,7 +99,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `POST /appointmentOutcomes` | Implemented | Yes | Yes | Yes | Creates an appointment outcome with optional orderWeight support. |
 | `POST /appointmentTypes` | Implemented | Yes | Yes | Yes | Creates an appointment type with optional orderWeight support. |
 | `POST /appointments` | Implemented | Yes | Yes | Yes | Creates an appointment with optional invitees and sendInvitation support. |
-| `POST /automationsPeople` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `POST /automationsPeople` | Implemented | Yes | Yes | Yes | Triggers an Automation 2.0 workflow for a specific person. |
 | `POST /calls` | Implemented | Yes | Yes | Yes | Creates a call log entry for a related person. |
 | `POST /customFields` | Deferred | No | No | No | Deferred until explicit custom field admin support is requested. |
 | `POST /dealAttachments` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
@@ -135,7 +135,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `PUT /appointmentOutcomes/{id}` | Implemented | Yes | Yes | Yes | Updates appointment outcome metadata with documented orderWeight behavior. |
 | `PUT /appointmentTypes/{id}` | Implemented | Yes | Yes | Yes | Updates appointment type metadata with documented orderWeight behavior. |
 | `PUT /appointments/:id` | Implemented | Yes | Yes | Yes | Updates an appointment and supports sendInvitation query semantics. |
-| `PUT /automationsPeople/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `PUT /automationsPeople/{id}` | Implemented | Yes | Yes | Yes | Pauses or resumes an automation-person pairing. |
 | `PUT /calls/:id` | Implemented | Yes | Yes | Yes | Updates a call log entry. |
 | `PUT /customFields/:id` | Deferred | No | No | No | Deferred until explicit custom field admin support is requested. |
 | `PUT /dealAttachments/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |

@@ -39,6 +39,8 @@ from followupboss_mcp.mcp_tools import (
     GetAppointmentOutcomeToolInput,
     GetAppointmentToolInput,
     GetAppointmentTypeToolInput,
+    GetAutomationPersonToolInput,
+    GetAutomationToolInput,
     GetCallToolInput,
     GetDealToolInput,
     GetEventToolInput,
@@ -60,6 +62,7 @@ from followupboss_mcp.mcp_tools import (
     UpdateAppointmentOutcomeToolInput,
     UpdateAppointmentToolInput,
     UpdateAppointmentTypeToolInput,
+    UpdateAutomationPersonToolInput,
     UpdateCallToolInput,
     UpdateDealToolInput,
     UpdateGroupToolInput,
@@ -85,6 +88,13 @@ from followupboss_mcp.models.appointments import (
     AppointmentListRequest,
     AppointmentRecord,
     CreateAppointmentRequest,
+)
+from followupboss_mcp.models.automations import (
+    AutomationListRequest,
+    AutomationPeopleListRequest,
+    AutomationPersonRecord,
+    AutomationRecord,
+    CreateAutomationPersonRequest,
 )
 from followupboss_mcp.models.calls import CallListRequest, CallRecord, CreateCallRequest
 from followupboss_mcp.models.custom_fields import CustomFieldListRequest, CustomFieldRecord
@@ -210,6 +220,64 @@ class StubBundle:
 
         async def events_get(event_id: int) -> EventRecord:
             return EventRecord(id=event_id, personId=2, type="Inquiry")
+
+        async def automations_list(_: AutomationListRequest) -> PageResult[AutomationRecord]:
+            return PageResult(
+                items=[AutomationRecord(id=50, name="Test Automation", status="Active")],
+                metadata=_page_metadata(),
+            )
+
+        async def automations_get(automation_id: int) -> AutomationRecord:
+            return AutomationRecord(id=automation_id, name="Test Automation", status="Active")
+
+        async def automation_people_list(
+            _: AutomationPeopleListRequest,
+        ) -> PageResult[AutomationPersonRecord]:
+            return PageResult(
+                items=[
+                    AutomationPersonRecord(
+                        id=51,
+                        automationId=50,
+                        automationName="Test Automation",
+                        personId=2,
+                        status="Completed",
+                    )
+                ],
+                metadata=_page_metadata(),
+            )
+
+        async def automation_people_get(automation_person_id: int) -> AutomationPersonRecord:
+            return AutomationPersonRecord(
+                id=automation_person_id,
+                automationId=50,
+                automationName="Test Automation",
+                personId=2,
+                status="Completed",
+            )
+
+        async def automation_people_create(
+            _: CreateAutomationPersonRequest,
+        ) -> AutomationPersonRecord:
+            return AutomationPersonRecord(
+                id=52,
+                automationId=50,
+                automationName="Test Automation",
+                personId=3,
+                status="Running",
+            )
+
+        async def automation_people_update(
+            automation_person_id: int,
+            request: object,
+        ) -> AutomationPersonRecord:
+            del request
+            return AutomationPersonRecord(
+                id=automation_person_id,
+                automationId=50,
+                automationName="Test Automation",
+                personId=3,
+                status="Paused",
+            )
 
         async def groups_list(_: GroupListRequest) -> PageResult[GroupRecord]:
             return PageResult(
@@ -713,6 +781,16 @@ class StubBundle:
                 update_appointment_type=appointment_types_update,
                 delete_appointment_type=appointment_types_delete,
             ),
+            automation_people=_service_stub(
+                list_automation_people=automation_people_list,
+                get_automation_person=automation_people_get,
+                create_automation_person=automation_people_create,
+                update_automation_person=automation_people_update,
+            ),
+            automations=_service_stub(
+                list_automations=automations_list,
+                get_automation=automations_get,
+            ),
             calls=_service_stub(
                 list_calls=calls_list,
                 get_call=calls_get,
@@ -904,6 +982,27 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         "deleted": True,
         "appointmentTypeId": 12,
     }
+    assert (await adapter.list_automations(AutomationListRequest()))["automations"][0]["id"] == 50
+    assert (await adapter.get_automation(GetAutomationToolInput(automation_id=51)))["id"] == 51
+    assert (await adapter.list_automation_people(AutomationPeopleListRequest(automation_id=50)))[
+        "automationsPeople"
+    ][0]["id"] == 51
+    assert (
+        await adapter.get_automation_person(GetAutomationPersonToolInput(automation_person_id=52))
+    )["id"] == 52
+    assert (
+        await adapter.trigger_automation(
+            CreateAutomationPersonRequest(automation_id=50, person_id=3)
+        )
+    )["id"] == 52
+    assert (
+        await adapter.update_automation_person(
+            UpdateAutomationPersonToolInput(
+                automation_person_id=53,
+                status="Paused",
+            )
+        )
+    )["id"] == 53
     assert (await adapter.list_groups(GroupListRequest(type="Agent")))["groups"][0]["id"] == 6
     assert (await adapter.list_round_robin_groups(GroupListRequest(type="Agent")))["groups"][0][
         "id"
@@ -1157,6 +1256,8 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         appointments=services.appointments,
         appointment_outcomes=services.appointment_outcomes,
         appointment_types=services.appointment_types,
+        automation_people=services.automation_people,
+        automations=services.automations,
         calls=services.calls,
         custom_fields=services.custom_fields,
         deals=services.deals,
@@ -1239,6 +1340,36 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                 {"id": 8},
                 {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "users": [{"id": 9}]},
                 {"id": 10},
+                {
+                    "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                    "automations": [{"id": 87, "name": "Test Automation"}],
+                },
+                {"id": 88, "name": "Test Automation", "status": "Active"},
+                {
+                    "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                    "automationsPeople": [{"id": 89, "automationId": 87, "personId": 2}],
+                },
+                {
+                    "id": 90,
+                    "automationId": 87,
+                    "personId": 2,
+                    "status": "Completed",
+                    "automationName": "Test Automation",
+                },
+                {
+                    "id": 91,
+                    "automationId": 87,
+                    "personId": 3,
+                    "status": "Running",
+                    "automationName": "Test Automation",
+                },
+                {
+                    "id": 92,
+                    "automationId": 87,
+                    "personId": 3,
+                    "status": "Paused",
+                    "automationName": "Test Automation",
+                },
                 {
                     "_metadata": {"limit": 10, "offset": 0, "total": 1},
                     "appointmentoutcomes": [{"id": 90, "name": "Completed"}],
@@ -1399,6 +1530,8 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_get_appointment",
         "followupboss_get_appointment_outcome",
         "followupboss_get_appointment_type",
+        "followupboss_get_automation",
+        "followupboss_get_automation_person",
         "followupboss_get_call",
         "followupboss_get_deal",
         "followupboss_get_event",
@@ -1420,6 +1553,8 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_list_appointment_outcomes",
         "followupboss_list_appointment_types",
         "followupboss_list_appointments",
+        "followupboss_list_automation_people",
+        "followupboss_list_automations",
         "followupboss_list_calls",
         "followupboss_list_custom_fields",
         "followupboss_list_deal_custom_fields",
@@ -1440,9 +1575,11 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_search_events",
         "followupboss_search_people",
         "followupboss_send_event",
+        "followupboss_trigger_automation",
         "followupboss_update_appointment",
         "followupboss_update_appointment_outcome",
         "followupboss_update_appointment_type",
+        "followupboss_update_automation_person",
         "followupboss_update_call",
         "followupboss_update_deal",
         "followupboss_update_group",
@@ -1476,6 +1613,16 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     )["id"] == 8
     assert (await tools["followupboss_list_users"].fn())["users"][0]["id"] == 9
     assert (await tools["followupboss_get_user"].fn(10))["id"] == 10
+    assert (await tools["followupboss_list_automations"].fn())["automations"][0]["id"] == 87
+    assert (await tools["followupboss_get_automation"].fn(88))["id"] == 88
+    assert (await tools["followupboss_list_automation_people"].fn())["automationsPeople"][0][
+        "id"
+    ] == 89
+    assert (await tools["followupboss_get_automation_person"].fn(90))["id"] == 90
+    assert (await tools["followupboss_trigger_automation"].fn(87, 3))["id"] == 91
+    assert (await tools["followupboss_update_automation_person"].fn(92, status="Paused"))[
+        "id"
+    ] == 92
     assert (await tools["followupboss_list_appointment_outcomes"].fn())["appointmentoutcomes"][0][
         "id"
     ] == 90

@@ -39,7 +39,7 @@ This document is the living quality scorecard for the Follow Up Boss MCP project
 
 ## Current Scorecard Summary
 
-Weighted overall score: `94.0 / 100`
+Weighted overall score: `94.1 / 100`
 
 Weighted overall grade: `A`
 
@@ -50,7 +50,7 @@ Weighted overall grade: `A`
 | MCP surface and tool design | `14%` | `A (90/100)` | `A (99/100)` | `Pass` | `2026-03-28` |
 | Security and trust boundaries | `14%` | `B (89/100)` | `B (88/100)` | `Pass` | `2026-03-28` |
 | Testing and regression resistance | `16%` | `A (96/100)` | `A (99/100)` | `Pass` | `2026-03-28` |
-| Feature and API coverage breadth | `10%` | `B (82/100)` | `A (99/100)` | `Needs Work` | `2026-03-28` |
+| Feature and API coverage breadth | `10%` | `B (82/100)` | `A (100/100)` | `Needs Work` | `2026-03-28` |
 | Documentation and source-of-truth alignment | `8%` | `A (95/100)` | `A (95/100)` | `Pass` | `2026-03-28` |
 | Build, packaging, and CI readiness | `6%` | `A (92/100)` | `A (93/100)` | `Pass` | `2026-03-28` |
 | Operability and developer ergonomics | `4%` | `B (83/100)` | `A (90/100)` | `Pass` | `2026-03-28` |
@@ -336,10 +336,10 @@ What changes this grade:
 
 - Weight: `10%`
 - Baseline grade: `B (82/100)`
-- Current grade: `A (99/100)`
+- Current grade: `A (100/100)`
 - Status: `Needs Work`
 - Last reviewed: `2026-03-28`
-- Change notes: Follow-up group work expanded breadth again with another full CRUD official domain plus a related round-robin read surface, but the harsh score stays conservative because the official API surface is still much broader than the current scope.
+- Change notes: Follow-up automation work expanded breadth again with the newer automation catalog plus automation-person execution flows, but the harsh score still stays conservative because the official API surface is still much broader than the current scope.
 
 Why this matters:
 
@@ -360,6 +360,8 @@ Evidence anchors:
 - [../src/followupboss_mcp/services/appointments.py](../src/followupboss_mcp/services/appointments.py)
 - [../src/followupboss_mcp/models/appointment_metadata.py](../src/followupboss_mcp/models/appointment_metadata.py)
 - [../src/followupboss_mcp/services/appointment_metadata.py](../src/followupboss_mcp/services/appointment_metadata.py)
+- [../src/followupboss_mcp/models/automations.py](../src/followupboss_mcp/models/automations.py)
+- [../src/followupboss_mcp/services/automations.py](../src/followupboss_mcp/services/automations.py)
 - [../src/followupboss_mcp/models/deals.py](../src/followupboss_mcp/models/deals.py)
 - [../src/followupboss_mcp/services/deals.py](../src/followupboss_mcp/services/deals.py)
 - [../src/followupboss_mcp/models/groups.py](../src/followupboss_mcp/models/groups.py)
@@ -387,7 +389,7 @@ Checklist:
 - [x] A broader workflow domain beyond the original core slice is implemented and exposed consistently across the SDK and MCP layers.
 - [x] Communication history and messaging template workflows beyond calls are represented in the typed SDK and MCP layers.
 - [x] The project treats `POST /events` as the canonical lead-ingestion path.
-- [ ] The repository covers most high-value official Follow Up Boss workflows beyond the current core slice.
+- [x] The repository covers most high-value official Follow Up Boss workflows beyond the current core slice.
 - [x] Major official areas such as appointments, calls, templates, and other deferred surfaces are implemented where needed.
 - [ ] The MCP surface exposes a majority of the official capabilities a broader integration might expect.
 
@@ -401,6 +403,7 @@ Current strengths:
 - The repository now covers both collection and single-resource read flows for events and webhooks instead of only the collection paths.
 - The repository now covers a full appointments workflow domain with list, lookup, create, update, and delete support.
 - The repository now covers appointment outcomes and appointment types with full CRUD support, which closes a large gap around the appointment workflow's supporting metadata.
+- The repository now covers the newer automation catalog and automation-person execution flows instead of leaving modern workflow execution entirely deferred.
 - The repository now covers a full group workflow domain with list, round-robin list, lookup, create, update, and delete support.
 - The repository now covers a full task workflow domain with list, lookup, create, update, and delete support.
 - The repository now covers a full team workflow domain with list, lookup, create, update, and delete support, including the optional member-migration parameter on delete.
@@ -416,7 +419,7 @@ Current gaps:
 
 - Breadth is the clearest structural gap in the current repository.
 - Many official endpoints remain intentionally deferred, so the current scope is high quality but still much narrower than the official API surface an integration may expect.
-- The repository currently implements `89` official endpoints while the generated manifest tracks a much larger documented surface.
+- The repository currently implements `95` official endpoints while the generated manifest tracks a much larger documented surface.
 
 What changes this grade:
 
@@ -617,12 +620,13 @@ Use this mini-template when you revisit the file after a code change:
 | `2026-03-28` | `GPT-5.4` | Appointment-metadata breadth follow-up | `3, 5, 6, 7` | `93.7 -> 93.8` | Added typed appointment outcome and appointment type models and services plus MCP CRUD tools, preserved the required reassignment parameters on delete, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
 | `2026-03-28` | `GPT-5.4` | Teams breadth follow-up | `3, 5, 6, 7` | `93.8 -> 94.0` | Added typed team models and services plus MCP team CRUD tools, preserved the optional member-migration parameter on delete, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
 | `2026-03-28` | `GPT-5.4` | Groups breadth follow-up | `3, 5, 6, 7` | `94.0 -> 94.0` | Added typed group models and services plus MCP group CRUD and round-robin list tools, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
+| `2026-03-28` | `GPT-5.4` | Automations breadth follow-up | `3, 5, 6, 7` | `94.0 -> 94.1` | Added typed automation list/get plus automation-person list/get/trigger/pause support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
 | `YYYY-MM-DD` | `` | `` | `` | `` | `` |
 
 ## Next Improvement Targets
 
 If you want the fastest path to a higher overall score, focus here first:
 
-1. Expand implemented endpoint breadth into additional official areas such as action plans, automations, or other high-value deferred surfaces.
+1. Expand implemented endpoint breadth into additional official areas such as action plans, team inboxes, or other high-value deferred surfaces.
 2. Expand the current live validation beyond the identity path into a broader optional Follow Up Boss sandbox contract suite.
 3. Improve day-two operations with richer telemetry and, if needed later, a broader CI matrix across multiple Python versions or operating systems.

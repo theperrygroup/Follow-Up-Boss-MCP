@@ -23,6 +23,8 @@ from followupboss_mcp.mcp_tools import (
     GetAppointmentOutcomeToolInput,
     GetAppointmentToolInput,
     GetAppointmentTypeToolInput,
+    GetAutomationPersonToolInput,
+    GetAutomationToolInput,
     GetCallToolInput,
     GetDealToolInput,
     GetEventToolInput,
@@ -43,6 +45,7 @@ from followupboss_mcp.mcp_tools import (
     UpdateAppointmentOutcomeToolInput,
     UpdateAppointmentToolInput,
     UpdateAppointmentTypeToolInput,
+    UpdateAutomationPersonToolInput,
     UpdateCallToolInput,
     UpdateDealToolInput,
     UpdateGroupToolInput,
@@ -63,6 +66,13 @@ from followupboss_mcp.models.appointment_metadata import (
     CreateAppointmentTypeRequest,
 )
 from followupboss_mcp.models.appointments import AppointmentListRequest, CreateAppointmentRequest
+from followupboss_mcp.models.automations import (
+    AutomationListRequest,
+    AutomationPauseStatus,
+    AutomationPeopleListRequest,
+    AutomationRunStatus,
+    CreateAutomationPersonRequest,
+)
 from followupboss_mcp.models.calls import CallListRequest, CreateCallRequest
 from followupboss_mcp.models.custom_fields import CustomFieldListRequest
 from followupboss_mcp.models.deals import (
@@ -111,6 +121,7 @@ def register_server_surface(
     _register_identity_tools(mcp, adapter)
     _register_people_tools(mcp, adapter)
     _register_event_tools(mcp, adapter)
+    _register_automation_tools(mcp, adapter)
     _register_group_tools(mcp, adapter)
     _register_user_tools(mcp, adapter)
     _register_custom_field_tools(mcp, adapter)
@@ -414,6 +425,104 @@ def _register_event_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> Non
             }
         )
         return await adapter.send_event(tool_input)
+
+
+def _register_automation_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+    """Register automation-related MCP tools.
+
+    Args:
+        mcp: The FastMCP server instance.
+        adapter: The typed Follow Up Boss tool adapter.
+    """
+
+    @mcp.tool(
+        name="followupboss_list_automations",
+        description=(
+            "List Follow Up Boss automations with documented filters and pagination metadata."
+        ),
+    )
+    async def followupboss_list_automations(
+        *,
+        enabled_only: bool | None = None,
+        limit: int | None = None,
+        manual_only: bool | None = None,
+        offset: int | None = None,
+        status: str | None = None,
+    ) -> dict[str, object]:
+        return await adapter.list_automations(
+            AutomationListRequest(
+                enabled_only=enabled_only,
+                limit=limit,
+                manual_only=manual_only,
+                offset=offset,
+                status=status,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_get_automation",
+        description="Fetch a single Follow Up Boss automation by ID.",
+    )
+    async def followupboss_get_automation(automation_id: int) -> dict[str, object]:
+        return await adapter.get_automation(GetAutomationToolInput(automation_id=automation_id))
+
+    @mcp.tool(
+        name="followupboss_list_automation_people",
+        description="List Follow Up Boss automation-person pairings with documented filters.",
+    )
+    async def followupboss_list_automation_people(
+        *,
+        automation_id: int | None = None,
+        person_id: int | None = None,
+        status: AutomationRunStatus | None = None,
+    ) -> dict[str, object]:
+        return await adapter.list_automation_people(
+            AutomationPeopleListRequest(
+                automation_id=automation_id,
+                person_id=person_id,
+                status=status,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_get_automation_person",
+        description="Fetch a single Follow Up Boss automation-person pairing by ID.",
+    )
+    async def followupboss_get_automation_person(automation_person_id: int) -> dict[str, object]:
+        return await adapter.get_automation_person(
+            GetAutomationPersonToolInput(automation_person_id=automation_person_id)
+        )
+
+    @mcp.tool(
+        name="followupboss_trigger_automation",
+        description="Trigger a Follow Up Boss automation for a specific person.",
+    )
+    async def followupboss_trigger_automation(
+        automation_id: int,
+        person_id: int,
+    ) -> dict[str, object]:
+        return await adapter.trigger_automation(
+            CreateAutomationPersonRequest(
+                automation_id=automation_id,
+                person_id=person_id,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_update_automation_person",
+        description="Pause or resume a Follow Up Boss automation-person pairing by ID.",
+    )
+    async def followupboss_update_automation_person(
+        automation_person_id: int,
+        *,
+        status: AutomationPauseStatus,
+    ) -> dict[str, object]:
+        return await adapter.update_automation_person(
+            UpdateAutomationPersonToolInput(
+                automation_person_id=automation_person_id,
+                status=status,
+            )
+        )
 
 
 def _register_group_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:

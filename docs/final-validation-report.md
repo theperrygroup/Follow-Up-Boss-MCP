@@ -15,6 +15,7 @@ The repository now contains:
 - typed smart-list collection and lookup coverage across the SDK, MCP surface, tests, and docs
 - typed stage collection and CRUD coverage with explicit reassignment semantics on delete across the SDK, MCP surface, tests, and docs
 - typed appointment outcome and appointment type collection and CRUD coverage across the SDK, MCP surface, tests, and docs
+- typed automation list/get and automation-person pairing list/get/trigger/pause coverage across the SDK, MCP surface, tests, and docs
 - typed group collection, round-robin reads, and CRUD coverage across the SDK, MCP surface, tests, and docs
 - typed team collection and CRUD coverage with optional member-migration semantics on delete across the SDK, MCP surface, tests, and docs
 - typed text message read support and text message template CRUD coverage across the SDK, MCP surface, tests, and docs
@@ -68,6 +69,12 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `POST /appointmentTypes`
 - `PUT /appointmentTypes/{id}`
 - `DELETE /appointmentTypes/{id}`
+- `GET /automations`
+- `GET /automations/{id}`
+- `GET /automationsPeople`
+- `GET /automationsPeople/{id}`
+- `POST /automationsPeople`
+- `PUT /automationsPeople/{id}`
 - `GET /groups`
 - `GET /groups/:id`
 - `POST /groups`
@@ -147,7 +154,7 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `POST /webhooks`
 - `DELETE /webhooks/:id`
 
-Total implemented official endpoints in this repository scope: `89`
+Total implemented official endpoints in this repository scope: `95`
 
 All additional discovered official endpoints are marked explicitly as deferred in `docs/api-coverage-matrix.md`.
 
@@ -155,7 +162,7 @@ All additional discovered official endpoints are marked explicitly as deferred i
 
 Registered MCP surface:
 
-- tools: `89`
+- tools: `95`
 - resources: `1`
 - prompts: `1`
 
@@ -217,6 +224,12 @@ Registered tools:
 - `followupboss_create_appointment_type`
 - `followupboss_update_appointment_type`
 - `followupboss_delete_appointment_type`
+- `followupboss_list_automations`
+- `followupboss_get_automation`
+- `followupboss_list_automation_people`
+- `followupboss_get_automation_person`
+- `followupboss_trigger_automation`
+- `followupboss_update_automation_person`
 - `followupboss_list_groups`
 - `followupboss_list_round_robin_groups`
 - `followupboss_get_group`
@@ -278,19 +291,19 @@ make live-identity-check
 ## Final Mypy Status
 
 - `uv run mypy src tests`: passed
-- result: `Success: no issues found in 64 source files`
+- result: `Success: no issues found in 66 source files`
 
 ## Final Test Status
 
 - `uv run pytest`: passed
-- result: `89 passed, 1 skipped`
+- result: `94 passed, 1 skipped`
 
 ## Final Coverage Numbers
 
 - `uv run coverage run --branch -m pytest`: passed
 - `uv run coverage report --fail-under=100`: passed
-- total statements: `2791`
-- total branches: `240`
+- total statements: `2919`
+- total branches: `248`
 - line coverage: `100.00%`
 - branch coverage: `100.00%`
 
