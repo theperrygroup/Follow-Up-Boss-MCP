@@ -1,0 +1,119 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "followupboss-mcp"
+version = "0.1.0"
+description = "Production-grade Follow Up Boss MCP server and typed Python SDK."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "OpenAI Codex" }]
+dependencies = [
+  "beautifulsoup4>=4.12.3,<5",
+  "httpx>=0.27.0,<1",
+  "mcp[cli]>=1.17.0,<2",
+  "pydantic>=2.12.0,<3",
+  "pydantic-settings>=2.8.0,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "coverage[toml]>=7.8.0,<8",
+  "mypy>=1.16.0,<2",
+  "pytest>=8.3.0,<9",
+  "pytest-asyncio>=1.1.0,<2",
+  "respx>=0.22.0,<0.23",
+  "ruff>=0.11.0,<0.13",
+]
+
+[project.scripts]
+followupboss-mcp = "followupboss_mcp.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/followupboss_mcp"]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[dependency-groups]
+dev = [
+  "coverage[toml]>=7.8.0,<8",
+  "mypy>=1.16.0,<2",
+  "pytest>=8.3.0,<9",
+  "pytest-asyncio>=1.1.0,<2",
+  "respx>=0.22.0,<0.23",
+  "ruff>=0.11.0,<0.13",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.ruff.lint]
+select = [
+  "B",
+  "D",
+  "E",
+  "F",
+  "I",
+  "N",
+  "UP",
+]
+ignore = [
+  "D100",
+  "D104",
+  "UP046",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["D"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_any_generics = true
+no_implicit_optional = true
+warn_return_any = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+strict_equality = true
+packages = ["followupboss_mcp"]
+explicit_package_bases = true
+mypy_path = ["src"]
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+allow_untyped_defs = false
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = "--strict-markers --strict-config"
+markers = [
+  "live: optional live Follow Up Boss sandbox validation",
+]
+filterwarnings = [
+  "error",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["src/followupboss_mcp"]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+skip_covered = false
+precision = 2

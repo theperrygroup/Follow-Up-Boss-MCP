@@ -1,0 +1,14 @@
+.coverage
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.venv/
+__pycache__/
+dist/
+htmlcov/
+uv.lock
+*.pyc
+*.pyo
+*.pyd
+*.swp
+.DS_Store

@@ -1,0 +1,134 @@
+# MCP Usage
+
+## Server Transports
+
+The repository supports the two transports exposed by the CLI:
+
+- `stdio`
+- `streamable-http`
+
+Run them with:
+
+```bash
+uv run python -m followupboss_mcp.cli stdio
+uv run python -m followupboss_mcp.cli streamable-http --host 127.0.0.1 --port 8000 --path /mcp
+```
+
+## Tool Namespace
+
+All tools are namespaced with the `followupboss_` prefix.
+
+| Tool | Purpose |
+| --- | --- |
+| `followupboss_get_identity` | Return identity information for the authenticated Follow Up Boss account and user. |
+| `followupboss_search_people` | Search people with documented filters and pagination metadata. |
+| `followupboss_get_person` | Retrieve one person by ID. |
+| `followupboss_create_person` | Create a person directly. |
+| `followupboss_update_person` | Update a person directly. |
+| `followupboss_search_events` | Search events with filters and pagination metadata. |
+| `followupboss_get_event` | Retrieve one event by ID. |
+| `followupboss_send_event` | Send a canonical `POST /events` lead or lead-activity payload. |
+| `followupboss_list_users` | List users with documented filters and pagination metadata. |
+| `followupboss_get_user` | Retrieve one user by ID. |
+| `followupboss_list_custom_fields` | List available Follow Up Boss custom fields. |
+| `followupboss_list_deals` | List deals with documented filters and pagination metadata. |
+| `followupboss_get_deal` | Retrieve one deal by ID. |
+| `followupboss_create_deal` | Create a deal. |
+| `followupboss_update_deal` | Update one deal by ID. |
+| `followupboss_delete_deal` | Delete one deal by ID and return a structured confirmation. |
+| `followupboss_list_deal_custom_fields` | List deal custom fields for valid write-time field names. |
+| `followupboss_list_appointments` | List appointments with documented filters and pagination metadata. |
+| `followupboss_get_appointment` | Retrieve one appointment by ID. |
+| `followupboss_create_appointment` | Create an appointment. |
+| `followupboss_update_appointment` | Update one appointment by ID. |
+| `followupboss_delete_appointment` | Delete one appointment by ID and return a structured confirmation. |
+| `followupboss_list_calls` | List calls with documented filters and pagination metadata. |
+| `followupboss_get_call` | Retrieve one call by ID. |
+| `followupboss_create_call` | Create a call log entry. |
+| `followupboss_update_call` | Update one call by ID. |
+| `followupboss_list_tasks` | List tasks with documented filters and pagination metadata. |
+| `followupboss_get_task` | Retrieve one task by ID. |
+| `followupboss_create_task` | Create a task for a person. |
+| `followupboss_update_task` | Update one task by ID. |
+| `followupboss_delete_task` | Delete one task by ID and return a structured confirmation. |
+| `followupboss_list_templates` | List email templates with pagination metadata. |
+| `followupboss_get_template` | Retrieve one email template by ID. |
+| `followupboss_create_template` | Create an email template. |
+| `followupboss_update_template` | Update one email template by ID. |
+| `followupboss_delete_template` | Delete one email template by ID and return a structured confirmation. |
+| `followupboss_add_note` | Add a note to a person, optionally waiting for person visibility first. |
+| `followupboss_get_note` | Retrieve one note by ID. |
+| `followupboss_update_note` | Update one note by ID. |
+| `followupboss_delete_note` | Delete one note by ID and return a structured confirmation. |
+| `followupboss_list_webhooks` | List configured webhooks. |
+| `followupboss_get_webhook` | Retrieve one webhook by ID. |
+| `followupboss_create_webhook` | Create a webhook subscription. |
+| `followupboss_delete_webhook` | Delete a webhook by ID and return a structured confirmation. |
+
+## MCP Resource
+
+- `followupboss://api-coverage-matrix`
+
+This resource returns the repository's current API coverage matrix so MCP clients can inspect what the server implements versus what was discovered in the official Follow Up Boss docs.
+
+## MCP Prompt
+
+- `followupboss_compose_lead_event`
+
+This prompt helps a caller compose a canonical `POST /events` payload using the lead-ingestion path documented by Follow Up Boss.
+
+## Response Shape
+
+Collection tools return:
+
+- a top-level collection key such as `people`, `events`, `users`, `customfields`, or `webhooks`
+- a `_metadata` object containing normalized pagination metadata
+
+Single-object tools return a JSON-serializable representation of the typed response model.
+
+Delete tools return a confirmation payload shaped like:
+
+```json
+{
+  "deleted": true,
+  "noteId": 123
+}
+```
+
+or:
+
+```json
+{
+  "deleted": true,
+  "webhookId": 456
+}
+```
+
+## Error Behavior
+
+MCP tools do not perform raw HTTP calls. They call the typed service layer, which means:
+
+- auth failures, validation errors, not-found errors, rate-limit errors, and retryable server errors are mapped in one place
+- MCP callers receive predictable safe messages
+- `Retry-After` information is surfaced in the error message for rate limits when Follow Up Boss includes it
+
+## Inspector Workflow
+
+The official MCP Inspector is the easiest way to explore the tool surface during development.
+
+```bash
+npx @modelcontextprotocol/inspector uv run followupboss-mcp stdio
+```
+
+For streamable HTTP:
+
+1. start the server with the `streamable-http` transport
+2. point Inspector at the configured HTTP endpoint
+3. exercise tools, resources, and prompts through the Inspector UI
+
+## Debugging Notes
+
+- In stdio mode, do not emit logs to stdout.
+- The server uses Python logging rather than mixing diagnostics into the MCP transport channel.
+- Debugging is easiest with `FOLLOWUPBOSS_LOG_LEVEL=DEBUG` plus MCP Inspector or another compliant client.
+- When testing webhook flows, verify the signature using the exact raw request body bytes before parsing JSON.

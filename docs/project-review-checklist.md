@@ -1,0 +1,591 @@
+# Project Review Checklist
+
+This document is the living quality scorecard for the Follow Up Boss MCP project. It is meant to be updated after code changes so the repository has one place where quality grades, evidence, and open gaps stay visible over time.
+
+## How To Use This File
+
+1. Keep the `Baseline grade` fixed until the project meaningfully changes direction.
+2. Update the `Current grade`, `Last reviewed`, and `Change notes` whenever code changes affect a category.
+3. Re-check or uncheck the category checklist items based on the current codebase.
+4. Add one line to the review history whenever grades move.
+5. Recalculate the weighted overall score after changing any category score.
+
+## Grade Rubric
+
+| Grade | Score Range | Meaning |
+| --- | --- | --- |
+| `A` | `90-100` | Strong implementation with only minor or non-blocking gaps. |
+| `B` | `80-89` | Solid baseline, but there are important weaknesses worth improving. |
+| `C` | `70-79` | Usable, but repeated review findings or missing safeguards reduce confidence. |
+| `D` | `60-69` | Significant quality concerns that should be addressed before expanding scope. |
+| `F` | `<60` | High-risk or incomplete area that is not ready to rely on. |
+
+## Status Markers
+
+| Status | Meaning |
+| --- | --- |
+| `Pass` | Healthy today; not a release-blocking concern. |
+| `Needs Work` | Important gaps exist, even if the current implementation still functions. |
+| `Blocked` | The category cannot currently be considered healthy. |
+| `Deferred` | Intentionally out of scope for now; re-evaluate when scope changes. |
+
+## Review Workflow
+
+- `Baseline grade`: the starting score for the current project era.
+- `Current grade`: the score after the latest reviewed code changes.
+- `Last reviewed`: the date the grade was last checked.
+- `Change notes`: a short explanation of why the current grade changed or stayed the same.
+- `Weight`: how much the category should affect the overall project score.
+
+## Current Scorecard Summary
+
+Weighted overall score: `92.1 / 100`
+
+Weighted overall grade: `A`
+
+| Category | Weight | Baseline grade | Current grade | Status | Last reviewed |
+| --- | --- | --- | --- | --- | --- |
+| Architecture and layering | `10%` | `A (95/100)` | `B (89/100)` | `Pass` | `2026-03-28` |
+| Follow Up Boss transport correctness and resilience | `18%` | `A (92/100)` | `A (91/100)` | `Pass` | `2026-03-28` |
+| MCP surface and tool design | `14%` | `A (90/100)` | `A (94/100)` | `Pass` | `2026-03-28` |
+| Security and trust boundaries | `14%` | `B (89/100)` | `B (88/100)` | `Pass` | `2026-03-28` |
+| Testing and regression resistance | `16%` | `A (96/100)` | `A (97/100)` | `Pass` | `2026-03-28` |
+| Feature and API coverage breadth | `10%` | `B (82/100)` | `B (91/100)` | `Needs Work` | `2026-03-28` |
+| Documentation and source-of-truth alignment | `8%` | `A (95/100)` | `A (95/100)` | `Pass` | `2026-03-28` |
+| Build, packaging, and CI readiness | `6%` | `A (92/100)` | `A (93/100)` | `Pass` | `2026-03-28` |
+| Operability and developer ergonomics | `4%` | `B (83/100)` | `A (90/100)` | `Pass` | `2026-03-28` |
+
+## Priority Watch List
+
+These are the first categories to revisit after meaningful code changes:
+
+1. Feature and API coverage breadth
+2. Security and trust boundaries
+3. Architecture and layering
+
+## 1. Architecture And Layering
+
+- Weight: `10%`
+- Baseline grade: `A (95/100)`
+- Current grade: `B (89/100)`
+- Status: `Pass`
+- Last reviewed: `2026-03-28`
+- Change notes: Follow-up modularization improved the harsher re-review score because `mcp_server.py` now focuses on construction while grouped registration helpers carry the MCP surface by domain.
+
+Why this matters:
+
+The project is intentionally layered so transport logic, domain services, webhook utilities, and the MCP surface can evolve without duplicating behavior or mixing concerns.
+
+Evidence anchors:
+
+- [../README.md](../README.md)
+- [architecture.md](architecture.md)
+- [../src/followupboss_mcp/config.py](../src/followupboss_mcp/config.py)
+- [../src/followupboss_mcp/http_client.py](../src/followupboss_mcp/http_client.py)
+- [../src/followupboss_mcp/mcp_registration.py](../src/followupboss_mcp/mcp_registration.py)
+- [../src/followupboss_mcp/mcp_tools.py](../src/followupboss_mcp/mcp_tools.py)
+- [../src/followupboss_mcp/mcp_server.py](../src/followupboss_mcp/mcp_server.py)
+- [../src/followupboss_mcp/cli.py](../src/followupboss_mcp/cli.py)
+
+Checklist:
+
+- [x] Configuration, auth, logging, retry, rate limiting, pagination, services, MCP tooling, and CLI code are split into separate modules.
+- [x] MCP handlers delegate to typed services instead of performing raw HTTP work directly.
+- [x] Webhook verification is reusable outside the MCP layer.
+- [x] The documented architecture matches the actual package layout.
+- [x] Domain services own business semantics such as custom field validation and person-availability waiting.
+- [x] The growing MCP tool surface is decomposed enough that `mcp_server.py` will stay easy to review as new tools are added.
+
+Current strengths:
+
+- The repository follows its documented boundaries closely.
+- The adapter layer keeps MCP response shaping separate from transport and domain logic.
+- Shared behaviors such as retries and webhook verification live in reusable modules instead of handler-local code.
+- FastMCP registration is now grouped into smaller helper functions in `mcp_registration.py`, which keeps server construction focused and easier to review.
+
+Current gaps:
+
+- The MCP layer still duplicates several large parameter lists and request-model assembly blocks inside registration helpers instead of pushing more of that shape into reusable builders.
+
+What changes this grade:
+
+- Raise this grade if server registration is further modularized or consistency checks are added for tool registration.
+- Lower this grade if raw Follow Up Boss API logic starts appearing in MCP handlers or if docs and code drift apart.
+
+## 2. Follow Up Boss Transport Correctness And Resilience
+
+- Weight: `18%`
+- Baseline grade: `A (92/100)`
+- Current grade: `A (91/100)`
+- Status: `Pass`
+- Last reviewed: `2026-03-28`
+- Change notes: Live validation and request-completion logging improved the harsher re-review score because the repository now includes an opt-in real Follow Up Boss identity check and richer per-request response visibility without weakening the offline defaults.
+
+Why this matters:
+
+This repository is only as reliable as its interaction with the Follow Up Boss API. Centralized auth, JSON handling, retry behavior, pagination, and error mapping are core project risks.
+
+Evidence anchors:
+
+- [../src/followupboss_mcp/http_client.py](../src/followupboss_mcp/http_client.py)
+- [../src/followupboss_mcp/retry.py](../src/followupboss_mcp/retry.py)
+- [../src/followupboss_mcp/rate_limits.py](../src/followupboss_mcp/rate_limits.py)
+- [../src/followupboss_mcp/services/people.py](../src/followupboss_mcp/services/people.py)
+- [../src/followupboss_mcp/services/notes.py](../src/followupboss_mcp/services/notes.py)
+- [../src/followupboss_mcp/services/custom_fields.py](../src/followupboss_mcp/services/custom_fields.py)
+- [../tests/unit/test_http_client.py](../tests/unit/test_http_client.py)
+- [../tests/unit/test_retry_rate_pagination_webhooks.py](../tests/unit/test_retry_rate_pagination_webhooks.py)
+
+Checklist:
+
+- [x] One central async HTTP client owns headers, auth, timeout, retries, and error mapping.
+- [x] `429` handling respects `Retry-After`.
+- [x] Retryable `5xx` and transport failures follow a shared retry policy.
+- [x] JSON response parsing failures become safe domain errors.
+- [x] Pagination supports both `next` tokens and offset fallback behavior.
+- [x] Custom field names are validated before outgoing writes.
+- [x] Eventual consistency around new people is handled in service code rather than repeated in callers.
+- [x] Optional live contract tests exist to verify behavior against a real Follow Up Boss sandbox.
+- [x] Security-sensitive caller overrides are prevented for auth and system headers at the client boundary.
+
+Current strengths:
+
+- [../src/followupboss_mcp/http_client.py](../src/followupboss_mcp/http_client.py) cleanly centralizes transport behavior.
+- Retry, rate-limit parsing, and pagination logic all have focused tests.
+- Service code adds project-specific safeguards such as custom field validation and note creation waits.
+- The transport layer now rejects caller-supplied overrides for auth, system, and JSON content headers.
+- The repository now includes an opt-in live identity check and request-completion logs with status plus elapsed time.
+
+Current gaps:
+
+- The default test suite is intentionally offline, which is great for determinism but still leaves a real gap around upstream Follow Up Boss contract drift.
+- The current live validation slice is intentionally narrow and identity-only; broader upstream contract coverage is still deferred.
+
+What changes this grade:
+
+- Raise this grade if optional sandbox contract tests are added and security-sensitive header overrides are locked down.
+- Lower this grade if new service methods bypass the central client or if retry and pagination logic starts diverging across services.
+
+## 3. MCP Surface And Tool Design
+
+- Weight: `14%`
+- Baseline grade: `A (90/100)`
+- Current grade: `A (94/100)`
+- Status: `Pass`
+- Last reviewed: `2026-03-28`
+- Change notes: Follow-up deals-domain work improved the harsher re-review score because another sizeable official workflow domain was added without reintroducing the old MCP registration and interoperability gaps.
+
+Why this matters:
+
+The project is an MCP server, not just a Python SDK. Tool names, JSON-safe response shaping, resource behavior, prompt behavior, and transport startup quality are first-class concerns.
+
+Evidence anchors:
+
+- [../src/followupboss_mcp/mcp_tools.py](../src/followupboss_mcp/mcp_tools.py)
+- [../src/followupboss_mcp/mcp_registration.py](../src/followupboss_mcp/mcp_registration.py)
+- [../src/followupboss_mcp/mcp_server.py](../src/followupboss_mcp/mcp_server.py)
+- [../src/followupboss_mcp/cli.py](../src/followupboss_mcp/cli.py)
+- [mcp-usage.md](mcp-usage.md)
+- [../tests/mcp/test_mcp_tools_server_cli.py](../tests/mcp/test_mcp_tools_server_cli.py)
+
+Checklist:
+
+- [x] Tool names are consistently namespaced with the `followupboss_` prefix.
+- [x] Collection responses preserve normalized `_metadata`.
+- [x] Delete operations return structured confirmations instead of ambiguous empty payloads.
+- [x] FastMCP registers tools, a resource, and a prompt.
+- [x] The CLI supports both `stdio` and `streamable-http`.
+- [x] Tests verify the registered tool list, resource content, prompt rendering, and CLI transport selection.
+- [x] An end-to-end automated MCP interoperability check exists against a real MCP client.
+- [x] The server registration file is split enough to remain low-friction as the MCP surface grows.
+
+Current strengths:
+
+- The tool adapter is thin and intentionally JSON-safe.
+- `mcp-usage.md` and the tests align with the actual registered tool surface.
+- The transport options are exposed clearly through the CLI.
+- The suite now verifies tools, resources, and prompts through an official stdio MCP client session instead of relying only on FastMCP internals.
+- The grouped registration helpers absorbed another full domain cleanly, which is a much better signal than the old single-function registration bottleneck.
+- The official client-session tests now exercise both `stdio` and `streamable-http` transports with representative tool, resource, and prompt coverage.
+- The broader MCP surface now includes CRUD-style workflows across deals, appointments, tasks, templates, and supporting lookup domains without losing consistency.
+
+Current gaps:
+
+- [../tests/mcp/test_mcp_tools_server_cli.py](../tests/mcp/test_mcp_tools_server_cli.py) still reaches into private FastMCP managers for exact registration assertions, which leaves some framework-internal coupling in place.
+
+What changes this grade:
+
+- Raise this grade if the MCP surface gains stronger end-to-end automation or modular registration.
+- Lower this grade if docs and tests stop matching the registered tool surface or if non-JSON-safe responses start leaking through the adapter.
+
+## 4. Security And Trust Boundaries
+
+- Weight: `14%`
+- Baseline grade: `B (89/100)`
+- Current grade: `B (88/100)`
+- Status: `Pass`
+- Last reviewed: `2026-03-28`
+- Change notes: Follow-up documentation improved the harsher re-review score by adding a repository-local credential and webhook incident-response playbook, though the dependency audit still carries a temporary upstream ignore.
+
+Why this matters:
+
+This project handles API credentials, system keys, webhooks, and stdio transport safety. Small regressions here can leak secrets or break downstream integrations.
+
+Evidence anchors:
+
+- [security.md](security.md)
+- [../src/followupboss_mcp/config.py](../src/followupboss_mcp/config.py)
+- [../src/followupboss_mcp/logging.py](../src/followupboss_mcp/logging.py)
+- [../src/followupboss_mcp/webhooks.py](../src/followupboss_mcp/webhooks.py)
+- [security-incident-playbook.md](security-incident-playbook.md)
+- [../tests/unit/test_http_client.py](../tests/unit/test_http_client.py)
+- [../tests/unit/test_retry_rate_pagination_webhooks.py](../tests/unit/test_retry_rate_pagination_webhooks.py)
+- [../.github/workflows/ci.yml](../.github/workflows/ci.yml)
+
+Checklist:
+
+- [x] Credentials and system keys are modeled with `SecretStr`.
+- [x] Operational logging uses stderr rather than contaminating stdio transport output.
+- [x] Sensitive headers are redacted from logs.
+- [x] Webhook verification uses the exact raw body bytes and `hmac.compare_digest`.
+- [x] Safe error handling avoids credential leakage in common failure paths.
+- [x] Security expectations are documented in `docs/security.md`.
+- [x] CI includes dependency-audit or secret-scanning steps.
+- [x] Security-sensitive headers are explicitly protected from downstream override.
+- [x] There is a documented rotation or incident-response playbook for compromised credentials.
+
+Current strengths:
+
+- The core implementation is security-aware by default.
+- Webhook verification is reusable and matches the documented Follow Up Boss expectations.
+- Logging choices correctly protect stdio MCP transport behavior.
+- CI now includes dependency audit and secret-scanning coverage, and the client boundary rejects protected header overrides.
+- The repository now includes a local incident-response playbook for credential rotation, webhook-key compromise, and remediation validation.
+
+Current gaps:
+
+- The dependency audit currently carries a temporary ignore for `CVE-2026-4539` because the upstream `pygments` advisory does not yet publish a fixed release.
+
+What changes this grade:
+
+- Raise this grade if security automation is added in CI and security-sensitive header precedence is hardened.
+- Lower this grade if logging or error handling starts exposing secrets or if webhook verification moves away from exact raw-body validation.
+
+## 5. Testing And Regression Resistance
+
+- Weight: `16%`
+- Baseline grade: `A (96/100)`
+- Current grade: `A (97/100)`
+- Status: `Pass`
+- Last reviewed: `2026-03-28`
+- Change notes: Live-validation follow-up improved this category beyond the previous plateau by adding an explicit opt-in upstream check while preserving the strict offline guarantees.
+
+Why this matters:
+
+Most of the risk in this repository lives in conditional paths: auth mode selection, retries, pagination, webhook verification, CLI transport behavior, and safe MCP error shaping.
+
+Evidence anchors:
+
+- [../pyproject.toml](../pyproject.toml)
+- [testing.md](testing.md)
+- [../tests/unit/test_http_client.py](../tests/unit/test_http_client.py)
+- [../tests/unit/test_retry_rate_pagination_webhooks.py](../tests/unit/test_retry_rate_pagination_webhooks.py)
+- [../tests/mcp/test_mcp_tools_server_cli.py](../tests/mcp/test_mcp_tools_server_cli.py)
+- [../tests/integration/test_runtime_integration.py](../tests/integration/test_runtime_integration.py)
+- [../tests/contracts/test_edge_contracts.py](../tests/contracts/test_edge_contracts.py)
+- [../.github/workflows/ci.yml](../.github/workflows/ci.yml)
+
+Checklist:
+
+- [x] `pytest`, `ruff`, `mypy`, and coverage are all configured in one place.
+- [x] Branch coverage is enforced at `100.00%`.
+- [x] The suite covers transport, retry, rate limiting, pagination, webhook helpers, MCP adapter behavior, FastMCP registration, and CLI behavior.
+- [x] CI re-runs the same core validation commands that the docs recommend locally.
+- [x] The repository explicitly documents its deterministic offline test strategy.
+- [x] Optional live Follow Up Boss contract tests exist for higher-confidence upstream verification.
+
+Current strengths:
+
+- The test bar is unusually strong and explicit.
+- Coverage is not just line coverage; branch coverage is enforced too.
+- The documented validation stack still passes end to end: formatting, linting, typing, tests, coverage, and CLI help all succeeded during this review.
+- The suite now includes a real MCP client session over stdio for tool, resource, and prompt interoperability checks.
+- The suite now also includes a real MCP client session over `streamable-http` for tool, resource, and prompt interoperability checks.
+- Newly added endpoint breadth shipped with end-to-end coverage through service, adapter, registration, and MCP client-session tests.
+- The tasks and templates domains both landed with focused unit coverage plus MCP surface coverage instead of relying on one broad smoke test.
+- The calls domain followed the same pattern, keeping the growth in surface area proportional to the test growth.
+- The appointments domain followed the same pattern, including list, lookup, write, delete, and MCP coverage without weakening the offline guarantees.
+- The repository now includes an opt-in live identity test that validates real auth and transport behavior without changing the default offline suite.
+
+Current gaps:
+
+- There is still a difference between exhaustive offline verification and real upstream contract verification.
+- [../tests/integration/test_runtime_integration.py](../tests/integration/test_runtime_integration.py) is intentionally lightweight, so runtime integration confidence is narrower than the coverage numbers may suggest.
+- The current live validation slice exercises only the identity path, not broader upstream behavior across the implemented resource surface.
+
+What changes this grade:
+
+- Raise this grade if optional sandbox tests are added without weakening the offline suite.
+- Lower this grade if new production modules are added without preserving the same strict coverage and typing discipline.
+
+## 6. Feature And API Coverage Breadth
+
+- Weight: `10%`
+- Baseline grade: `B (82/100)`
+- Current grade: `B (91/100)`
+- Status: `Needs Work`
+- Last reviewed: `2026-03-28`
+- Change notes: Follow-up deals-domain work expanded breadth materially, but the harsh score stays conservative because the official API surface is still much broader than the current scope.
+
+Why this matters:
+
+This category measures breadth, not implementation quality. The current project covers an important subset well, but future code changes may expand or reduce how much of the official Follow Up Boss API the project actually supports.
+
+Evidence anchors:
+
+- [api-coverage-matrix.md](api-coverage-matrix.md)
+- [followupboss-doc-ingestion.md](followupboss-doc-ingestion.md)
+- [final-validation-report.md](final-validation-report.md)
+- [../src/followupboss_mcp/models/tasks.py](../src/followupboss_mcp/models/tasks.py)
+- [../src/followupboss_mcp/services/tasks.py](../src/followupboss_mcp/services/tasks.py)
+- [../src/followupboss_mcp/models/templates.py](../src/followupboss_mcp/models/templates.py)
+- [../src/followupboss_mcp/services/templates.py](../src/followupboss_mcp/services/templates.py)
+- [../src/followupboss_mcp/models/calls.py](../src/followupboss_mcp/models/calls.py)
+- [../src/followupboss_mcp/services/calls.py](../src/followupboss_mcp/services/calls.py)
+- [../src/followupboss_mcp/models/appointments.py](../src/followupboss_mcp/models/appointments.py)
+- [../src/followupboss_mcp/services/appointments.py](../src/followupboss_mcp/services/appointments.py)
+- [../src/followupboss_mcp/models/deals.py](../src/followupboss_mcp/models/deals.py)
+- [../src/followupboss_mcp/services/deals.py](../src/followupboss_mcp/services/deals.py)
+- [../scripts/ingest_followupboss_docs.py](../scripts/ingest_followupboss_docs.py)
+- [../scripts/validate_api_coverage.py](../scripts/validate_api_coverage.py)
+
+Checklist:
+
+- [x] The implemented endpoints are explicitly listed and tested.
+- [x] Deferred endpoints are tracked instead of being left ambiguous.
+- [x] High-value identity, people, events, users, custom fields, notes, and webhook flows are represented.
+- [x] A broader workflow domain beyond the original core slice is implemented and exposed consistently across the SDK and MCP layers.
+- [x] The project treats `POST /events` as the canonical lead-ingestion path.
+- [ ] The repository covers most high-value official Follow Up Boss workflows beyond the current core slice.
+- [x] Major official areas such as appointments, calls, templates, and other deferred surfaces are implemented where needed.
+- [ ] The MCP surface exposes a majority of the official capabilities a broader integration might expect.
+
+Current strengths:
+
+- The current scope is honest and well documented.
+- Implemented endpoints are not hand-waved; they are mapped and tested.
+- The coverage matrix makes future expansion straightforward to track.
+- The repository now covers a full deals workflow domain with list, lookup, create, update, and delete support.
+- The repository now includes deal custom field discovery so writes can use documented field names instead of raw guesses.
+- The repository now covers both collection and single-resource read flows for events and webhooks instead of only the collection paths.
+- The repository now covers a full appointments workflow domain with list, lookup, create, update, and delete support.
+- The repository now covers a full task workflow domain with list, lookup, create, update, and delete support.
+- The repository now covers a full email-template workflow domain with list, lookup, create, update, and delete support.
+- The repository now covers call search plus direct call creation and update flows instead of leaving communication history entirely deferred.
+
+Current gaps:
+
+- Breadth is the clearest structural gap in the current repository.
+- Many official endpoints remain intentionally deferred, so the current scope is high quality but still much narrower than the official API surface an integration may expect.
+- The repository currently implements `44` official endpoints while the generated manifest tracks a much larger documented surface.
+
+What changes this grade:
+
+- Raise this grade by implementing additional official endpoints and exposing them through models, services, tests, docs, and MCP tools.
+- Lower this grade if new code changes remove clarity around what is implemented versus deferred.
+
+## 7. Documentation And Source-Of-Truth Alignment
+
+- Weight: `8%`
+- Baseline grade: `A (95/100)`
+- Current grade: `A (95/100)`
+- Status: `Pass`
+- Last reviewed: `2026-03-28`
+- Change notes: Workflow-wrapper and build-smoke follow-up restored the docs score to the baseline by aligning the local workflow, release guidance, CI description, and validation report around a single documented command path.
+
+Why this matters:
+
+This repository leans heavily on official documentation as design authority. Clear, generated, and maintained docs reduce drift and make future changes easier to review safely.
+
+Evidence anchors:
+
+- [../README.md](../README.md)
+- [../CONTRIBUTING.md](../CONTRIBUTING.md)
+- [architecture.md](architecture.md)
+- [testing.md](testing.md)
+- [security.md](security.md)
+- [security-incident-playbook.md](security-incident-playbook.md)
+- [mcp-usage.md](mcp-usage.md)
+- [api-coverage-matrix.md](api-coverage-matrix.md)
+- [followupboss-doc-ingestion.md](followupboss-doc-ingestion.md)
+- [../Makefile](../Makefile)
+- [release-checklist.md](release-checklist.md)
+- [final-validation-report.md](final-validation-report.md)
+
+Checklist:
+
+- [x] The repository has architecture, testing, security, MCP usage, release, and validation documentation.
+- [x] Generated docs artifacts are produced by scripts instead of being purely hand-maintained.
+- [x] The API coverage matrix explicitly distinguishes implemented and deferred endpoints.
+- [x] The README command set matches the quality gates and runtime entrypoints.
+- [x] The docs clearly explain the project's intended architecture and operational expectations.
+- [ ] CI performs automated docs drift or link validation.
+
+Current strengths:
+
+- Documentation coverage is broad and unusually disciplined for a small codebase.
+- The project already has the raw materials needed for trustworthy future reviews.
+- The Inspector workflow examples are now portable from the repository root, and the coverage matrix generator normalizes malformed endpoint paths.
+- The repository now includes contributor-facing workflow guidance and a security incident playbook alongside the implementation docs.
+- The generated coverage matrix, MCP usage docs, and validation report were all updated alongside the new tasks surface.
+- The same source-of-truth workflow now stayed aligned again while the template surface was added.
+- The same alignment discipline held again when the calls surface was added.
+- The documented workflow now includes a shared `Makefile` wrapper and build-smoke validation instead of leaving release verification as a loose command list.
+
+Current gaps:
+
+- The repository does not yet automate documentation drift or link checking in CI.
+
+What changes this grade:
+
+- Raise this grade if doc consistency or link validation becomes automated.
+- Lower this grade if the README, MCP docs, coverage matrix, or release checklist stop matching the current code.
+
+## 8. Build, Packaging, And CI Readiness
+
+- Weight: `6%`
+- Baseline grade: `A (92/100)`
+- Current grade: `A (93/100)`
+- Status: `Pass`
+- Last reviewed: `2026-03-28`
+- Change notes: Workflow-wrapper and build-smoke follow-up improved the harsher re-review score by adding explicit distribution builds, isolated wheel-install validation, and CI steps that exercise the same wrapper-based release path documented for contributors.
+
+Why this matters:
+
+Reproducible installs and consistent CI gates are what make future code-review grades credible instead of aspirational.
+
+Evidence anchors:
+
+- [../pyproject.toml](../pyproject.toml)
+- [../uv.lock](../uv.lock)
+- [../Makefile](../Makefile)
+- [../.github/workflows/ci.yml](../.github/workflows/ci.yml)
+- [../README.md](../README.md)
+- [release-checklist.md](release-checklist.md)
+
+Checklist:
+
+- [x] Packaging metadata is defined in `pyproject.toml`.
+- [x] The project uses a lockfile-backed `uv` workflow.
+- [x] The CLI entry point is declared as an installable script.
+- [x] CI runs formatting, linting, typing, tests, coverage, and CLI help validation.
+- [x] Local development commands in the README mirror CI closely.
+- [x] CI includes build artifact validation or publish smoke tests.
+- [ ] CI validates across multiple Python versions or operating systems.
+
+Current strengths:
+
+- The packaging and CI story is straightforward and reproducible.
+- Local and CI commands are intentionally aligned, which reduces "works on my machine" drift.
+- CI now includes dependency-audit and secret-scanning steps in addition to the existing formatting, linting, typing, test, coverage, and CLI checks.
+- The repository now builds distributions explicitly and validates the wheel in an isolated virtual environment before treating the release path as healthy.
+
+Current gaps:
+
+- CI currently validates one main Python/runtime environment.
+
+What changes this grade:
+
+- Raise this grade if build artifact checks or a broader CI matrix are added.
+- Lower this grade if the README and CI commands drift apart or if the lockfile stops reflecting the documented workflow.
+
+## 9. Operability And Developer Ergonomics
+
+- Weight: `4%`
+- Baseline grade: `B (83/100)`
+- Current grade: `A (90/100)`
+- Status: `Pass`
+- Last reviewed: `2026-03-28`
+- Change notes: Live-check and observability follow-up improved the harsher re-review score by adding a one-command live identity smoke check and request-completion logs, though observability is still lighter than a full telemetry stack.
+
+Why this matters:
+
+This category measures how easy the project is to run, troubleshoot, extend, and maintain over time.
+
+Evidence anchors:
+
+- [../README.md](../README.md)
+- [../CONTRIBUTING.md](../CONTRIBUTING.md)
+- [../Makefile](../Makefile)
+- [../examples/identity_check.py](../examples/identity_check.py)
+- [../examples/send_lead_event.py](../examples/send_lead_event.py)
+- [../examples/run_mcp_stdio.py](../examples/run_mcp_stdio.py)
+- [../examples/run_mcp_streamable_http.py](../examples/run_mcp_streamable_http.py)
+- [../src/followupboss_mcp/logging.py](../src/followupboss_mcp/logging.py)
+- [../src/followupboss_mcp/cli.py](../src/followupboss_mcp/cli.py)
+
+Checklist:
+
+- [x] Installation, environment variables, commands, and troubleshooting steps are documented.
+- [x] Runnable examples exist for identity checks, event submission, and both MCP transports.
+- [x] Logging is configurable and safe for stdio mode.
+- [x] Strict typing and docstring standards improve readability and reviewability.
+- [ ] Runtime metrics, tracing, or richer operational telemetry are available.
+- [x] A contributor guide or equivalent long-term maintenance guide exists.
+- [x] Convenience automation such as a `Makefile`, task runner, or similar local workflow wrapper exists.
+
+Current strengths:
+
+- Day-one developer experience is good because the README and examples are concrete.
+- Strict typing and the clean layout make code review easier.
+- The repository now has a contributor guide that explains validation commands, package layout, and the expected path for adding new endpoints.
+- The new `Makefile` gives contributors one-command validation and build-smoke workflows instead of requiring them to remember the full command list.
+- The repository now includes a one-command opt-in live identity check and richer request-completion logs for troubleshooting.
+
+Current gaps:
+
+- Operational observability is still logging-first rather than a full metrics or tracing stack.
+
+What changes this grade:
+
+- Raise this grade if contributor guidance, observability, or local workflow automation improves.
+- Lower this grade if examples or troubleshooting docs fall behind the actual runtime behavior.
+
+## Review Update Template
+
+Use this mini-template when you revisit the file after a code change:
+
+- Date:
+- Reviewer:
+- Files changed:
+- Categories touched:
+- Old grade(s):
+- New grade(s):
+- Why the grade moved:
+
+## Review History
+
+| Date | Reviewer | Scope reviewed | Categories updated | Score change | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `2026-03-28` | `GPT-5.4` | Baseline repository review | `All` | `Initial baseline` | Created the first living scorecard from the current implementation, tests, docs, and CI. |
+| `2026-03-28` | `GPT-5.4` | Harsh evidence-backed re-review | `All` | `91.1 -> 80.9` | Re-scored the repository after a stricter file-by-file review plus successful local validation of formatting, linting, typing, tests, coverage, and CLI help. |
+| `2026-03-28` | `GPT-5.4` | Security, docs, and CI hardening follow-up | `2, 4, 7, 8, 9` | `80.9 -> 83.8` | Added protected-header enforcement, disabled redirects by default, added CI security automation, fixed portable Inspector docs, normalized coverage-matrix path output, and revalidated the repository. |
+| `2026-03-28` | `GPT-5.4` | MCP modularization and interoperability follow-up | `1, 3, 5` | `83.8 -> 86.0` | Split FastMCP registration into grouped helpers, added an official stdio client interoperability test for tools, resources, and prompts, and revalidated the repository. |
+| `2026-03-28` | `GPT-5.4` | Endpoint breadth and maintenance-guidance follow-up | `4, 5, 6, 7, 9` | `86.0 -> 87.4` | Added `GET /events/:id` and `GET /webhooks/:id`, extended MCP tools and tests, added a contributor guide and incident-response playbook, and revalidated the repository. |
+| `2026-03-28` | `GPT-5.4` | Task-domain breadth follow-up | `5, 6, 7` | `87.4 -> 88.5` | Added typed task models and services plus MCP task CRUD tools, regenerated coverage artifacts, and revalidated the repository at full coverage. |
+| `2026-03-28` | `GPT-5.4` | Template-domain breadth follow-up | `3, 5, 6, 7` | `88.5 -> 89.4` | Added typed email-template models and services plus MCP template CRUD tools, regenerated coverage artifacts, and revalidated the repository at full coverage. |
+| `2026-03-28` | `GPT-5.4` | Call-domain breadth follow-up | `3, 5, 6, 7` | `89.4 -> 89.8` | Added typed call models and services plus MCP call search and mutation tools, regenerated coverage artifacts, and revalidated the repository at full coverage. |
+| `2026-03-28` | `GPT-5.4` | Workflow-wrapper and build-smoke follow-up | `7, 8, 9` | `89.8 -> 90.4` | Added a `Makefile`, added isolated build-artifact validation locally and in CI, and revalidated the repository through the shared release wrapper. |
+| `2026-03-28` | `GPT-5.4` | Streamable HTTP interoperability follow-up | `3, 5` | `90.4 -> 90.8` | Added an official `streamable-http` client-session test for tools, resources, and prompts, and revalidated the repository through the shared release wrapper. |
+| `2026-03-28` | `GPT-5.4` | Appointment-domain breadth follow-up | `5, 6` | `90.8 -> 91.1` | Added typed appointment models and services plus MCP appointment CRUD tools, regenerated coverage artifacts, and revalidated the repository at full coverage. |
+| `2026-03-28` | `GPT-5.4` | Deals-domain breadth follow-up | `3, 5, 6, 7` | `91.1 -> 91.4` | Added typed deal models and services plus MCP deal CRUD tools and deal custom field discovery, regenerated coverage artifacts, and revalidated the repository at full coverage. |
+| `2026-03-28` | `GPT-5.4` | Live-validation and observability follow-up | `2, 5, 9` | `91.4 -> 92.1` | Added an opt-in live identity check plus request-completion logging with elapsed time, and revalidated the repository through the shared wrapper and default skipped live path. |
+| `YYYY-MM-DD` | `` | `` | `` | `` | `` |
+
+## Next Improvement Targets
+
+If you want the fastest path to a higher overall score, focus here first:
+
+1. Expand implemented endpoint breadth into additional official areas such as text messaging, pipelines, smart lists, or other high-value deferred surfaces.
+2. Expand the current live validation beyond the identity path into a broader optional Follow Up Boss sandbox contract suite.
+3. Improve day-two operations with richer telemetry and, if needed later, a broader CI matrix across multiple Python versions or operating systems.
