@@ -5,6 +5,29 @@ from __future__ import annotations
 from pathlib import Path
 
 from followupboss_mcp.mcp_tools import (
+    AddInboxAppMessageToolInput,
+    AddInboxAppNoteToolInput,
+    AddInboxAppParticipantToolInput,
+    DeactivateInboxAppToolInput,
+    DeleteAppointmentOutcomeToolInput,
+    DeleteAppointmentToolInput,
+    DeleteAppointmentTypeToolInput,
+    DeleteCustomFieldToolInput,
+    DeleteDealAttachmentToolInput,
+    DeleteDealToolInput,
+    DeleteGroupToolInput,
+    DeleteInboxAppParticipantToolInput,
+    DeleteNoteToolInput,
+    DeletePeopleRelationshipToolInput,
+    DeletePersonAttachmentToolInput,
+    DeletePipelineToolInput,
+    DeletePondToolInput,
+    DeleteStageToolInput,
+    DeleteTaskToolInput,
+    DeleteTeamToolInput,
+    DeleteTemplateToolInput,
+    DeleteTextMessageTemplateToolInput,
+    DeleteWebhookToolInput,
     FollowUpBossToolAdapter,
     GetAppointmentOutcomeToolInput,
     GetAppointmentToolInput,
@@ -12,10 +35,14 @@ from followupboss_mcp.mcp_tools import (
     GetAutomationPersonToolInput,
     GetAutomationToolInput,
     GetCallToolInput,
+    GetCustomFieldToolInput,
+    GetDealAttachmentToolInput,
     GetDealToolInput,
     GetEventToolInput,
     GetGroupToolInput,
     GetNoteToolInput,
+    GetPeopleRelationshipToolInput,
+    GetPersonAttachmentToolInput,
     GetPersonToolInput,
     GetPipelineToolInput,
     GetPondToolInput,
@@ -28,29 +55,24 @@ from followupboss_mcp.mcp_tools import (
     GetTextMessageToolInput,
     GetUserToolInput,
     GetWebhookToolInput,
-    DeleteAppointmentOutcomeToolInput,
-    DeleteAppointmentToolInput,
-    DeleteAppointmentTypeToolInput,
-    DeleteDealToolInput,
-    DeleteGroupToolInput,
-    DeleteNoteToolInput,
-    DeletePipelineToolInput,
-    DeletePondToolInput,
-    DeleteStageToolInput,
-    DeleteTaskToolInput,
-    DeleteTeamToolInput,
-    DeleteTemplateToolInput,
-    DeleteTextMessageTemplateToolInput,
-    DeleteWebhookToolInput,
+    ListInboxAppInstallationsToolInput,
+    ListInboxAppParticipantsToolInput,
+    UpdateActionPlanPersonToolInput,
     UpdateAppointmentOutcomeToolInput,
     UpdateAppointmentToolInput,
     UpdateAppointmentTypeToolInput,
-    UpdateActionPlanPersonToolInput,
     UpdateAutomationPersonToolInput,
     UpdateCallToolInput,
+    UpdateCustomFieldToolInput,
+    UpdateDealAttachmentToolInput,
     UpdateDealToolInput,
+    UpdateEmailCampaignToolInput,
     UpdateGroupToolInput,
+    UpdateInboxAppConversationToolInput,
+    UpdateInboxAppMessageToolInput,
     UpdateNoteToolInput,
+    UpdatePeopleRelationshipToolInput,
+    UpdatePersonAttachmentToolInput,
     UpdatePersonToolInput,
     UpdatePipelineToolInput,
     UpdatePondToolInput,
@@ -73,6 +95,10 @@ from followupboss_mcp.models.appointment_metadata import (
     CreateAppointmentTypeRequest,
 )
 from followupboss_mcp.models.appointments import AppointmentListRequest, CreateAppointmentRequest
+from followupboss_mcp.models.attachments import (
+    CreateDealAttachmentRequest,
+    CreatePersonAttachmentRequest,
+)
 from followupboss_mcp.models.automations import (
     AutomationListRequest,
     AutomationPauseStatus,
@@ -81,29 +107,56 @@ from followupboss_mcp.models.automations import (
     CreateAutomationPersonRequest,
 )
 from followupboss_mcp.models.calls import CallListRequest, CreateCallRequest
-from followupboss_mcp.models.custom_fields import CustomFieldListRequest
+from followupboss_mcp.models.custom_fields import (
+    CreateCustomFieldRequest,
+    CustomFieldListRequest,
+    CustomFieldType,
+)
 from followupboss_mcp.models.deals import (
     CreateDealRequest,
     DealCustomFieldListRequest,
     DealListRequest,
 )
+from followupboss_mcp.models.email_marketing import (
+    CreateEmailCampaignRequest,
+    CreateEmailEventsBatchRequest,
+    EmailCampaignListRequest,
+    EmailEventListRequest,
+    EmailEventType,
+)
 from followupboss_mcp.models.events import CreateEventRequest, EventSearchRequest
 from followupboss_mcp.models.groups import CreateGroupRequest, GroupListRequest
+from followupboss_mcp.models.inbox_apps import (
+    InboxAppMessageDeliveryStatus,
+    InstallInboxAppRequest,
+)
 from followupboss_mcp.models.notes import CreateNoteRequest
 from followupboss_mcp.models.people import CreatePersonRequest, PeopleSearchRequest
+from followupboss_mcp.models.people_relationships import (
+    CreatePeopleRelationshipRequest,
+    PeopleRelationshipListRequest,
+)
 from followupboss_mcp.models.pipelines import (
     CreatePipelineRequest,
     PipelineListRequest,
     PipelineStageInput,
 )
 from followupboss_mcp.models.ponds import CreatePondRequest, PondListRequest
+from followupboss_mcp.models.reactions import ReactionRefType
 from followupboss_mcp.models.smart_lists import SmartListListRequest
 from followupboss_mcp.models.stages import CreateStageRequest, StageListRequest
 from followupboss_mcp.models.tasks import CreateTaskRequest, TaskListRequest
+from followupboss_mcp.models.team_inboxes import TeamInboxListRequest
 from followupboss_mcp.models.teams import CreateTeamRequest, TeamListRequest
-from followupboss_mcp.models.templates import CreateTemplateRequest, TemplateListRequest
+from followupboss_mcp.models.templates import (
+    CreateTemplateRequest,
+    MergeTemplateRequest,
+    TemplateListRequest,
+)
 from followupboss_mcp.models.text_messages import (
+    CreateTextMessageRequest,
     CreateTextMessageTemplateRequest,
+    MergeTextMessageTemplateRequest,
     TextMessageListRequest,
     TextMessageTemplateListRequest,
 )
@@ -127,10 +180,15 @@ def register_server_surface(
     """
     _register_identity_tools(mcp, adapter)
     _register_people_tools(mcp, adapter)
+    _register_people_relationship_tools(mcp, adapter)
+    _register_attachment_tools(mcp, adapter)
+    _register_reaction_tools(mcp, adapter)
     _register_event_tools(mcp, adapter)
+    _register_email_marketing_tools(mcp, adapter)
     _register_action_plan_tools(mcp, adapter)
     _register_automation_tools(mcp, adapter)
     _register_group_tools(mcp, adapter)
+    _register_inbox_app_tools(mcp, adapter)
     _register_user_tools(mcp, adapter)
     _register_custom_field_tools(mcp, adapter)
     _register_deal_tools(mcp, adapter)
@@ -142,6 +200,7 @@ def register_server_surface(
     _register_smart_list_tools(mcp, adapter)
     _register_stage_tools(mcp, adapter)
     _register_task_tools(mcp, adapter)
+    _register_team_inbox_tools(mcp, adapter)
     _register_team_tools(mcp, adapter)
     _register_template_tools(mcp, adapter)
     _register_text_message_tools(mcp, adapter)
@@ -350,6 +409,290 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
         return await adapter.update_person(tool_input)
 
 
+def _register_people_relationship_tools(
+    mcp: FastMCP,
+    adapter: FollowUpBossToolAdapter,
+) -> None:
+    """Register people-relationship-related MCP tools.
+
+    Args:
+        mcp: The FastMCP server instance.
+        adapter: The typed Follow Up Boss tool adapter.
+    """
+
+    @mcp.tool(
+        name="followupboss_list_people_relationships",
+        description="List Follow Up Boss people relationships.",
+    )
+    async def followupboss_list_people_relationships(
+        *,
+        first_name: str | None = None,
+        last_name: str | None = None,
+        name: str | None = None,
+        person_id: int | None = None,
+        sort: str | None = None,
+    ) -> dict[str, object]:
+        return await adapter.list_people_relationships(
+            PeopleRelationshipListRequest(
+                first_name=first_name,
+                last_name=last_name,
+                name=name,
+                person_id=person_id,
+                sort=sort,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_get_people_relationship",
+        description="Fetch a single Follow Up Boss people relationship by ID.",
+    )
+    async def followupboss_get_people_relationship(
+        people_relationship_id: int,
+    ) -> dict[str, object]:
+        return await adapter.get_people_relationship(
+            GetPeopleRelationshipToolInput(people_relationship_id=people_relationship_id)
+        )
+
+    @mcp.tool(
+        name="followupboss_create_people_relationship",
+        description="Create a Follow Up Boss people relationship for a person.",
+    )
+    async def followupboss_create_people_relationship(
+        person_id: int,
+        *,
+        addresses: list[dict[str, object]] | None = None,
+        emails: list[dict[str, object]] | None = None,
+        first_name: str | None = None,
+        last_name: str | None = None,
+        phones: list[dict[str, object]] | None = None,
+        type: str | None = None,
+    ) -> dict[str, object]:
+        return await adapter.create_people_relationship(
+            CreatePeopleRelationshipRequest.model_validate(
+                {
+                    "person_id": person_id,
+                    "addresses": addresses,
+                    "emails": emails,
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "phones": phones,
+                    "type": type,
+                }
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_update_people_relationship",
+        description="Update a Follow Up Boss people relationship by ID.",
+    )
+    async def followupboss_update_people_relationship(
+        people_relationship_id: int,
+        *,
+        addresses: list[dict[str, object]] | None = None,
+        emails: list[dict[str, object]] | None = None,
+        first_name: str | None = None,
+        last_name: str | None = None,
+        phones: list[dict[str, object]] | None = None,
+        type: str | None = None,
+    ) -> dict[str, object]:
+        return await adapter.update_people_relationship(
+            UpdatePeopleRelationshipToolInput.model_validate(
+                {
+                    "people_relationship_id": people_relationship_id,
+                    "addresses": addresses,
+                    "emails": emails,
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "phones": phones,
+                    "type": type,
+                }
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_delete_people_relationship",
+        description="Delete a Follow Up Boss people relationship by ID.",
+    )
+    async def followupboss_delete_people_relationship(
+        people_relationship_id: int,
+    ) -> dict[str, object]:
+        return await adapter.delete_people_relationship(
+            DeletePeopleRelationshipToolInput(people_relationship_id=people_relationship_id)
+        )
+
+
+def _register_attachment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+    """Register deal and person attachment MCP tools.
+
+    Args:
+        mcp: The FastMCP server instance.
+        adapter: The typed Follow Up Boss tool adapter.
+    """
+
+    @mcp.tool(
+        name="followupboss_get_person_attachment",
+        description="Fetch a single Follow Up Boss person attachment by ID.",
+    )
+    async def followupboss_get_person_attachment(person_attachment_id: int) -> dict[str, object]:
+        return await adapter.get_person_attachment(
+            GetPersonAttachmentToolInput(person_attachment_id=person_attachment_id)
+        )
+
+    @mcp.tool(
+        name="followupboss_create_person_attachment",
+        description="Create a Follow Up Boss person attachment record.",
+    )
+    async def followupboss_create_person_attachment(
+        person_id: int,
+        uri: str,
+        file_name: str,
+        *,
+        file_size: int | None = None,
+    ) -> dict[str, object]:
+        return await adapter.create_person_attachment(
+            CreatePersonAttachmentRequest(
+                person_id=person_id,
+                uri=uri,
+                file_name=file_name,
+                file_size=file_size,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_update_person_attachment",
+        description="Update a Follow Up Boss person attachment by ID.",
+    )
+    async def followupboss_update_person_attachment(
+        person_attachment_id: int,
+        person_id: int,
+        uri: str,
+        file_name: str,
+        *,
+        file_size: int | None = None,
+    ) -> dict[str, object]:
+        return await adapter.update_person_attachment(
+            UpdatePersonAttachmentToolInput(
+                person_attachment_id=person_attachment_id,
+                person_id=person_id,
+                uri=uri,
+                file_name=file_name,
+                file_size=file_size,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_delete_person_attachment",
+        description="Delete a Follow Up Boss person attachment by ID.",
+    )
+    async def followupboss_delete_person_attachment(person_attachment_id: int) -> dict[str, object]:
+        return await adapter.delete_person_attachment(
+            DeletePersonAttachmentToolInput(person_attachment_id=person_attachment_id)
+        )
+
+    @mcp.tool(
+        name="followupboss_get_deal_attachment",
+        description="Fetch a single Follow Up Boss deal attachment by ID.",
+    )
+    async def followupboss_get_deal_attachment(deal_attachment_id: int) -> dict[str, object]:
+        return await adapter.get_deal_attachment(
+            GetDealAttachmentToolInput(deal_attachment_id=deal_attachment_id)
+        )
+
+    @mcp.tool(
+        name="followupboss_create_deal_attachment",
+        description="Create a Follow Up Boss deal attachment record.",
+    )
+    async def followupboss_create_deal_attachment(
+        deal_id: int,
+        uri: str,
+        file_name: str,
+        *,
+        file_size: int | None = None,
+    ) -> dict[str, object]:
+        return await adapter.create_deal_attachment(
+            CreateDealAttachmentRequest(
+                deal_id=deal_id,
+                uri=uri,
+                file_name=file_name,
+                file_size=file_size,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_update_deal_attachment",
+        description="Update a Follow Up Boss deal attachment by ID.",
+    )
+    async def followupboss_update_deal_attachment(
+        deal_attachment_id: int,
+        deal_id: int,
+        uri: str,
+        file_name: str,
+        *,
+        file_size: int | None = None,
+    ) -> dict[str, object]:
+        return await adapter.update_deal_attachment(
+            UpdateDealAttachmentToolInput(
+                deal_attachment_id=deal_attachment_id,
+                deal_id=deal_id,
+                uri=uri,
+                file_name=file_name,
+                file_size=file_size,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_delete_deal_attachment",
+        description="Delete a Follow Up Boss deal attachment by ID.",
+    )
+    async def followupboss_delete_deal_attachment(deal_attachment_id: int) -> dict[str, object]:
+        return await adapter.delete_deal_attachment(
+            DeleteDealAttachmentToolInput(deal_attachment_id=deal_attachment_id)
+        )
+
+
+def _register_reaction_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+    """Register reaction-related MCP tools.
+
+    Args:
+        mcp: The FastMCP server instance.
+        adapter: The typed Follow Up Boss tool adapter.
+    """
+
+    @mcp.tool(
+        name="followupboss_get_reaction",
+        description="Fetch a single Follow Up Boss reaction by ID.",
+    )
+    async def followupboss_get_reaction(reaction_id: int) -> dict[str, object]:
+        return await adapter.get_reaction(GetReactionToolInput(reaction_id=reaction_id))
+
+    @mcp.tool(
+        name="followupboss_add_reaction",
+        description="Add a Follow Up Boss reaction to a note, call, or threaded reply.",
+    )
+    async def followupboss_add_reaction(
+        ref_type: ReactionRefType,
+        ref_id: int,
+        body: str,
+    ) -> dict[str, object]:
+        return await adapter.add_reaction(
+            AddReactionToolInput(ref_type=ref_type, ref_id=ref_id, body=body)
+        )
+
+    @mcp.tool(
+        name="followupboss_delete_reaction",
+        description="Delete a Follow Up Boss reaction from a note, call, or threaded reply.",
+    )
+    async def followupboss_delete_reaction(
+        ref_type: ReactionRefType,
+        ref_id: int,
+        *,
+        emoji: str | None = None,
+    ) -> dict[str, object]:
+        return await adapter.delete_reaction(
+            DeleteReactionToolInput(ref_type=ref_type, ref_id=ref_id, emoji=emoji)
+        )
+
+
 def _register_event_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
     """Register event-related MCP tools.
 
@@ -435,6 +778,108 @@ def _register_event_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> Non
         return await adapter.send_event(tool_input)
 
 
+def _register_email_marketing_tools(
+    mcp: FastMCP,
+    adapter: FollowUpBossToolAdapter,
+) -> None:
+    """Register email-marketing-related MCP tools.
+
+    Args:
+        mcp: The FastMCP server instance.
+        adapter: The typed Follow Up Boss tool adapter.
+    """
+
+    @mcp.tool(
+        name="followupboss_list_email_campaigns",
+        description="List Follow Up Boss email marketing campaigns.",
+    )
+    async def followupboss_list_email_campaigns(
+        *,
+        origin: str | None = None,
+        origin_id: str | None = None,
+    ) -> dict[str, object]:
+        return await adapter.list_email_campaigns(
+            EmailCampaignListRequest(origin=origin, origin_id=origin_id)
+        )
+
+    @mcp.tool(
+        name="followupboss_create_email_campaign",
+        description="Create a Follow Up Boss email marketing campaign.",
+    )
+    async def followupboss_create_email_campaign(
+        origin: str,
+        origin_id: str,
+        *,
+        name: str | None = None,
+        subject: str | None = None,
+        body_html: str | None = None,
+    ) -> dict[str, object]:
+        return await adapter.create_email_campaign(
+            CreateEmailCampaignRequest(
+                origin=origin,
+                origin_id=origin_id,
+                name=name,
+                subject=subject,
+                body_html=body_html,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_update_email_campaign",
+        description="Update a Follow Up Boss email marketing campaign by ID.",
+    )
+    async def followupboss_update_email_campaign(
+        email_campaign_id: int,
+        *,
+        name: str | None = None,
+        subject: str | None = None,
+        body_html: str | None = None,
+    ) -> dict[str, object]:
+        return await adapter.update_email_campaign(
+            UpdateEmailCampaignToolInput(
+                email_campaign_id=email_campaign_id,
+                name=name,
+                subject=subject,
+                body_html=body_html,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_list_email_events",
+        description="List Follow Up Boss email marketing events.",
+    )
+    async def followupboss_list_email_events(
+        *,
+        type: EmailEventType | None = None,
+        person_id: int | None = None,
+        updated_after: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> dict[str, object]:
+        return await adapter.list_email_events(
+            EmailEventListRequest.model_validate(
+                {
+                    "type": type,
+                    "person_id": person_id,
+                    "updated_after": updated_after,
+                    "limit": limit,
+                    "offset": offset,
+                }
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_send_email_events",
+        description="Post batched Follow Up Boss email marketing events.",
+    )
+    async def followupboss_send_email_events(
+        em_events: list[dict[str, object]],
+    ) -> dict[str, object]:
+        return await adapter.send_email_events(
+            CreateEmailEventsBatchRequest.model_validate({"em_events": em_events})
+        )
+
+
 def _register_action_plan_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
     """Register action-plan-related MCP tools.
 
@@ -445,7 +890,9 @@ def _register_action_plan_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) 
 
     @mcp.tool(
         name="followupboss_list_action_plans",
-        description="List Follow Up Boss action plans with documented filters and pagination metadata.",
+        description=(
+            "List Follow Up Boss action plans with documented filters and pagination metadata."
+        ),
     )
     async def followupboss_list_action_plans(
         *,
@@ -720,6 +1167,235 @@ def _register_group_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> Non
         return await adapter.delete_group(DeleteGroupToolInput(group_id=group_id))
 
 
+def _register_inbox_app_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+    """Register inbox-app-related MCP tools.
+
+    Args:
+        mcp: The FastMCP server instance.
+        adapter: The typed Follow Up Boss tool adapter.
+    """
+
+    @mcp.tool(
+        name="followupboss_list_inbox_app_installations",
+        description=(
+            "List installed Follow Up Boss inbox app installations for a published inbox app."
+        ),
+    )
+    async def followupboss_list_inbox_app_installations(
+        published_inbox_app_id: int,
+    ) -> dict[str, object]:
+        return await adapter.list_inbox_app_installations(
+            ListInboxAppInstallationsToolInput(published_inbox_app_id=published_inbox_app_id)
+        )
+
+    @mcp.tool(
+        name="followupboss_install_inbox_app",
+        description="Install a Follow Up Boss inbox app for an account or user scope.",
+    )
+    async def followupboss_install_inbox_app(
+        published_inbox_app_id: int,
+        user_id: int,
+        subscription_url: str,
+    ) -> dict[str, object]:
+        return await adapter.install_inbox_app(
+            InstallInboxAppRequest(
+                published_inbox_app_id=published_inbox_app_id,
+                user_id=user_id,
+                subscription_url=subscription_url,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_deactivate_inbox_app",
+        description="Deactivate a Follow Up Boss inbox app installation by ID.",
+    )
+    async def followupboss_deactivate_inbox_app(inbox_app_id: int) -> dict[str, object]:
+        return await adapter.deactivate_inbox_app(
+            DeactivateInboxAppToolInput(inbox_app_id=inbox_app_id)
+        )
+
+    @mcp.tool(
+        name="followupboss_add_inbox_app_message",
+        description="Add a message to a Follow Up Boss inbox app conversation.",
+    )
+    async def followupboss_add_inbox_app_message(
+        inbox_app_id: int,
+        external_conversation_id: str,
+        external_message_id: str,
+        message: str,
+        is_incoming: bool,
+        sender: dict[str, object],
+        *,
+        attachments: list[dict[str, object]] | None = None,
+        delivery_status: InboxAppMessageDeliveryStatus | None = None,
+        delivery_status_error_message: str | None = None,
+        is_automation: bool | None = None,
+        owner: dict[str, object] | None = None,
+        person: dict[str, object] | None = None,
+        rich_objects: list[str] | None = None,
+        sent_at: str | None = None,
+        subject: str | None = None,
+    ) -> dict[str, object]:
+        return await adapter.add_inbox_app_message(
+            AddInboxAppMessageToolInput.model_validate(
+                {
+                    "inbox_app_id": inbox_app_id,
+                    "external_conversation_id": external_conversation_id,
+                    "external_message_id": external_message_id,
+                    "message": message,
+                    "is_incoming": is_incoming,
+                    "sender": sender,
+                    "attachments": attachments,
+                    "delivery_status": delivery_status,
+                    "delivery_status_error_message": delivery_status_error_message,
+                    "is_automation": is_automation,
+                    "owner": owner,
+                    "person": person,
+                    "rich_objects": rich_objects,
+                    "sent_at": sent_at,
+                    "subject": subject,
+                }
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_add_inbox_app_note",
+        description="Add a note to a Follow Up Boss inbox app conversation.",
+    )
+    async def followupboss_add_inbox_app_note(
+        inbox_app_id: int,
+        external_conversation_id: str,
+        body: str,
+        user: dict[str, object],
+    ) -> dict[str, object]:
+        return await adapter.add_inbox_app_note(
+            AddInboxAppNoteToolInput.model_validate(
+                {
+                    "inbox_app_id": inbox_app_id,
+                    "external_conversation_id": external_conversation_id,
+                    "body": body,
+                    "user": user,
+                }
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_list_inbox_app_participants",
+        description="List participants in a Follow Up Boss inbox app conversation.",
+    )
+    async def followupboss_list_inbox_app_participants(
+        inbox_app_id: int,
+        ext_conversation_id: str,
+    ) -> dict[str, object]:
+        return await adapter.list_inbox_app_participants(
+            ListInboxAppParticipantsToolInput(
+                inbox_app_id=inbox_app_id,
+                ext_conversation_id=ext_conversation_id,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_add_inbox_app_participant",
+        description="Add a participant to a Follow Up Boss inbox app conversation.",
+    )
+    async def followupboss_add_inbox_app_participant(
+        inbox_app_id: int,
+        ext_conversation_id: str,
+        *,
+        person_id: int | None = None,
+        user_id: int | None = None,
+        relationship_id: int | None = None,
+        name: str | None = None,
+        email: str | None = None,
+        phone: str | None = None,
+        is_automation: bool | None = None,
+    ) -> dict[str, object]:
+        return await adapter.add_inbox_app_participant(
+            AddInboxAppParticipantToolInput(
+                inbox_app_id=inbox_app_id,
+                ext_conversation_id=ext_conversation_id,
+                person_id=person_id,
+                user_id=user_id,
+                relationship_id=relationship_id,
+                name=name,
+                email=email,
+                phone=phone,
+                is_automation=is_automation,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_update_inbox_app_conversation",
+        description="Update a Follow Up Boss inbox app conversation by external conversation ID.",
+    )
+    async def followupboss_update_inbox_app_conversation(
+        inbox_app_id: int,
+        ext_conversation_id: str,
+        *,
+        archived: bool | None = None,
+        assigned_inbox_id: int | None = None,
+        assigned_user_id: int | None = None,
+        permanently_archived: bool | None = None,
+        person: dict[str, object] | None = None,
+        subject: str | None = None,
+    ) -> dict[str, object]:
+        return await adapter.update_inbox_app_conversation(
+            UpdateInboxAppConversationToolInput.model_validate(
+                {
+                    "inbox_app_id": inbox_app_id,
+                    "ext_conversation_id": ext_conversation_id,
+                    "archived": archived,
+                    "assigned_inbox_id": assigned_inbox_id,
+                    "assigned_user_id": assigned_user_id,
+                    "permanently_archived": permanently_archived,
+                    "person": person,
+                    "subject": subject,
+                }
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_update_inbox_app_message",
+        description="Update a Follow Up Boss inbox app message by ID or external message ID.",
+    )
+    async def followupboss_update_inbox_app_message(
+        inbox_app_id: int,
+        *,
+        id: int | None = None,
+        external_message_id: str | None = None,
+        delivery_status: InboxAppMessageDeliveryStatus | None = None,
+        delivery_status_error_message: str | None = None,
+    ) -> dict[str, object]:
+        return await adapter.update_inbox_app_message(
+            UpdateInboxAppMessageToolInput.model_validate(
+                {
+                    "inbox_app_id": inbox_app_id,
+                    "id": id,
+                    "external_message_id": external_message_id,
+                    "delivery_status": delivery_status,
+                    "delivery_status_error_message": delivery_status_error_message,
+                }
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_remove_inbox_app_participant",
+        description="Remove a participant from a Follow Up Boss inbox app conversation.",
+    )
+    async def followupboss_remove_inbox_app_participant(
+        inbox_app_id: int,
+        ext_conversation_id: str,
+        participant_id: int,
+    ) -> dict[str, object]:
+        return await adapter.remove_inbox_app_participant(
+            DeleteInboxAppParticipantToolInput(
+                inbox_app_id=inbox_app_id,
+                ext_conversation_id=ext_conversation_id,
+                participant_id=participant_id,
+            )
+        )
+
+
 def _register_user_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
     """Register user-related MCP tools.
 
@@ -966,6 +1642,76 @@ def _register_custom_field_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter)
                 offset=offset,
                 sort=sort,
             )
+        )
+
+    @mcp.tool(
+        name="followupboss_get_custom_field",
+        description="Fetch a single Follow Up Boss custom field by ID.",
+    )
+    async def followupboss_get_custom_field(custom_field_id: int) -> dict[str, object]:
+        return await adapter.get_custom_field(
+            GetCustomFieldToolInput(custom_field_id=custom_field_id)
+        )
+
+    @mcp.tool(
+        name="followupboss_create_custom_field",
+        description="Create a Follow Up Boss custom field.",
+    )
+    async def followupboss_create_custom_field(
+        label: str,
+        type: CustomFieldType,
+        *,
+        choices: list[str] | None = None,
+        hide_if_empty: bool | None = None,
+        is_recurring: bool | None = None,
+        order_weight: int | None = None,
+    ) -> dict[str, object]:
+        return await adapter.create_custom_field(
+            CreateCustomFieldRequest(
+                label=label,
+                type=type,
+                choices=choices,
+                hide_if_empty=hide_if_empty,
+                is_recurring=is_recurring,
+                order_weight=order_weight,
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_update_custom_field",
+        description="Update a Follow Up Boss custom field by ID.",
+    )
+    async def followupboss_update_custom_field(
+        custom_field_id: int,
+        *,
+        choices: list[str] | None = None,
+        dropdown_choice_map: dict[str, int] | list[int] | None = None,
+        hide_if_empty: bool | None = None,
+        is_recurring: bool | None = None,
+        label: str | None = None,
+        order_weight: int | None = None,
+    ) -> dict[str, object]:
+        return await adapter.update_custom_field(
+            UpdateCustomFieldToolInput.model_validate(
+                {
+                    "custom_field_id": custom_field_id,
+                    "choices": choices,
+                    "dropdown_choice_map": dropdown_choice_map,
+                    "hide_if_empty": hide_if_empty,
+                    "is_recurring": is_recurring,
+                    "label": label,
+                    "order_weight": order_weight,
+                }
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_delete_custom_field",
+        description="Delete a Follow Up Boss custom field by ID.",
+    )
+    async def followupboss_delete_custom_field(custom_field_id: int) -> dict[str, object]:
+        return await adapter.delete_custom_field(
+            DeleteCustomFieldToolInput(custom_field_id=custom_field_id)
         )
 
 
@@ -1773,6 +2519,22 @@ def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         return await adapter.delete_task(DeleteTaskToolInput(task_id=task_id))
 
 
+def _register_team_inbox_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+    """Register team inbox related MCP tools.
+
+    Args:
+        mcp: The FastMCP server instance.
+        adapter: The typed Follow Up Boss tool adapter.
+    """
+
+    @mcp.tool(
+        name="followupboss_list_team_inboxes",
+        description="List Follow Up Boss team inboxes with pagination metadata.",
+    )
+    async def followupboss_list_team_inboxes() -> dict[str, object]:
+        return await adapter.list_team_inboxes(TeamInboxListRequest())
+
+
 def _register_team_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
     """Register team-related MCP tools.
 
@@ -1891,6 +2653,26 @@ def _register_template_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> 
         )
 
     @mcp.tool(
+        name="followupboss_merge_template",
+        description="Merge a Follow Up Boss email template with recipients.",
+    )
+    async def followupboss_merge_template(
+        template_id: int,
+        *,
+        merge_person_id: int | None = None,
+        recipients: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        return await adapter.merge_template(
+            MergeTemplateRequest.model_validate(
+                {
+                    "template_id": template_id,
+                    "merge_person_id": merge_person_id,
+                    "recipients": recipients,
+                }
+            )
+        )
+
+    @mcp.tool(
         name="followupboss_create_template",
         description="Create a Follow Up Boss email template.",
     )
@@ -1976,6 +2758,32 @@ def _register_text_message_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter)
         )
 
     @mcp.tool(
+        name="followupboss_create_text_message",
+        description="Record an externally sent Follow Up Boss text message log entry.",
+    )
+    async def followupboss_create_text_message(
+        person_id: int,
+        message: str,
+        to_number: str,
+        from_number: str,
+        *,
+        external_label: str | None = None,
+        external_url: str | None = None,
+        is_incoming: bool | None = None,
+    ) -> dict[str, object]:
+        return await adapter.create_text_message(
+            CreateTextMessageRequest(
+                person_id=person_id,
+                message=message,
+                to_number=to_number,
+                from_number=from_number,
+                external_label=external_label,
+                external_url=external_url,
+                is_incoming=is_incoming,
+            )
+        )
+
+    @mcp.tool(
         name="followupboss_list_text_message_templates",
         description="List Follow Up Boss text message templates with pagination metadata.",
     )
@@ -1995,6 +2803,26 @@ def _register_text_message_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter)
     async def followupboss_get_text_message_template(template_id: int) -> dict[str, object]:
         return await adapter.get_text_message_template(
             GetTextMessageTemplateToolInput(template_id=template_id)
+        )
+
+    @mcp.tool(
+        name="followupboss_merge_text_message_template",
+        description="Merge a Follow Up Boss text message template with recipients.",
+    )
+    async def followupboss_merge_text_message_template(
+        template_id: int,
+        *,
+        person_id: int | None = None,
+        recipients: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        return await adapter.merge_text_message_template(
+            MergeTextMessageTemplateRequest.model_validate(
+                {
+                    "template_id": template_id,
+                    "person_id": person_id,
+                    "recipients": recipients,
+                }
+            )
         )
 
     @mcp.tool(

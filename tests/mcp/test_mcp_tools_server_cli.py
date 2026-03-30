@@ -21,6 +21,31 @@ from followupboss_mcp.config import FollowUpBossSettings
 from followupboss_mcp.errors import FollowUpBossRateLimitError, FollowUpBossValidationError
 from followupboss_mcp.mcp_server import create_server
 from followupboss_mcp.mcp_tools import (
+    AddReactionToolInput,
+    AddInboxAppMessageToolInput,
+    AddInboxAppNoteToolInput,
+    AddInboxAppParticipantToolInput,
+    DeactivateInboxAppToolInput,
+    DeleteAppointmentOutcomeToolInput,
+    DeleteAppointmentToolInput,
+    DeleteAppointmentTypeToolInput,
+    DeleteCustomFieldToolInput,
+    DeleteDealAttachmentToolInput,
+    DeleteDealToolInput,
+    DeleteGroupToolInput,
+    DeleteInboxAppParticipantToolInput,
+    DeleteNoteToolInput,
+    DeletePeopleRelationshipToolInput,
+    DeletePersonAttachmentToolInput,
+    DeletePipelineToolInput,
+    DeletePondToolInput,
+    DeleteReactionToolInput,
+    DeleteStageToolInput,
+    DeleteTaskToolInput,
+    DeleteTeamToolInput,
+    DeleteTemplateToolInput,
+    DeleteTextMessageTemplateToolInput,
+    DeleteWebhookToolInput,
     FollowUpBossToolAdapter,
     GetAppointmentOutcomeToolInput,
     GetAppointmentToolInput,
@@ -28,13 +53,18 @@ from followupboss_mcp.mcp_tools import (
     GetAutomationPersonToolInput,
     GetAutomationToolInput,
     GetCallToolInput,
+    GetCustomFieldToolInput,
+    GetDealAttachmentToolInput,
     GetDealToolInput,
     GetEventToolInput,
     GetGroupToolInput,
     GetNoteToolInput,
+    GetPeopleRelationshipToolInput,
+    GetPersonAttachmentToolInput,
     GetPersonToolInput,
     GetPipelineToolInput,
     GetPondToolInput,
+    GetReactionToolInput,
     GetSmartListToolInput,
     GetStageToolInput,
     GetTaskToolInput,
@@ -44,30 +74,25 @@ from followupboss_mcp.mcp_tools import (
     GetTextMessageToolInput,
     GetUserToolInput,
     GetWebhookToolInput,
+    ListInboxAppInstallationsToolInput,
+    ListInboxAppParticipantsToolInput,
     ServiceBundle,
-    DeleteAppointmentOutcomeToolInput,
-    DeleteAppointmentToolInput,
-    DeleteAppointmentTypeToolInput,
-    DeleteDealToolInput,
-    DeleteGroupToolInput,
-    DeleteNoteToolInput,
-    DeletePipelineToolInput,
-    DeletePondToolInput,
-    DeleteStageToolInput,
-    DeleteTaskToolInput,
-    DeleteTeamToolInput,
-    DeleteTemplateToolInput,
-    DeleteTextMessageTemplateToolInput,
-    DeleteWebhookToolInput,
     UpdateActionPlanPersonToolInput,
     UpdateAppointmentOutcomeToolInput,
     UpdateAppointmentToolInput,
     UpdateAppointmentTypeToolInput,
     UpdateAutomationPersonToolInput,
     UpdateCallToolInput,
+    UpdateCustomFieldToolInput,
+    UpdateDealAttachmentToolInput,
     UpdateDealToolInput,
+    UpdateEmailCampaignToolInput,
     UpdateGroupToolInput,
+    UpdateInboxAppConversationToolInput,
+    UpdateInboxAppMessageToolInput,
     UpdateNoteToolInput,
+    UpdatePeopleRelationshipToolInput,
+    UpdatePersonAttachmentToolInput,
     UpdatePersonToolInput,
     UpdatePipelineToolInput,
     UpdatePondToolInput,
@@ -97,6 +122,12 @@ from followupboss_mcp.models.appointments import (
     AppointmentRecord,
     CreateAppointmentRequest,
 )
+from followupboss_mcp.models.attachments import (
+    CreateDealAttachmentRequest,
+    CreatePersonAttachmentRequest,
+    DealAttachmentRecord,
+    PersonAttachmentRecord,
+)
 from followupboss_mcp.models.automations import (
     AutomationListRequest,
     AutomationPeopleListRequest,
@@ -105,13 +136,26 @@ from followupboss_mcp.models.automations import (
     CreateAutomationPersonRequest,
 )
 from followupboss_mcp.models.calls import CallListRequest, CallRecord, CreateCallRequest
-from followupboss_mcp.models.custom_fields import CustomFieldListRequest, CustomFieldRecord
+from followupboss_mcp.models.custom_fields import (
+    CreateCustomFieldRequest,
+    CustomFieldListRequest,
+    CustomFieldRecord,
+)
 from followupboss_mcp.models.deals import (
     CreateDealRequest,
     DealCustomFieldListRequest,
     DealCustomFieldRecord,
     DealListRequest,
     DealRecord,
+)
+from followupboss_mcp.models.email_marketing import (
+    CreateEmailCampaignRequest,
+    CreateEmailEventsBatchRequest,
+    EmailCampaignListRequest,
+    EmailCampaignRecord,
+    EmailEventListRequest,
+    EmailEventRecord,
+    EmailEventsBatchResult,
 )
 from followupboss_mcp.models.events import (
     CreateEventRequest,
@@ -126,8 +170,25 @@ from followupboss_mcp.models.groups import (
     GroupUserSummary,
 )
 from followupboss_mcp.models.identity import IdentityResponse
+from followupboss_mcp.models.inbox_apps import (
+    InboxAppAttachmentRecord,
+    InboxAppConversationPersonRecord,
+    InboxAppConversationRecord,
+    InboxAppInstallationRecord,
+    InboxAppInstallationSummary,
+    InboxAppMessageRecord,
+    InboxAppMessageSenderRecord,
+    InboxAppNoteRecord,
+    InboxAppParticipantRecord,
+    InstallInboxAppRequest,
+)
 from followupboss_mcp.models.notes import CreateNoteRequest, NoteRecord
 from followupboss_mcp.models.people import CreatePersonRequest, PeopleSearchRequest, PersonRecord
+from followupboss_mcp.models.people_relationships import (
+    CreatePeopleRelationshipRequest,
+    PeopleRelationshipListRequest,
+    PeopleRelationshipRecord,
+)
 from followupboss_mcp.models.pipelines import (
     CreatePipelineRequest,
     PipelineListRequest,
@@ -135,6 +196,7 @@ from followupboss_mcp.models.pipelines import (
     PipelineStageInput,
 )
 from followupboss_mcp.models.ponds import CreatePondRequest, PondListRequest, PondRecord
+from followupboss_mcp.models.reactions import ReactionRecord
 from followupboss_mcp.models.smart_lists import SmartListListRequest, SmartListRecord
 from followupboss_mcp.models.stages import (
     CreateStageRequest,
@@ -142,14 +204,23 @@ from followupboss_mcp.models.stages import (
     StageRecord,
 )
 from followupboss_mcp.models.tasks import CreateTaskRequest, TaskListRequest, TaskRecord
+from followupboss_mcp.models.team_inboxes import (
+    TeamInboxListRequest,
+    TeamInboxRecord,
+    TeamInboxUserSummary,
+)
 from followupboss_mcp.models.teams import CreateTeamRequest, TeamListRequest, TeamRecord
 from followupboss_mcp.models.templates import (
     CreateTemplateRequest,
+    MergeTemplateRequest,
     TemplateListRequest,
     TemplateRecord,
 )
 from followupboss_mcp.models.text_messages import (
+    CreateTextMessageRequest,
     CreateTextMessageTemplateRequest,
+    MergedTextMessageTemplateRecord,
+    MergeTextMessageTemplateRequest,
     TextMessageListRequest,
     TextMessageRecord,
     TextMessageTemplateListRequest,
@@ -217,6 +288,170 @@ class StubBundle:
         async def people_update(person_id: int, request: object) -> PersonRecord:
             del request
             return PersonRecord(id=person_id)
+
+        async def person_attachments_get(person_attachment_id: int) -> PersonAttachmentRecord:
+            return PersonAttachmentRecord(
+                id=person_attachment_id,
+                personId=1,
+                fileName="test.jpg",
+                uri="https://test.com/myfile",
+                mimeType="link",
+                status="created",
+                createdAt="2022-11-16T03:44:52Z",
+                createdById=1,
+                createdByName="Olivia Admin",
+                is_external=1,
+                system_id=123,
+            )
+
+        async def person_attachments_create(
+            _: CreatePersonAttachmentRequest,
+        ) -> PersonAttachmentRecord:
+            return PersonAttachmentRecord(
+                id=3,
+                personId=1,
+                fileName="test.jpg",
+                uri="https://test.com/myfile",
+                mimeType="link",
+                status="created",
+                createdAt="2022-11-16T03:44:52Z",
+                createdById=1,
+                createdByName="Olivia Admin",
+            )
+
+        async def person_attachments_update(
+            person_attachment_id: int,
+            request: object,
+        ) -> PersonAttachmentRecord:
+            del request
+            return PersonAttachmentRecord(
+                id=person_attachment_id,
+                personId=1,
+                fileName="updated.jpg",
+                fileSize=42,
+                uri="https://test.com/updated",
+                mimeType="link",
+                status="created",
+                createdAt="2022-11-16T03:44:52Z",
+                createdById=1,
+                createdByName="Olivia Admin",
+            )
+
+        async def person_attachments_delete(person_attachment_id: int) -> None:
+            del person_attachment_id
+
+        async def deal_attachments_get(deal_attachment_id: int) -> DealAttachmentRecord:
+            return DealAttachmentRecord(
+                id=deal_attachment_id,
+                dealId=8,
+                fileName="deal.jpg",
+                uri="https://test.com/deal",
+                mimeType="link",
+                status="created",
+                createdAt="2022-11-16T19:09:45Z",
+                createdById=1,
+                createdByName="Olivia Admin",
+            )
+
+        async def deal_attachments_create(_: CreateDealAttachmentRequest) -> DealAttachmentRecord:
+            return DealAttachmentRecord(
+                id=11,
+                dealId=8,
+                fileName="deal.jpg",
+                uri="https://test.com/deal",
+                mimeType="link",
+                status="created",
+                createdAt="2022-11-16T19:09:45Z",
+                createdById=1,
+                createdByName="Olivia Admin",
+            )
+
+        async def deal_attachments_update(
+            deal_attachment_id: int,
+            request: object,
+        ) -> DealAttachmentRecord:
+            del request
+            return DealAttachmentRecord(
+                id=deal_attachment_id,
+                dealId=9,
+                fileName="deal-updated.jpg",
+                fileSize=24,
+                uri="https://test.com/deal-updated",
+                mimeType="link",
+                status="created",
+                createdAt="2022-11-16T19:09:45Z",
+                createdById=1,
+                createdByName="Olivia Admin",
+            )
+
+        async def deal_attachments_delete(deal_attachment_id: int) -> None:
+            del deal_attachment_id
+
+        async def reactions_get(reaction_id: int) -> ReactionRecord:
+            return ReactionRecord(
+                id=reaction_id,
+                created="2024-03-21T21:14:13Z",
+                createdBy="Tom Minch",
+                createdById=1,
+                refType="Note",
+                refId=2144705,
+                body="🤯",
+            )
+
+        async def reactions_add(ref_type: str, ref_id: int, request: object) -> object:
+            del ref_type, ref_id, request
+            return SimpleNamespace(model_dump=lambda exclude_none=True: {})
+
+        async def reactions_delete(
+            ref_type: str,
+            ref_id: int,
+            request: object | None = None,
+        ) -> None:
+            del ref_type, ref_id, request
+
+        async def people_relationships_list(
+            _: PeopleRelationshipListRequest,
+        ) -> PageResult[PeopleRelationshipRecord]:
+            return PageResult(
+                items=[
+                    PeopleRelationshipRecord(
+                        id=423,
+                        personId=46977,
+                        name="Billy Bob",
+                        firstName="Billy",
+                        lastName="Bob",
+                        type="Husband",
+                        isPriority=True,
+                    )
+                ],
+                metadata=_page_metadata(),
+            )
+
+        async def people_relationships_get(people_relationship_id: int) -> PeopleRelationshipRecord:
+            return PeopleRelationshipRecord(
+                id=people_relationship_id,
+                personId=46977,
+                name="Billy Bob",
+                firstName="Billy",
+                lastName="Bob",
+                type="Husband",
+                isPriority=True,
+            )
+
+        async def people_relationships_create(
+            _: CreatePeopleRelationshipRequest,
+        ) -> PeopleRelationshipRecord:
+            return PeopleRelationshipRecord()
+
+        async def people_relationships_update(
+            people_relationship_id: int,
+            request: object,
+        ) -> PeopleRelationshipRecord:
+            del people_relationship_id, request
+            return PeopleRelationshipRecord()
+
+        async def people_relationships_delete(people_relationship_id: int) -> None:
+            del people_relationship_id
 
         async def events_search(_: EventSearchRequest) -> PageResult[EventRecord]:
             return PageResult(
@@ -373,6 +608,188 @@ class StubBundle:
         async def groups_delete(group_id: int) -> None:
             del group_id
 
+        async def inbox_apps_list_installations(
+            published_inbox_app_id: int,
+        ) -> PageResult[InboxAppInstallationSummary]:
+            del published_inbox_app_id
+            return PageResult(
+                items=[
+                    InboxAppInstallationSummary(
+                        inboxAppId=130,
+                        userId=0,
+                        created="2025-01-01T12:12:12Z",
+                    )
+                ],
+                metadata=_page_metadata(),
+            )
+
+        async def inbox_apps_install(_: InstallInboxAppRequest) -> InboxAppInstallationRecord:
+            return InboxAppInstallationRecord(
+                id=131,
+                created="2024-01-01T12:00:00Z",
+                updated="2024-01-01T12:00:00Z",
+                createdById=1,
+                updatedById=1,
+                status=10,
+                name="Example Inbox App",
+                publishedInboxAppId=9,
+                userId=0,
+                canReply=True,
+            )
+
+        async def inbox_apps_deactivate(inbox_app_id: int) -> None:
+            del inbox_app_id
+
+        async def inbox_apps_list_participants(
+            inbox_app_id: int,
+            ext_conversation_id: str,
+        ) -> PageResult[InboxAppParticipantRecord]:
+            del inbox_app_id, ext_conversation_id
+            return PageResult(
+                items=[
+                    InboxAppParticipantRecord(
+                        id=132,
+                        status="active",
+                        name="John Doe",
+                        phone="+14075550123",
+                        email="john@example.com",
+                        isAutomation=False,
+                    )
+                ],
+                metadata=_page_metadata(),
+            )
+
+        async def inbox_apps_add_participant(
+            inbox_app_id: int,
+            ext_conversation_id: str,
+            request: object,
+        ) -> InboxAppParticipantRecord:
+            del inbox_app_id, ext_conversation_id, request
+            return InboxAppParticipantRecord(
+                id=133,
+                status="active",
+                name="John Doe",
+                phone="+14075550123",
+                email="john@example.com",
+                isAutomation=False,
+            )
+
+        async def inbox_apps_remove_participant(
+            inbox_app_id: int,
+            ext_conversation_id: str,
+            participant_id: int,
+        ) -> None:
+            del inbox_app_id, ext_conversation_id, participant_id
+
+        async def inbox_apps_add_message(
+            inbox_app_id: int,
+            request: object,
+        ) -> InboxAppMessageRecord:
+            del inbox_app_id, request
+            return InboxAppMessageRecord(
+                id=134,
+                created="2024-01-01T12:00:00Z",
+                updated="2024-01-01T12:00:00Z",
+                sentAt="2024-01-01T12:00:00Z",
+                deliveryStatus=None,
+                deliveryStatusErrorMessage=None,
+                createdById=1,
+                updatedById=1,
+                isIncoming=True,
+                message="An example message.",
+                userId=0,
+                personId=1,
+                sender=InboxAppMessageSenderRecord(
+                    personId=1,
+                    name="John Doe",
+                    email=None,
+                    phone=None,
+                    avatar=None,
+                ),
+                attachments=[
+                    InboxAppAttachmentRecord(
+                        filename="example-2.jpg",
+                        url="https://followupboss.test/example-2.jpg",
+                    )
+                ],
+                conversationDeepLinkUrl="https://app.followupboss.com/2/inbox-new/0/inbox/1",
+            )
+
+        async def inbox_apps_add_note(
+            inbox_app_id: int,
+            request: object,
+        ) -> InboxAppNoteRecord:
+            del inbox_app_id, request
+            return InboxAppNoteRecord(
+                id=135,
+                created="2024-01-01T12:00:00Z",
+                updated="2024-01-01T12:00:00Z",
+                createdById=1,
+                updatedById=1,
+                createdBy="John Doe",
+                updatedBy="John Doe",
+                conversationId=1,
+                body="An example note.",
+                isHtml=False,
+                type="ConversationNote",
+                conversationDeepLinkUrl="https://app.followupboss.com/2/inbox-new/0/inbox/1",
+            )
+
+        async def inbox_apps_update_conversation(
+            inbox_app_id: int,
+            ext_conversation_id: str,
+            request: object,
+        ) -> InboxAppConversationRecord:
+            del inbox_app_id, request
+            return InboxAppConversationRecord(
+                externalConversationId=ext_conversation_id,
+                created="2024-01-01T12:00:00Z",
+                updated="2024-01-01T12:00:00Z",
+                createdById="John Doe",
+                updatedById="John Doe",
+                ownerUserId=1,
+                ownerSharedInboxId=0,
+                assignedUserId=0,
+                assignedSharedInboxId=1,
+                subject="A Conversation Subject",
+                archived=False,
+                person=InboxAppConversationPersonRecord(
+                    id=1,
+                    name=None,
+                    email=None,
+                    phone=None,
+                ),
+                conversationDeepLinkUrl="https://app.followupboss.com/2/inbox-new/0/inbox/1",
+            )
+
+        async def inbox_apps_update_message(
+            inbox_app_id: int,
+            request: object,
+        ) -> InboxAppMessageRecord:
+            del inbox_app_id, request
+            return InboxAppMessageRecord(
+                id=136,
+                created="2024-01-01T12:00:00Z",
+                updated="2024-01-01T12:00:00Z",
+                sentAt="2024-01-01T12:00:00Z",
+                deliveryStatus="Delivered",
+                deliveryStatusErrorMessage=None,
+                createdById=1,
+                updatedById=1,
+                isIncoming=True,
+                message="An example message.",
+                userId=0,
+                personId=1,
+                sender=InboxAppMessageSenderRecord(
+                    personId=1,
+                    name="John Doe",
+                    email=None,
+                    phone=None,
+                    avatar=None,
+                ),
+                conversationDeepLinkUrl="https://app.followupboss.com/2/inbox-new/0/inbox/1",
+            )
+
         async def users_list(_: UserListRequest) -> PageResult[UserRecord]:
             return PageResult(items=[UserRecord(id=6, name="Geordi")], metadata=_page_metadata())
 
@@ -461,6 +878,110 @@ class StubBundle:
                     CustomFieldRecord(id=7, label="Birthday", name="customBirthday", type="date")
                 ],
                 metadata=_page_metadata(),
+            )
+
+        async def custom_fields_get(custom_field_id: int) -> CustomFieldRecord:
+            return CustomFieldRecord(
+                id=custom_field_id,
+                label="Close price",
+                name="customClosePrice",
+                type="number",
+            )
+
+        async def custom_fields_create(_: CreateCustomFieldRequest) -> CustomFieldRecord:
+            return CustomFieldRecord(
+                id=12,
+                label="Looking for",
+                name="customLookingFor",
+                type="dropdown",
+                choices=["Apartment", "Townhouse"],
+            )
+
+        async def custom_fields_update(
+            custom_field_id: int,
+            request: object,
+        ) -> CustomFieldRecord:
+            del request
+            return CustomFieldRecord(
+                id=custom_field_id,
+                label="Looking for",
+                name="customLookingFor",
+                type="dropdown",
+            )
+
+        async def custom_fields_delete(custom_field_id: int) -> None:
+            del custom_field_id
+
+        async def email_marketing_list_campaigns(
+            _: EmailCampaignListRequest,
+        ) -> PageResult[EmailCampaignRecord]:
+            return PageResult(
+                items=[
+                    EmailCampaignRecord(
+                        id=201,
+                        origin="Curaytor",
+                        originId="912",
+                        name="Can I help",
+                        subject="Can I help?",
+                        bodyHtml="I saw you're browsing our website, can I help with...",
+                    )
+                ],
+                metadata=_page_metadata(),
+            )
+
+        async def email_marketing_create_campaign(
+            _: CreateEmailCampaignRequest,
+        ) -> EmailCampaignRecord:
+            return EmailCampaignRecord(
+                id=202,
+                origin="Curaytor",
+                originId="913",
+                name="New Campaign",
+                subject="Hello",
+                bodyHtml="<p>Hello</p>",
+            )
+
+        async def email_marketing_update_campaign(
+            email_campaign_id: int,
+            request: object,
+        ) -> EmailCampaignRecord:
+            del request
+            return EmailCampaignRecord(
+                id=email_campaign_id,
+                origin="Curaytor",
+                originId="913",
+                name="Updated Campaign",
+                subject="Updated",
+                bodyHtml="<p>Updated</p>",
+            )
+
+        async def email_marketing_list_events(
+            _: EmailEventListRequest,
+        ) -> PageResult[EmailEventRecord]:
+            return PageResult(
+                items=[
+                    EmailEventRecord(
+                        count=2,
+                        type="open",
+                        personId=10911,
+                        campaignId=102,
+                        campaignName="Can I help",
+                        created="2017-01-03T19:20:49Z",
+                        updated="2017-01-03T19:20:49Z",
+                    )
+                ],
+                metadata=_page_metadata(),
+            )
+
+        async def email_marketing_send_events(
+            _: CreateEmailEventsBatchRequest,
+        ) -> EmailEventsBatchResult:
+            return EmailEventsBatchResult(
+                emEventIds=[193928, 193929],
+                recipientsNotFound=[
+                    "email.not.in.fub@example.com",
+                    "another.missing.email@example.com",
+                ],
             )
 
         async def deals_list(_: DealListRequest) -> PageResult[DealRecord]:
@@ -634,6 +1155,18 @@ class StubBundle:
         async def teams_delete(team_id: int, request: object) -> None:
             del team_id, request
 
+        async def team_inboxes_list(_: TeamInboxListRequest) -> PageResult[TeamInboxRecord]:
+            return PageResult(
+                items=[
+                    TeamInboxRecord(
+                        id=121,
+                        name="My Team Inbox",
+                        users=[TeamInboxUserSummary(id=111, name="User Name", firstName="User")],
+                    )
+                ],
+                metadata=_page_metadata(),
+            )
+
         async def appointments_list(_: AppointmentListRequest) -> PageResult[AppointmentRecord]:
             return PageResult(
                 items=[
@@ -720,6 +1253,17 @@ class StubBundle:
             del request
             return TemplateRecord(id=template_id, name="Buyer intro", subject="Hello")
 
+        async def templates_merge(_: MergeTemplateRequest) -> TemplateRecord:
+            return TemplateRecord(
+                id=20,
+                name="I am here to help",
+                subject="Your property inquiry from Zillow",
+                body="Hi Bob, I am here to help, ...",
+                isShared=True,
+                isEditable=True,
+                isDeletable=True,
+            )
+
         async def templates_create(_: CreateTemplateRequest) -> TemplateRecord:
             return TemplateRecord(id=20, name="New template", subject="Hello")
 
@@ -744,6 +1288,19 @@ class StubBundle:
                 userName="Data",
             )
 
+        async def text_messages_create(_: CreateTextMessageRequest) -> TextMessageRecord:
+            return TextMessageRecord(
+                id=34,
+                personId=2,
+                message="Logged externally",
+                fromNumber="555-0001",
+                toNumber="555-0002",
+                userName="Data",
+                isIncoming=False,
+                externalLabel="External SMS",
+                externalUrl="https://example.com/sms/3",
+            )
+
         async def text_message_templates_list(
             _: TextMessageTemplateListRequest,
         ) -> PageResult[TextMessageTemplateRecord]:
@@ -762,6 +1319,11 @@ class StubBundle:
             return TextMessageTemplateRecord(
                 id=template_id, name="Buyer intro text", message="Hi there"
             )
+
+        async def text_message_templates_merge(
+            _: MergeTextMessageTemplateRequest,
+        ) -> MergedTextMessageTemplateRecord:
+            return MergedTextMessageTemplateRecord(mergedTemplate="Hey Bob, Alice and Carol...")
 
         async def text_message_templates_create(
             _: CreateTextMessageTemplateRequest,
@@ -855,7 +1417,19 @@ class StubBundle:
                 create_call=calls_create,
                 update_call=calls_update,
             ),
-            custom_fields=_service_stub(list_custom_fields=custom_fields_list),
+            custom_fields=_service_stub(
+                list_custom_fields=custom_fields_list,
+                get_custom_field=custom_fields_get,
+                create_custom_field=custom_fields_create,
+                update_custom_field=custom_fields_update,
+                delete_custom_field=custom_fields_delete,
+            ),
+            deal_attachments=_service_stub(
+                get_deal_attachment=deal_attachments_get,
+                create_deal_attachment=deal_attachments_create,
+                update_deal_attachment=deal_attachments_update,
+                delete_deal_attachment=deal_attachments_delete,
+            ),
             deals=_service_stub(
                 list_deals=deals_list,
                 get_deal=deals_get,
@@ -863,6 +1437,13 @@ class StubBundle:
                 update_deal=deals_update,
                 delete_deal=deals_delete,
                 list_deal_custom_fields=deal_custom_fields_list,
+            ),
+            email_marketing=_service_stub(
+                list_email_campaigns=email_marketing_list_campaigns,
+                create_email_campaign=email_marketing_create_campaign,
+                update_email_campaign=email_marketing_update_campaign,
+                list_email_events=email_marketing_list_events,
+                send_email_events=email_marketing_send_events,
             ),
             events=_service_stub(
                 search_events=events_search,
@@ -878,6 +1459,18 @@ class StubBundle:
                 delete_group=groups_delete,
             ),
             identity=_service_stub(get_identity=identity_get),
+            inbox_apps=_service_stub(
+                list_inbox_app_installations=inbox_apps_list_installations,
+                install_inbox_app=inbox_apps_install,
+                deactivate_inbox_app=inbox_apps_deactivate,
+                add_inbox_app_message=inbox_apps_add_message,
+                add_inbox_app_note=inbox_apps_add_note,
+                list_inbox_app_participants=inbox_apps_list_participants,
+                add_inbox_app_participant=inbox_apps_add_participant,
+                update_inbox_app_conversation=inbox_apps_update_conversation,
+                update_inbox_app_message=inbox_apps_update_message,
+                remove_inbox_app_participant=inbox_apps_remove_participant,
+            ),
             notes=_service_stub(
                 add_note=notes_add,
                 get_note=notes_get,
@@ -889,6 +1482,19 @@ class StubBundle:
                 get_person=people_get,
                 create_person=people_create,
                 update_person=people_update,
+            ),
+            person_attachments=_service_stub(
+                get_person_attachment=person_attachments_get,
+                create_person_attachment=person_attachments_create,
+                update_person_attachment=person_attachments_update,
+                delete_person_attachment=person_attachments_delete,
+            ),
+            people_relationships=_service_stub(
+                list_people_relationships=people_relationships_list,
+                get_people_relationship=people_relationships_get,
+                create_people_relationship=people_relationships_create,
+                update_people_relationship=people_relationships_update,
+                delete_people_relationship=people_relationships_delete,
             ),
             pipelines=_service_stub(
                 list_pipelines=pipelines_list,
@@ -903,6 +1509,11 @@ class StubBundle:
                 create_pond=ponds_create,
                 update_pond=ponds_update,
                 delete_pond=ponds_delete,
+            ),
+            reactions=_service_stub(
+                get_reaction=reactions_get,
+                add_reaction=reactions_add,
+                delete_reaction=reactions_delete,
             ),
             smart_lists=_service_stub(
                 list_smart_lists=smart_lists_list,
@@ -922,6 +1533,9 @@ class StubBundle:
                 update_task=tasks_update,
                 delete_task=tasks_delete,
             ),
+            team_inboxes=_service_stub(
+                list_team_inboxes=team_inboxes_list,
+            ),
             teams=_service_stub(
                 list_teams=teams_list,
                 get_team=teams_get,
@@ -932,6 +1546,7 @@ class StubBundle:
             text_message_templates=_service_stub(
                 list_text_message_templates=text_message_templates_list,
                 get_text_message_template=text_message_templates_get,
+                merge_text_message_template=text_message_templates_merge,
                 create_text_message_template=text_message_templates_create,
                 update_text_message_template=text_message_templates_update,
                 delete_text_message_template=text_message_templates_delete,
@@ -939,10 +1554,12 @@ class StubBundle:
             text_messages=_service_stub(
                 list_text_messages=text_messages_list,
                 get_text_message=text_messages_get,
+                create_text_message=text_messages_create,
             ),
             templates=_service_stub(
                 list_templates=templates_list,
                 get_template=templates_get,
+                merge_template=templates_merge,
                 create_template=templates_create,
                 update_template=templates_update,
                 delete_template=templates_delete,
@@ -967,6 +1584,74 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert (await adapter.get_person(GetPersonToolInput(person_id=3)))["id"] == 3
     assert (await adapter.create_person(CreatePersonRequest(first_name="Tom")))["id"] == 3
     assert (await adapter.update_person(UpdatePersonToolInput(person_id=4)))["id"] == 4
+    assert (
+        await adapter.get_person_attachment(GetPersonAttachmentToolInput(person_attachment_id=2))
+    )["id"] == 2
+    assert (
+        await adapter.create_person_attachment(
+            CreatePersonAttachmentRequest(
+                person_id=1,
+                uri="https://test.com/myfile",
+                file_name="test.jpg",
+            )
+        )
+    )["id"] == 3
+    assert (
+        await adapter.update_person_attachment(
+            UpdatePersonAttachmentToolInput(
+                person_attachment_id=4,
+                person_id=1,
+                uri="https://test.com/updated",
+                file_name="updated.jpg",
+            )
+        )
+    )["id"] == 4
+    assert (
+        await adapter.delete_person_attachment(
+            DeletePersonAttachmentToolInput(person_attachment_id=5)
+        )
+    ) == {
+        "deleted": True,
+        "personAttachmentId": 5,
+    }
+    assert (
+        await adapter.list_people_relationships(PeopleRelationshipListRequest(person_id=46977))
+    )["peopleRelationships"][0]["id"] == 423
+    assert (
+        await adapter.get_people_relationship(
+            GetPeopleRelationshipToolInput(people_relationship_id=423)
+        )
+    )["id"] == 423
+    assert (
+        await adapter.create_people_relationship(CreatePeopleRelationshipRequest(person_id=46977))
+    ) == {}
+    assert (
+        await adapter.update_people_relationship(
+            UpdatePeopleRelationshipToolInput(people_relationship_id=423, type="Spouse")
+        )
+    ) == {}
+    assert (
+        await adapter.delete_people_relationship(
+            DeletePeopleRelationshipToolInput(people_relationship_id=423)
+        )
+    ) == {
+        "deleted": True,
+        "peopleRelationshipId": 423,
+    }
+    assert (await adapter.get_reaction(GetReactionToolInput(reaction_id=1363)))["id"] == 1363
+    assert (
+        await adapter.add_reaction(
+            AddReactionToolInput(ref_type="Note", ref_id=2144705, body="🤣")
+        )
+    ) == {}
+    assert (
+        await adapter.delete_reaction(
+            DeleteReactionToolInput(ref_type="Note", ref_id=2144705, emoji="👏")
+        )
+    ) == {
+        "deleted": True,
+        "refId": 2144705,
+    }
     assert (await adapter.search_events(EventSearchRequest()))["events"][0]["id"] == 4
     assert (await adapter.get_event(GetEventToolInput(event_id=6)))["id"] == 6
     assert (
@@ -1040,6 +1725,113 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         "deleted": True,
         "appointmentTypeId": 12,
     }
+    assert (await adapter.list_action_plans(ActionPlanListRequest()))["actionPlans"][0]["id"] == 5
+    assert (await adapter.list_action_plan_people(ActionPlanPersonListRequest(action_plan_id=5)))[
+        "actionPlansPeople"
+    ][0]["id"] == 6
+    assert (
+        await adapter.apply_action_plan(
+            CreateActionPlanPersonRequest(action_plan_id=5, person_id=10810)
+        )
+    )["id"] == 7
+    assert (
+        await adapter.update_action_plan_person(
+            UpdateActionPlanPersonToolInput(action_plan_person_id=8, status="Paused")
+        )
+    )["id"] == 8
+    assert (
+        await adapter.list_inbox_app_installations(
+            ListInboxAppInstallationsToolInput(published_inbox_app_id=9)
+        )
+    )["inboxApps"][0]["inboxAppId"] == 130
+    assert (
+        await adapter.install_inbox_app(
+            InstallInboxAppRequest(
+                published_inbox_app_id=9,
+                user_id=0,
+                subscription_url="https://example.com/webhook",
+            )
+        )
+    )["id"] == 131
+    assert (await adapter.deactivate_inbox_app(DeactivateInboxAppToolInput(inbox_app_id=131))) == {
+        "deleted": True,
+        "inboxAppId": 131,
+    }
+    assert (
+        await adapter.list_inbox_app_participants(
+            ListInboxAppParticipantsToolInput(inbox_app_id=131, ext_conversation_id="conv-123")
+        )
+    )["participants"][0]["id"] == 132
+    assert (
+        await adapter.add_inbox_app_participant(
+            AddInboxAppParticipantToolInput(
+                inbox_app_id=131,
+                ext_conversation_id="conv-123",
+                name="John Doe",
+                email="john@example.com",
+            )
+        )
+    )["id"] == 133
+    assert (
+        await adapter.remove_inbox_app_participant(
+            DeleteInboxAppParticipantToolInput(
+                inbox_app_id=131,
+                ext_conversation_id="conv-123",
+                participant_id=133,
+            )
+        )
+    ) == {
+        "deleted": True,
+        "participantId": 133,
+    }
+    assert (
+        await adapter.add_inbox_app_message(
+            AddInboxAppMessageToolInput.model_validate(
+                {
+                    "inbox_app_id": 131,
+                    "external_conversation_id": "conv-123",
+                    "external_message_id": "msg-123",
+                    "message": "An example message.",
+                    "is_incoming": True,
+                    "sender": {"personId": 1},
+                }
+            )
+        )
+    )["id"] == 134
+    assert (
+        await adapter.add_inbox_app_note(
+            AddInboxAppNoteToolInput.model_validate(
+                {
+                    "inbox_app_id": 131,
+                    "external_conversation_id": "conv-123",
+                    "body": "An example note.",
+                    "user": {"id": 1},
+                }
+            )
+        )
+    )["id"] == 135
+    assert (
+        await adapter.update_inbox_app_conversation(
+            UpdateInboxAppConversationToolInput.model_validate(
+                {
+                    "inbox_app_id": 131,
+                    "ext_conversation_id": "conv-123",
+                    "subject": "A Conversation Subject",
+                    "archived": False,
+                }
+            )
+        )
+    )["externalConversationId"] == "conv-123"
+    assert (
+        await adapter.update_inbox_app_message(
+            UpdateInboxAppMessageToolInput(
+                inbox_app_id=131,
+                id=134,
+                external_message_id="msg-124",
+                delivery_status="Delivered",
+            )
+        )
+    )["id"] == 136
     assert (await adapter.list_automations(AutomationListRequest()))["automations"][0]["id"] == 50
     assert (await adapter.get_automation(GetAutomationToolInput(automation_id=51)))["id"] == 51
     assert (await adapter.list_automation_people(AutomationPeopleListRequest(automation_id=50)))[
@@ -1080,9 +1872,57 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         "deleted": True,
         "groupId": 13,
     }
+    assert (await adapter.list_team_inboxes(TeamInboxListRequest()))["teamInboxes"][0]["id"] == 121
     assert (await adapter.list_custom_fields(CustomFieldListRequest()))["customfields"][0][
         "id"
     ] == 7
+    assert (await adapter.get_custom_field(GetCustomFieldToolInput(custom_field_id=12)))["id"] == 12
+    assert (
+        await adapter.create_custom_field(
+            CreateCustomFieldRequest(label="Looking for", type="dropdown", choices=["Apartment"])
+        )
+    )["id"] == 12
+    assert (
+        await adapter.update_custom_field(
+            UpdateCustomFieldToolInput(custom_field_id=13, label="Looking for")
+        )
+    )["id"] == 13
+    assert (await adapter.delete_custom_field(DeleteCustomFieldToolInput(custom_field_id=14))) == {
+        "deleted": True,
+        "customFieldId": 14,
+    }
+    assert (await adapter.list_email_campaigns(EmailCampaignListRequest(origin="Curaytor")))[
+        "emCampaigns"
+    ][0]["id"] == 201
+    assert (
+        await adapter.create_email_campaign(
+            CreateEmailCampaignRequest(origin="Curaytor", origin_id="913", name="New Campaign")
+        )
+    )["id"] == 202
+    assert (
+        await adapter.update_email_campaign(
+            UpdateEmailCampaignToolInput(email_campaign_id=203, name="Updated Campaign")
+        )
+    )["id"] == 203
+    assert (await adapter.list_email_events(EmailEventListRequest(type="open")))["emEvents"][0][
+        "campaignId"
+    ] == 102
+    assert (
+        await adapter.send_email_events(
+            CreateEmailEventsBatchRequest.model_validate(
+                {
+                    "em_events": [
+                        {
+                            "type": "delivered",
+                            "occurred": "2026-03-28T13:00:00Z",
+                            "recipient": "john.smith@gmail.com",
+                            "campaign_id": 141,
+                        }
+                    ]
+                }
+            )
+        )
+    )["emEventIds"] == [193928, 193929]
     assert (await adapter.list_deals(DealListRequest()))["deals"][0]["id"] == 8
     assert (await adapter.get_deal(GetDealToolInput(deal_id=9)))["id"] == 9
     assert (
@@ -1098,6 +1938,34 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert (await adapter.delete_deal(DeleteDealToolInput(deal_id=11))) == {
         "deleted": True,
         "dealId": 11,
+    }
+    assert (await adapter.get_deal_attachment(GetDealAttachmentToolInput(deal_attachment_id=10)))[
+        "id"
+    ] == 10
+    assert (
+        await adapter.create_deal_attachment(
+            CreateDealAttachmentRequest(
+                deal_id=8,
+                uri="https://test.com/deal",
+                file_name="deal.jpg",
+            )
+        )
+    )["id"] == 11
+    assert (
+        await adapter.update_deal_attachment(
+            UpdateDealAttachmentToolInput(
+                deal_attachment_id=12,
+                deal_id=9,
+                uri="https://test.com/deal-updated",
+                file_name="deal-updated.jpg",
+            )
+        )
+    )["id"] == 12
+    assert (
+        await adapter.delete_deal_attachment(DeleteDealAttachmentToolInput(deal_attachment_id=13))
+    ) == {
+        "deleted": True,
+        "dealAttachmentId": 13,
     }
     assert (await adapter.list_deal_custom_fields(DealCustomFieldListRequest()))[
         "dealCustomfields"
@@ -1231,6 +2099,17 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert (await adapter.list_templates(TemplateListRequest()))["templates"][0]["id"] == 19
     assert (await adapter.get_template(GetTemplateToolInput(template_id=20)))["id"] == 20
     assert (
+        await adapter.merge_template(
+            MergeTemplateRequest.model_validate(
+                {
+                    "template_id": 31,
+                    "merge_person_id": 1213,
+                    "recipients": {"to": [{"name": "Bob Alvarez", "email": "bob@example.com"}]},
+                }
+            )
+        )
+    )["id"] == 20
+    assert (
         await adapter.create_template(
             CreateTemplateRequest(name="New template", subject="Hello", body="<p>Hello</p>")
         )
@@ -1253,12 +2132,36 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         "id"
     ] == 31
     assert (await adapter.get_text_message(GetTextMessageToolInput(text_message_id=32)))["id"] == 32
+    assert (
+        await adapter.create_text_message(
+            CreateTextMessageRequest(
+                person_id=2,
+                message="Logged externally",
+                to_number="555-0002",
+                from_number="555-0001",
+                is_incoming=False,
+                external_label="External SMS",
+                external_url="https://example.com/sms/3",
+            )
+        )
+    )["id"] == 34
     assert (await adapter.list_text_message_templates(TextMessageTemplateListRequest()))[
         "textmessagetemplates"
     ][0]["id"] == 32
     assert (
         await adapter.get_text_message_template(GetTextMessageTemplateToolInput(template_id=33))
     )["id"] == 33
+    assert (
+        await adapter.merge_text_message_template(
+            MergeTextMessageTemplateRequest.model_validate(
+                {
+                    "template_id": 31,
+                    "person_id": 1213,
+                    "recipients": {"to": [{"name": "Bob Alvarez", "phone": "+14075558075"}]},
+                }
+            )
+        )
+    )["mergedTemplate"] == "Hey Bob, Alice and Carol..."
     assert (
         await adapter.create_text_message_template(
             CreateTextMessageTemplateRequest(
@@ -1311,6 +2214,7 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         )
 
     failing = ServiceBundle(
+        action_plans=services.action_plans,
         appointments=services.appointments,
         appointment_outcomes=services.appointment_outcomes,
         appointment_types=services.appointment_types,
@@ -1318,10 +2222,13 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         automations=services.automations,
         calls=services.calls,
         custom_fields=services.custom_fields,
+        deal_attachments=services.deal_attachments,
         deals=services.deals,
+        email_marketing=services.email_marketing,
         events=services.events,
         groups=services.groups,
         identity=_service_stub(get_identity=boom),
+        inbox_apps=services.inbox_apps,
         notes=_service_stub(
             add_note=services.notes.add_note,
             get_note=services.notes.get_note,
@@ -1338,11 +2245,14 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
             create_person=services.people.create_person,
             update_person=services.people.update_person,
         ),
+        person_attachments=services.person_attachments,
+        people_relationships=services.people_relationships,
         ponds=services.ponds,
         pipelines=services.pipelines,
         smart_lists=services.smart_lists,
         stages=services.stages,
         tasks=services.tasks,
+        team_inboxes=services.team_inboxes,
         teams=services.teams,
         text_message_templates=services.text_message_templates,
         text_messages=services.text_messages,
@@ -1393,11 +2303,97 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                 {"id": 3},
                 {"id": 4},
                 {"id": 5},
+                {
+                    "personId": 1,
+                    "fileName": "test.jpg",
+                    "fileSize": None,
+                    "id": 2,
+                    "mimeType": "link",
+                    "uri": "https://test.com/myfile",
+                    "thumbnailUri": None,
+                    "status": "created",
+                    "createdAt": "2022-11-16T03:44:52Z",
+                    "createdById": 1,
+                    "createdByName": "Olivia Admin",
+                    "is_external": 1,
+                    "system_id": 123,
+                },
+                {
+                    "personId": 1,
+                    "fileName": "test.jpg",
+                    "fileSize": None,
+                    "id": 3,
+                    "mimeType": "link",
+                    "uri": "https://test.com/myfile",
+                    "thumbnailUri": None,
+                    "status": "created",
+                    "createdAt": "2022-11-16T03:44:52Z",
+                    "createdById": 1,
+                    "createdByName": "Olivia Admin",
+                },
+                {
+                    "personId": 1,
+                    "fileName": "updated.jpg",
+                    "fileSize": 42,
+                    "id": 4,
+                    "mimeType": "link",
+                    "uri": "https://test.com/updated",
+                    "thumbnailUri": None,
+                    "status": "created",
+                    "createdAt": "2022-11-16T03:44:52Z",
+                    "createdById": 1,
+                    "createdByName": "Olivia Admin",
+                },
+                {},
+                [
+                    {
+                        "id": 423,
+                        "personId": 46977,
+                        "name": "Billy Bob",
+                        "firstName": "Billy",
+                        "lastName": "Bob",
+                        "type": "Husband",
+                        "isPriority": True,
+                    }
+                ],
+                {
+                    "id": 423,
+                    "personId": 46977,
+                    "name": "Billy Bob",
+                    "firstName": "Billy",
+                    "lastName": "Bob",
+                    "type": "Husband",
+                    "isPriority": True,
+                },
+                {},
+                {},
+                {},
+                {
+                    "id": 1363,
+                    "created": "2024-03-21T21:14:13Z",
+                    "createdBy": "Tom Minch",
+                    "createdById": 1,
+                    "refType": "Note",
+                    "refId": 2144705,
+                    "body": "🤯",
+                },
+                [],
+                {},
                 {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "events": [{"id": 6}]},
                 {"id": 7},
                 {"id": 8},
                 {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "users": [{"id": 9}]},
                 {"id": 10},
+                {
+                    "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                    "actionPlans": [{"id": 11, "name": "Qualify buyer leads"}],
+                },
+                {
+                    "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                    "actionPlansPeople": [{"id": 12, "personId": 10810, "actionPlanId": 11}],
+                },
+                {},
+                {"id": 13, "personId": 10810, "actionPlanId": 11, "status": "Paused"},
                 {
                     "_metadata": {"limit": 10, "offset": 0, "total": 1},
                     "automations": [{"id": 87, "name": "Test Automation"}],
@@ -1451,15 +2447,236 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                 {"id": 103, "name": "Westside Plus", "type": "Agent"},
                 {},
                 {
+                    "inboxApps": [
+                        {"inboxAppId": 130, "userId": 0, "created": "2025-01-01T12:12:12Z"}
+                    ]
+                },
+                {
+                    "id": 131,
+                    "created": "2024-01-01T12:00:00Z",
+                    "updated": "2024-01-01T12:00:00Z",
+                    "createdById": 1,
+                    "updatedById": 1,
+                    "status": 10,
+                    "name": "Example Inbox App",
+                    "publishedInboxAppId": 9,
+                    "userId": 0,
+                    "canReply": True,
+                },
+                {},
+                [
+                    {
+                        "id": 132,
+                        "status": "active",
+                        "name": "John Doe",
+                        "phone": "+14075550123",
+                        "email": "john@example.com",
+                        "isAutomation": False,
+                    }
+                ],
+                {
+                    "id": 133,
+                    "status": "active",
+                    "name": "John Doe",
+                    "phone": "+14075550123",
+                    "email": "john@example.com",
+                    "isAutomation": False,
+                },
+                {},
+                {
+                    "id": 134,
+                    "created": "2024-01-01T12:00:00Z",
+                    "updated": "2024-01-01T12:00:00Z",
+                    "sentAt": "2024-01-01T12:00:00Z",
+                    "deliveryStatus": None,
+                    "deliveryStatusErrorMessage": None,
+                    "createdById": 1,
+                    "updatedById": 1,
+                    "isIncoming": True,
+                    "message": "An example message.",
+                    "userId": 0,
+                    "personId": 1,
+                    "sender": {
+                        "personId": 1,
+                        "name": "John Doe",
+                        "email": None,
+                        "phone": None,
+                        "avatar": None,
+                    },
+                    "attachments": [
+                        {
+                            "filename": "example-2.jpg",
+                            "url": "https://followupboss.test/example-2.jpg",
+                        }
+                    ],
+                    "conversationDeepLinkUrl": "https://app.followupboss.com/2/inbox-new/0/inbox/1",
+                },
+                {
+                    "id": 135,
+                    "created": "2024-01-01T12:00:00Z",
+                    "updated": "2024-01-01T12:00:00Z",
+                    "createdById": 1,
+                    "updatedById": 1,
+                    "createdBy": "John Doe",
+                    "updatedBy": "John Doe",
+                    "conversationId": 1,
+                    "body": "An example note.",
+                    "isHtml": False,
+                    "type": "ConversationNote",
+                    "conversationDeepLinkUrl": "https://app.followupboss.com/2/inbox-new/0/inbox/1",
+                },
+                {
+                    "externalConversationId": "conv-123",
+                    "created": "2024-01-01T12:00:00Z",
+                    "updated": "2024-01-01T12:00:00Z",
+                    "createdById": "John Doe",
+                    "updatedById": "John Doe",
+                    "ownerUserId": 1,
+                    "ownerSharedInboxId": 0,
+                    "assignedUserId": 0,
+                    "assignedSharedInboxId": 1,
+                    "subject": "A Conversation Subject",
+                    "archived": False,
+                    "person": {"id": 1, "name": None, "email": None, "phone": None},
+                    "conversationDeepLinkUrl": "https://app.followupboss.com/2/inbox-new/0/inbox/1",
+                },
+                {
+                    "id": 136,
+                    "created": "2024-01-01T12:00:00Z",
+                    "updated": "2024-01-01T12:00:00Z",
+                    "sentAt": "2024-01-01T12:00:00Z",
+                    "deliveryStatus": "Delivered",
+                    "deliveryStatusErrorMessage": None,
+                    "createdById": 1,
+                    "updatedById": 1,
+                    "isIncoming": True,
+                    "message": "An example message.",
+                    "userId": 0,
+                    "personId": 1,
+                    "sender": {
+                        "personId": 1,
+                        "name": "John Doe",
+                        "email": None,
+                        "phone": None,
+                        "avatar": None,
+                    },
+                    "conversationDeepLinkUrl": "https://app.followupboss.com/2/inbox-new/0/inbox/1",
+                },
+                {
                     "_metadata": {"limit": 10, "offset": 0, "total": 1},
                     "customfields": [
                         {"id": 11, "label": "Birthday", "name": "customBirthday", "type": "date"}
+                    ],
+                },
+                {"id": 12, "label": "Close price", "name": "customClosePrice", "type": "number"},
+                {
+                    "id": 13,
+                    "label": "Looking for",
+                    "name": "customLookingFor",
+                    "type": "dropdown",
+                    "choices": ["Apartment", "Townhouse"],
+                },
+                {
+                    "id": 14,
+                    "label": "Looking for",
+                    "name": "customLookingFor",
+                    "type": "dropdown",
+                },
+                {},
+                {
+                    "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                    "emCampaigns": [
+                        {
+                            "id": 201,
+                            "origin": "Curaytor",
+                            "originId": "912",
+                            "name": "Can I help",
+                            "subject": "Can I help?",
+                            "bodyHtml": "I saw you're browsing our website, can I help with...",
+                        }
+                    ],
+                },
+                {
+                    "id": 202,
+                    "origin": "Curaytor",
+                    "originId": "913",
+                    "name": "New Campaign",
+                    "subject": "Hello",
+                    "bodyHtml": "<p>Hello</p>",
+                },
+                {
+                    "id": 203,
+                    "origin": "Curaytor",
+                    "originId": "913",
+                    "name": "Updated Campaign",
+                    "subject": "Updated",
+                    "bodyHtml": "<p>Updated</p>",
+                },
+                {
+                    "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                    "emEvents": [
+                        {
+                            "count": 2,
+                            "type": "open",
+                            "personId": 10911,
+                            "campaignId": 102,
+                            "campaignName": "Can I help",
+                            "created": "2017-01-03T19:20:49Z",
+                            "updated": "2017-01-03T19:20:49Z",
+                        }
+                    ],
+                },
+                {
+                    "emEventIds": [193928, 193929],
+                    "recipientsNotFound": [
+                        "email.not.in.fub@example.com",
+                        "another.missing.email@example.com",
                     ],
                 },
                 {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "deals": [{"id": 40}]},
                 {"id": 41, "name": "Buyer contract"},
                 {"id": 42, "name": "New deal"},
                 {"id": 43, "name": "Updated deal"},
+                {},
+                {
+                    "dealId": 8,
+                    "fileName": "deal.jpg",
+                    "fileSize": None,
+                    "id": 10,
+                    "mimeType": "link",
+                    "uri": "https://test.com/deal",
+                    "thumbnailUri": None,
+                    "status": "created",
+                    "createdAt": "2022-11-16T19:09:45Z",
+                    "createdById": 1,
+                    "createdByName": "Olivia Admin",
+                },
+                {
+                    "dealId": 8,
+                    "fileName": "deal.jpg",
+                    "fileSize": None,
+                    "id": 11,
+                    "mimeType": "link",
+                    "uri": "https://test.com/deal",
+                    "thumbnailUri": None,
+                    "status": "created",
+                    "createdAt": "2022-11-16T19:09:45Z",
+                    "createdById": 1,
+                    "createdByName": "Olivia Admin",
+                },
+                {
+                    "dealId": 9,
+                    "fileName": "deal-updated.jpg",
+                    "fileSize": 24,
+                    "id": 12,
+                    "mimeType": "link",
+                    "uri": "https://test.com/deal-updated",
+                    "thumbnailUri": None,
+                    "status": "created",
+                    "createdAt": "2022-11-16T19:09:45Z",
+                    "createdById": 1,
+                    "createdByName": "Olivia Admin",
+                },
                 {},
                 {
                     "_metadata": {"limit": 10, "offset": 0, "total": 1},
@@ -1511,6 +2728,15 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                     "templates": [{"id": 20, "name": "Buyer intro", "subject": "Hello"}],
                 },
                 {"id": 21, "name": "Buyer intro", "subject": "Hello"},
+                {
+                    "id": 57,
+                    "name": "I am here to help",
+                    "subject": "Your property inquiry from Zillow",
+                    "body": "Hi Bob, I am here to help, ...",
+                    "isShared": True,
+                    "isEditable": True,
+                    "isDeletable": True,
+                },
                 {"id": 22, "name": "New template", "subject": "Hello", "body": "<p>Hello</p>"},
                 {
                     "id": 23,
@@ -1522,13 +2748,26 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                 {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "textmessages": [{"id": 50}]},
                 {"id": 51, "message": "Hi there"},
                 {
+                    "id": 58,
+                    "personId": 2,
+                    "message": "Logged externally",
+                    "fromNumber": "555-0001",
+                    "toNumber": "555-0002",
+                    "userName": "Data",
+                    "isIncoming": False,
+                    "externalLabel": "External SMS",
+                    "externalUrl": "https://example.com/sms/3",
+                },
+                {
                     "_metadata": {"limit": 10, "offset": 0, "total": 1},
                     "textmessagetemplates": [{"id": 52, "name": "Buyer intro text"}],
                 },
                 {"id": 53, "name": "Buyer intro text", "message": "Hi there"},
+                {"mergedTemplate": "Hey Bob, Alice and Carol..."},
                 {"id": 54, "name": "New text template", "message": "Hello there"},
                 {"id": 55, "name": "Updated text template", "message": "Updated text"},
                 {},
+                {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "teamInboxes": [{"id": 120}]},
                 {"id": 24, "body": "created"},
                 {"id": 25, "body": "loaded"},
                 {"id": 26, "body": "updated"},
@@ -1555,28 +2794,43 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     )
     tools = server._tool_manager._tools
     assert sorted(tools) == [
+        "followupboss_add_inbox_app_message",
+        "followupboss_add_inbox_app_note",
+        "followupboss_add_inbox_app_participant",
         "followupboss_add_note",
+        "followupboss_apply_action_plan",
         "followupboss_create_appointment",
         "followupboss_create_appointment_outcome",
         "followupboss_create_appointment_type",
         "followupboss_create_call",
+        "followupboss_create_custom_field",
         "followupboss_create_deal",
+        "followupboss_create_deal_attachment",
+        "followupboss_create_email_campaign",
         "followupboss_create_group",
+        "followupboss_create_people_relationship",
         "followupboss_create_person",
+        "followupboss_create_person_attachment",
         "followupboss_create_pipeline",
         "followupboss_create_pond",
         "followupboss_create_stage",
         "followupboss_create_task",
         "followupboss_create_team",
         "followupboss_create_template",
+        "followupboss_create_text_message",
         "followupboss_create_text_message_template",
         "followupboss_create_webhook",
+        "followupboss_deactivate_inbox_app",
         "followupboss_delete_appointment",
         "followupboss_delete_appointment_outcome",
         "followupboss_delete_appointment_type",
+        "followupboss_delete_custom_field",
         "followupboss_delete_deal",
+        "followupboss_delete_deal_attachment",
         "followupboss_delete_group",
         "followupboss_delete_note",
+        "followupboss_delete_people_relationship",
+        "followupboss_delete_person_attachment",
         "followupboss_delete_pipeline",
         "followupboss_delete_pond",
         "followupboss_delete_stage",
@@ -1591,12 +2845,16 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_get_automation",
         "followupboss_get_automation_person",
         "followupboss_get_call",
+        "followupboss_get_custom_field",
         "followupboss_get_deal",
+        "followupboss_get_deal_attachment",
         "followupboss_get_event",
         "followupboss_get_group",
         "followupboss_get_identity",
         "followupboss_get_note",
+        "followupboss_get_people_relationship",
         "followupboss_get_person",
+        "followupboss_get_person_attachment",
         "followupboss_get_pipeline",
         "followupboss_get_pond",
         "followupboss_get_smart_list",
@@ -1608,6 +2866,9 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_get_text_message_template",
         "followupboss_get_user",
         "followupboss_get_webhook",
+        "followupboss_install_inbox_app",
+        "followupboss_list_action_plan_people",
+        "followupboss_list_action_plans",
         "followupboss_list_appointment_outcomes",
         "followupboss_list_appointment_types",
         "followupboss_list_appointments",
@@ -1617,32 +2878,50 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_list_custom_fields",
         "followupboss_list_deal_custom_fields",
         "followupboss_list_deals",
+        "followupboss_list_email_campaigns",
+        "followupboss_list_email_events",
         "followupboss_list_groups",
+        "followupboss_list_inbox_app_installations",
+        "followupboss_list_inbox_app_participants",
+        "followupboss_list_people_relationships",
         "followupboss_list_pipelines",
         "followupboss_list_ponds",
         "followupboss_list_round_robin_groups",
         "followupboss_list_smart_lists",
         "followupboss_list_stages",
         "followupboss_list_tasks",
+        "followupboss_list_team_inboxes",
         "followupboss_list_teams",
         "followupboss_list_templates",
         "followupboss_list_text_message_templates",
         "followupboss_list_text_messages",
         "followupboss_list_users",
         "followupboss_list_webhooks",
+        "followupboss_merge_template",
+        "followupboss_merge_text_message_template",
+        "followupboss_remove_inbox_app_participant",
         "followupboss_search_events",
         "followupboss_search_people",
+        "followupboss_send_email_events",
         "followupboss_send_event",
         "followupboss_trigger_automation",
+        "followupboss_update_action_plan_person",
         "followupboss_update_appointment",
         "followupboss_update_appointment_outcome",
         "followupboss_update_appointment_type",
         "followupboss_update_automation_person",
         "followupboss_update_call",
+        "followupboss_update_custom_field",
         "followupboss_update_deal",
+        "followupboss_update_deal_attachment",
+        "followupboss_update_email_campaign",
         "followupboss_update_group",
+        "followupboss_update_inbox_app_conversation",
+        "followupboss_update_inbox_app_message",
         "followupboss_update_note",
+        "followupboss_update_people_relationship",
         "followupboss_update_person",
+        "followupboss_update_person_attachment",
         "followupboss_update_pipeline",
         "followupboss_update_pond",
         "followupboss_update_stage",
@@ -1659,6 +2938,36 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     assert await tools["followupboss_get_person"].fn(3) == {"id": 3}
     assert (await tools["followupboss_create_person"].fn(first_name="Tom"))["id"] == 4
     assert (await tools["followupboss_update_person"].fn(5, first_name="Will"))["id"] == 5
+    assert (await tools["followupboss_get_person_attachment"].fn(2))["id"] == 2
+    assert (
+        await tools["followupboss_create_person_attachment"].fn(
+            1,
+            "https://test.com/myfile",
+            "test.jpg",
+        )
+    )["id"] == 3
+    assert (
+        await tools["followupboss_update_person_attachment"].fn(
+            4,
+            1,
+            "https://test.com/updated",
+            "updated.jpg",
+        )
+    )["id"] == 4
+    assert await tools["followupboss_delete_person_attachment"].fn(5) == {
+        "deleted": True,
+        "personAttachmentId": 5,
+    }
+    assert (await tools["followupboss_list_people_relationships"].fn(person_id=46977))[
+        "peopleRelationships"
+    ][0]["id"] == 423
+    assert (await tools["followupboss_get_people_relationship"].fn(423))["id"] == 423
+    assert await tools["followupboss_create_people_relationship"].fn(46977) == {}
+    assert await tools["followupboss_update_people_relationship"].fn(423, type="Spouse") == {}
+    assert await tools["followupboss_delete_people_relationship"].fn(423) == {
+        "deleted": True,
+        "peopleRelationshipId": 423,
+    }
     assert (await tools["followupboss_search_events"].fn(person_id=1))["events"][0]["id"] == 6
     assert (await tools["followupboss_get_event"].fn(7))["id"] == 7
     assert (
@@ -1671,6 +2980,14 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     )["id"] == 8
     assert (await tools["followupboss_list_users"].fn())["users"][0]["id"] == 9
     assert (await tools["followupboss_get_user"].fn(10))["id"] == 10
+    assert (await tools["followupboss_list_action_plans"].fn())["actionPlans"][0]["id"] == 11
+    assert (await tools["followupboss_list_action_plan_people"].fn())["actionPlansPeople"][0][
+        "id"
+    ] == 12
+    assert await tools["followupboss_apply_action_plan"].fn(11, 10810) == {}
+    assert (await tools["followupboss_update_action_plan_person"].fn(13, status="Paused"))[
+        "id"
+    ] == 13
     assert (await tools["followupboss_list_automations"].fn())["automations"][0]["id"] == 87
     assert (await tools["followupboss_get_automation"].fn(88))["id"] == 88
     assert (await tools["followupboss_list_automation_people"].fn())["automationsPeople"][0][
@@ -1724,12 +3041,141 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "deleted": True,
         "groupId": 104,
     }
+    assert (await tools["followupboss_list_inbox_app_installations"].fn(9))["inboxApps"][0][
+        "inboxAppId"
+    ] == 130
+    assert (
+        await tools["followupboss_install_inbox_app"].fn(
+            9,
+            0,
+            "https://example.com/webhook",
+        )
+    )["id"] == 131
+    assert await tools["followupboss_deactivate_inbox_app"].fn(131) == {
+        "deleted": True,
+        "inboxAppId": 131,
+    }
+    assert (await tools["followupboss_list_inbox_app_participants"].fn(131, "conv-123"))[
+        "participants"
+    ][0]["id"] == 132
+    assert (
+        await tools["followupboss_add_inbox_app_participant"].fn(
+            131,
+            "conv-123",
+            name="John Doe",
+            email="john@example.com",
+        )
+    )["id"] == 133
+    assert await tools["followupboss_remove_inbox_app_participant"].fn(131, "conv-123", 133) == {
+        "deleted": True,
+        "participantId": 133,
+    }
+    assert (
+        await tools["followupboss_add_inbox_app_message"].fn(
+            131,
+            "conv-123",
+            "msg-123",
+            "An example message.",
+            True,
+            {"personId": 1},
+        )
+    )["id"] == 134
+    assert (
+        await tools["followupboss_add_inbox_app_note"].fn(
+            131,
+            "conv-123",
+            "An example note.",
+            {"id": 1},
+        )
+    )["id"] == 135
+    assert (
+        await tools["followupboss_update_inbox_app_conversation"].fn(
+            131,
+            "conv-123",
+            subject="A Conversation Subject",
+            archived=False,
+        )
+    )["externalConversationId"] == "conv-123"
+    assert (
+        await tools["followupboss_update_inbox_app_message"].fn(
+            131,
+            id=134,
+            external_message_id="msg-124",
+            delivery_status="Delivered",
+        )
+    )["id"] == 136
     assert (await tools["followupboss_list_custom_fields"].fn())["customfields"][0]["id"] == 11
+    assert (await tools["followupboss_get_custom_field"].fn(12))["id"] == 12
+    assert (
+        await tools["followupboss_create_custom_field"].fn(
+            "Looking for", "dropdown", choices=["Apartment"]
+        )
+    )["id"] == 13
+    assert (await tools["followupboss_update_custom_field"].fn(14, label="Looking for"))["id"] == 14
+    assert await tools["followupboss_delete_custom_field"].fn(15) == {
+        "deleted": True,
+        "customFieldId": 15,
+    }
+    assert (await tools["followupboss_list_email_campaigns"].fn(origin="Curaytor"))["emCampaigns"][
+        0
+    ]["id"] == 201
+    assert (
+        await tools["followupboss_create_email_campaign"].fn(
+            "Curaytor",
+            "913",
+            name="New Campaign",
+            subject="Hello",
+            body_html="<p>Hello</p>",
+        )
+    )["id"] == 202
+    assert (
+        await tools["followupboss_update_email_campaign"].fn(
+            203,
+            name="Updated Campaign",
+            subject="Updated",
+            body_html="<p>Updated</p>",
+        )
+    )["id"] == 203
+    assert (await tools["followupboss_list_email_events"].fn(type="open"))["emEvents"][0][
+        "campaignId"
+    ] == 102
+    assert (
+        await tools["followupboss_send_email_events"].fn(
+            [
+                {
+                    "type": "delivered",
+                    "occurred": "2026-03-28T13:00:00Z",
+                    "recipient": "john.smith@gmail.com",
+                    "campaign_id": 141,
+                }
+            ]
+        )
+    )["emEventIds"] == [193928, 193929]
     assert (await tools["followupboss_list_deals"].fn())["deals"][0]["id"] == 40
     assert (await tools["followupboss_get_deal"].fn(41))["id"] == 41
     assert (await tools["followupboss_create_deal"].fn(name="New deal", stage_id=7))["id"] == 42
     assert (await tools["followupboss_update_deal"].fn(43, stage_id=8))["id"] == 43
     assert await tools["followupboss_delete_deal"].fn(44) == {"deleted": True, "dealId": 44}
+    assert (await tools["followupboss_get_deal_attachment"].fn(10))["id"] == 10
+    assert (
+        await tools["followupboss_create_deal_attachment"].fn(
+            8,
+            "https://test.com/deal",
+            "deal.jpg",
+        )
+    )["id"] == 11
+    assert (
+        await tools["followupboss_update_deal_attachment"].fn(
+            12,
+            9,
+            "https://test.com/deal-updated",
+            "deal-updated.jpg",
+        )
+    )["id"] == 12
+    assert await tools["followupboss_delete_deal_attachment"].fn(13) == {
+        "deleted": True,
+        "dealAttachmentId": 13,
+    }
     assert (await tools["followupboss_list_deal_custom_fields"].fn())["dealCustomfields"][0][
         "id"
     ] == 44
@@ -1781,6 +3227,13 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     assert (await tools["followupboss_list_templates"].fn())["templates"][0]["id"] == 20
     assert (await tools["followupboss_get_template"].fn(21))["id"] == 21
     assert (
+        await tools["followupboss_merge_template"].fn(
+            31,
+            merge_person_id=1213,
+            recipients={"to": [{"name": "Bob Alvarez", "email": "bob@example.com"}]},
+        )
+    )["id"] == 57
+    assert (
         await tools["followupboss_create_template"].fn(
             name="New template",
             subject="Hello",
@@ -1801,10 +3254,28 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     }
     assert (await tools["followupboss_list_text_messages"].fn())["textmessages"][0]["id"] == 50
     assert (await tools["followupboss_get_text_message"].fn(51))["id"] == 51
+    assert (
+        await tools["followupboss_create_text_message"].fn(
+            2,
+            "Logged externally",
+            "555-0002",
+            "555-0001",
+            is_incoming=False,
+            external_label="External SMS",
+            external_url="https://example.com/sms/3",
+        )
+    )["id"] == 58
     assert (await tools["followupboss_list_text_message_templates"].fn())["textmessagetemplates"][
         0
     ]["id"] == 52
     assert (await tools["followupboss_get_text_message_template"].fn(53))["id"] == 53
+    assert (
+        await tools["followupboss_merge_text_message_template"].fn(
+            31,
+            person_id=1213,
+            recipients={"to": [{"name": "Bob Alvarez", "phone": "+14075558075"}]},
+        )
+    )["mergedTemplate"] == "Hey Bob, Alice and Carol..."
     assert (
         await tools["followupboss_create_text_message_template"].fn(
             name="New text template",
@@ -1822,6 +3293,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "deleted": True,
         "textMessageTemplateId": 56,
     }
+    assert (await tools["followupboss_list_team_inboxes"].fn())["teamInboxes"][0]["id"] == 120
     assert (await tools["followupboss_add_note"].fn(1, body="hi"))["id"] == 24
     assert (await tools["followupboss_get_note"].fn(25))["id"] == 25
     assert (await tools["followupboss_update_note"].fn(26, body="updated"))["id"] == 26

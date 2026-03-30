@@ -173,7 +173,7 @@ What changes this grade:
 - Current grade: `A (99/100)`
 - Status: `Pass`
 - Last reviewed: `2026-03-28`
-- Change notes: Follow-up group work kept the harsher re-review score in the same high band because another full CRUD workflow domain plus the round-robin read surface landed cleanly across the MCP layer without introducing surface inconsistency.
+- Change notes: Follow-up attachment work kept the harsher re-review score in the same high band because the new deal and person attachment tools landed cleanly without adding any special MCP adapter cases.
 
 Why this matters:
 
@@ -210,6 +210,14 @@ Current strengths:
 - The broader MCP surface now includes CRUD-style workflows across deals, groups, pipelines, ponds, appointments, tasks, templates, and supporting lookup domains without losing consistency.
 - The broader MCP surface now includes CRUD-style workflows across teams alongside the other admin and workflow domains without losing consistency.
 - The broader MCP surface now also includes a separate round-robin group listing flow without requiring special-case response handling.
+- The broader MCP surface now includes the legacy action-plan list plus apply/pause relationship flows without requiring any transport-specific code paths.
+- The broader MCP surface now includes person and deal attachment CRUD flows without needing any special-case response shaping.
+- The broader MCP surface now includes custom field owner-admin get/create/update/delete flows without needing any special-case response shaping.
+- The broader MCP surface now includes email marketing campaign list/create/update plus batched event list/post flows without needing any special-case response shaping.
+- The broader MCP surface now includes people relationship list/get/create/update/delete flows without needing any special-case response shaping beyond synthetic collection metadata.
+- The broader MCP surface now includes externally logged text message creation plus email and text template merge previews without needing transport-specific adapter branches.
+- The broader MCP surface now includes typed team inbox discovery without needing any special-case response shaping.
+- The broader MCP surface now includes inbox app installation, participant, message, note, and conversation mutation flows without needing transport-specific adapter branches.
 - The text messaging slice adds both timeline-style reads and text message template CRUD without requiring special-case MCP handler patterns.
 
 Current gaps:
@@ -281,7 +289,7 @@ What changes this grade:
 - Current grade: `A (99/100)`
 - Status: `Pass`
 - Last reviewed: `2026-03-28`
-- Change notes: Follow-up text messaging work improved this category again because the new slice shipped with full service, MCP, and wrapper-based validation coverage while the optional live path remained cleanly isolated.
+- Change notes: Follow-up attachment work kept this category in the same top band because the new slice again shipped with full service, MCP, and wrapper-based validation coverage while the optional live path remained cleanly isolated.
 
 Why this matters:
 
@@ -320,6 +328,12 @@ Current strengths:
 - The appointments domain followed the same pattern, including list, lookup, write, delete, and MCP coverage without weakening the offline guarantees.
 - The repository now includes an opt-in live identity test that validates real auth and transport behavior without changing the default offline suite.
 - The text messaging slice followed the same pattern, including text timeline reads and template CRUD with full wrapper-based validation.
+- The inbox app message and conversation slice followed the same pattern, completing the domain with service, adapter, registration, and MCP tool coverage without weakening the offline guarantees.
+- The people relationship slice followed the same pattern, including list/get/create/update/delete coverage without weakening the offline guarantees.
+- The custom field admin slice followed the same pattern, extending an existing domain from read-only discovery into owner-only admin CRUD without weakening the offline guarantees.
+- The text message send and merge slice followed the same pattern, extending the messaging domain with external-log creation and merge previews without weakening the offline guarantees.
+- The email marketing slice followed the same pattern, adding campaign and batched event flows without weakening the offline guarantees.
+- The attachment slice followed the same pattern, extending both people and deal resource families with registered-system CRUD without weakening the offline guarantees.
 
 Current gaps:
 
@@ -339,7 +353,7 @@ What changes this grade:
 - Current grade: `A (100/100)`
 - Status: `Needs Work`
 - Last reviewed: `2026-03-28`
-- Change notes: Follow-up automation work expanded breadth again with the newer automation catalog plus automation-person execution flows, but the harsh score still stays conservative because the official API surface is still much broader than the current scope.
+- Change notes: Follow-up attachment work expanded breadth again with another coherent multi-resource domain, but the harsh score still stays conservative because the official API surface remains much broader than the current scope.
 
 Why this matters:
 
@@ -360,18 +374,30 @@ Evidence anchors:
 - [../src/followupboss_mcp/services/appointments.py](../src/followupboss_mcp/services/appointments.py)
 - [../src/followupboss_mcp/models/appointment_metadata.py](../src/followupboss_mcp/models/appointment_metadata.py)
 - [../src/followupboss_mcp/services/appointment_metadata.py](../src/followupboss_mcp/services/appointment_metadata.py)
+- [../src/followupboss_mcp/models/action_plans.py](../src/followupboss_mcp/models/action_plans.py)
+- [../src/followupboss_mcp/services/action_plans.py](../src/followupboss_mcp/services/action_plans.py)
 - [../src/followupboss_mcp/models/automations.py](../src/followupboss_mcp/models/automations.py)
 - [../src/followupboss_mcp/services/automations.py](../src/followupboss_mcp/services/automations.py)
+- [../src/followupboss_mcp/models/attachments.py](../src/followupboss_mcp/models/attachments.py)
+- [../src/followupboss_mcp/services/attachments.py](../src/followupboss_mcp/services/attachments.py)
 - [../src/followupboss_mcp/models/deals.py](../src/followupboss_mcp/models/deals.py)
 - [../src/followupboss_mcp/services/deals.py](../src/followupboss_mcp/services/deals.py)
+- [../src/followupboss_mcp/models/email_marketing.py](../src/followupboss_mcp/models/email_marketing.py)
+- [../src/followupboss_mcp/services/email_marketing.py](../src/followupboss_mcp/services/email_marketing.py)
 - [../src/followupboss_mcp/models/groups.py](../src/followupboss_mcp/models/groups.py)
 - [../src/followupboss_mcp/services/groups.py](../src/followupboss_mcp/services/groups.py)
+- [../src/followupboss_mcp/models/inbox_apps.py](../src/followupboss_mcp/models/inbox_apps.py)
+- [../src/followupboss_mcp/services/inbox_apps.py](../src/followupboss_mcp/services/inbox_apps.py)
+- [../src/followupboss_mcp/models/people_relationships.py](../src/followupboss_mcp/models/people_relationships.py)
+- [../src/followupboss_mcp/services/people_relationships.py](../src/followupboss_mcp/services/people_relationships.py)
 - [../src/followupboss_mcp/models/ponds.py](../src/followupboss_mcp/models/ponds.py)
 - [../src/followupboss_mcp/services/ponds.py](../src/followupboss_mcp/services/ponds.py)
 - [../src/followupboss_mcp/models/smart_lists.py](../src/followupboss_mcp/models/smart_lists.py)
 - [../src/followupboss_mcp/services/smart_lists.py](../src/followupboss_mcp/services/smart_lists.py)
 - [../src/followupboss_mcp/models/stages.py](../src/followupboss_mcp/models/stages.py)
 - [../src/followupboss_mcp/services/stages.py](../src/followupboss_mcp/services/stages.py)
+- [../src/followupboss_mcp/models/team_inboxes.py](../src/followupboss_mcp/models/team_inboxes.py)
+- [../src/followupboss_mcp/services/team_inboxes.py](../src/followupboss_mcp/services/team_inboxes.py)
 - [../src/followupboss_mcp/models/teams.py](../src/followupboss_mcp/models/teams.py)
 - [../src/followupboss_mcp/services/teams.py](../src/followupboss_mcp/services/teams.py)
 - [../src/followupboss_mcp/models/pipelines.py](../src/followupboss_mcp/models/pipelines.py)
@@ -401,13 +427,21 @@ Current strengths:
 - The repository now covers a full deals workflow domain with list, lookup, create, update, and delete support.
 - The repository now includes deal custom field discovery so writes can use documented field names instead of raw guesses.
 - The repository now covers both collection and single-resource read flows for events and webhooks instead of only the collection paths.
+- The repository now covers both person and deal attachment CRUD for registered systems instead of leaving those documented attachment surfaces deferred.
+- The repository now covers the documented custom field admin surface with get/create/update/delete support instead of limiting the domain to list-only discovery.
+- The repository now covers email marketing campaign list/create/update plus batched email event reads and writes instead of leaving that integration surface entirely deferred.
 - The repository now covers a full appointments workflow domain with list, lookup, create, update, and delete support.
 - The repository now covers appointment outcomes and appointment types with full CRUD support, which closes a large gap around the appointment workflow's supporting metadata.
+- The repository now covers the legacy action-plan catalog plus action-plan-person relationship list/apply/update flows instead of leaving that documented workflow entirely deferred.
 - The repository now covers the newer automation catalog and automation-person execution flows instead of leaving modern workflow execution entirely deferred.
 - The repository now covers a full group workflow domain with list, round-robin list, lookup, create, update, and delete support.
+- The repository now covers the full documented inbox app operational surface, including installation, participant, message, note, and conversation mutation flows.
+- The repository now covers a full people relationship domain with list, lookup, create, update, and delete support.
+- The repository now covers team inbox discovery instead of leaving that documented shared-inbox surface entirely deferred.
 - The repository now covers a full task workflow domain with list, lookup, create, update, and delete support.
 - The repository now covers a full team workflow domain with list, lookup, create, update, and delete support, including the optional member-migration parameter on delete.
 - The repository now covers a full email-template workflow domain with list, lookup, create, update, and delete support.
+- The repository now covers externally logged text messages plus both email-template and text-message-template merge previews instead of leaving those messaging helpers deferred.
 - The repository now covers call search plus direct call creation and update flows instead of leaving communication history entirely deferred.
 - The repository now covers a full pipeline workflow domain with list, lookup, create, update, and delete support, including typed stage payloads.
 - The repository now covers a full pond workflow domain with list, lookup, create, update, and delete support, including the documented reassignment requirement on delete.
@@ -419,7 +453,7 @@ Current gaps:
 
 - Breadth is the clearest structural gap in the current repository.
 - Many official endpoints remain intentionally deferred, so the current scope is high quality but still much narrower than the official API surface an integration may expect.
-- The repository currently implements `95` official endpoints while the generated manifest tracks a much larger documented surface.
+- The repository currently implements `135` official endpoints while the generated manifest tracks a much larger documented surface.
 
 What changes this grade:
 
@@ -433,7 +467,7 @@ What changes this grade:
 - Current grade: `A (95/100)`
 - Status: `Pass`
 - Last reviewed: `2026-03-28`
-- Change notes: Workflow-wrapper and build-smoke follow-up restored the docs score to the baseline by aligning the local workflow, release guidance, CI description, and validation report around a single documented command path.
+- Change notes: The attachment slice kept the docs score at the baseline because the README, MCP usage guide, coverage matrix, and final validation report all moved in lockstep with the code and validation totals.
 
 Why this matters:
 
@@ -473,6 +507,12 @@ Current strengths:
 - The same source-of-truth workflow now stayed aligned again while the template surface was added.
 - The same alignment discipline held again when the calls surface was added.
 - The documented workflow now includes a shared `Makefile` wrapper and build-smoke validation instead of leaving release verification as a loose command list.
+- The same alignment discipline held again when the inbox app message and conversation surface was added.
+- The same alignment discipline held again when the people relationship surface was added.
+- The same alignment discipline held again when the custom field admin surface was added.
+- The same alignment discipline held again when the text message send and merge surface was added.
+- The same alignment discipline held again when the email marketing surface was added.
+- The same alignment discipline held again when the attachment surface was added.
 
 Current gaps:
 
@@ -621,12 +661,21 @@ Use this mini-template when you revisit the file after a code change:
 | `2026-03-28` | `GPT-5.4` | Teams breadth follow-up | `3, 5, 6, 7` | `93.8 -> 94.0` | Added typed team models and services plus MCP team CRUD tools, preserved the optional member-migration parameter on delete, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
 | `2026-03-28` | `GPT-5.4` | Groups breadth follow-up | `3, 5, 6, 7` | `94.0 -> 94.0` | Added typed group models and services plus MCP group CRUD and round-robin list tools, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
 | `2026-03-28` | `GPT-5.4` | Automations breadth follow-up | `3, 5, 6, 7` | `94.0 -> 94.1` | Added typed automation list/get plus automation-person list/get/trigger/pause support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
+| `2026-03-28` | `GPT-5.4` | Action-plans breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed action plan list plus action-plan-person list/apply/update support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
+| `2026-03-28` | `GPT-5.4` | Team-inboxes breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed team inbox list support plus the matching MCP tool, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
+| `2026-03-28` | `GPT-5.4` | Inbox-app install and participant breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed inbox app installation lookup/install/deactivate plus participant list/add/remove support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
+| `2026-03-28` | `GPT-5.4` | Inbox-app message and conversation breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed inbox app message, note, and conversation mutation support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
+| `2026-03-28` | `GPT-5.4` | People-relationships breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed people relationship list/get/create/update/delete support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
+| `2026-03-28` | `GPT-5.4` | Custom-field admin breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed custom field get/create/update/delete support alongside the existing list flow, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
+| `2026-03-28` | `GPT-5.4` | Text-message send and merge breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed external text-message logging plus email and text template merge support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
+| `2026-03-28` | `GPT-5.4` | Email-marketing breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed email marketing campaign list/create/update plus email event list/post support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
+| `2026-03-28` | `GPT-5.4` | Attachments breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed person and deal attachment get/create/update/delete support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
 | `YYYY-MM-DD` | `` | `` | `` | `` | `` |
 
 ## Next Improvement Targets
 
 If you want the fastest path to a higher overall score, focus here first:
 
-1. Expand implemented endpoint breadth into additional official areas such as action plans, team inboxes, or other high-value deferred surfaces.
+1. Expand implemented breadth into another high-value deferred official area such as reactions or more specialized people/admin surfaces now that inbox apps, people relationships, custom field admin, messaging merge helpers, email marketing, and attachments are covered.
 2. Expand the current live validation beyond the identity path into a broader optional Follow Up Boss sandbox contract suite.
 3. Improve day-two operations with richer telemetry and, if needed later, a broader CI matrix across multiple Python versions or operating systems.

@@ -31,6 +31,15 @@ All tools are namespaced with the `followupboss_` prefix.
 | `followupboss_list_users` | List users with documented filters and pagination metadata. |
 | `followupboss_get_user` | Retrieve one user by ID. |
 | `followupboss_list_custom_fields` | List available Follow Up Boss custom fields. |
+| `followupboss_get_custom_field` | Retrieve one custom field by ID. |
+| `followupboss_create_custom_field` | Create a custom field. |
+| `followupboss_update_custom_field` | Update one custom field by ID. |
+| `followupboss_delete_custom_field` | Delete one custom field by ID and return a structured confirmation. |
+| `followupboss_list_email_campaigns` | List email marketing campaigns. |
+| `followupboss_create_email_campaign` | Create an email marketing campaign. |
+| `followupboss_update_email_campaign` | Update one email marketing campaign by ID. |
+| `followupboss_list_email_events` | List email marketing events. |
+| `followupboss_send_email_events` | Post batched email marketing events. |
 | `followupboss_list_deals` | List deals with documented filters and pagination metadata. |
 | `followupboss_get_deal` | Retrieve one deal by ID. |
 | `followupboss_create_deal` | Create a deal. |
@@ -70,6 +79,33 @@ All tools are namespaced with the `followupboss_` prefix.
 | `followupboss_get_automation_person` | Retrieve one automation-person pairing by ID. |
 | `followupboss_trigger_automation` | Trigger an automation for a specific person. |
 | `followupboss_update_automation_person` | Pause or resume one automation-person pairing by ID. |
+| `followupboss_list_inbox_app_installations` | List installed inbox app installations for a published inbox app. |
+| `followupboss_install_inbox_app` | Install an inbox app for an account or user scope. |
+| `followupboss_deactivate_inbox_app` | Deactivate an inbox app installation by ID. |
+| `followupboss_add_inbox_app_message` | Add a message to an inbox app conversation. |
+| `followupboss_add_inbox_app_note` | Add a note to an inbox app conversation. |
+| `followupboss_list_inbox_app_participants` | List participants in an inbox app conversation. |
+| `followupboss_add_inbox_app_participant` | Add a participant to an inbox app conversation. |
+| `followupboss_update_inbox_app_conversation` | Update an inbox app conversation by external conversation ID. |
+| `followupboss_update_inbox_app_message` | Update an inbox app message by ID or external message ID. |
+| `followupboss_remove_inbox_app_participant` | Remove a participant from an inbox app conversation. |
+| `followupboss_list_people_relationships` | List people relationships. |
+| `followupboss_get_people_relationship` | Retrieve one people relationship by ID. |
+| `followupboss_create_people_relationship` | Create a people relationship for a person. |
+| `followupboss_update_people_relationship` | Update one people relationship by ID. |
+| `followupboss_delete_people_relationship` | Delete one people relationship by ID and return a structured confirmation. |
+| `followupboss_get_person_attachment` | Retrieve one person attachment by ID. |
+| `followupboss_create_person_attachment` | Create a person attachment record. |
+| `followupboss_update_person_attachment` | Update one person attachment by ID. |
+| `followupboss_delete_person_attachment` | Delete one person attachment by ID and return a structured confirmation. |
+| `followupboss_get_deal_attachment` | Retrieve one deal attachment by ID. |
+| `followupboss_create_deal_attachment` | Create a deal attachment record. |
+| `followupboss_update_deal_attachment` | Update one deal attachment by ID. |
+| `followupboss_delete_deal_attachment` | Delete one deal attachment by ID and return a structured confirmation. |
+| `followupboss_list_action_plans` | List action plans with documented filters and pagination metadata. |
+| `followupboss_list_action_plan_people` | List action-plan-person relationships with documented filters and pagination metadata. |
+| `followupboss_apply_action_plan` | Apply an action plan to a specific person. |
+| `followupboss_update_action_plan_person` | Pause or resume one action-plan-person relationship by ID. |
 | `followupboss_list_groups` | List groups with documented filters and pagination metadata. |
 | `followupboss_list_round_robin_groups` | List groups including round-robin assignment details. |
 | `followupboss_get_group` | Retrieve one group by ID. |
@@ -81,6 +117,7 @@ All tools are namespaced with the `followupboss_` prefix.
 | `followupboss_create_team` | Create a team. |
 | `followupboss_update_team` | Update one team by ID. |
 | `followupboss_delete_team` | Delete one team by ID, optionally move members first, and return a structured confirmation. |
+| `followupboss_list_team_inboxes` | List team inboxes with pagination metadata. |
 | `followupboss_list_appointments` | List appointments with documented filters and pagination metadata. |
 | `followupboss_get_appointment` | Retrieve one appointment by ID. |
 | `followupboss_create_appointment` | Create an appointment. |
@@ -97,13 +134,16 @@ All tools are namespaced with the `followupboss_` prefix.
 | `followupboss_delete_task` | Delete one task by ID and return a structured confirmation. |
 | `followupboss_list_templates` | List email templates with pagination metadata. |
 | `followupboss_get_template` | Retrieve one email template by ID. |
+| `followupboss_merge_template` | Merge an email template with recipients. |
 | `followupboss_create_template` | Create an email template. |
 | `followupboss_update_template` | Update one email template by ID. |
 | `followupboss_delete_template` | Delete one email template by ID and return a structured confirmation. |
 | `followupboss_list_text_messages` | List text messages with documented filters and pagination metadata. |
 | `followupboss_get_text_message` | Retrieve one text message by ID. |
+| `followupboss_create_text_message` | Record an externally sent text message log entry. |
 | `followupboss_list_text_message_templates` | List text message templates with pagination metadata. |
 | `followupboss_get_text_message_template` | Retrieve one text message template by ID. |
+| `followupboss_merge_text_message_template` | Merge a text message template with recipients. |
 | `followupboss_create_text_message_template` | Create a text message template. |
 | `followupboss_update_text_message_template` | Update one text message template by ID. |
 | `followupboss_delete_text_message_template` | Delete one text message template by ID and return a structured confirmation. |

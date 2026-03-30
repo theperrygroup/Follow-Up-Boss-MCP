@@ -37,6 +37,33 @@ class UpdateTemplateRequest(RequestModel):
     subject: str
 
 
+class EmailTemplateMergeRecipient(RequestModel):
+    """One recipient used for email template merge previews."""
+
+    email: str
+    name: str | None = None
+
+
+class EmailTemplateMergeRecipients(RequestModel):
+    """Recipient groups used for email template merge previews."""
+
+    bcc: list[EmailTemplateMergeRecipient] | None = None
+    cc: list[EmailTemplateMergeRecipient] | None = None
+    from_recipients: list[EmailTemplateMergeRecipient] | None = Field(
+        default=None,
+        serialization_alias="from",
+    )
+    to: list[EmailTemplateMergeRecipient] | None = None
+
+
+class MergeTemplateRequest(RequestModel):
+    """Strict request model for merging an email template."""
+
+    merge_person_id: int | None = Field(default=None, serialization_alias="mergePersonId")
+    recipients: EmailTemplateMergeRecipients | None = None
+    template_id: int = Field(serialization_alias="templateId")
+
+
 class TemplateActionPlanSummary(ResponseModel):
     """Minimal action-plan summary nested inside a template record."""
 

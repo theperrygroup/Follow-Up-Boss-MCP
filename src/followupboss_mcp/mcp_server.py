@@ -16,6 +16,10 @@ from followupboss_mcp.services.appointment_metadata import (
     AppointmentTypesService,
 )
 from followupboss_mcp.services.appointments import AppointmentsService
+from followupboss_mcp.services.attachments import (
+    DealAttachmentsService,
+    PersonAttachmentsService,
+)
 from followupboss_mcp.services.automations import (
     AutomationPeopleService,
     AutomationsService,
@@ -23,16 +27,21 @@ from followupboss_mcp.services.automations import (
 from followupboss_mcp.services.calls import CallsService
 from followupboss_mcp.services.custom_fields import CustomFieldsService
 from followupboss_mcp.services.deals import DealsService
+from followupboss_mcp.services.email_marketing import EmailMarketingService
 from followupboss_mcp.services.events import EventsService
 from followupboss_mcp.services.groups import GroupsService
 from followupboss_mcp.services.identity import IdentityService
+from followupboss_mcp.services.inbox_apps import InboxAppsService
 from followupboss_mcp.services.notes import NotesService
 from followupboss_mcp.services.people import PeopleService
+from followupboss_mcp.services.people_relationships import PeopleRelationshipsService
 from followupboss_mcp.services.pipelines import PipelinesService
 from followupboss_mcp.services.ponds import PondsService
+from followupboss_mcp.services.reactions import ReactionsService
 from followupboss_mcp.services.smart_lists import SmartListsService
 from followupboss_mcp.services.stages import StagesService
 from followupboss_mcp.services.tasks import TasksService
+from followupboss_mcp.services.team_inboxes import TeamInboxesService
 from followupboss_mcp.services.teams import TeamsService
 from followupboss_mcp.services.templates import TemplatesService
 from followupboss_mcp.services.text_messages import (
@@ -65,17 +74,24 @@ def build_service_bundle(client: FollowUpBossClientProtocol) -> ServiceBundle:
         automations=AutomationsService(client),
         calls=CallsService(client),
         custom_fields=CustomFieldsService(client),
+        deal_attachments=DealAttachmentsService(client),
         deals=DealsService(client),
+        email_marketing=EmailMarketingService(client),
         events=EventsService(client),
         groups=GroupsService(client),
         identity=IdentityService(client),
+        inbox_apps=InboxAppsService(client),
         notes=NotesService(client, people_service=people_service),
         people=people_service,
+        person_attachments=PersonAttachmentsService(client),
+        people_relationships=PeopleRelationshipsService(client),
         ponds=PondsService(client),
         pipelines=PipelinesService(client),
+        reactions=ReactionsService(client),
         smart_lists=SmartListsService(client),
         stages=StagesService(client),
         tasks=TasksService(client),
+        team_inboxes=TeamInboxesService(client),
         teams=TeamsService(client),
         text_message_templates=TextMessageTemplatesService(client),
         text_messages=TextMessagesService(client),
@@ -108,9 +124,11 @@ def create_server(
         "Follow Up Boss MCP",
         instructions=(
             "Use the typed Follow Up Boss tools for identity checks, lead search, lead ingestion, "
-            "action plans, appointments, appointment types, appointment outcomes, automations, "
-            "calls, deals, groups, pipelines, ponds, smart lists, stages, tasks, teams, "
-            "templates, text messages, notes, users, custom fields, and webhook administration."
+            "action plans, appointments, appointment types, appointment outcomes, attachments, "
+            "automations, calls, custom fields, deals, email marketing, groups, inbox apps, "
+            "people relationships, pipelines, ponds, reactions, smart lists, stages, tasks, "
+            "team inboxes, teams, templates, text messages, notes, users, and webhook "
+            "administration."
         ),
         host=host,
         port=port,

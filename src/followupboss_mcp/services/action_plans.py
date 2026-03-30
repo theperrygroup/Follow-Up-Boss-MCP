@@ -47,7 +47,9 @@ class ActionPlansService:
         items_raw = payload.get("actionPlans", [])
         if not isinstance(items_raw, list):
             raise ValueError("Unexpected action plans response.")
-        items = [ActionPlanRecord.model_validate(item) for item in items_raw if isinstance(item, dict)]
+        items = [
+            ActionPlanRecord.model_validate(item) for item in items_raw if isinstance(item, dict)
+        ]
         metadata = parse_pagination_metadata(payload, item_count=len(items))
         return PageResult(items=items, metadata=metadata)
 
@@ -74,7 +76,9 @@ class ActionPlansService:
         if not isinstance(items_raw, list):
             raise ValueError("Unexpected actionPlansPeople response.")
         items = [
-            ActionPlanPersonRecord.model_validate(item) for item in items_raw if isinstance(item, dict)
+            ActionPlanPersonRecord.model_validate(item)
+            for item in items_raw
+            if isinstance(item, dict)
         ]
         metadata = parse_pagination_metadata(payload, item_count=len(items))
         return PageResult(items=items, metadata=metadata)

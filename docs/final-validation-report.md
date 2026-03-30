@@ -15,12 +15,19 @@ The repository now contains:
 - typed smart-list collection and lookup coverage across the SDK, MCP surface, tests, and docs
 - typed stage collection and CRUD coverage with explicit reassignment semantics on delete across the SDK, MCP surface, tests, and docs
 - typed appointment outcome and appointment type collection and CRUD coverage across the SDK, MCP surface, tests, and docs
+- typed action plan list and action-plan-person list/apply/update coverage across the SDK, MCP surface, tests, and docs
 - typed automation list/get and automation-person pairing list/get/trigger/pause coverage across the SDK, MCP surface, tests, and docs
+- typed deal and person attachment get/create/update/delete coverage across the SDK, MCP surface, tests, and docs
+- typed custom field list and owner-only admin get/create/update/delete coverage across the SDK, MCP surface, tests, and docs
 - typed group collection, round-robin reads, and CRUD coverage across the SDK, MCP surface, tests, and docs
+- typed email marketing campaign list/create/update plus email event list/post coverage across the SDK, MCP surface, tests, and docs
+- typed inbox app installation, participant, message, note, and conversation-mutation coverage across the SDK, MCP surface, tests, and docs
+- typed people relationship list/get/create/update/delete coverage across the SDK, MCP surface, tests, and docs
+- typed team inbox collection coverage across the SDK, MCP surface, tests, and docs
 - typed team collection and CRUD coverage with optional member-migration semantics on delete across the SDK, MCP surface, tests, and docs
-- typed text message read support and text message template CRUD coverage across the SDK, MCP surface, tests, and docs
+- typed text message read support, external log creation, and text message template CRUD plus merge coverage across the SDK, MCP surface, tests, and docs
 - typed task collection and CRUD coverage across the SDK, MCP surface, tests, and docs
-- typed email-template collection and CRUD coverage across the SDK, MCP surface, tests, and docs
+- typed email-template collection and CRUD plus merge coverage across the SDK, MCP surface, tests, and docs
 - typed call collection and log-entry coverage across the SDK, MCP surface, tests, and docs
 - a real Follow Up Boss doc-ingestion pipeline and generated manifest
 - an explicit API coverage matrix generated from the official docs manifest
@@ -59,6 +66,10 @@ The repository implementation and documentation were aligned to the official MCP
 Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 
 - `GET /identity`
+- `GET /actionPlans`
+- `GET /actionPlansPeople`
+- `POST /actionPlansPeople`
+- `PUT /actionPlansPeople/:id`
 - `GET /appointmentOutcomes`
 - `GET /appointmentOutcomes/{id}`
 - `POST /appointmentOutcomes`
@@ -75,6 +86,16 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `GET /automationsPeople/{id}`
 - `POST /automationsPeople`
 - `PUT /automationsPeople/{id}`
+- `GET /inboxApps/installedApps/{publishedInboxAppId}`
+- `POST /inboxApps/install`
+- `DELETE /inboxApps/{inboxAppId}`
+- `GET /inboxApps/{inboxAppId}/conversations/{extConversationId}/participants`
+- `POST /inboxApps/{inboxAppId}/conversations/{extConversationId}/participants`
+- `DELETE /inboxApps/{inboxAppId}/conversations/{extConversationId}/participants/{participantId}`
+- `POST /inboxApps/{inboxAppId}/message`
+- `POST /inboxApps/{inboxAppId}/note`
+- `PUT /inboxApps/{inboxAppId}/conversations/{extConversationId}`
+- `PUT /inboxApps/:inboxAppId/message`
 - `GET /groups`
 - `GET /groups/:id`
 - `POST /groups`
@@ -85,6 +106,15 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `POST /people`
 - `GET /people/:id`
 - `PUT /people/:id`
+- `GET /personAttachments/{id}`
+- `POST /personAttachments`
+- `PUT /personAttachments/{id}`
+- `DELETE /personAttachments/{id}`
+- `GET /peopleRelationships`
+- `GET /peopleRelationships/:id`
+- `POST /peopleRelationships`
+- `PUT /peopleRelationships/:id`
+- `DELETE /peopleRelationships/:id`
 - `GET /events`
 - `GET /events/:id`
 - `POST /events`
@@ -94,6 +124,15 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `PUT /deals/{id}`
 - `DELETE /deals/{id}`
 - `GET /dealCustomFields`
+- `GET /dealAttachments/{id}`
+- `POST /dealAttachments`
+- `PUT /dealAttachments/{id}`
+- `DELETE /dealAttachments/{id}`
+- `GET /emCampaigns`
+- `POST /emCampaigns`
+- `PUT /emCampaigns/:id`
+- `GET /emEvents`
+- `POST /emEvents`
 - `GET /pipelines`
 - `GET /pipelines/{id}`
 - `POST /pipelines`
@@ -130,11 +169,16 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `GET /users`
 - `GET /users/:id`
 - `GET /customFields`
+- `GET /customFields/:id`
+- `POST /customFields`
+- `PUT /customFields/:id`
+- `DELETE /customFields/:id`
 - `GET /tasks`
 - `GET /tasks/:id`
 - `POST /tasks`
 - `PUT /tasks/:id`
 - `DELETE /tasks/:id`
+- `GET /teamInboxes`
 - `GET /teams`
 - `GET /teams/:id`
 - `POST /teams`
@@ -142,9 +186,12 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `DELETE /teams/:id`
 - `GET /templates`
 - `GET /templates/:id`
+- `POST /templates/merge`
 - `POST /templates`
 - `PUT /templates/:id`
 - `DELETE /templates/:id`
+- `POST /textMessages`
+- `POST /textMessageTemplates/merge`
 - `POST /notes`
 - `GET /notes/:id`
 - `PUT /notes/:id`
@@ -154,7 +201,7 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `POST /webhooks`
 - `DELETE /webhooks/:id`
 
-Total implemented official endpoints in this repository scope: `95`
+Total implemented official endpoints in this repository scope: `135`
 
 All additional discovered official endpoints are marked explicitly as deferred in `docs/api-coverage-matrix.md`.
 
@@ -162,7 +209,7 @@ All additional discovered official endpoints are marked explicitly as deferred i
 
 Registered MCP surface:
 
-- tools: `95`
+- tools: `135`
 - resources: `1`
 - prompts: `1`
 
@@ -173,6 +220,15 @@ Registered tools:
 - `followupboss_get_person`
 - `followupboss_create_person`
 - `followupboss_update_person`
+- `followupboss_get_person_attachment`
+- `followupboss_create_person_attachment`
+- `followupboss_update_person_attachment`
+- `followupboss_delete_person_attachment`
+- `followupboss_list_people_relationships`
+- `followupboss_get_people_relationship`
+- `followupboss_create_people_relationship`
+- `followupboss_update_people_relationship`
+- `followupboss_delete_people_relationship`
 - `followupboss_search_events`
 - `followupboss_get_event`
 - `followupboss_send_event`
@@ -181,6 +237,10 @@ Registered tools:
 - `followupboss_create_deal`
 - `followupboss_update_deal`
 - `followupboss_delete_deal`
+- `followupboss_get_deal_attachment`
+- `followupboss_create_deal_attachment`
+- `followupboss_update_deal_attachment`
+- `followupboss_delete_deal_attachment`
 - `followupboss_list_deal_custom_fields`
 - `followupboss_list_pipelines`
 - `followupboss_get_pipeline`
@@ -201,8 +261,10 @@ Registered tools:
 - `followupboss_delete_stage`
 - `followupboss_list_text_messages`
 - `followupboss_get_text_message`
+- `followupboss_create_text_message`
 - `followupboss_list_text_message_templates`
 - `followupboss_get_text_message_template`
+- `followupboss_merge_text_message_template`
 - `followupboss_create_text_message_template`
 - `followupboss_update_text_message_template`
 - `followupboss_delete_text_message_template`
@@ -214,6 +276,19 @@ Registered tools:
 - `followupboss_list_users`
 - `followupboss_get_user`
 - `followupboss_list_custom_fields`
+- `followupboss_get_custom_field`
+- `followupboss_create_custom_field`
+- `followupboss_update_custom_field`
+- `followupboss_delete_custom_field`
+- `followupboss_list_email_campaigns`
+- `followupboss_create_email_campaign`
+- `followupboss_update_email_campaign`
+- `followupboss_list_email_events`
+- `followupboss_send_email_events`
+- `followupboss_list_action_plans`
+- `followupboss_list_action_plan_people`
+- `followupboss_apply_action_plan`
+- `followupboss_update_action_plan_person`
 - `followupboss_list_appointment_outcomes`
 - `followupboss_get_appointment_outcome`
 - `followupboss_create_appointment_outcome`
@@ -236,6 +311,16 @@ Registered tools:
 - `followupboss_create_group`
 - `followupboss_update_group`
 - `followupboss_delete_group`
+- `followupboss_list_inbox_app_installations`
+- `followupboss_install_inbox_app`
+- `followupboss_deactivate_inbox_app`
+- `followupboss_add_inbox_app_message`
+- `followupboss_add_inbox_app_note`
+- `followupboss_list_inbox_app_participants`
+- `followupboss_add_inbox_app_participant`
+- `followupboss_update_inbox_app_conversation`
+- `followupboss_update_inbox_app_message`
+- `followupboss_remove_inbox_app_participant`
 - `followupboss_list_calls`
 - `followupboss_get_call`
 - `followupboss_create_call`
@@ -247,9 +332,11 @@ Registered tools:
 - `followupboss_delete_task`
 - `followupboss_list_templates`
 - `followupboss_get_template`
+- `followupboss_merge_template`
 - `followupboss_create_template`
 - `followupboss_update_template`
 - `followupboss_delete_template`
+- `followupboss_list_team_inboxes`
 - `followupboss_list_teams`
 - `followupboss_get_team`
 - `followupboss_create_team`
@@ -291,19 +378,19 @@ make live-identity-check
 ## Final Mypy Status
 
 - `uv run mypy src tests`: passed
-- result: `Success: no issues found in 66 source files`
+- result: `Success: no issues found in 78 source files`
 
 ## Final Test Status
 
 - `uv run pytest`: passed
-- result: `94 passed, 1 skipped`
+- result: `104 passed, 1 skipped`
 
 ## Final Coverage Numbers
 
 - `uv run coverage run --branch -m pytest`: passed
 - `uv run coverage report --fail-under=100`: passed
-- total statements: `2919`
-- total branches: `248`
+- total statements: `3953`
+- total branches: `342`
 - line coverage: `100.00%`
 - branch coverage: `100.00%`
 

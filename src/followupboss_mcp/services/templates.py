@@ -5,6 +5,7 @@ from __future__ import annotations
 from followupboss_mcp.http_client import FollowUpBossClientProtocol
 from followupboss_mcp.models.templates import (
     CreateTemplateRequest,
+    MergeTemplateRequest,
     TemplateListRequest,
     TemplateLookupRequest,
     TemplateRecord,
@@ -110,3 +111,16 @@ class TemplatesService:
             template_id: The Follow Up Boss email template identifier.
         """
         await self._client.request_json("DELETE", f"/templates/{template_id}")
+
+    async def merge_template(self, request: MergeTemplateRequest) -> TemplateRecord:
+        """Merge an email template with recipients.
+
+        Args:
+            request: The typed template-merge request.
+
+        Returns:
+            The merged email template preview returned by Follow Up Boss.
+        """
+        payload = request.model_dump(mode="json", by_alias=True, exclude_none=True)
+        response = await self._client.request_json("POST", "/templates/merge", json_body=payload)
+        return TemplateRecord.model_validate(response)

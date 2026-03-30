@@ -7,17 +7,17 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `DELETE /appointmentOutcomes/{id}` | Implemented | Input only | Yes | Yes | Delete requires assignOutcomeId and returns structured deletion confirmation. |
 | `DELETE /appointmentTypes/{id}` | Implemented | Input only | Yes | Yes | Delete requires assignTypeId and returns structured deletion confirmation. |
 | `DELETE /appointments/:id` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
-| `DELETE /customFields/:id` | Deferred | No | No | No | Deferred until explicit custom field admin support is requested. |
-| `DELETE /dealAttachments/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `DELETE /customFields/:id` | Implemented | Input only | Yes | Yes | Deletes a custom field and returns structured deletion confirmation. |
+| `DELETE /dealAttachments/{id}` | Implemented | Input only | Yes | Yes | Deletes a deal attachment and returns structured deletion confirmation. |
 | `DELETE /dealCustomFields/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `DELETE /deals/{id}` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
 | `DELETE /groups/:id` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
-| `DELETE /inboxApps/{inboxAppId}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `DELETE /inboxApps/{inboxAppId}/conversations/{extConversationId}/participants/{participantId}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `DELETE /inboxApps/{inboxAppId}` | Implemented | Input only | Yes | Yes | Deactivates an inbox app installation and returns structured deletion confirmation. |
+| `DELETE /inboxApps/{inboxAppId}/conversations/{extConversationId}/participants/{participantId}` | Implemented | Input only | Yes | Yes | Removes an inbox app conversation participant and returns structured deletion confirmation. |
 | `DELETE /notes/:id` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
 | `DELETE /people/:id` | Deferred | No | No | No | Not part of the requested MCP tool surface. |
-| `DELETE /peopleRelationships/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `DELETE /personAttachments/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `DELETE /peopleRelationships/:id` | Implemented | Input only | Yes | Yes | Deletes a people relationship and returns structured deletion confirmation. |
+| `DELETE /personAttachments/{id}` | Implemented | Input only | Yes | Yes | Deletes a person attachment and returns structured deletion confirmation. |
 | `DELETE /pipelines/:id` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
 | `DELETE /ponds/:id` | Implemented | Input only | Yes | Yes | Delete requires assignTo and returns structured deletion confirmation. |
 | `DELETE /reactions/{refType}/{refId}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
@@ -28,8 +28,8 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `DELETE /textMessageTemplates/:id` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
 | `DELETE /users/:id` | Deferred | No | No | No | Deferred until explicitly needed. |
 | `DELETE /webhooks/:id` | Implemented | Input only | Yes | Yes | Delete endpoint exposed through MCP. |
-| `GET /actionPlans` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /actionPlansPeople` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `GET /actionPlans` | Implemented | Yes | Yes | Yes | Lists action plans with documented filters and pagination metadata. |
+| `GET /actionPlansPeople` | Implemented | Yes | Yes | Yes | Lists action-plan-person relationships with documented filters and pagination metadata. |
 | `GET /appointmentOutcomes` | Implemented | Yes | Yes | Yes | Lists appointment outcomes with pagination metadata and sort support. |
 | `GET /appointmentOutcomes/{id}` | Implemented | Yes | Yes | Yes | Single-appointment-outcome lookup. |
 | `GET /appointmentTypes` | Implemented | Yes | Yes | Yes | Lists appointment types with pagination metadata and sort support. |
@@ -43,31 +43,31 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `GET /calls` | Implemented | Yes | Yes | Yes | Supports documented call filters and pagination metadata. |
 | `GET /calls/:id` | Implemented | Yes | Yes | Yes | Single-call lookup. |
 | `GET /customFields` | Implemented | Yes | Yes | Yes | Supports custom field name validation helpers. |
-| `GET /customFields/:id` | Deferred | No | No | No | Deferred until explicit custom field admin support is requested. |
-| `GET /dealAttachments/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `GET /customFields/:id` | Implemented | Yes | Yes | Yes | Fetches a single custom field by ID. |
+| `GET /dealAttachments/{id}` | Implemented | Yes | Yes | Yes | Fetches a registered-system deal attachment by ID. |
 | `GET /dealCustomFields` | Implemented | Yes | Yes | Yes | Lists deal custom fields for write-time field-name discovery. |
 | `GET /dealCustomFields/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `GET /deals` | Implemented | Yes | Yes | Yes | Supports documented deal filters and pagination metadata. |
 | `GET /deals/{id}` | Implemented | Yes | Yes | Yes | Single-deal lookup with dynamic custom field support. |
-| `GET /emCampaigns` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /emEvents` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `GET /emCampaigns` | Implemented | Yes | Yes | Yes | Lists email marketing campaigns with origin and originId filtering. |
+| `GET /emEvents` | Implemented | Yes | Yes | Yes | Lists email marketing events with documented filters and pagination metadata. |
 | `GET /events` | Implemented | Yes | Yes | Yes | Supports next-token pagination. |
 | `GET /events/:id` | Implemented | Yes | Yes | Yes | Single-event lookup. |
 | `GET /groups` | Implemented | Yes | Yes | Yes | Lists groups with documented type and sort filters plus pagination metadata. |
 | `GET /groups/:id` | Implemented | Yes | Yes | Yes | Single-group lookup. |
 | `GET /groups/roundRobin` | Implemented | Yes | Yes | Yes | Lists groups and includes round-robin assignment details. |
 | `GET /identity` | Implemented | Yes | Yes | Yes | Used as the health check path. |
-| `GET /inboxApps/installedApps/{publishedInboxAppId}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /inboxApps/{inboxAppId}/conversations/{extConversationId}/participants` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `GET /inboxApps/installedApps/{publishedInboxAppId}` | Implemented | Yes | Yes | Yes | Lists installed inbox app installations for a published inbox app. |
+| `GET /inboxApps/{inboxAppId}/conversations/{extConversationId}/participants` | Implemented | Yes | Yes | Yes | Lists inbox app conversation participants with synthetic pagination metadata. |
 | `GET /me` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `GET /notes/:id` | Implemented | Yes | Yes | Yes | Single-note lookup. |
 | `GET /people` | Implemented | Yes | Yes | Yes | Supports next-token and offset pagination. |
 | `GET /people/:id` | Implemented | Yes | Yes | Yes | Supports fields selection. |
 | `GET /people/checkDuplicate` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `GET /people/unclaimed` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /peopleRelationships` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /peopleRelationships/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /personAttachments/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `GET /peopleRelationships` | Implemented | Yes | Yes | Yes | Lists people relationships with synthetic pagination metadata. |
+| `GET /peopleRelationships/:id` | Implemented | Yes | Yes | Yes | Fetches a single people relationship by ID. |
+| `GET /personAttachments/{id}` | Implemented | Yes | Yes | Yes | Fetches a registered-system person attachment by ID. |
 | `GET /pipelines` | Implemented | Yes | Yes | Yes | Lists pipelines with exact-name filtering and pagination metadata. |
 | `GET /pipelines/{id}` | Implemented | Yes | Yes | Yes | Single-pipeline lookup including stage definitions. |
 | `GET /ponds` | Implemented | Yes | Yes | Yes | Lists ponds with documented pagination metadata. |
@@ -79,7 +79,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `GET /stages/:id` | Implemented | Yes | Yes | Yes | Single-stage lookup. |
 | `GET /tasks` | Implemented | Yes | Yes | Yes | Supports documented task filters and pagination metadata. |
 | `GET /tasks/:id` | Implemented | Yes | Yes | Yes | Single-task lookup. |
-| `GET /teamInboxes` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `GET /teamInboxes` | Implemented | Yes | Yes | Yes | Lists team inboxes with pagination metadata. |
 | `GET /teams` | Implemented | Yes | Yes | Yes | Lists teams with pagination metadata. |
 | `GET /teams/:id` | Implemented | Yes | Yes | Yes | Single-team lookup. |
 | `GET /templates` | Implemented | Yes | Yes | Yes | Lists email templates with pagination metadata. |
@@ -95,30 +95,30 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `GET /webhookEvents/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `GET /webhooks` | Implemented | Yes | Yes | Yes | Requires registered system headers. |
 | `GET /webhooks/:id` | Implemented | Yes | Yes | Yes | Single-webhook lookup. |
-| `POST /actionPlansPeople` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `POST /actionPlansPeople` | Implemented | Yes | Yes | Yes | Applies an action plan to a specific person. |
 | `POST /appointmentOutcomes` | Implemented | Yes | Yes | Yes | Creates an appointment outcome with optional orderWeight support. |
 | `POST /appointmentTypes` | Implemented | Yes | Yes | Yes | Creates an appointment type with optional orderWeight support. |
 | `POST /appointments` | Implemented | Yes | Yes | Yes | Creates an appointment with optional invitees and sendInvitation support. |
 | `POST /automationsPeople` | Implemented | Yes | Yes | Yes | Triggers an Automation 2.0 workflow for a specific person. |
 | `POST /calls` | Implemented | Yes | Yes | Yes | Creates a call log entry for a related person. |
-| `POST /customFields` | Deferred | No | No | No | Deferred until explicit custom field admin support is requested. |
-| `POST /dealAttachments` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `POST /customFields` | Implemented | Yes | Yes | Yes | Creates a custom field for the authenticated account owner. |
+| `POST /dealAttachments` | Implemented | Yes | Yes | Yes | Creates a registered-system deal attachment using an external URI. |
 | `POST /dealCustomFields` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `POST /deals` | Implemented | Yes | Yes | Yes | Creates a deal and supports dynamic deal custom field values. |
-| `POST /emCampaigns` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `POST /emEvents` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `POST /emCampaigns` | Implemented | Yes | Yes | Yes | Creates an email marketing campaign with required origin identifiers. |
+| `POST /emEvents` | Implemented | Yes | Yes | Yes | Posts batched email marketing events and returns accepted IDs plus skipped recipients. |
 | `POST /events` | Implemented | Yes | Yes | Yes | Canonical external lead and lead-activity ingestion path. |
 | `POST /groups` | Implemented | Yes | Yes | Yes | Creates a group with distribution and first-to-claim defaults where needed. |
-| `POST /inboxApps/install` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `POST /inboxApps/{inboxAppId}/conversations/{extConversationId}/participants` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `POST /inboxApps/{inboxAppId}/message` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `POST /inboxApps/{inboxAppId}/note` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `POST /inboxApps/install` | Implemented | Yes | Yes | Yes | Installs an inbox app for account-wide or user-scoped usage. |
+| `POST /inboxApps/{inboxAppId}/conversations/{extConversationId}/participants` | Implemented | Yes | Yes | Yes | Adds a participant to an inbox app conversation. |
+| `POST /inboxApps/{inboxAppId}/message` | Implemented | Yes | Yes | Yes | Adds a message to an inbox app conversation with typed sender and owner payloads. |
+| `POST /inboxApps/{inboxAppId}/note` | Implemented | Yes | Yes | Yes | Adds a note to an inbox app conversation with typed user attribution. |
 | `POST /notes` | Implemented | Yes | Yes | Yes | Supports optional person-availability wait flow. |
 | `POST /people` | Implemented | Yes | Yes | Yes | Documented as non-canonical for lead ingestion; prefer POST /events. |
 | `POST /people/claim` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `POST /people/ignoreUnclaimed` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `POST /peopleRelationships` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `POST /personAttachments` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `POST /peopleRelationships` | Implemented | Yes | Yes | Yes | Creates a people relationship for a person. |
+| `POST /personAttachments` | Implemented | Yes | Yes | Yes | Creates a registered-system person attachment using an external URI. |
 | `POST /pipelines` | Implemented | Yes | Yes | Yes | Creates a pipeline with optional ordered stages. |
 | `POST /ponds` | Implemented | Yes | Yes | Yes | Creates a pond with a lead agent and full member list. |
 | `POST /reactions/{refType}/{refId}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
@@ -126,29 +126,29 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `POST /tasks` | Implemented | Yes | Yes | Yes | Requires a related person and an assignee. |
 | `POST /teams` | Implemented | Yes | Yes | Yes | Creates a team with members and optional leader IDs. |
 | `POST /templates` | Implemented | Yes | Yes | Yes | Creates a new email template. |
-| `POST /templates/merge` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `POST /templates/merge` | Implemented | Yes | Yes | Yes | Merges an email template with recipient-aware merge-field expansion. |
 | `POST /textMessageTemplates` | Implemented | Yes | Yes | Yes | Creates a new text message template. |
-| `POST /textMessageTemplates/merge` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `POST /textMessages` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `POST /textMessageTemplates/merge` | Implemented | Yes | Yes | Yes | Merges a text message template with recipient-aware merge-field expansion. |
+| `POST /textMessages` | Implemented | Yes | Yes | Yes | Records an externally sent text message log entry. |
 | `POST /webhooks` | Implemented | Yes | Yes | Yes | Requires registered system headers and owner-level permissions. |
-| `PUT /actionPlansPeople/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `PUT /actionPlansPeople/:id` | Implemented | Yes | Yes | Yes | Pauses or resumes an action-plan-person relationship. |
 | `PUT /appointmentOutcomes/{id}` | Implemented | Yes | Yes | Yes | Updates appointment outcome metadata with documented orderWeight behavior. |
 | `PUT /appointmentTypes/{id}` | Implemented | Yes | Yes | Yes | Updates appointment type metadata with documented orderWeight behavior. |
 | `PUT /appointments/:id` | Implemented | Yes | Yes | Yes | Updates an appointment and supports sendInvitation query semantics. |
 | `PUT /automationsPeople/{id}` | Implemented | Yes | Yes | Yes | Pauses or resumes an automation-person pairing. |
 | `PUT /calls/:id` | Implemented | Yes | Yes | Yes | Updates a call log entry. |
-| `PUT /customFields/:id` | Deferred | No | No | No | Deferred until explicit custom field admin support is requested. |
-| `PUT /dealAttachments/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `PUT /customFields/:id` | Implemented | Yes | Yes | Yes | Updates custom field metadata and dropdown-choice mappings by ID. |
+| `PUT /dealAttachments/{id}` | Implemented | Yes | Yes | Yes | Updates a registered-system deal attachment by ID. |
 | `PUT /dealCustomFields/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
 | `PUT /deals/{id}` | Implemented | Yes | Yes | Yes | Updates a deal and preserves documented custom field semantics. |
-| `PUT /emCampaigns/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `PUT /emCampaigns/:id` | Implemented | Yes | Yes | Yes | Updates an email marketing campaign subject, name, or HTML body. |
 | `PUT /groups/:id` | Implemented | Yes | Yes | Yes | Updates group metadata and member assignment defaults. |
-| `PUT /inboxApps/:inboxAppId/message` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `PUT /inboxApps/{inboxAppId}/conversations/{extConversationId}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `PUT /inboxApps/:inboxAppId/message` | Implemented | Yes | Yes | Yes | Updates inbox app message delivery metadata or external message IDs. |
+| `PUT /inboxApps/{inboxAppId}/conversations/{extConversationId}` | Implemented | Yes | Yes | Yes | Updates inbox app conversation subject, archive state, person, or assignment. |
 | `PUT /notes/:id` | Implemented | Yes | Yes | Yes | Single-note update. |
 | `PUT /people/:id` | Implemented | Yes | Yes | Yes | Supports mergeTags query semantics. |
-| `PUT /peopleRelationships/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `PUT /personAttachments/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `PUT /peopleRelationships/:id` | Implemented | Yes | Yes | Yes | Updates a people relationship and preserves overwrite semantics for arrays. |
+| `PUT /personAttachments/{id}` | Implemented | Yes | Yes | Yes | Updates a registered-system person attachment by ID. |
 | `PUT /pipelines/{id}` | Implemented | Yes | Yes | Yes | Updates pipeline metadata and supports stage create-or-update semantics. |
 | `PUT /ponds/:id` | Implemented | Yes | Yes | Yes | Updates pond metadata and expects complete member replacement semantics. |
 | `PUT /stages/:id` | Implemented | Yes | Yes | Yes | Updates stage metadata with documented orderWeight behavior. |

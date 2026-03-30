@@ -41,29 +41,29 @@ Build a production-grade Python 3.12+ repository that ingests official Follow Up
 
 ## Tasks
 
-- [x] `DONE` Create `TASKS.followupboss-mcp.md` with required sections.
-- [x] `DONE` Scaffold repository layout, package directories, tests, docs, examples, scripts, and CI.
-- [x] `DONE` Ingest official Follow Up Boss docs into `docs/followupboss-endpoint-manifest.json`.
-- [x] `DONE` Write and regenerate `docs/followupboss-doc-ingestion.md` from ingestion results.
-- [x] `DONE` Create and maintain `docs/api-coverage-matrix.md`.
-- [x] `DONE` Implement config, constants, auth, logging, retry, rate limiting, pagination, and HTTP transport layers.
-- [x] `DONE` Implement typed domain models for common, identity, people, events, users, custom fields, notes, and webhooks.
-- [x] `DONE` Implement typed services for identity, people, events, users, custom fields, notes, and webhooks.
-- [x] `DONE` Implement webhook verification and helper utilities.
-- [x] `DONE` Implement MCP tool layer and production-grade MCP server.
-- [x] `DONE` Implement CLI and runnable examples.
-- [x] `DONE` Write README and architecture, usage, testing, security, release, ingestion, coverage, and validation docs.
-- [x] `DONE` Write exhaustive unit, integration, contract, and MCP tests with 100% line and branch coverage for production code.
-- [x] `DONE` Configure `pyproject.toml`, `.gitignore`, `.editorconfig`, and GitHub Actions CI.
-- [x] `DONE` Run `uv sync`.
-- [x] `DONE` Run `uv run ruff format --check .`.
-- [x] `DONE` Run `uv run ruff check .`.
-- [x] `DONE` Run `uv run mypy src tests`.
-- [x] `DONE` Run `uv run pytest`.
-- [x] `DONE` Run `uv run coverage run --branch -m pytest`.
-- [x] `DONE` Run `uv run coverage report --fail-under=100`.
-- [x] `DONE` Run `uv run python -m followupboss_mcp.cli --help`.
-- [x] `DONE` Write `docs/final-validation-report.md`.
+- `DONE` Create `TASKS.followupboss-mcp.md` with required sections.
+- `DONE` Scaffold repository layout, package directories, tests, docs, examples, scripts, and CI.
+- `DONE` Ingest official Follow Up Boss docs into `docs/followupboss-endpoint-manifest.json`.
+- `DONE` Write and regenerate `docs/followupboss-doc-ingestion.md` from ingestion results.
+- `DONE` Create and maintain `docs/api-coverage-matrix.md`.
+- `DONE` Implement config, constants, auth, logging, retry, rate limiting, pagination, and HTTP transport layers.
+- `DONE` Implement typed domain models for common, identity, people, events, users, custom fields, notes, and webhooks.
+- `DONE` Implement typed services for identity, people, events, users, custom fields, notes, and webhooks.
+- `DONE` Implement webhook verification and helper utilities.
+- `DONE` Implement MCP tool layer and production-grade MCP server.
+- `DONE` Implement CLI and runnable examples.
+- `DONE` Write README and architecture, usage, testing, security, release, ingestion, coverage, and validation docs.
+- `DONE` Write exhaustive unit, integration, contract, and MCP tests with 100% line and branch coverage for production code.
+- `DONE` Configure `pyproject.toml`, `.gitignore`, `.editorconfig`, and GitHub Actions CI.
+- `DONE` Run `uv sync`.
+- `DONE` Run `uv run ruff format --check .`.
+- `DONE` Run `uv run ruff check .`.
+- `DONE` Run `uv run mypy src tests`.
+- `DONE` Run `uv run pytest`.
+- `DONE` Run `uv run coverage run --branch -m pytest`.
+- `DONE` Run `uv run coverage report --fail-under=100`.
+- `DONE` Run `uv run python -m followupboss_mcp.cli --help`.
+- `DONE` Write `docs/final-validation-report.md`.
 
 ## Blockers
 
@@ -92,17 +92,18 @@ Build a production-grade Python 3.12+ repository that ingests official Follow Up
 
 ## Final Acceptance Checklist
 
-- [x] Task tracker exists and reflects actual work completed.
-- [x] Follow Up Boss docs ingested into manifest and readable summary.
-- [x] API coverage matrix exists and is explicit.
-- [x] Typed client exists.
-- [x] MCP server exists.
-- [x] Documentation is extensive and in sync with code.
-- [x] `mypy --strict` passes.
-- [x] Linting passes.
-- [x] Formatting passes.
-- [x] Tests pass.
-- [x] Line coverage is 100%.
-- [x] Branch coverage is 100%.
-- [x] CI is configured.
-- [x] Final validation report exists.
+- Task tracker exists and reflects actual work completed.
+- Follow Up Boss docs ingested into manifest and readable summary.
+- API coverage matrix exists and is explicit.
+- Typed client exists.
+- MCP server exists.
+- Documentation is extensive and in sync with code.
+- `mypy --strict` passes.
+- Linting passes.
+- Formatting passes.
+- Tests pass.
+- Line coverage is 100%.
+- Branch coverage is 100%.
+- CI is configured.
+- Final validation report exists.
+

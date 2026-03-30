@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 
 from followupboss_mcp.models.common import JsonValue, QueryModel, RequestModel, ResponseModel
 
@@ -13,6 +13,18 @@ class TextMessageListRequest(QueryModel):
     from_number: str | None = Field(default=None, serialization_alias="fromNumber")
     person_id: int | None = Field(default=None, serialization_alias="personId")
     to_number: str | None = Field(default=None, serialization_alias="toNumber")
+
+
+class CreateTextMessageRequest(RequestModel):
+    """Strict request model for recording an externally sent text message."""
+
+    external_label: str | None = Field(default=None, serialization_alias="externalLabel")
+    external_url: str | None = Field(default=None, serialization_alias="externalUrl")
+    from_number: str = Field(serialization_alias="fromNumber")
+    is_incoming: bool | None = Field(default=None, serialization_alias="isIncoming")
+    message: str
+    person_id: int = Field(serialization_alias="personId")
+    to_number: str = Field(serialization_alias="toNumber")
 
 
 class TextMessageRecord(ResponseModel):
@@ -48,6 +60,41 @@ class TextMessageRecord(ResponseModel):
     updated_by_id: int | None = Field(default=None, alias="updatedById")
     user_id: int | None = Field(default=None, alias="userId")
     user_name: str | None = Field(default=None, alias="userName")
+
+
+class TextMessageTemplateMergeRecipient(RequestModel):
+    """One recipient used for text message template merge previews."""
+
+    name: str | None = None
+    phone: str
+
+
+class TextMessageTemplateMergeRecipients(RequestModel):
+    """Recipient groups used for text message template merge previews."""
+
+    from_recipients: list[TextMessageTemplateMergeRecipient] | None = Field(
+        default=None,
+        serialization_alias="from",
+    )
+    to: list[TextMessageTemplateMergeRecipient] | None = None
+
+
+class MergeTextMessageTemplateRequest(RequestModel):
+    """Strict request model for merging a text message template."""
+
+    person_id: int | None = Field(
+        default=None,
+        serialization_alias="personId",
+        validation_alias=AliasChoices("personId", "mergePersonId"),
+    )
+    recipients: TextMessageTemplateMergeRecipients | None = None
+    template_id: int = Field(serialization_alias="templateId")
+
+
+class MergedTextMessageTemplateRecord(ResponseModel):
+    """Merged text message template preview returned by the API."""
+
+    merged_template: str | None = Field(default=None, alias="mergedTemplate")
 
 
 class TextMessageTemplateListRequest(QueryModel):

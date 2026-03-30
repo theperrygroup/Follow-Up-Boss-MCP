@@ -34,6 +34,12 @@ from followupboss_mcp.models.appointments import (
     CreateAppointmentRequest,
     UpdateAppointmentRequest,
 )
+from followupboss_mcp.models.attachments import (
+    CreateDealAttachmentRequest,
+    CreatePersonAttachmentRequest,
+    UpdateDealAttachmentRequest,
+    UpdatePersonAttachmentRequest,
+)
 from followupboss_mcp.models.automations import (
     AutomationListRequest,
     AutomationPeopleListRequest,
@@ -41,13 +47,24 @@ from followupboss_mcp.models.automations import (
     UpdateAutomationPersonRequest,
 )
 from followupboss_mcp.models.calls import CallListRequest, CreateCallRequest, UpdateCallRequest
-from followupboss_mcp.models.common import EmailAddress
-from followupboss_mcp.models.custom_fields import CustomFieldListRequest
+from followupboss_mcp.models.common import EmailAddress, PhoneNumber
+from followupboss_mcp.models.custom_fields import (
+    CreateCustomFieldRequest,
+    CustomFieldListRequest,
+    UpdateCustomFieldRequest,
+)
 from followupboss_mcp.models.deals import (
     CreateDealRequest,
     DealCustomFieldListRequest,
     DealListRequest,
     UpdateDealRequest,
+)
+from followupboss_mcp.models.email_marketing import (
+    CreateEmailCampaignRequest,
+    CreateEmailEventsBatchRequest,
+    EmailCampaignListRequest,
+    EmailEventListRequest,
+    UpdateEmailCampaignRequest,
 )
 from followupboss_mcp.models.events import CreateEventRequest, EventPersonInput, EventSearchRequest
 from followupboss_mcp.models.groups import (
@@ -56,6 +73,19 @@ from followupboss_mcp.models.groups import (
     UpdateGroupRequest,
 )
 from followupboss_mcp.models.identity import IdentityResponse
+from followupboss_mcp.models.inbox_apps import (
+    CreateInboxAppMessageRequest,
+    CreateInboxAppNoteRequest,
+    CreateInboxAppParticipantRequest,
+    InboxAppAttachmentRequest,
+    InboxAppConversationOwnerRequest,
+    InboxAppConversationPersonRequest,
+    InboxAppMessageSenderRequest,
+    InboxAppNoteUserRequest,
+    InstallInboxAppRequest,
+    UpdateInboxAppConversationRequest,
+    UpdateInboxAppMessageRequest,
+)
 from followupboss_mcp.models.notes import CreateNoteRequest, UpdateNoteRequest
 from followupboss_mcp.models.people import (
     CreatePersonRequest,
@@ -63,6 +93,11 @@ from followupboss_mcp.models.people import (
     PersonLookupRequest,
     PersonRecord,
     UpdatePersonRequest,
+)
+from followupboss_mcp.models.people_relationships import (
+    CreatePeopleRelationshipRequest,
+    PeopleRelationshipListRequest,
+    UpdatePeopleRelationshipRequest,
 )
 from followupboss_mcp.models.pipelines import (
     CreatePipelineRequest,
@@ -76,6 +111,7 @@ from followupboss_mcp.models.ponds import (
     PondListRequest,
     UpdatePondRequest,
 )
+from followupboss_mcp.models.reactions import CreateReactionRequest, DeleteReactionRequest
 from followupboss_mcp.models.smart_lists import SmartListListRequest
 from followupboss_mcp.models.stages import (
     CreateStageRequest,
@@ -88,6 +124,7 @@ from followupboss_mcp.models.tasks import (
     TaskListRequest,
     UpdateTaskRequest,
 )
+from followupboss_mcp.models.team_inboxes import TeamInboxListRequest
 from followupboss_mcp.models.teams import (
     CreateTeamRequest,
     DeleteTeamRequest,
@@ -96,12 +133,15 @@ from followupboss_mcp.models.teams import (
 )
 from followupboss_mcp.models.templates import (
     CreateTemplateRequest,
+    MergeTemplateRequest,
     TemplateListRequest,
     TemplateLookupRequest,
     UpdateTemplateRequest,
 )
 from followupboss_mcp.models.text_messages import (
+    CreateTextMessageRequest,
     CreateTextMessageTemplateRequest,
+    MergeTextMessageTemplateRequest,
     TextMessageListRequest,
     TextMessageTemplateListRequest,
     UpdateTextMessageTemplateRequest,
@@ -114,6 +154,10 @@ from followupboss_mcp.services.appointment_metadata import (
     AppointmentTypesService,
 )
 from followupboss_mcp.services.appointments import AppointmentsService
+from followupboss_mcp.services.attachments import (
+    DealAttachmentsService,
+    PersonAttachmentsService,
+)
 from followupboss_mcp.services.automations import (
     AutomationPeopleService,
     AutomationsService,
@@ -121,16 +165,21 @@ from followupboss_mcp.services.automations import (
 from followupboss_mcp.services.calls import CallsService
 from followupboss_mcp.services.custom_fields import CustomFieldsService
 from followupboss_mcp.services.deals import DealsService
+from followupboss_mcp.services.email_marketing import EmailMarketingService
 from followupboss_mcp.services.events import EventsService
 from followupboss_mcp.services.groups import GroupsService
 from followupboss_mcp.services.identity import IdentityService
+from followupboss_mcp.services.inbox_apps import InboxAppsService
 from followupboss_mcp.services.notes import NotesService
 from followupboss_mcp.services.people import PeopleService
+from followupboss_mcp.services.people_relationships import PeopleRelationshipsService
 from followupboss_mcp.services.pipelines import PipelinesService
 from followupboss_mcp.services.ponds import PondsService
+from followupboss_mcp.services.reactions import ReactionsService
 from followupboss_mcp.services.smart_lists import SmartListsService
 from followupboss_mcp.services.stages import StagesService
 from followupboss_mcp.services.tasks import TasksService
+from followupboss_mcp.services.team_inboxes import TeamInboxesService
 from followupboss_mcp.services.teams import TeamsService
 from followupboss_mcp.services.templates import TemplatesService
 from followupboss_mcp.services.text_messages import (
@@ -203,7 +252,7 @@ async def test_identity_service() -> None:
 
 @pytest.mark.asyncio
 async def test_custom_fields_service() -> None:
-    """Custom field listing should parse metadata and validate response shape."""
+    """Custom fields service should map list and admin operations correctly."""
     client = StubClient(
         [
             {
@@ -212,6 +261,31 @@ async def test_custom_fields_service() -> None:
                     {"id": 1, "label": "Birthday", "name": "customBirthday", "type": "date"}
                 ],
             },
+            {
+                "id": 2,
+                "label": "Close price",
+                "name": "customClosePrice",
+                "type": "number",
+                "choices": [],
+            },
+            {
+                "id": 3,
+                "label": "Looking for",
+                "name": "customLookingFor",
+                "type": "dropdown",
+                "choices": ["Apartment", "Townhouse"],
+            },
+            {
+                "id": 4,
+                "label": "Looking for",
+                "name": "customLookingFor",
+                "type": "dropdown",
+                "isRecurring": False,
+            },
+            {},
+            [],
+            [],
+            [],
             [],
         ]
     )
@@ -219,8 +293,286 @@ async def test_custom_fields_service() -> None:
     page = await service.list_custom_fields(CustomFieldListRequest(label="Birthday"))
     assert page.items[0].name == "customBirthday"
     assert client.calls[0].params == {"label": "Birthday"}
+
+    field = await service.get_custom_field(2)
+    assert field.id == 2
+    assert client.calls[1].path == "/customFields/2"
+
+    created = await service.create_custom_field(
+        CreateCustomFieldRequest(
+            label="Looking for",
+            type="dropdown",
+            choices=["Apartment", "Townhouse"],
+            hide_if_empty=True,
+        )
+    )
+    assert created.id == 3
+    assert client.calls[2].json_body == {
+        "label": "Looking for",
+        "type": "dropdown",
+        "choices": ["Apartment", "Townhouse"],
+        "hideIfEmpty": True,
+    }
+
+    updated = await service.update_custom_field(
+        4,
+        UpdateCustomFieldRequest(
+            label="Looking for",
+            choices=["Detached House"],
+            dropdown_choice_map={"Apartment": 0},
+            order_weight=2000,
+        ),
+    )
+    assert updated.id == 4
+    assert client.calls[3].path == "/customFields/4"
+    assert client.calls[3].json_body == {
+        "label": "Looking for",
+        "choices": ["Detached House"],
+        "dropdownChoiceMap": {"Apartment": 0},
+        "orderWeight": 2000,
+    }
+
+    await service.delete_custom_field(5)
+    assert client.calls[4].path == "/customFields/5"
+
     with pytest.raises(FollowUpBossValidationError):
         await service.list_custom_fields()
+    with pytest.raises(FollowUpBossValidationError):
+        await service.get_custom_field(2)
+    with pytest.raises(FollowUpBossValidationError):
+        await service.create_custom_field(
+            CreateCustomFieldRequest(label="Close price", type="number")
+        )
+    with pytest.raises(FollowUpBossValidationError):
+        await service.update_custom_field(4, UpdateCustomFieldRequest(label="Updated"))
+
+    with pytest.raises(
+        ValidationError, match="Dropdown custom fields must provide at least one choice"
+    ):
+        CreateCustomFieldRequest(label="Looking for", type="dropdown")
+    with pytest.raises(
+        ValidationError,
+        match="At least one custom field update field must be provided",
+    ):
+        UpdateCustomFieldRequest()
+
+
+@pytest.mark.asyncio
+async def test_email_marketing_service() -> None:
+    """Email marketing service should map campaigns and event batches correctly."""
+    updated_after = datetime(2026, 3, 28, 12, 0, tzinfo=UTC)
+    occurred_at = datetime(2026, 3, 28, 13, 0, tzinfo=UTC)
+    client = StubClient(
+        [
+            {
+                "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                "emCampaigns": [
+                    {
+                        "id": 102,
+                        "origin": "Curaytor",
+                        "originId": "912",
+                        "name": "Can I help",
+                        "subject": "Can I help?",
+                        "bodyHtml": "I saw you're browsing our website, can I help with...",
+                    }
+                ],
+            },
+            {
+                "id": 103,
+                "origin": "Curaytor",
+                "originId": "913",
+                "name": "New Campaign",
+                "subject": "Hello",
+                "bodyHtml": "<p>Hello</p>",
+            },
+            {
+                "id": 104,
+                "origin": "Curaytor",
+                "originId": "913",
+                "name": "Updated Campaign",
+                "subject": "Updated",
+                "bodyHtml": "<p>Updated</p>",
+            },
+            {
+                "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                "emEvents": [
+                    {
+                        "count": 2,
+                        "type": "open",
+                        "personId": 10911,
+                        "campaignId": 102,
+                        "campaignName": "Can I help",
+                        "created": "2017-01-03T19:20:49Z",
+                        "updated": "2017-01-03T19:20:49Z",
+                    }
+                ],
+            },
+            {
+                "emEventIds": [193928, 193929],
+                "recipientsNotFound": [
+                    "email.not.in.fub@example.com",
+                    "another.missing.email@example.com",
+                ],
+            },
+        ]
+    )
+    service = EmailMarketingService(client)
+
+    campaigns_page = await service.list_email_campaigns(
+        EmailCampaignListRequest(origin="Curaytor", origin_id="912")
+    )
+    assert campaigns_page.items[0].origin_id == "912"
+    assert client.calls[0].params == {"origin": "Curaytor", "originId": "912"}
+
+    created_campaign = await service.create_email_campaign(
+        CreateEmailCampaignRequest(
+            origin="Curaytor",
+            origin_id="913",
+            name="New Campaign",
+            subject="Hello",
+            body_html="<p>Hello</p>",
+        )
+    )
+    assert created_campaign.id == 103
+    assert client.calls[1].json_body == {
+        "origin": "Curaytor",
+        "originId": "913",
+        "name": "New Campaign",
+        "subject": "Hello",
+        "bodyHtml": "<p>Hello</p>",
+    }
+
+    updated_campaign = await service.update_email_campaign(
+        104,
+        UpdateEmailCampaignRequest(
+            name="Updated Campaign", subject="Updated", body_html="<p>Updated</p>"
+        ),
+    )
+    assert updated_campaign.id == 104
+    assert client.calls[2].path == "/emCampaigns/104"
+    assert client.calls[2].json_body == {
+        "name": "Updated Campaign",
+        "subject": "Updated",
+        "bodyHtml": "<p>Updated</p>",
+    }
+
+    events_page = await service.list_email_events(
+        EmailEventListRequest(
+            type="open",
+            person_id=10911,
+            updated_after=updated_after,
+            limit=10,
+            offset=0,
+        )
+    )
+    assert events_page.items[0].campaign_id == 102
+    assert client.calls[3].params == {
+        "type": "open",
+        "personId": "10911",
+        "updatedAfter": updated_after.isoformat(),
+        "limit": "10",
+        "offset": "0",
+    }
+
+    batch_result = await service.send_email_events(
+        CreateEmailEventsBatchRequest.model_validate(
+            {
+                "em_events": [
+                    {
+                        "type": "delivered",
+                        "occurred": occurred_at.isoformat(),
+                        "recipient": "john.smith@gmail.com",
+                        "person_id": 1,
+                        "campaign_id": 141,
+                        "user_id": 3,
+                    },
+                    {
+                        "type": "open",
+                        "occurred": occurred_at.isoformat(),
+                        "recipient": "jane@example.com",
+                        "campaign_id": "141",
+                    },
+                ]
+            }
+        )
+    )
+    assert batch_result.em_event_ids == [193928, 193929]
+    assert client.calls[4].json_body == {
+        "emEvents": [
+            {
+                "type": "delivered",
+                "occurred": "2026-03-28T13:00:00Z",
+                "recipient": "john.smith@gmail.com",
+                "personId": 1,
+                "campaignId": 141,
+                "userId": 3,
+            },
+            {
+                "type": "open",
+                "occurred": "2026-03-28T13:00:00Z",
+                "recipient": "jane@example.com",
+                "campaignId": "141",
+            },
+        ]
+    }
+
+    invalid_campaign_service = EmailMarketingService(StubClient([[], [], [], {"emCampaigns": {}}]))
+    with pytest.raises(ValueError, match="Unexpected email campaigns response"):
+        await invalid_campaign_service.list_email_campaigns()
+    with pytest.raises(ValueError, match="Unexpected email campaigns response"):
+        await invalid_campaign_service.create_email_campaign(
+            CreateEmailCampaignRequest(origin="Curaytor", origin_id="913")
+        )
+    with pytest.raises(ValueError, match="Unexpected email campaigns response"):
+        await invalid_campaign_service.update_email_campaign(
+            104, UpdateEmailCampaignRequest(name="Updated")
+        )
+    with pytest.raises(ValueError, match="Unexpected email events response"):
+        await EmailMarketingService(StubClient([[]])).list_email_events()
+    with pytest.raises(ValueError, match="Unexpected email campaigns response"):
+        await invalid_campaign_service.list_email_campaigns()
+    with pytest.raises(ValueError, match="Unexpected email events response"):
+        await EmailMarketingService(StubClient([{"emEvents": {}}])).list_email_events()
+    with pytest.raises(ValueError, match="Unexpected email events response"):
+        await EmailMarketingService(StubClient([[]])).send_email_events(
+            CreateEmailEventsBatchRequest.model_validate(
+                {
+                    "em_events": [
+                        {
+                            "type": "delivered",
+                            "occurred": occurred_at.isoformat(),
+                            "recipient": "john.smith@gmail.com",
+                            "campaign_id": 141,
+                        }
+                    ]
+                }
+            )
+        )
+
+    with pytest.raises(ValidationError, match="At least one email campaign field must be provided"):
+        UpdateEmailCampaignRequest()
+    with pytest.raises(
+        ValidationError,
+        match="At least one email marketing event must be provided",
+    ):
+        CreateEmailEventsBatchRequest(em_events=[])
+    with pytest.raises(
+        ValidationError,
+        match="Email marketing event batches cannot exceed 1000 events",
+    ):
+        CreateEmailEventsBatchRequest.model_validate(
+            {
+                "em_events": [
+                    {
+                        "type": "delivered",
+                        "occurred": occurred_at.isoformat(),
+                        "recipient": f"user-{index}@example.com",
+                        "campaign_id": 141,
+                    }
+                    for index in range(1001)
+                ]
+            }
+        )
 
 
 @pytest.mark.asyncio
@@ -564,6 +916,10 @@ async def test_action_plans_service() -> None:
             UpdateActionPlanPersonRequest(status="Paused"),
         )
 
+    invalid_people_service = ActionPlansService(StubClient([[]]))
+    with pytest.raises(ValueError, match="Unexpected actionPlansPeople response"):
+        await invalid_people_service.list_action_plan_people()
+
 
 @pytest.mark.asyncio
 async def test_groups_service() -> None:
@@ -826,6 +1182,403 @@ async def test_people_service_paginator_and_non_list_shape() -> None:
 
     with pytest.raises(ValueError):
         await PeopleService(StubClient([{"people": {}}])).search_people()
+
+
+@pytest.mark.asyncio
+async def test_people_relationships_service() -> None:
+    """People relationships service should map list/get/create/update/delete correctly."""
+    client = StubClient(
+        [
+            [
+                {
+                    "id": 423,
+                    "created": "2021-02-19T14:12:36Z",
+                    "updated": "2021-02-19T14:12:41Z",
+                    "createdById": 41,
+                    "updatedById": 41,
+                    "personId": 46977,
+                    "name": "Billy Bob",
+                    "firstName": "Billy",
+                    "lastName": "Bob",
+                    "type": "Husband",
+                    "isPriority": True,
+                    "emails": [],
+                    "phones": [
+                        {
+                            "value": "5551113333",
+                            "type": "mobile",
+                            "status": "Valid",
+                            "isPrimary": 1,
+                            "normalized": "5551113333",
+                        }
+                    ],
+                    "addresses": [],
+                    "picture": None,
+                    "socialData": [],
+                }
+            ],
+            {
+                "id": 423,
+                "created": "2021-02-19T14:12:36Z",
+                "updated": "2021-02-19T14:12:41Z",
+                "createdById": 41,
+                "updatedById": 41,
+                "personId": 46977,
+                "name": "Billy Bob",
+                "firstName": "Billy",
+                "lastName": "Bob",
+                "type": "Husband",
+                "isPriority": True,
+                "emails": [],
+                "phones": [],
+                "addresses": [],
+                "picture": None,
+                "socialData": [],
+            },
+            {},
+            {},
+            {},
+        ]
+    )
+    service = PeopleRelationshipsService(client)
+
+    relationships_page = await service.list_people_relationships(
+        PeopleRelationshipListRequest(
+            person_id=46977,
+            first_name="Billy",
+            last_name="Bob",
+            name="Billy Bob",
+            sort="name",
+        )
+    )
+    assert relationships_page.items[0].person_id == 46977
+    assert client.calls[0].params == {
+        "personId": "46977",
+        "firstName": "Billy",
+        "lastName": "Bob",
+        "name": "Billy Bob",
+        "sort": "name",
+    }
+
+    relationship = await service.get_people_relationship(423)
+    assert relationship.id == 423
+    assert client.calls[1].path == "/peopleRelationships/423"
+
+    created = await service.create_people_relationship(
+        CreatePeopleRelationshipRequest(
+            person_id=46977,
+            first_name="Billy",
+            last_name="Bob",
+            type="Husband",
+            emails=[EmailAddress(value="billy@example.com", type="home")],
+        )
+    )
+    assert created.id is None
+    assert client.calls[2].json_body == {
+        "personId": 46977,
+        "firstName": "Billy",
+        "lastName": "Bob",
+        "type": "Husband",
+        "emails": [{"value": "billy@example.com", "type": "home"}],
+    }
+
+    updated = await service.update_people_relationship(
+        423,
+        UpdatePeopleRelationshipRequest(
+            type="Spouse",
+            phones=[PhoneNumber(value="5551113333", type="mobile")],
+        ),
+    )
+    assert updated.id is None
+    assert client.calls[3].path == "/peopleRelationships/423"
+    assert client.calls[3].json_body == {
+        "type": "Spouse",
+        "phones": [{"value": "5551113333", "type": "mobile"}],
+    }
+
+    await service.delete_people_relationship(423)
+    assert client.calls[4].path == "/peopleRelationships/423"
+
+    invalid_service = PeopleRelationshipsService(StubClient([{}, [], [], []]))
+    with pytest.raises(ValueError, match="Unexpected people relationships response"):
+        await invalid_service.list_people_relationships()
+    with pytest.raises(ValueError, match="Unexpected people relationship response"):
+        await invalid_service.get_people_relationship(423)
+    with pytest.raises(ValueError, match="Unexpected people relationship response"):
+        await invalid_service.create_people_relationship(
+            CreatePeopleRelationshipRequest(person_id=46977)
+        )
+    with pytest.raises(ValueError, match="Unexpected people relationship response"):
+        await invalid_service.update_people_relationship(
+            423,
+            UpdatePeopleRelationshipRequest(type="Spouse"),
+        )
+
+    with pytest.raises(
+        ValidationError, match="At least one people relationship field must be provided"
+    ):
+        UpdatePeopleRelationshipRequest()
+
+
+@pytest.mark.asyncio
+async def test_attachment_services() -> None:
+    """Attachment services should map get, create, update, and delete behavior correctly."""
+    client = StubClient(
+        [
+            {
+                "personId": 1,
+                "fileName": "test.jpg",
+                "fileSize": None,
+                "id": 2,
+                "mimeType": "link",
+                "uri": "https://test.com/myfile",
+                "thumbnailUri": None,
+                "status": "created",
+                "createdAt": "2022-11-16T03:44:52Z",
+                "createdById": 1,
+                "createdByName": "Olivia Admin",
+                "is_external": 1,
+                "system_id": 123,
+            },
+            {
+                "personId": 1,
+                "fileName": "test.jpg",
+                "fileSize": None,
+                "id": 3,
+                "mimeType": "link",
+                "uri": "https://test.com/myfile",
+                "thumbnailUri": None,
+                "status": "created",
+                "createdAt": "2022-11-16T03:44:52Z",
+                "createdById": 1,
+                "createdByName": "Olivia Admin",
+            },
+            {
+                "personId": 1,
+                "fileName": "updated.jpg",
+                "fileSize": 42,
+                "id": 4,
+                "mimeType": "link",
+                "uri": "https://test.com/updated",
+                "thumbnailUri": None,
+                "status": "created",
+                "createdAt": "2022-11-16T03:44:52Z",
+                "createdById": 1,
+                "createdByName": "Olivia Admin",
+            },
+            {},
+            {
+                "dealId": 8,
+                "fileName": "deal.jpg",
+                "fileSize": None,
+                "id": 10,
+                "mimeType": "link",
+                "uri": "https://test.com/deal",
+                "thumbnailUri": None,
+                "status": "created",
+                "createdAt": "2022-11-16T19:09:45Z",
+                "createdById": 1,
+                "createdByName": "Olivia Admin",
+            },
+            {
+                "dealId": 8,
+                "fileName": "deal.jpg",
+                "fileSize": None,
+                "id": 11,
+                "mimeType": "link",
+                "uri": "https://test.com/deal",
+                "thumbnailUri": None,
+                "status": "created",
+                "createdAt": "2022-11-16T19:09:45Z",
+                "createdById": 1,
+                "createdByName": "Olivia Admin",
+            },
+            {
+                "dealId": 9,
+                "fileName": "deal-updated.jpg",
+                "fileSize": 24,
+                "id": 12,
+                "mimeType": "link",
+                "uri": "https://test.com/deal-updated",
+                "thumbnailUri": None,
+                "status": "created",
+                "createdAt": "2022-11-16T19:09:45Z",
+                "createdById": 1,
+                "createdByName": "Olivia Admin",
+            },
+            {},
+        ]
+    )
+    person_service = PersonAttachmentsService(client)
+    deal_service = DealAttachmentsService(client)
+
+    person_attachment = await person_service.get_person_attachment(2)
+    assert person_attachment.person_id == 1
+    assert client.calls[0].path == "/personAttachments/2"
+
+    created_person_attachment = await person_service.create_person_attachment(
+        CreatePersonAttachmentRequest(
+            person_id=1,
+            uri="https://test.com/myfile",
+            file_name="test.jpg",
+        )
+    )
+    assert created_person_attachment.id == 3
+    assert client.calls[1].json_body == {
+        "personId": 1,
+        "uri": "https://test.com/myfile",
+        "fileName": "test.jpg",
+    }
+
+    updated_person_attachment = await person_service.update_person_attachment(
+        4,
+        UpdatePersonAttachmentRequest(
+            person_id=1,
+            uri="https://test.com/updated",
+            file_name="updated.jpg",
+            file_size=42,
+        ),
+    )
+    assert updated_person_attachment.id == 4
+    assert client.calls[2].path == "/personAttachments/4"
+    assert client.calls[2].json_body == {
+        "personId": 1,
+        "uri": "https://test.com/updated",
+        "fileName": "updated.jpg",
+        "fileSize": 42,
+    }
+
+    await person_service.delete_person_attachment(5)
+    assert client.calls[3].path == "/personAttachments/5"
+
+    deal_attachment = await deal_service.get_deal_attachment(10)
+    assert deal_attachment.deal_id == 8
+    assert client.calls[4].path == "/dealAttachments/10"
+
+    created_deal_attachment = await deal_service.create_deal_attachment(
+        CreateDealAttachmentRequest(
+            deal_id=8,
+            uri="https://test.com/deal",
+            file_name="deal.jpg",
+        )
+    )
+    assert created_deal_attachment.id == 11
+    assert client.calls[5].json_body == {
+        "dealId": 8,
+        "uri": "https://test.com/deal",
+        "fileName": "deal.jpg",
+    }
+
+    updated_deal_attachment = await deal_service.update_deal_attachment(
+        12,
+        UpdateDealAttachmentRequest(
+            deal_id=9,
+            uri="https://test.com/deal-updated",
+            file_name="deal-updated.jpg",
+            file_size=24,
+        ),
+    )
+    assert updated_deal_attachment.id == 12
+    assert client.calls[6].path == "/dealAttachments/12"
+    assert client.calls[6].json_body == {
+        "dealId": 9,
+        "uri": "https://test.com/deal-updated",
+        "fileName": "deal-updated.jpg",
+        "fileSize": 24,
+    }
+
+    await deal_service.delete_deal_attachment(13)
+    assert client.calls[7].path == "/dealAttachments/13"
+
+    invalid_person_service = PersonAttachmentsService(StubClient([[], [], []]))
+    with pytest.raises(ValueError, match="Unexpected person attachment response"):
+        await invalid_person_service.get_person_attachment(2)
+    with pytest.raises(ValueError, match="Unexpected person attachment response"):
+        await invalid_person_service.create_person_attachment(
+            CreatePersonAttachmentRequest(
+                person_id=1,
+                uri="https://test.com/myfile",
+                file_name="test.jpg",
+            )
+        )
+    with pytest.raises(ValueError, match="Unexpected person attachment response"):
+        await invalid_person_service.update_person_attachment(
+            4,
+            UpdatePersonAttachmentRequest(
+                person_id=1,
+                uri="https://test.com/updated",
+                file_name="updated.jpg",
+            ),
+        )
+
+    invalid_deal_service = DealAttachmentsService(StubClient([[], [], []]))
+    with pytest.raises(ValueError, match="Unexpected deal attachment response"):
+        await invalid_deal_service.get_deal_attachment(10)
+    with pytest.raises(ValueError, match="Unexpected deal attachment response"):
+        await invalid_deal_service.create_deal_attachment(
+            CreateDealAttachmentRequest(
+                deal_id=8,
+                uri="https://test.com/deal",
+                file_name="deal.jpg",
+            )
+        )
+    with pytest.raises(ValueError, match="Unexpected deal attachment response"):
+        await invalid_deal_service.update_deal_attachment(
+            12,
+            UpdateDealAttachmentRequest(
+                deal_id=9,
+                uri="https://test.com/deal-updated",
+                file_name="deal-updated.jpg",
+            ),
+        )
+
+
+@pytest.mark.asyncio
+async def test_reactions_service() -> None:
+    """Reactions service should map get, add, and delete behavior correctly."""
+    client = StubClient(
+        [
+            {
+                "id": 1363,
+                "created": "2024-03-21T21:14:13Z",
+                "createdBy": "Tom Minch",
+                "createdById": 1,
+                "refType": "Note",
+                "refId": 2144705,
+                "body": "🤯",
+            },
+            [],
+            {},
+        ]
+    )
+    service = ReactionsService(client)
+
+    reaction = await service.get_reaction(1363)
+    assert reaction.ref_type == "Note"
+    assert client.calls[0].path == "/reactions/1363"
+
+    created = await service.add_reaction(
+        "Note",
+        2144705,
+        CreateReactionRequest(body="🤣"),
+    )
+    assert created.model_dump(exclude_none=True) == {}
+    assert client.calls[1].path == "/reactions/Note/2144705"
+    assert client.calls[1].json_body == {"body": "🤣"}
+
+    await service.delete_reaction("Note", 2144705, DeleteReactionRequest(emoji="👏"))
+    assert client.calls[2].path == "/reactions/Note/2144705"
+    assert client.calls[2].params == {"emoji": "👏"}
+
+    invalid_reaction_service = ReactionsService(StubClient([[], ["unexpected"], []]))
+    with pytest.raises(ValueError, match="Unexpected reactions response"):
+        await invalid_reaction_service.get_reaction(1363)
+    with pytest.raises(ValueError, match="Unexpected reactions response"):
+        await invalid_reaction_service.add_reaction(
+            "Note",
+            2144705,
+            CreateReactionRequest(body="🤣"),
+        )
 
 
 @pytest.mark.asyncio
@@ -1594,8 +2347,378 @@ async def test_teams_service() -> None:
 
 
 @pytest.mark.asyncio
+async def test_inbox_apps_service() -> None:
+    """Inbox apps service should map installation and conversation flows correctly."""
+    client = StubClient(
+        [
+            {
+                "inboxApps": [
+                    {
+                        "inboxAppId": 1,
+                        "userId": 0,
+                        "created": "2025-01-01T12:12:12Z",
+                    }
+                ]
+            },
+            {
+                "id": 2,
+                "created": "2024-01-01T12:00:00Z",
+                "updated": "2024-01-01T12:00:00Z",
+                "createdById": 1,
+                "updatedById": 1,
+                "status": 10,
+                "name": "Example Inbox App",
+                "publishedInboxAppId": 9,
+                "userId": 0,
+                "canReply": True,
+            },
+            {},
+            [
+                {
+                    "id": 3,
+                    "status": "active",
+                    "userId": None,
+                    "personId": None,
+                    "name": "John Doe",
+                    "phone": "+14075550123",
+                    "email": "john@example.com",
+                    "isAutomation": False,
+                }
+            ],
+            {
+                "id": 4,
+                "status": "active",
+                "userId": None,
+                "personId": None,
+                "name": "John Doe",
+                "phone": "+14075550123",
+                "email": "john@example.com",
+                "isAutomation": False,
+            },
+            {},
+            {
+                "id": 5,
+                "created": "2024-01-01T12:00:00Z",
+                "updated": "2024-01-01T12:00:00Z",
+                "sentAt": "2024-01-01T12:00:00Z",
+                "deliveryStatus": None,
+                "deliveryStatusErrorMessage": None,
+                "createdById": 1,
+                "updatedById": 1,
+                "isIncoming": True,
+                "message": "An example message.",
+                "userId": 0,
+                "personId": 1,
+                "sender": {
+                    "personId": 1,
+                    "name": "John Doe",
+                    "email": None,
+                    "phone": None,
+                    "avatar": None,
+                },
+                "attachments": [
+                    {
+                        "filename": "example-2.jpg",
+                        "url": "https://followupboss.test/example-2.jpg",
+                    }
+                ],
+                "conversationDeepLinkUrl": "https://app.followupboss.com/2/inbox-new/0/inbox/1",
+            },
+            {
+                "id": 6,
+                "created": "2024-01-01T12:00:00Z",
+                "updated": "2024-01-01T12:00:00Z",
+                "createdById": 1,
+                "updatedById": 1,
+                "createdBy": "John Doe",
+                "updatedBy": "John Doe",
+                "conversationId": 1,
+                "body": "An example note.",
+                "isHtml": False,
+                "type": "ConversationNote",
+                "conversationDeepLinkUrl": "https://app.followupboss.com/2/inbox-new/0/inbox/1",
+            },
+            {
+                "externalConversationId": "conv-123",
+                "created": "2024-01-01T12:00:00Z",
+                "updated": "2024-01-01T12:00:00Z",
+                "createdById": "John Doe",
+                "updatedById": "John Doe",
+                "ownerUserId": 1,
+                "ownerSharedInboxId": 0,
+                "assignedUserId": 0,
+                "assignedSharedInboxId": 1,
+                "subject": "A Conversation Subject",
+                "archived": False,
+                "person": {"id": 1, "name": None, "email": None, "phone": None},
+                "conversationDeepLinkUrl": "https://app.followupboss.com/2/inbox-new/0/inbox/1",
+            },
+            {
+                "id": 7,
+                "created": "2024-01-01T12:00:00Z",
+                "updated": "2024-01-01T12:00:00Z",
+                "sentAt": "2024-01-01T12:00:00Z",
+                "deliveryStatus": "Delivered",
+                "deliveryStatusErrorMessage": None,
+                "createdById": 1,
+                "updatedById": 1,
+                "isIncoming": True,
+                "message": "An example message.",
+                "userId": 0,
+                "personId": 1,
+                "sender": {
+                    "personId": 1,
+                    "name": "John Doe",
+                    "email": None,
+                    "phone": None,
+                    "avatar": None,
+                },
+                "attachments": [],
+                "conversationDeepLinkUrl": "https://app.followupboss.com/2/inbox-new/0/inbox/1",
+            },
+        ]
+    )
+    service = InboxAppsService(client)
+
+    installations_page = await service.list_inbox_app_installations(9)
+    assert installations_page.items[0].inbox_app_id == 1
+    assert client.calls[0].path == "/inboxApps/installedApps/9"
+
+    installed = await service.install_inbox_app(
+        InstallInboxAppRequest(
+            published_inbox_app_id=9,
+            user_id=0,
+            subscription_url="https://example.com/webhook",
+        )
+    )
+    assert installed.id == 2
+    assert client.calls[1].json_body == {
+        "publishedInboxAppId": 9,
+        "userId": 0,
+        "subscriptionUrl": "https://example.com/webhook",
+    }
+
+    await service.deactivate_inbox_app(2)
+    assert client.calls[2].path == "/inboxApps/2"
+
+    participants_page = await service.list_inbox_app_participants(2, "conv-123")
+    assert participants_page.items[0].name == "John Doe"
+    assert client.calls[3].path == "/inboxApps/2/conversations/conv-123/participants"
+
+    participant = await service.add_inbox_app_participant(
+        2,
+        "conv-123",
+        CreateInboxAppParticipantRequest(name="John Doe", email="john@example.com"),
+    )
+    assert participant.id == 4
+    assert client.calls[4].json_body == {"name": "John Doe", "email": "john@example.com"}
+
+    await service.remove_inbox_app_participant(2, "conv-123", 4)
+    assert client.calls[5].path == "/inboxApps/2/conversations/conv-123/participants/4"
+
+    message = await service.add_inbox_app_message(
+        2,
+        CreateInboxAppMessageRequest(
+            external_conversation_id="conv-123",
+            external_message_id="msg-123",
+            message="An example message.",
+            is_incoming=True,
+            sender=InboxAppMessageSenderRequest(personId=1),
+            person=InboxAppConversationPersonRequest(id=1),
+            owner=InboxAppConversationOwnerRequest(userId=5),
+            attachments=[
+                InboxAppAttachmentRequest(
+                    filename="example-2.jpg",
+                    url="https://followupboss.test/example-2.jpg",
+                )
+            ],
+            rich_objects=["https://example.com/objects/1"],
+        ),
+    )
+    assert message.id == 5
+    assert client.calls[6].path == "/inboxApps/2/message"
+    assert client.calls[6].json_body == {
+        "externalConversationId": "conv-123",
+        "externalMessageId": "msg-123",
+        "message": "An example message.",
+        "isIncoming": True,
+        "sender": {"personId": 1},
+        "person": {"id": 1},
+        "owner": {"userId": 5},
+        "attachments": [
+            {
+                "filename": "example-2.jpg",
+                "url": "https://followupboss.test/example-2.jpg",
+            }
+        ],
+        "richObjects": ["https://example.com/objects/1"],
+    }
+
+    note = await service.add_inbox_app_note(
+        2,
+        CreateInboxAppNoteRequest(
+            external_conversation_id="conv-123",
+            body="An example note.",
+            user=InboxAppNoteUserRequest(id=1),
+        ),
+    )
+    assert note.id == 6
+    assert client.calls[7].path == "/inboxApps/2/note"
+    assert client.calls[7].json_body == {
+        "externalConversationId": "conv-123",
+        "body": "An example note.",
+        "user": {"id": 1},
+    }
+
+    conversation = await service.update_inbox_app_conversation(
+        2,
+        "conv-123",
+        UpdateInboxAppConversationRequest(
+            subject="A Conversation Subject",
+            archived=False,
+            person=InboxAppConversationPersonRequest(id=1),
+        ),
+    )
+    assert conversation.external_conversation_id == "conv-123"
+    assert client.calls[8].path == "/inboxApps/2/conversations/conv-123"
+    assert client.calls[8].json_body == {
+        "subject": "A Conversation Subject",
+        "archived": False,
+        "person": {"id": 1},
+    }
+
+    updated_message = await service.update_inbox_app_message(
+        2,
+        UpdateInboxAppMessageRequest(
+            id=5,
+            external_message_id="msg-124",
+            delivery_status="Delivered",
+        ),
+    )
+    assert updated_message.id == 7
+    assert client.calls[9].path == "/inboxApps/2/message"
+    assert client.calls[9].json_body == {
+        "deliveryStatus": "Delivered",
+        "externalMessageId": "msg-124",
+        "id": 5,
+    }
+
+    invalid_service = InboxAppsService(StubClient([[], {"inboxApps": {}}, {}, [], [], [], []]))
+    with pytest.raises(ValueError, match="Unexpected inbox app installations response"):
+        await invalid_service.list_inbox_app_installations(9)
+    with pytest.raises(ValueError, match="Unexpected inbox app installations response"):
+        await invalid_service.list_inbox_app_installations(9)
+    with pytest.raises(ValueError, match="Unexpected inbox app participants response"):
+        await invalid_service.list_inbox_app_participants(2, "conv-123")
+    with pytest.raises(ValueError, match="Unexpected inbox app message response"):
+        await invalid_service.add_inbox_app_message(
+            2,
+            CreateInboxAppMessageRequest(
+                external_conversation_id="conv-123",
+                external_message_id="msg-123",
+                message="An example message.",
+                is_incoming=True,
+                sender=InboxAppMessageSenderRequest(personId=1),
+            ),
+        )
+    with pytest.raises(ValueError, match="Unexpected inbox app note response"):
+        await invalid_service.add_inbox_app_note(
+            2,
+            CreateInboxAppNoteRequest(
+                external_conversation_id="conv-123",
+                body="An example note.",
+                user=InboxAppNoteUserRequest(id=1),
+            ),
+        )
+    with pytest.raises(ValueError, match="Unexpected inbox app conversation response"):
+        await invalid_service.update_inbox_app_conversation(
+            2,
+            "conv-123",
+            UpdateInboxAppConversationRequest(subject="A Conversation Subject"),
+        )
+    with pytest.raises(ValueError, match="Unexpected inbox app message response"):
+        await invalid_service.update_inbox_app_message(
+            2,
+            UpdateInboxAppMessageRequest(id=5, external_message_id="msg-124"),
+        )
+
+    with pytest.raises(
+        ValidationError,
+        match="At least one inbox app participant identity field must be provided",
+    ):
+        CreateInboxAppParticipantRequest()
+    with pytest.raises(
+        ValidationError,
+        match="At least one inbox app person reference field must be provided",
+    ):
+        InboxAppConversationPersonRequest()
+    with pytest.raises(
+        ValidationError,
+        match="At least one inbox app owner field must be provided",
+    ):
+        InboxAppConversationOwnerRequest()
+    with pytest.raises(
+        ValidationError,
+        match="At least one inbox app note user field must be provided",
+    ):
+        InboxAppNoteUserRequest()
+    with pytest.raises(
+        ValidationError,
+        match="At least one inbox app sender field must be provided",
+    ):
+        InboxAppMessageSenderRequest()
+    with pytest.raises(
+        ValidationError,
+        match="At least one inbox app conversation field must be provided",
+    ):
+        UpdateInboxAppConversationRequest()
+    with pytest.raises(
+        ValidationError,
+        match="Either an inbox app message id or external_message_id must be provided",
+    ):
+        UpdateInboxAppMessageRequest(delivery_status="Delivered")
+    with pytest.raises(
+        ValidationError,
+        match="Update inbox app message requests must include a mutation field",
+    ):
+        UpdateInboxAppMessageRequest(external_message_id="msg-124")
+
+
+@pytest.mark.asyncio
+async def test_team_inboxes_service() -> None:
+    """Team inboxes service should map payloads correctly."""
+    client = StubClient(
+        [
+            {
+                "_metadata": {"limit": 10, "offset": 0, "total": 2},
+                "teamInboxes": [
+                    {
+                        "id": 123,
+                        "name": "My Team Inbox",
+                        "users": [
+                            {
+                                "id": 111,
+                                "name": "User Name",
+                                "firstName": "User",
+                                "lastName": "Name",
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
+    )
+    service = TeamInboxesService(client)
+
+    team_inboxes_page = await service.list_team_inboxes(TeamInboxListRequest())
+    assert team_inboxes_page.items[0].name == "My Team Inbox"
+    assert team_inboxes_page.items[0].users[0].first_name == "User"
+    assert client.calls[0].path == "/teamInboxes"
+
+
+@pytest.mark.asyncio
 async def test_text_messages_service() -> None:
-    """Text messages service should map list and lookup behavior correctly."""
+    """Text messages service should map list, lookup, and create behavior correctly."""
     client = StubClient(
         [
             {
@@ -1619,6 +2742,17 @@ async def test_text_messages_service() -> None:
                 "toNumber": "555-0002",
                 "userName": "Data",
             },
+            {
+                "id": 3,
+                "personId": 99,
+                "message": "Logged externally",
+                "fromNumber": "555-0001",
+                "toNumber": "555-0002",
+                "userName": "Data",
+                "isIncoming": False,
+                "externalLabel": "External SMS",
+                "externalUrl": "https://example.com/sms/3",
+            },
         ]
     )
     service = TextMessagesService(client)
@@ -1639,10 +2773,32 @@ async def test_text_messages_service() -> None:
 
     assert (await service.get_text_message(2)).id == 2
 
+    created = await service.create_text_message(
+        CreateTextMessageRequest(
+            person_id=99,
+            message="Logged externally",
+            to_number="555-0002",
+            from_number="555-0001",
+            is_incoming=False,
+            external_label="External SMS",
+            external_url="https://example.com/sms/3",
+        )
+    )
+    assert created.id == 3
+    assert client.calls[2].json_body == {
+        "personId": 99,
+        "message": "Logged externally",
+        "toNumber": "555-0002",
+        "fromNumber": "555-0001",
+        "isIncoming": False,
+        "externalLabel": "External SMS",
+        "externalUrl": "https://example.com/sms/3",
+    }
+
 
 @pytest.mark.asyncio
 async def test_text_message_templates_service() -> None:
-    """Text message templates service should map queries, bodies, and delete behavior correctly."""
+    """Text message templates service should map queries, bodies, merge, and delete behavior."""
     client = StubClient(
         [
             {
@@ -1675,6 +2831,7 @@ async def test_text_message_templates_service() -> None:
                 "isShared": False,
             },
             {},
+            {"mergedTemplate": "Hey Bob, Alice and Carol..."},
         ]
     )
     service = TextMessageTemplatesService(client)
@@ -1719,6 +2876,33 @@ async def test_text_message_templates_service() -> None:
 
     await service.delete_text_message_template(5)
     assert client.calls[4].path == "/textMessageTemplates/5"
+
+    merged = await service.merge_text_message_template(
+        MergeTextMessageTemplateRequest.model_validate(
+            {
+                "template_id": 31,
+                "person_id": 1213,
+                "recipients": {
+                    "to": [
+                        {"name": "Bob Alvarez", "phone": "+14075558075"},
+                        {"name": "Alice Alvarez", "phone": "+14075558710"},
+                    ]
+                },
+            }
+        )
+    )
+    assert merged.merged_template == "Hey Bob, Alice and Carol..."
+    assert client.calls[5].path == "/textMessageTemplates/merge"
+    assert client.calls[5].json_body == {
+        "templateId": 31,
+        "personId": 1213,
+        "recipients": {
+            "to": [
+                {"name": "Bob Alvarez", "phone": "+14075558075"},
+                {"name": "Alice Alvarez", "phone": "+14075558710"},
+            ]
+        },
+    }
 
 
 @pytest.mark.asyncio
@@ -1830,7 +3014,7 @@ async def test_tasks_service() -> None:
 
 @pytest.mark.asyncio
 async def test_templates_service() -> None:
-    """Templates service should map queries, bodies, and delete behavior correctly."""
+    """Templates service should map queries, bodies, merge, and delete behavior correctly."""
     client = StubClient(
         [
             {
@@ -1867,6 +3051,15 @@ async def test_templates_service() -> None:
                 "isShared": True,
             },
             {},
+            {
+                "id": 6,
+                "name": "I am here to help",
+                "subject": "Your property inquiry from Zillow",
+                "body": "Hi Bob, I am here to help, ...",
+                "isShared": True,
+                "isEditable": True,
+                "isDeletable": True,
+            },
         ]
     )
     service = TemplatesService(client)
@@ -1912,6 +3105,33 @@ async def test_templates_service() -> None:
 
     await service.delete_template(5)
     assert client.calls[4].path == "/templates/5"
+
+    merged = await service.merge_template(
+        MergeTemplateRequest.model_validate(
+            {
+                "template_id": 31,
+                "merge_person_id": 1213,
+                "recipients": {
+                    "to": [
+                        {"name": "Bob Alvarez", "email": "bob@example.com"},
+                        {"name": "Alice Alvarez", "email": "alice@example.com"},
+                    ]
+                },
+            }
+        )
+    )
+    assert merged.id == 6
+    assert client.calls[5].path == "/templates/merge"
+    assert client.calls[5].json_body == {
+        "templateId": 31,
+        "mergePersonId": 1213,
+        "recipients": {
+            "to": [
+                {"name": "Bob Alvarez", "email": "bob@example.com"},
+                {"name": "Alice Alvarez", "email": "alice@example.com"},
+            ]
+        },
+    }
 
 
 @pytest.mark.asyncio
@@ -2064,6 +3284,8 @@ async def test_events_users_notes_and_webhooks_services() -> None:
         (lambda client: CallsService(client), {"calls": {}}, ValueError),
         (lambda client: TeamsService(client), [], ValueError),
         (lambda client: TeamsService(client), {"teams": {}}, ValueError),
+        (lambda client: TeamInboxesService(client), [], ValueError),
+        (lambda client: TeamInboxesService(client), {"teamInboxes": {}}, ValueError),
         (lambda client: EventsService(client), [], ValueError),
         (lambda client: EventsService(client), {"events": {}}, ValueError),
         (lambda client: TasksService(client), [], ValueError),
@@ -2137,6 +3359,9 @@ async def test_collection_services_raise_for_non_dict_payload(
     elif isinstance(service, TeamsService):
         with pytest.raises(exception_type):
             await service.list_teams()
+    elif isinstance(service, TeamInboxesService):
+        with pytest.raises(exception_type):
+            await service.list_team_inboxes()
     elif isinstance(service, EventsService):
         with pytest.raises(exception_type):
             await service.search_events()

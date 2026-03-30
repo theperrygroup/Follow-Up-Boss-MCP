@@ -28,6 +28,12 @@ from followupboss_mcp.models.appointments import (
     CreateAppointmentRequest,
     UpdateAppointmentRequest,
 )
+from followupboss_mcp.models.attachments import (
+    CreateDealAttachmentRequest,
+    CreatePersonAttachmentRequest,
+    UpdateDealAttachmentRequest,
+    UpdatePersonAttachmentRequest,
+)
 from followupboss_mcp.models.automations import (
     AutomationListRequest,
     AutomationPeopleListRequest,
@@ -40,12 +46,23 @@ from followupboss_mcp.models.calls import (
     UpdateCallRequest,
 )
 from followupboss_mcp.models.common import RequestModel, ResponseModel
-from followupboss_mcp.models.custom_fields import CustomFieldListRequest
+from followupboss_mcp.models.custom_fields import (
+    CreateCustomFieldRequest,
+    CustomFieldListRequest,
+    UpdateCustomFieldRequest,
+)
 from followupboss_mcp.models.deals import (
     CreateDealRequest,
     DealCustomFieldListRequest,
     DealListRequest,
     UpdateDealRequest,
+)
+from followupboss_mcp.models.email_marketing import (
+    CreateEmailCampaignRequest,
+    CreateEmailEventsBatchRequest,
+    EmailCampaignListRequest,
+    EmailEventListRequest,
+    UpdateEmailCampaignRequest,
 )
 from followupboss_mcp.models.events import CreateEventRequest, EventSearchRequest
 from followupboss_mcp.models.groups import (
@@ -53,12 +70,25 @@ from followupboss_mcp.models.groups import (
     GroupListRequest,
     UpdateGroupRequest,
 )
+from followupboss_mcp.models.inbox_apps import (
+    CreateInboxAppMessageRequest,
+    CreateInboxAppNoteRequest,
+    CreateInboxAppParticipantRequest,
+    InstallInboxAppRequest,
+    UpdateInboxAppConversationRequest,
+    UpdateInboxAppMessageRequest,
+)
 from followupboss_mcp.models.notes import CreateNoteRequest, UpdateNoteRequest
 from followupboss_mcp.models.people import (
     CreatePersonRequest,
     PeopleSearchRequest,
     PersonLookupRequest,
     UpdatePersonRequest,
+)
+from followupboss_mcp.models.people_relationships import (
+    CreatePeopleRelationshipRequest,
+    PeopleRelationshipListRequest,
+    UpdatePeopleRelationshipRequest,
 )
 from followupboss_mcp.models.pipelines import (
     CreatePipelineRequest,
@@ -71,6 +101,11 @@ from followupboss_mcp.models.ponds import (
     PondListRequest,
     UpdatePondRequest,
 )
+from followupboss_mcp.models.reactions import (
+    CreateReactionRequest,
+    DeleteReactionRequest,
+    ReactionRefType,
+)
 from followupboss_mcp.models.smart_lists import SmartListListRequest
 from followupboss_mcp.models.stages import (
     CreateStageRequest,
@@ -79,6 +114,7 @@ from followupboss_mcp.models.stages import (
     UpdateStageRequest,
 )
 from followupboss_mcp.models.tasks import CreateTaskRequest, TaskListRequest, UpdateTaskRequest
+from followupboss_mcp.models.team_inboxes import TeamInboxListRequest
 from followupboss_mcp.models.teams import (
     CreateTeamRequest,
     DeleteTeamRequest,
@@ -87,12 +123,15 @@ from followupboss_mcp.models.teams import (
 )
 from followupboss_mcp.models.templates import (
     CreateTemplateRequest,
+    MergeTemplateRequest,
     TemplateListRequest,
     TemplateLookupRequest,
     UpdateTemplateRequest,
 )
 from followupboss_mcp.models.text_messages import (
+    CreateTextMessageRequest,
     CreateTextMessageTemplateRequest,
+    MergeTextMessageTemplateRequest,
     TextMessageListRequest,
     TextMessageTemplateListRequest,
     UpdateTextMessageTemplateRequest,
@@ -105,6 +144,10 @@ from followupboss_mcp.services.appointment_metadata import (
     AppointmentTypesService,
 )
 from followupboss_mcp.services.appointments import AppointmentsService
+from followupboss_mcp.services.attachments import (
+    DealAttachmentsService,
+    PersonAttachmentsService,
+)
 from followupboss_mcp.services.automations import (
     AutomationPeopleService,
     AutomationsService,
@@ -112,16 +155,21 @@ from followupboss_mcp.services.automations import (
 from followupboss_mcp.services.calls import CallsService
 from followupboss_mcp.services.custom_fields import CustomFieldsService
 from followupboss_mcp.services.deals import DealsService
+from followupboss_mcp.services.email_marketing import EmailMarketingService
 from followupboss_mcp.services.events import EventsService
 from followupboss_mcp.services.groups import GroupsService
 from followupboss_mcp.services.identity import IdentityService
+from followupboss_mcp.services.inbox_apps import InboxAppsService
 from followupboss_mcp.services.notes import NotesService
 from followupboss_mcp.services.people import PeopleService
+from followupboss_mcp.services.people_relationships import PeopleRelationshipsService
 from followupboss_mcp.services.pipelines import PipelinesService
 from followupboss_mcp.services.ponds import PondsService
+from followupboss_mcp.services.reactions import ReactionsService
 from followupboss_mcp.services.smart_lists import SmartListsService
 from followupboss_mcp.services.stages import StagesService
 from followupboss_mcp.services.tasks import TasksService
+from followupboss_mcp.services.team_inboxes import TeamInboxesService
 from followupboss_mcp.services.teams import TeamsService
 from followupboss_mcp.services.templates import TemplatesService
 from followupboss_mcp.services.text_messages import (
@@ -138,6 +186,24 @@ class GetPersonToolInput(PersonLookupRequest):
     person_id: int
 
 
+class GetPersonAttachmentToolInput(RequestModel):
+    """Tool input for fetching a person attachment by ID."""
+
+    person_attachment_id: int
+
+
+class GetReactionToolInput(RequestModel):
+    """Tool input for fetching a reaction by ID."""
+
+    reaction_id: int
+
+
+class GetPeopleRelationshipToolInput(RequestModel):
+    """Tool input for fetching a people relationship by ID."""
+
+    people_relationship_id: int
+
+
 class UpdatePersonToolInput(UpdatePersonRequest):
     """Tool input for updating a person."""
 
@@ -148,6 +214,12 @@ class GetUserToolInput(RequestModel):
     """Tool input for fetching a user by ID."""
 
     user_id: int
+
+
+class GetCustomFieldToolInput(RequestModel):
+    """Tool input for fetching a custom field by ID."""
+
+    custom_field_id: int
 
 
 class GetNoteToolInput(RequestModel):
@@ -202,6 +274,12 @@ class GetDealToolInput(RequestModel):
     """Tool input for fetching a deal by ID."""
 
     deal_id: int
+
+
+class GetDealAttachmentToolInput(RequestModel):
+    """Tool input for fetching a deal attachment by ID."""
+
+    deal_attachment_id: int
 
 
 class GetPipelineToolInput(RequestModel):
@@ -264,6 +342,38 @@ class GetGroupToolInput(RequestModel):
     group_id: int
 
 
+class ListInboxAppInstallationsToolInput(RequestModel):
+    """Tool input for listing inbox app installations."""
+
+    published_inbox_app_id: int
+
+
+class ListInboxAppParticipantsToolInput(RequestModel):
+    """Tool input for listing inbox app conversation participants."""
+
+    ext_conversation_id: str
+    inbox_app_id: int
+
+
+class AddInboxAppMessageToolInput(CreateInboxAppMessageRequest):
+    """Tool input for adding an inbox app message."""
+
+    inbox_app_id: int
+
+
+class AddReactionToolInput(CreateReactionRequest):
+    """Tool input for adding a reaction."""
+
+    ref_id: int
+    ref_type: ReactionRefType
+
+
+class AddInboxAppNoteToolInput(CreateInboxAppNoteRequest):
+    """Tool input for adding an inbox app note."""
+
+    inbox_app_id: int
+
+
 class GetWebhookToolInput(RequestModel):
     """Tool input for fetching a webhook by ID."""
 
@@ -322,6 +432,56 @@ class UpdateGroupToolInput(UpdateGroupRequest):
     """Tool input for updating a group."""
 
     group_id: int
+
+
+class AddInboxAppParticipantToolInput(CreateInboxAppParticipantRequest):
+    """Tool input for adding an inbox app conversation participant."""
+
+    ext_conversation_id: str
+    inbox_app_id: int
+
+
+class UpdatePersonAttachmentToolInput(UpdatePersonAttachmentRequest):
+    """Tool input for updating a person attachment."""
+
+    person_attachment_id: int
+
+
+class UpdatePeopleRelationshipToolInput(UpdatePeopleRelationshipRequest):
+    """Tool input for updating a people relationship."""
+
+    people_relationship_id: int
+
+
+class UpdateDealAttachmentToolInput(UpdateDealAttachmentRequest):
+    """Tool input for updating a deal attachment."""
+
+    deal_attachment_id: int
+
+
+class UpdateEmailCampaignToolInput(UpdateEmailCampaignRequest):
+    """Tool input for updating an email marketing campaign."""
+
+    email_campaign_id: int
+
+
+class UpdateCustomFieldToolInput(UpdateCustomFieldRequest):
+    """Tool input for updating a custom field."""
+
+    custom_field_id: int
+
+
+class UpdateInboxAppConversationToolInput(UpdateInboxAppConversationRequest):
+    """Tool input for updating an inbox app conversation."""
+
+    ext_conversation_id: str
+    inbox_app_id: int
+
+
+class UpdateInboxAppMessageToolInput(UpdateInboxAppMessageRequest):
+    """Tool input for updating an inbox app message."""
+
+    inbox_app_id: int
 
 
 class UpdateDealToolInput(UpdateDealRequest):
@@ -408,6 +568,12 @@ class DeleteGroupToolInput(RequestModel):
     group_id: int
 
 
+class DeactivateInboxAppToolInput(RequestModel):
+    """Tool input for deactivating an inbox app installation."""
+
+    inbox_app_id: int
+
+
 class DeleteDealToolInput(RequestModel):
     """Tool input for deleting a deal."""
 
@@ -438,6 +604,45 @@ class DeleteTeamToolInput(DeleteTeamRequest):
     team_id: int
 
 
+class DeleteInboxAppParticipantToolInput(RequestModel):
+    """Tool input for removing an inbox app participant."""
+
+    ext_conversation_id: str
+    inbox_app_id: int
+    participant_id: int
+
+
+class DeletePeopleRelationshipToolInput(RequestModel):
+    """Tool input for deleting a people relationship."""
+
+    people_relationship_id: int
+
+
+class DeletePersonAttachmentToolInput(RequestModel):
+    """Tool input for deleting a person attachment."""
+
+    person_attachment_id: int
+
+
+class DeleteReactionToolInput(DeleteReactionRequest):
+    """Tool input for deleting a reaction."""
+
+    ref_id: int
+    ref_type: ReactionRefType
+
+
+class DeleteCustomFieldToolInput(RequestModel):
+    """Tool input for deleting a custom field."""
+
+    custom_field_id: int
+
+
+class DeleteDealAttachmentToolInput(RequestModel):
+    """Tool input for deleting a deal attachment."""
+
+    deal_attachment_id: int
+
+
 class DeleteTextMessageTemplateToolInput(RequestModel):
     """Tool input for deleting a text message template."""
 
@@ -462,17 +667,24 @@ class ServiceBundle:
     automations: AutomationsService
     calls: CallsService
     custom_fields: CustomFieldsService
+    deal_attachments: DealAttachmentsService
     deals: DealsService
+    email_marketing: EmailMarketingService
     events: EventsService
     groups: GroupsService
     identity: IdentityService
+    inbox_apps: InboxAppsService
     notes: NotesService
     people: PeopleService
+    person_attachments: PersonAttachmentsService
+    people_relationships: PeopleRelationshipsService
     ponds: PondsService
     pipelines: PipelinesService
+    reactions: ReactionsService
     smart_lists: SmartListsService
     stages: StagesService
     tasks: TasksService
+    team_inboxes: TeamInboxesService
     teams: TeamsService
     text_message_templates: TextMessageTemplatesService
     text_messages: TextMessagesService
@@ -742,6 +954,146 @@ class FollowUpBossToolAdapter:
             lambda: self._services.people.update_person(tool_input.person_id, request)
         )
 
+    async def get_person_attachment(
+        self,
+        tool_input: GetPersonAttachmentToolInput,
+    ) -> dict[str, Any]:
+        """Get a person attachment."""
+        return await self._single_result(
+            lambda: self._services.person_attachments.get_person_attachment(
+                tool_input.person_attachment_id
+            )
+        )
+
+    async def create_person_attachment(
+        self,
+        tool_input: CreatePersonAttachmentRequest,
+    ) -> dict[str, Any]:
+        """Create a person attachment."""
+        return await self._single_result(
+            lambda: self._services.person_attachments.create_person_attachment(tool_input)
+        )
+
+    async def update_person_attachment(
+        self,
+        tool_input: UpdatePersonAttachmentToolInput,
+    ) -> dict[str, Any]:
+        """Update a person attachment."""
+        request = UpdatePersonAttachmentRequest.model_validate(
+            tool_input.model_dump(exclude={"person_attachment_id"})
+        )
+        return await self._single_result(
+            lambda: self._services.person_attachments.update_person_attachment(
+                tool_input.person_attachment_id,
+                request,
+            )
+        )
+
+    async def delete_person_attachment(
+        self,
+        tool_input: DeletePersonAttachmentToolInput,
+    ) -> dict[str, Any]:
+        """Delete a person attachment."""
+        return await self._delete_result(
+            lambda: self._services.person_attachments.delete_person_attachment(
+                tool_input.person_attachment_id
+            ),
+            identifier_key="personAttachmentId",
+            identifier_value=tool_input.person_attachment_id,
+        )
+
+    async def get_reaction(self, tool_input: GetReactionToolInput) -> dict[str, Any]:
+        """Get a reaction."""
+        return await self._single_result(
+            lambda: self._services.reactions.get_reaction(tool_input.reaction_id)
+        )
+
+    async def add_reaction(self, tool_input: AddReactionToolInput) -> dict[str, Any]:
+        """Add a reaction."""
+        request = CreateReactionRequest.model_validate(
+            tool_input.model_dump(exclude={"ref_type", "ref_id"})
+        )
+        return await self._single_result(
+            lambda: self._services.reactions.add_reaction(
+                tool_input.ref_type,
+                tool_input.ref_id,
+                request,
+            )
+        )
+
+    async def delete_reaction(self, tool_input: DeleteReactionToolInput) -> dict[str, Any]:
+        """Delete a reaction."""
+        request = DeleteReactionRequest.model_validate(
+            tool_input.model_dump(exclude={"ref_type", "ref_id"})
+        )
+        return await self._delete_result(
+            lambda: self._services.reactions.delete_reaction(
+                tool_input.ref_type,
+                tool_input.ref_id,
+                request,
+            ),
+            identifier_key="refId",
+            identifier_value=tool_input.ref_id,
+        )
+
+    async def list_people_relationships(
+        self,
+        tool_input: PeopleRelationshipListRequest,
+    ) -> dict[str, Any]:
+        """List people relationships."""
+        return await self._page_result(
+            lambda: self._services.people_relationships.list_people_relationships(tool_input),
+            key="peopleRelationships",
+        )
+
+    async def get_people_relationship(
+        self,
+        tool_input: GetPeopleRelationshipToolInput,
+    ) -> dict[str, Any]:
+        """Get a people relationship."""
+        return await self._single_result(
+            lambda: self._services.people_relationships.get_people_relationship(
+                tool_input.people_relationship_id
+            )
+        )
+
+    async def create_people_relationship(
+        self,
+        tool_input: CreatePeopleRelationshipRequest,
+    ) -> dict[str, Any]:
+        """Create a people relationship."""
+        return await self._single_result(
+            lambda: self._services.people_relationships.create_people_relationship(tool_input)
+        )
+
+    async def update_people_relationship(
+        self,
+        tool_input: UpdatePeopleRelationshipToolInput,
+    ) -> dict[str, Any]:
+        """Update a people relationship."""
+        request = UpdatePeopleRelationshipRequest.model_validate(
+            tool_input.model_dump(exclude={"people_relationship_id"})
+        )
+        return await self._single_result(
+            lambda: self._services.people_relationships.update_people_relationship(
+                tool_input.people_relationship_id,
+                request,
+            )
+        )
+
+    async def delete_people_relationship(
+        self,
+        tool_input: DeletePeopleRelationshipToolInput,
+    ) -> dict[str, Any]:
+        """Delete a people relationship."""
+        return await self._delete_result(
+            lambda: self._services.people_relationships.delete_people_relationship(
+                tool_input.people_relationship_id
+            ),
+            identifier_key="peopleRelationshipId",
+            identifier_value=tool_input.people_relationship_id,
+        )
+
     async def search_events(self, tool_input: EventSearchRequest) -> dict[str, Any]:
         """Search events."""
         return await self._page_result(
@@ -798,6 +1150,144 @@ class FollowUpBossToolAdapter:
             identifier_value=tool_input.group_id,
         )
 
+    async def list_inbox_app_installations(
+        self,
+        tool_input: ListInboxAppInstallationsToolInput,
+    ) -> dict[str, Any]:
+        """List inbox app installations."""
+        return await self._page_result(
+            lambda: self._services.inbox_apps.list_inbox_app_installations(
+                tool_input.published_inbox_app_id
+            ),
+            key="inboxApps",
+        )
+
+    async def install_inbox_app(self, tool_input: InstallInboxAppRequest) -> dict[str, Any]:
+        """Install an inbox app."""
+        return await self._single_result(
+            lambda: self._services.inbox_apps.install_inbox_app(tool_input)
+        )
+
+    async def deactivate_inbox_app(self, tool_input: DeactivateInboxAppToolInput) -> dict[str, Any]:
+        """Deactivate an inbox app."""
+        return await self._delete_result(
+            lambda: self._services.inbox_apps.deactivate_inbox_app(tool_input.inbox_app_id),
+            identifier_key="inboxAppId",
+            identifier_value=tool_input.inbox_app_id,
+        )
+
+    async def add_inbox_app_message(
+        self,
+        tool_input: AddInboxAppMessageToolInput,
+    ) -> dict[str, Any]:
+        """Add an inbox app message."""
+        request = CreateInboxAppMessageRequest.model_validate(
+            tool_input.model_dump(exclude={"inbox_app_id"})
+        )
+        return await self._single_result(
+            lambda: self._services.inbox_apps.add_inbox_app_message(
+                tool_input.inbox_app_id,
+                request,
+            )
+        )
+
+    async def add_inbox_app_note(
+        self,
+        tool_input: AddInboxAppNoteToolInput,
+    ) -> dict[str, Any]:
+        """Add an inbox app note."""
+        request = CreateInboxAppNoteRequest.model_validate(
+            tool_input.model_dump(exclude={"inbox_app_id"})
+        )
+        return await self._single_result(
+            lambda: self._services.inbox_apps.add_inbox_app_note(
+                tool_input.inbox_app_id,
+                request,
+            )
+        )
+
+    async def list_inbox_app_participants(
+        self,
+        tool_input: ListInboxAppParticipantsToolInput,
+    ) -> dict[str, Any]:
+        """List inbox app participants."""
+        return await self._page_result(
+            lambda: self._services.inbox_apps.list_inbox_app_participants(
+                tool_input.inbox_app_id,
+                tool_input.ext_conversation_id,
+            ),
+            key="participants",
+        )
+
+    async def add_inbox_app_participant(
+        self,
+        tool_input: AddInboxAppParticipantToolInput,
+    ) -> dict[str, Any]:
+        """Add an inbox app participant."""
+        request = CreateInboxAppParticipantRequest.model_validate(
+            tool_input.model_dump(exclude={"inbox_app_id", "ext_conversation_id"})
+        )
+        return await self._single_result(
+            lambda: self._services.inbox_apps.add_inbox_app_participant(
+                tool_input.inbox_app_id,
+                tool_input.ext_conversation_id,
+                request,
+            )
+        )
+
+    async def update_inbox_app_conversation(
+        self,
+        tool_input: UpdateInboxAppConversationToolInput,
+    ) -> dict[str, Any]:
+        """Update an inbox app conversation."""
+        request = UpdateInboxAppConversationRequest.model_validate(
+            tool_input.model_dump(exclude={"inbox_app_id", "ext_conversation_id"})
+        )
+        return await self._single_result(
+            lambda: self._services.inbox_apps.update_inbox_app_conversation(
+                tool_input.inbox_app_id,
+                tool_input.ext_conversation_id,
+                request,
+            )
+        )
+
+    async def update_inbox_app_message(
+        self,
+        tool_input: UpdateInboxAppMessageToolInput,
+    ) -> dict[str, Any]:
+        """Update an inbox app message."""
+        request = UpdateInboxAppMessageRequest.model_validate(
+            tool_input.model_dump(exclude={"inbox_app_id"})
+        )
+        return await self._single_result(
+            lambda: self._services.inbox_apps.update_inbox_app_message(
+                tool_input.inbox_app_id,
+                request,
+            )
+        )
+
+    async def remove_inbox_app_participant(
+        self,
+        tool_input: DeleteInboxAppParticipantToolInput,
+    ) -> dict[str, Any]:
+        """Remove an inbox app participant."""
+        return await self._delete_result(
+            lambda: self._services.inbox_apps.remove_inbox_app_participant(
+                tool_input.inbox_app_id,
+                tool_input.ext_conversation_id,
+                tool_input.participant_id,
+            ),
+            identifier_key="participantId",
+            identifier_value=tool_input.participant_id,
+        )
+
+    async def list_team_inboxes(self, tool_input: TeamInboxListRequest) -> dict[str, Any]:
+        """List team inboxes."""
+        return await self._page_result(
+            lambda: self._services.team_inboxes.list_team_inboxes(tool_input),
+            key="teamInboxes",
+        )
+
     async def list_users(self, tool_input: UserListRequest) -> dict[str, Any]:
         """List users."""
         return await self._page_result(
@@ -814,6 +1304,79 @@ class FollowUpBossToolAdapter:
         return await self._page_result(
             lambda: self._services.custom_fields.list_custom_fields(tool_input),
             key="customfields",
+        )
+
+    async def get_custom_field(self, tool_input: GetCustomFieldToolInput) -> dict[str, Any]:
+        """Get a custom field."""
+        return await self._single_result(
+            lambda: self._services.custom_fields.get_custom_field(tool_input.custom_field_id)
+        )
+
+    async def create_custom_field(self, tool_input: CreateCustomFieldRequest) -> dict[str, Any]:
+        """Create a custom field."""
+        return await self._single_result(
+            lambda: self._services.custom_fields.create_custom_field(tool_input)
+        )
+
+    async def update_custom_field(self, tool_input: UpdateCustomFieldToolInput) -> dict[str, Any]:
+        """Update a custom field."""
+        request = UpdateCustomFieldRequest.model_validate(
+            tool_input.model_dump(exclude={"custom_field_id"})
+        )
+        return await self._single_result(
+            lambda: self._services.custom_fields.update_custom_field(
+                tool_input.custom_field_id,
+                request,
+            )
+        )
+
+    async def delete_custom_field(self, tool_input: DeleteCustomFieldToolInput) -> dict[str, Any]:
+        """Delete a custom field."""
+        return await self._delete_result(
+            lambda: self._services.custom_fields.delete_custom_field(tool_input.custom_field_id),
+            identifier_key="customFieldId",
+            identifier_value=tool_input.custom_field_id,
+        )
+
+    async def list_email_campaigns(self, tool_input: EmailCampaignListRequest) -> dict[str, Any]:
+        """List email marketing campaigns."""
+        return await self._page_result(
+            lambda: self._services.email_marketing.list_email_campaigns(tool_input),
+            key="emCampaigns",
+        )
+
+    async def create_email_campaign(self, tool_input: CreateEmailCampaignRequest) -> dict[str, Any]:
+        """Create an email marketing campaign."""
+        return await self._single_result(
+            lambda: self._services.email_marketing.create_email_campaign(tool_input)
+        )
+
+    async def update_email_campaign(
+        self,
+        tool_input: UpdateEmailCampaignToolInput,
+    ) -> dict[str, Any]:
+        """Update an email marketing campaign."""
+        request = UpdateEmailCampaignRequest.model_validate(
+            tool_input.model_dump(exclude={"email_campaign_id"})
+        )
+        return await self._single_result(
+            lambda: self._services.email_marketing.update_email_campaign(
+                tool_input.email_campaign_id,
+                request,
+            )
+        )
+
+    async def list_email_events(self, tool_input: EmailEventListRequest) -> dict[str, Any]:
+        """List email marketing events."""
+        return await self._page_result(
+            lambda: self._services.email_marketing.list_email_events(tool_input),
+            key="emEvents",
+        )
+
+    async def send_email_events(self, tool_input: CreateEmailEventsBatchRequest) -> dict[str, Any]:
+        """Send email marketing events."""
+        return await self._single_result(
+            lambda: self._services.email_marketing.send_email_events(tool_input)
         )
 
     async def list_deals(self, tool_input: DealListRequest) -> dict[str, Any]:
@@ -844,6 +1407,51 @@ class FollowUpBossToolAdapter:
             lambda: self._services.deals.delete_deal(tool_input.deal_id),
             identifier_key="dealId",
             identifier_value=tool_input.deal_id,
+        )
+
+    async def get_deal_attachment(self, tool_input: GetDealAttachmentToolInput) -> dict[str, Any]:
+        """Get a deal attachment."""
+        return await self._single_result(
+            lambda: self._services.deal_attachments.get_deal_attachment(
+                tool_input.deal_attachment_id
+            )
+        )
+
+    async def create_deal_attachment(
+        self,
+        tool_input: CreateDealAttachmentRequest,
+    ) -> dict[str, Any]:
+        """Create a deal attachment."""
+        return await self._single_result(
+            lambda: self._services.deal_attachments.create_deal_attachment(tool_input)
+        )
+
+    async def update_deal_attachment(
+        self,
+        tool_input: UpdateDealAttachmentToolInput,
+    ) -> dict[str, Any]:
+        """Update a deal attachment."""
+        request = UpdateDealAttachmentRequest.model_validate(
+            tool_input.model_dump(exclude={"deal_attachment_id"})
+        )
+        return await self._single_result(
+            lambda: self._services.deal_attachments.update_deal_attachment(
+                tool_input.deal_attachment_id,
+                request,
+            )
+        )
+
+    async def delete_deal_attachment(
+        self,
+        tool_input: DeleteDealAttachmentToolInput,
+    ) -> dict[str, Any]:
+        """Delete a deal attachment."""
+        return await self._delete_result(
+            lambda: self._services.deal_attachments.delete_deal_attachment(
+                tool_input.deal_attachment_id
+            ),
+            identifier_key="dealAttachmentId",
+            identifier_value=tool_input.deal_attachment_id,
         )
 
     async def list_deal_custom_fields(
@@ -1109,6 +1717,12 @@ class FollowUpBossToolAdapter:
             )
         )
 
+    async def merge_template(self, tool_input: MergeTemplateRequest) -> dict[str, Any]:
+        """Merge a template."""
+        return await self._single_result(
+            lambda: self._services.templates.merge_template(tool_input)
+        )
+
     async def create_template(self, tool_input: CreateTemplateRequest) -> dict[str, Any]:
         """Create a template."""
         return await self._single_result(
@@ -1145,6 +1759,12 @@ class FollowUpBossToolAdapter:
             lambda: self._services.text_messages.get_text_message(tool_input.text_message_id)
         )
 
+    async def create_text_message(self, tool_input: CreateTextMessageRequest) -> dict[str, Any]:
+        """Create a text message record."""
+        return await self._single_result(
+            lambda: self._services.text_messages.create_text_message(tool_input)
+        )
+
     async def list_text_message_templates(
         self,
         tool_input: TextMessageTemplateListRequest,
@@ -1164,6 +1784,15 @@ class FollowUpBossToolAdapter:
             lambda: self._services.text_message_templates.get_text_message_template(
                 tool_input.template_id
             )
+        )
+
+    async def merge_text_message_template(
+        self,
+        tool_input: MergeTextMessageTemplateRequest,
+    ) -> dict[str, Any]:
+        """Merge a text message template."""
+        return await self._single_result(
+            lambda: self._services.text_message_templates.merge_text_message_template(tool_input)
         )
 
     async def create_text_message_template(
