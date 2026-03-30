@@ -1273,15 +1273,15 @@ class StubBundle:
                 refType="Note",
                 refId=468,
                 body="Hello world part 2",
-                reactions={
-                    "id": 1363,
-                    "created": "2024-03-21T21:14:13Z",
-                    "createdBy": "Tom Minch",
-                    "createdById": 1,
-                    "refType": "Note",
-                    "refId": 2144705,
-                    "body": "🤯",
-                },
+                reactions=ReactionRecord(
+                    id=1363,
+                    created="2024-03-21T21:14:13Z",
+                    createdBy="Tom Minch",
+                    createdById=1,
+                    refType="Note",
+                    refId=2144705,
+                    body="🤯",
+                ),
             )
 
         async def appointments_list(_: AppointmentListRequest) -> PageResult[AppointmentRecord]:

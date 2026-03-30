@@ -194,11 +194,11 @@ from followupboss_mcp.services.tasks import TasksService
 from followupboss_mcp.services.team_inboxes import TeamInboxesService
 from followupboss_mcp.services.teams import TeamsService
 from followupboss_mcp.services.templates import TemplatesService
-from followupboss_mcp.services.threaded_replies import ThreadedRepliesService
 from followupboss_mcp.services.text_messages import (
     TextMessagesService,
     TextMessageTemplatesService,
 )
+from followupboss_mcp.services.threaded_replies import ThreadedRepliesService
 from followupboss_mcp.services.timeframes import TimeframesService
 from followupboss_mcp.services.users import UsersService
 from followupboss_mcp.services.webhooks import WebhooksService

@@ -72,6 +72,8 @@ Build a production-grade Python 3.12+ repository that ingests official Follow Up
 - `DONE` Re-run `make release-validate` and `make live-identity-check` after the people admin utility slice.
 - `DONE` Implement typed timeframe list coverage across models, services, MCP tools, tests, and docs.
 - `DONE` Re-run `make release-validate` and `make live-identity-check` after the timeframe slice.
+- `DONE` Implement typed threaded reply lookup coverage across models, services, MCP tools, tests, and docs.
+- `DONE` Re-run `make release-validate` and `make live-identity-check` after the threaded reply slice.
 
 ## Blockers
 
@@ -108,6 +110,9 @@ Build a production-grade Python 3.12+ repository that ingests official Follow Up
 - Re-ran `make live-identity-check` with successful output: `1 skipped` when live credentials were not enabled.
 - Expanded the implementation to include typed timeframe list support across the SDK, MCP surface, tests, and generated coverage docs.
 - Re-ran `make release-validate` with successful output: `Success: no issues found in 82 source files`, `109 passed, 1 skipped`, and `TOTAL 4282 0 402 0 100.00%`.
+- Re-ran `make live-identity-check` with successful output: `1 skipped` when live credentials were not enabled.
+- Expanded the implementation to include typed threaded reply lookup support across the SDK, MCP surface, tests, and generated coverage docs.
+- Re-ran `make release-validate` with successful output: `Success: no issues found in 84 source files`, `110 passed, 1 skipped`, and `TOTAL 4318 0 404 0 100.00%`.
 - Re-ran `make live-identity-check` with successful output: `1 skipped` when live credentials were not enabled.
 - Re-ran `make validate` with successful output: `Success: no issues found in 82 source files`, `109 passed, 1 skipped`, and `TOTAL 4282 0 402 0 100.00%`.
 - Re-ran `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check` with successful output: `1 passed`.

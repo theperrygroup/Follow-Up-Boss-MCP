@@ -113,6 +113,7 @@ All tools are namespaced with the `followupboss_` prefix.
 | `followupboss_get_reaction` | Retrieve one reaction by ID. |
 | `followupboss_add_reaction` | Add a reaction to a note, call, or threaded reply. |
 | `followupboss_delete_reaction` | Delete a reaction from a note, call, or threaded reply. |
+| `followupboss_get_threaded_reply` | Retrieve one threaded reply by ID. |
 | `followupboss_list_action_plans` | List action plans with documented filters and pagination metadata. |
 | `followupboss_list_action_plan_people` | List action-plan-person relationships with documented filters. |
 | `followupboss_apply_action_plan` | Apply an action plan to a specific person. |
