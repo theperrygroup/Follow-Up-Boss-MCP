@@ -337,3 +337,39 @@ async def test_create_server_hosted_lifespan_allows_no_shared_client(
 
     async with server._mcp_server.lifespan(server._mcp_server):
         assert server._hosted_rate_limiter is not None
+
+
+@pytest.mark.asyncio
+async def test_create_server_hosted_lifespan_closes_rate_limiter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Hosted lifespan shutdown should close an injected hosted rate limiter."""
+
+    class RecordingRateLimiter(HostedEndpointRateLimiter):
+        """Hosted rate limiter stub that records whether `aclose()` was called."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.closed = False
+
+        async def aclose(self) -> None:
+            self.closed = True
+
+    monkeypatch.setattr(
+        "followupboss_mcp.mcp_server.register_server_surface",
+        _noop_register_server_surface,
+    )
+    rate_limiter = RecordingRateLimiter()
+    server = cast(
+        FollowUpBossFastMCP,
+        create_server(
+            hosted_auth=_hosted_auth_settings(),
+            hosted_token_verifier=_hosted_token_verifier(),
+            tenant_store=_tenant_store(),
+            hosted_rate_limiter=rate_limiter,
+        ),
+    )
+
+    async with server._mcp_server.lifespan(server._mcp_server):
+        assert rate_limiter.closed is False
+    assert rate_limiter.closed is True

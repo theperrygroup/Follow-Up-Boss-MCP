@@ -389,3 +389,38 @@ async def test_hosted_tenant_token_verifier_emits_audit_event_for_failed_verific
     assert '"event": "hosted_auth_failed"' in log_output
     assert '"reason": "token_verification_failed"' in log_output
     assert "missing-token" not in log_output
+
+
+@pytest.mark.asyncio
+async def test_hosted_tenant_token_verifier_emits_audit_event_for_verifier_outage() -> None:
+    """Hosted auth should fail closed when the underlying token verifier is unavailable."""
+
+    class UnavailableHostedIdentityVerifier:
+        """Hosted-identity verifier stub that fails during verification."""
+
+        async def verify_token(self, token: str) -> HostedVerifiedIdentity | None:
+            """Raise a backend outage instead of returning an identity."""
+            del token
+            raise RuntimeError("token backend unavailable")
+
+    stream = io.StringIO()
+    logger = logging.getLogger("followupboss_mcp_test_hosted_auth_verifier_outage_audit")
+    logger.handlers.clear()
+    logger.setLevel("INFO")
+    logger.propagate = False
+    logger.addHandler(logging.StreamHandler(stream))
+    verifier = HostedTenantTokenVerifier(
+        identity_verifier=UnavailableHostedIdentityVerifier(),
+        tenant_store=DevelopmentTenantStore(
+            tenants=[_tenant_record()],
+            credentials=[_credential_record()],
+        ),
+        logger=logger,
+    )
+
+    assert await verifier.verify_token("any-token") is None
+    log_output = stream.getvalue()
+    assert '"event": "hosted_auth_failed"' in log_output
+    assert '"reason": "token_verifier_unavailable"' in log_output
+    assert '"error_type": "RuntimeError"' in log_output
+    assert "any-token" not in log_output

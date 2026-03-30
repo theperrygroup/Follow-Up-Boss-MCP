@@ -536,7 +536,18 @@ class HostedTenantTokenVerifier(TokenVerifier):
             The hosted access token stored in FastMCP auth context when the
             request is authorized, otherwise `None`.
         """
-        identity = await self._identity_verifier.verify_token(token)
+        try:
+            identity = await self._identity_verifier.verify_token(token)
+        except Exception as exc:
+            emit_audit_event(
+                self._logger,
+                event="hosted_auth_failed",
+                fields={
+                    "reason": "token_verifier_unavailable",
+                    "error_type": type(exc).__name__,
+                },
+            )
+            return None
         if identity is None:
             emit_audit_event(
                 self._logger,

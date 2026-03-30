@@ -190,7 +190,8 @@ in `src/followupboss_mcp/config.py`, `src/followupboss_mcp/hosted_auth.py`,
 `mypy src tests`, `uv run pytest`, `uv run coverage run --branch -m pytest`,
 `uv run coverage report --fail-under=100`, `uv run python -m followupboss_mcp.cli --help`, and
 build smoke all pass; coverage now reports `TOTAL 5177 0 582 0 100.00%`.
-Remaining open checklist items are the six Phase 9 rollout steps that require real staging and
+The repository now includes the reference hosted staging backends and dedicated hosted entrypoint
+needed to attempt Phase 9, but the remaining open checklist items still require real staging and
 external validation.
 
 ## Phase 8: Documentation And Operations
@@ -207,6 +208,11 @@ Decision: `README.md` points to dedicated hosted deployment and onboarding docs 
 duplicating operator guidance inline.
 
 ## Phase 9: Rollout Checklist
+
+Status: reference hosted Postgres, AWS Secrets Manager, and Redis integrations now live in
+`src/followupboss_mcp/hosted_reference.py`, and the repository exposes
+`followupboss-mcp-hosted` as the dedicated hosted entrypoint. The checklist items below remain
+open until a real shared staging environment and external tenants validate them end to end.
 
 - [ ] Stand up a staging tenant store and secret store.
 - [ ] Validate at least two test tenants against the same hosted server instance.
@@ -329,4 +335,13 @@ stack now passes through `sync`, `audit`, `docs-check`, `format-check`, `lint`,
 `mypy src tests`, `uv run pytest`, branch coverage at `TOTAL 5177 0 582 0 100.00%`, CLI help, and
 build smoke validation, so the quality-gate checklist item is closed and only the staged rollout
 tasks remain open.
+- Added `FollowUpBossHostedDeploymentSettings`, `PostgresHostedTokenVerifier`,
+`PostgresAwsTenantStore`, `AwsSecretsManagerTenantSecretStore`, `RedisHostedRateLimitBackend`, and
+the `followupboss-mcp-hosted` entrypoint so the repository now ships a concrete reference hosted
+deployment path for Phase 9 staging. Hardened hosted auth to emit a distinct
+`token_verifier_unavailable` audit reason, added hosted rate-limiter shutdown support, updated the
+hosted deployment guide with the concrete wrapper and reference schema, and revalidated with
+`uv run ruff check src/followupboss_mcp/hosted_reference.py src/followupboss_mcp/hosted_auth.py src/followupboss_mcp/hosted_rate_limits.py src/followupboss_mcp/mcp_server.py src/followupboss_mcp/__init__.py tests/unit/test_hosted_reference.py tests/unit/test_hosted_auth.py tests/unit/test_hosted_rate_limits.py tests/unit/test_mcp_server.py tests/unit/test_auth_config_logging.py`,
+`uv run mypy src tests/unit/test_hosted_reference.py tests/unit/test_hosted_auth.py tests/unit/test_hosted_rate_limits.py tests/unit/test_mcp_server.py tests/unit/test_auth_config_logging.py`,
+and `uv run pytest tests/unit/test_hosted_reference.py tests/unit/test_hosted_auth.py tests/unit/test_hosted_rate_limits.py tests/unit/test_mcp_server.py tests/unit/test_auth_config_logging.py`.
 

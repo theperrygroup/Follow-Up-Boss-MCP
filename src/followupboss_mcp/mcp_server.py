@@ -248,9 +248,15 @@ def create_server(
 
     @asynccontextmanager
     async def lifespan(_: FastMCP) -> AsyncIterator[None]:
-        yield
-        if shared_client is not None:
-            await shared_client.aclose()
+        try:
+            yield
+        finally:
+            try:
+                if shared_client is not None:
+                    await shared_client.aclose()
+            finally:
+                if resolved_hosted_rate_limiter is not None:
+                    await resolved_hosted_rate_limiter.aclose()
 
     mcp = FollowUpBossFastMCP(
         "Follow Up Boss MCP",

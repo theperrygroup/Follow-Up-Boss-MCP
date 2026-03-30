@@ -44,25 +44,33 @@ def test_package_exports() -> None:
     assert "DevelopmentHostedTokenRecord" in followupboss_mcp.__all__
     assert "DevelopmentHostedTokenVerifier" in followupboss_mcp.__all__
     assert "FollowUpBossAsyncClient" in followupboss_mcp.__all__
+    assert "FollowUpBossHostedDeploymentSettings" in followupboss_mcp.__all__
     assert "FollowUpBossServerSettings" in followupboss_mcp.__all__
     assert "FollowUpBossSettings" in followupboss_mcp.__all__
     assert "FollowUpBossTenantRuntimeDefaults" in followupboss_mcp.__all__
     assert "FollowUpBossTenantSettings" in followupboss_mcp.__all__
+    assert "AwsSecretsManagerTenantSecretStore" in followupboss_mcp.__all__
     assert "HostedAccessToken" in followupboss_mcp.__all__
     assert "HostedAuthenticatedTenant" in followupboss_mcp.__all__
     assert "HostedAuthSettings" in followupboss_mcp.__all__
     assert "HostedIdentityVerifier" in followupboss_mcp.__all__
     assert "HostedTenantTokenVerifier" in followupboss_mcp.__all__
     assert "HostedVerifiedIdentity" in followupboss_mcp.__all__
+    assert "PostgresAwsTenantStore" in followupboss_mcp.__all__
+    assert "PostgresHostedTokenVerifier" in followupboss_mcp.__all__
+    assert "RedisHostedRateLimitBackend" in followupboss_mcp.__all__
+    assert "ReferenceHostedSecretPayload" in followupboss_mcp.__all__
     assert "ResolvedTenantCredentials" in followupboss_mcp.__all__
     assert "TenantCredentialRecord" in followupboss_mcp.__all__
     assert "TenantCredentialStatus" in followupboss_mcp.__all__
     assert "TenantRecord" in followupboss_mcp.__all__
     assert "TenantStatus" in followupboss_mcp.__all__
     assert "TenantStore" in followupboss_mcp.__all__
+    assert "create_reference_hosted_server" in followupboss_mcp.__all__
     assert "get_hosted_access_token" in followupboss_mcp.__all__
     assert "get_hosted_authenticated_tenant" in followupboss_mcp.__all__
     assert "get_hosted_verified_identity" in followupboss_mcp.__all__
+    assert "hash_hosted_bearer_token" in followupboss_mcp.__all__
 
 
 def test_basic_auth_strategy_and_injection() -> None:

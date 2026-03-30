@@ -6,10 +6,10 @@ import logging
 import math
 import time
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from threading import Lock
-from typing import Literal, Protocol
+from typing import Literal, Protocol, cast
 
 from pydantic import BaseModel, ConfigDict, field_validator
 from starlette.responses import JSONResponse
@@ -293,6 +293,13 @@ class HostedEndpointRateLimiter:
             limit=self._settings.requests_per_window,
             window_seconds=self._settings.window_seconds,
         )
+
+    async def aclose(self) -> None:
+        """Close the backend when it exposes an async shutdown hook."""
+        close = getattr(self._backend, "aclose", None)
+        if close is None:
+            return
+        await cast(Callable[[], Awaitable[None]], close)()
 
 
 class HostedRateLimitMiddleware:

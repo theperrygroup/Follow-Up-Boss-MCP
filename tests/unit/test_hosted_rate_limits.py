@@ -171,6 +171,35 @@ def test_hosted_endpoint_rate_limiter_optionally_adds_client_ip_to_budget_key() 
     )
 
 
+@pytest.mark.asyncio
+async def test_hosted_endpoint_rate_limiter_aclose_handles_closeable_and_noop_backends() -> None:
+    """The limiter should close async backends and ignore backends without shutdown hooks."""
+
+    class CloseableBackend:
+        """Hosted rate-limit backend stub that exposes `aclose()`."""
+
+        def __init__(self) -> None:
+            self.closed = False
+
+        async def consume(
+            self,
+            key: HostedRateLimitKey,
+            *,
+            limit: int,
+            window_seconds: float,
+        ) -> HostedRateLimitDecision:
+            del key, limit, window_seconds
+            return HostedRateLimitDecision(allowed=True, remaining_requests=0)
+
+        async def aclose(self) -> None:
+            self.closed = True
+
+    closeable_backend = CloseableBackend()
+    await HostedEndpointRateLimiter(backend=closeable_backend).aclose()
+    await HostedEndpointRateLimiter().aclose()
+    assert closeable_backend.closed is True
+
+
 def test_hosted_rate_limit_settings_validate_positive_values() -> None:
     """Hosted rate-limit settings should reject non-positive budgets and windows."""
     with pytest.raises(ValidationError):

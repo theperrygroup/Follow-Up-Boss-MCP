@@ -6,12 +6,13 @@ This guide defines the reference production shape for one shared multi-tenant
 `streamable-http` deployment of the Follow Up Boss MCP server.
 
 The repository CLI and README quickstart remain local single-tenant developer paths.
-Production hosting should use a dedicated wrapper around `create_server(...)` that wires
-concrete implementations of:
+The repository now also ships a reference hosted wrapper in
+`src/followupboss_mcp/hosted_reference.py`, exposed as `followupboss-mcp-hosted`, which wires:
 
-- `HostedIdentityVerifier`
-- `TenantStore`
-- `HostedRateLimitBackend`
+- `PostgresHostedTokenVerifier`
+- `PostgresAwsTenantStore`
+- `AwsSecretsManagerTenantSecretStore`
+- `RedisHostedRateLimitBackend`
 
 For the tenant-creation and credential-intake workflow, see
 [customer-onboarding-flow.md](customer-onboarding-flow.md). For auth failure modes and incident
@@ -66,6 +67,14 @@ The shared deployment wrapper should construct:
 - a PostgreSQL plus AWS Secrets Manager-backed `TenantStore`
 - `HostedEndpointRateLimiter` configured with a Redis-backed `HostedRateLimitBackend`
 
+The repository reference wrapper constructs those abstractions with:
+
+- `FollowUpBossHostedDeploymentSettings`
+- `PostgresHostedTokenVerifier`
+- `PostgresAwsTenantStore`
+- `AwsSecretsManagerTenantSecretStore`
+- `RedisHostedRateLimitBackend`
+
 ## Required Infrastructure
 
 The reference shared deployment needs:
@@ -109,6 +118,49 @@ The raw Follow Up Boss secret payload should live only in AWS Secrets Manager. T
 credential row should contain non-secret metadata plus the secret reference needed to fetch the
 payload at request time.
 
+### Reference PostgreSQL Schema
+
+The repository's reference hosted backends currently read exactly these columns:
+
+```sql
+CREATE TABLE tenants (
+    tenant_id TEXT PRIMARY KEY,
+    tenant_slug TEXT NOT NULL UNIQUE,
+    display_name TEXT NULL,
+    credential_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('active', 'disabled'))
+);
+
+CREATE TABLE tenant_credentials (
+    credential_id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL REFERENCES tenants (tenant_id),
+    auth_mode TEXT NOT NULL CHECK (auth_mode IN ('api_key', 'oauth')),
+    system_name TEXT NULL,
+    secret_ref TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('active', 'revoked'))
+);
+
+CREATE TABLE hosted_access_tokens (
+    token_id TEXT PRIMARY KEY,
+    token_hash TEXT NOT NULL UNIQUE,
+    tenant_id TEXT NOT NULL REFERENCES tenants (tenant_id),
+    subject TEXT NOT NULL,
+    client_id TEXT NOT NULL,
+    scopes TEXT[] NOT NULL DEFAULT ARRAY['followupboss:mcp'],
+    credential_id TEXT NOT NULL,
+    expires_at BIGINT NULL,
+    revoked_at BIGINT NULL
+);
+
+CREATE INDEX hosted_access_tokens_lookup_idx
+    ON hosted_access_tokens (token_hash)
+    WHERE revoked_at IS NULL;
+```
+
+`PostgresHostedTokenVerifier` looks up bearer tokens by the `sha256:`-prefixed token hash. The
+repository helper `hash_hosted_bearer_token(...)` produces the expected lookup value for stored
+opaque tokens.
+
 ## Bootstrap Configuration
 
 ### Existing Repository Bootstrap Settings
@@ -130,10 +182,10 @@ tenants because they do not carry customer-specific Follow Up Boss credentials.
 
 ### Reference Hosted Wrapper Settings
 
-The local CLI does not parse hosted production settings today. The shared deployment should
-instead use a thin wrapper that reads operator configuration and constructs the hosted objects
-programmatically. The following environment variable names are the reference contract for that
-wrapper:
+The local `followupboss-mcp` CLI remains intentionally single-tenant. For shared staging or
+production-style deployments, use `followupboss-mcp-hosted` or import
+`create_reference_hosted_server(...)` directly. The following environment variable names are the
+reference contract for that hosted wrapper:
 
 | Variable | Purpose |
 | --- | --- |
@@ -172,11 +224,30 @@ FOLLOWUPBOSS_RATE_LIMIT_WINDOW_SECONDS=60
 FOLLOWUPBOSS_RATE_LIMIT_INCLUDE_CLIENT_IP=false
 ```
 
+### Reference Entrypoint
+
+The repository's hosted reference entrypoint is:
+
+```bash
+uv run followupboss-mcp-hosted --host 0.0.0.0 --port 8000 --path /mcp
+```
+
+Equivalent module form:
+
+```bash
+uv run python -m followupboss_mcp.hosted_reference --host 0.0.0.0 --port 8000 --path /mcp
+```
+
 ### Hosted Wrapper Construction
 
-The dedicated hosted wrapper should remain the production entrypoint, but now for a narrower
-reason: it is responsible for constructing the hosted auth verifier, tenant store, secret-store
-integration, and optional shared rate-limit backend.
+The dedicated hosted wrapper should remain the production entrypoint. The repository reference
+implementation now does that through `FollowUpBossHostedDeploymentSettings` plus
+`create_reference_hosted_server(...)`, which:
+
+1. builds `HostedAuthSettings` from the hosted issuer, resource-server URL, and required scopes
+2. resolves opaque bearer tokens with `PostgresHostedTokenVerifier`
+3. resolves tenant metadata and Follow Up Boss secrets with `PostgresAwsTenantStore`
+4. applies shared Redis-backed rate limiting through `RedisHostedRateLimitBackend`
 
 The hosted `create_server()` path can now accept a dedicated
 `FollowUpBossTenantRuntimeDefaults` object for the shared non-secret Follow Up Boss defaults. When

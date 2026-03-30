@@ -144,7 +144,9 @@ uv run python -m followupboss_mcp.cli streamable-http --host 127.0.0.1 --port 80
 Hosted multi-tenant operator guidance lives in
 `docs/hosted-deployment-guide.md` and `docs/customer-onboarding-flow.md`.
 Treat the local commands above as developer workflows, not as the production
-recipe for the shared hosted deployment.
+recipe for the shared hosted deployment. The repository now also ships
+`followupboss-mcp-hosted` as the reference hosted entrypoint described in the
+hosted deployment guide.
 
 ## Examples
 
