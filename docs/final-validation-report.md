@@ -23,10 +23,15 @@ The repository now contains:
 - typed email marketing campaign list/create/update plus email event list/post coverage across the SDK, MCP surface, tests, and docs
 - typed inbox app installation, participant, message, note, and conversation-mutation coverage across the SDK, MCP surface, tests, and docs
 - typed people duplicate-check, unclaimed lead list, claim, and ignore coverage across the SDK, MCP surface, tests, and docs
+- typed person delete coverage across the SDK, MCP surface, tests, and docs
 - typed people relationship list/get/create/update/delete coverage across the SDK, MCP surface, tests, and docs
 - typed reaction get/create/delete coverage across the SDK, MCP surface, tests, and docs
 - typed threaded reply lookup coverage across the SDK, MCP surface, tests, and docs
 - typed timeframe list coverage across the SDK, MCP surface, tests, and docs
+- typed current-user `/me` coverage across the SDK, MCP surface, tests, and docs
+- typed user delete coverage across the SDK, MCP surface, tests, and docs
+- typed webhook update coverage across the SDK, MCP surface, tests, and docs
+- typed webhook event lookup coverage across the SDK, MCP surface, tests, and docs
 - typed team inbox collection coverage across the SDK, MCP surface, tests, and docs
 - typed team collection and CRUD coverage with optional member-migration semantics on delete across the SDK, MCP surface, tests, and docs
 - typed text message read support, external log creation, and text message template CRUD plus merge coverage across the SDK, MCP surface, tests, and docs
@@ -70,6 +75,8 @@ The repository implementation and documentation were aligned to the official MCP
 Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 
 - `GET /identity`
+- `GET /me`
+- `DELETE /people/:id`
 - `GET /actionPlans`
 - `GET /actionPlansPeople`
 - `POST /actionPlansPeople`
@@ -183,6 +190,7 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `PUT /calls/:id`
 - `GET /users`
 - `GET /users/:id`
+- `DELETE /users/:id`
 - `GET /customFields`
 - `GET /customFields/:id`
 - `POST /customFields`
@@ -215,28 +223,32 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `DELETE /notes/:id`
 - `GET /webhooks`
 - `GET /webhooks/:id`
+- `GET /webhookEvents/:id`
 - `POST /webhooks`
+- `PUT /webhooks/:id`
 - `DELETE /webhooks/:id`
 
-Total implemented official endpoints in this repository scope: `148`
+Total implemented official endpoints in this repository scope: `153`
 
-All additional discovered official endpoints are marked explicitly as deferred in `docs/api-coverage-matrix.md`.
+No discovered official endpoints remain deferred in this repository scope.
 
 ## MCP Tool Summary
 
 Registered MCP surface:
 
-- tools: `148`
+- tools: `153`
 - resources: `1`
 - prompts: `1`
 
 Registered tools:
 
 - `followupboss_get_identity`
+- `followupboss_get_me`
 - `followupboss_search_people`
 - `followupboss_get_person`
 - `followupboss_create_person`
 - `followupboss_update_person`
+- `followupboss_delete_person`
 - `followupboss_check_duplicate_person`
 - `followupboss_list_unclaimed_people`
 - `followupboss_claim_person`
@@ -303,6 +315,7 @@ Registered tools:
 - `followupboss_delete_appointment`
 - `followupboss_list_users`
 - `followupboss_get_user`
+- `followupboss_delete_user`
 - `followupboss_list_custom_fields`
 - `followupboss_get_custom_field`
 - `followupboss_create_custom_field`
@@ -378,7 +391,9 @@ Registered tools:
 - `followupboss_delete_note`
 - `followupboss_list_webhooks`
 - `followupboss_get_webhook`
+- `followupboss_get_webhook_event`
 - `followupboss_create_webhook`
+- `followupboss_update_webhook`
 - `followupboss_delete_webhook`
 
 Additional MCP assets:
@@ -420,8 +435,8 @@ FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check
 
 - `uv run coverage run --branch -m pytest`: passed
 - `uv run coverage report --fail-under=100`: passed
-- total statements: `4318`
-- total branches: `404`
+- total statements: `4423`
+- total branches: `410`
 - line coverage: `100.00%`
 - branch coverage: `100.00%`
 

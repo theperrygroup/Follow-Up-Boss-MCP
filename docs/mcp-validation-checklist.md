@@ -15,7 +15,7 @@ The domain sections below follow the registration order from `register_server_su
 | Account or environment | Live `.env` account with `X-System` headers configured |
 | Auth mode (`api_key` or `oauth`) | `api_key` |
 | Transport(s) exercised | `stdio`, `streamable-http` |
-| Notes | The current `.env` loaded successfully using the legacy `FOLLOW_UP_BOSS_*` names because the settings layer now accepts both the documented `FOLLOWUPBOSS_*` variables and the underscored aliases. Inspector-specific connection steps remain unchecked because this run used the official Python MCP clients directly. After the follow-up fixes in this session, both `make validate` and `make live-identity-check` passed. |
+| Notes | The latest live pass used the official Python MCP clients for fresh `stdio` and `streamable-http` validation. The current `.env` still loads successfully using the legacy `FOLLOW_UP_BOSS_*` names because the settings layer accepts both that alias family and the documented `FOLLOWUPBOSS_*` variables. `make build-smoke` and `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check` passed, while `make validate` is currently blocked by `ruff format --check` wanting to reformat `src/followupboss_mcp/mcp_tools.py`. |
 
 Update this table, the scratchpad, and the checkbox states for each fresh live-validation cycle. If you need to preserve a completed run as release evidence, copy the results into a dated artifact before resetting the checklist.
 
@@ -46,30 +46,30 @@ set +a
 | Reaction target | `556452` | Existing note, call, or threaded reply | `followupboss_delete_note` | Temporary note used for live reaction validation; deleted after the run. |
 | Reaction | Acknowledged only | `followupboss_add_reaction` | `followupboss_delete_reaction` | The live create call returned `{}` rather than a reaction record, so no reaction ID was available for `followupboss_get_reaction`. |
 | Event | `1899982` | `followupboss_send_event` | Manual | Confirmed via `followupboss_search_events`; the immediate tool response returned the person record rather than an event record. |
-| Unclaimed lead offer |  | `followupboss_list_unclaimed_people` | Manual | Claim and ignore mutate the live unclaimed-lead queue. Use only disposable offers and record whether each one was claimed or ignored. |
+| Unclaimed lead offer |  | `followupboss_list_unclaimed_people` | Manual | Claim and ignore mutate the live unclaimed-lead queue. The latest pass returned an empty queue, so neither mutation was attempted. |
 | Email campaign |  | `followupboss_create_email_campaign` | Manual |  |
 | Email event batch |  | `followupboss_send_email_events` | Manual |  |
 | Action-plan person | `4505` | `followupboss_apply_action_plan` | Manual | Applied action plan `256` to person `296999` and immediately paused it. |
 | Automation person | `525018` | `followupboss_trigger_automation` | Manual | Triggered automation `225` for person `296999` and immediately paused it. |
-| Group |  | `followupboss_create_group` | `followupboss_delete_group` |  |
-| Custom field |  | `followupboss_create_custom_field` | `followupboss_delete_custom_field` |  |
+| Group | `19` | `followupboss_create_group` | `followupboss_delete_group` | Created, updated, and deleted during live stdio validation. Updating the name required resubmitting the current `users` list. |
+| Custom field |  | `followupboss_create_custom_field` | `followupboss_delete_custom_field` | Create was blocked live with `You do not have access to update custom field information.` |
 | Deal | `2174` | `followupboss_create_deal` | `followupboss_delete_deal` | Created, fetched, updated, and deleted during live stdio validation. |
-| Deal custom field |  | `followupboss_create_deal_custom_field` | `followupboss_delete_deal_custom_field` | Capture both the field ID and generated `name` if the field will be reused in deal write tests. |
+| Deal custom field |  | `followupboss_create_deal_custom_field` | `followupboss_delete_deal_custom_field` | Live discovery reported `_metadata.total=1` but returned empty `dealCustomfields` collections; create was blocked with `You do not have access to update custom field information.` |
 | Deal attachment | `1` | `followupboss_create_deal_attachment` | `followupboss_delete_deal_attachment` | Created, fetched, updated, and deleted during live stdio validation. |
-| Appointment outcome |  | `followupboss_create_appointment_outcome` | `followupboss_delete_appointment_outcome` |  |
-| Appointment type |  | `followupboss_create_appointment_type` | `followupboss_delete_appointment_type` |  |
+| Appointment outcome |  | `followupboss_create_appointment_outcome` | `followupboss_delete_appointment_outcome` | Create was blocked live with `You do not have access to update appointment outcomes.` |
+| Appointment type |  | `followupboss_create_appointment_type` | `followupboss_delete_appointment_type` | Create was blocked live with `You do not have access to update appointment types.` |
 | Appointment | `601018` | `followupboss_create_appointment` | `followupboss_delete_appointment` | Created, fetched, updated, and deleted during live stdio validation. |
 | Call | `71432` | `followupboss_create_call` | Manual | Created, fetched, listed, and updated during live stdio validation. No MCP delete tool exists for calls. |
-| Pipeline |  | `followupboss_create_pipeline` | `followupboss_delete_pipeline` |  |
-| Pond |  | `followupboss_create_pond` | `followupboss_delete_pond` |  |
-| Stage |  | `followupboss_create_stage` | `followupboss_delete_stage` |  |
+| Pipeline |  | `followupboss_create_pipeline` | `followupboss_delete_pipeline` | Create was blocked live with `You do not have access to create pipelines.` |
+| Pond | `29` | `followupboss_create_pond` | `followupboss_delete_pond` | Created, updated, and deleted during live stdio validation using `assign_to=405` on delete. |
+| Stage |  | `followupboss_create_stage` | `followupboss_delete_stage` | Create was blocked live with `You do not have access to update account information.` |
 | Task | `19822` | `followupboss_create_task` | `followupboss_delete_task` | Created, fetched, updated, listed, and deleted during live stdio validation. |
-| Team |  | `followupboss_create_team` | `followupboss_delete_team` |  |
+| Team |  | `followupboss_create_team` | `followupboss_delete_team` | Skipped in the latest pass to avoid changing live user or team membership without a disposable staffing fixture. |
 | Template | `2359` | `followupboss_create_template` | `followupboss_delete_template` | Created, fetched, updated, merged, listed, and deleted during live stdio validation. |
 | Text message | `165984` | `followupboss_create_text_message` | Manual | Logged as an externally sent text message, then fetched and confirmed via filtered listing. No MCP delete tool exists. |
 | Text message template | `460` | `followupboss_create_text_message_template` | `followupboss_delete_text_message_template` | Created, fetched, updated, merged, listed, and deleted during live stdio validation. |
 | Note | `556435`, `556436`, `556452` | `followupboss_add_note` | `followupboss_delete_note` | One note was created over stdio, one over streamable HTTP, and one for reaction validation; all were deleted. |
-| Webhook |  | `followupboss_create_webhook` | `followupboss_delete_webhook` |  |
+| Webhook |  | `followupboss_create_webhook` | `followupboss_delete_webhook` | Owner-only access is still blocked under the current credential. |
 
 ## Known Issues And Account Limitations
 
@@ -80,6 +80,11 @@ set +a
 | Reactions | `followupboss_add_reaction` succeeds live, but the API responds with an empty acknowledgement instead of a reaction record. | `followupboss_get_reaction` still requires a separately known reaction ID and was not exercised in this run. | Decide whether the checklist should treat add/delete as sufficient, or add another discovery path for reaction IDs. |
 | Inbox apps | No published inbox app ID, installation, or conversation fixtures were available in this run. | Inbox app tools were not exercised. | Re-run with disposable inbox app prerequisites. |
 | Email marketing writes | No safe `origin` / `origin_id` pair was available for mutation tests. | Email campaign create/update and email-event send remain unvalidated. | Re-run with disposable email-marketing fixtures. |
+| Unclaimed leads | `followupboss_list_unclaimed_people` succeeded live, but the queue was empty and no clearly disposable lead offer was available. | Claim and ignore flows remain unvalidated in this account state. | Re-run when the sandbox has at least one disposable unclaimed lead offer. |
+| Account-metadata admin writes | `followupboss_create_appointment_outcome`, `followupboss_create_appointment_type`, `followupboss_create_custom_field`, `followupboss_create_deal_custom_field`, `followupboss_create_pipeline`, and `followupboss_create_stage` all returned permission errors under the current credential. | Appointment metadata, field-admin, pipeline, and stage write checks remain blocked. | Re-run with a credential that can edit account metadata and pipeline or stage configuration. |
+| Deal custom field discovery | `followupboss_list_deal_custom_fields` reported `_metadata.total=1` but returned empty `dealCustomfields` arrays both with and without `next_token`. | `followupboss_get_deal_custom_field` could not be driven from live discovery, and create is also permission-blocked. | Investigate live `/dealCustomFields` list behavior or provide a known valid deal custom field ID. |
+| Teams | Team create, update, and delete were intentionally skipped because they change live user or team membership and this pass did not have a disposable staffing fixture. | Team write validation remains untested. | Re-run with disposable users and an explicit member-restoration plan. |
+| Streamable HTTP reconnect | The first official streamable HTTP client session succeeded, but a second fresh session against the same long-running server failed `followupboss_get_identity` with `Cannot send a request, as the client has been closed.` | Fresh reconnect health is currently unreliable over `streamable-http`. | Rework `create_server()` or lifespan handling so a closed upstream client is not reused across HTTP sessions. |
 
 ## Prerequisites And Safety
 
@@ -89,24 +94,26 @@ set +a
 - [x] Confirm `uv`, `make`, and `npx` are available locally.
 - [x] Confirm you have a safe validation target account and a temporary-data naming convention such as `MCP Validation <date>`.
 - [x] Confirm you have a reusable disposable person data set for cross-domain testing.
-- [ ] Confirm you have one known existing email or phone plus one clearly fake control value for `followupboss_check_duplicate_person`.
+- [x] Confirm you have one known existing email or phone plus one clearly fake control value for `followupboss_check_duplicate_person`.
 - [ ] Confirm you have at least one disposable unclaimed lead offer if you plan to validate `followupboss_claim_person` or `followupboss_ignore_unclaimed_person`.
 - [x] Confirm you have a safe hosted file URI and file metadata for person and deal attachment tests.
 - [x] Confirm you have a valid action plan ID for mutation tests.
 - [x] Confirm you have a valid automation ID for mutation tests.
 - [ ] Confirm you have a valid inbox app setup for installation, conversation, message, and participant tests.
 - [ ] Confirm you have valid pipeline, stage, owner, type, and outcome references for deal, appointment, and stage lifecycle tests.
-- [ ] Confirm you have a unique deal custom field label and a safe field type or dropdown choices for deal custom field admin tests.
+- [x] Confirm you have a unique deal custom field label and a safe field type or dropdown choices for deal custom field admin tests.
 - [ ] Confirm you have a valid reachable webhook receiver URL for webhook creation tests.
 - [ ] Confirm you have a valid email marketing `origin` and `origin_id` for campaign and email-event tests.
 - [x] Confirm you have a valid reaction target. If needed, create a temporary note first and reuse it for reaction checks.
 
 ## Baseline Automated Validation
 
-- [x] Run `make validate` and confirm the full local quality gate passes.
+- [ ] Run `make validate` and confirm the full local quality gate passes.
 - [x] Run `make build-smoke` and confirm distribution artifacts still build and validate.
 - [x] Run `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check` and confirm the live identity smoke test passes with the current `.env` credentials.
 - [x] Record any failures, permissions issues, or payload mismatches in `Known Issues And Account Limitations` before continuing.
+
+Current run note: `make validate` stopped at `ruff format --check .` because `src/followupboss_mcp/mcp_tools.py` would be reformatted. `make build-smoke` and `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check` both passed in the same pass.
 
 ## MCP Transport Verification
 
@@ -127,6 +134,8 @@ npx @modelcontextprotocol/inspector uv run followupboss-mcp stdio
 - [x] No operational logging or stray text contaminates stdout during stdio use.
 - [ ] Disconnecting and reconnecting the Inspector leaves the transport healthy for another run.
 
+Current run note: the official Python stdio client connected successfully twice, and a separate `FOLLOWUPBOSS_LOG_LEVEL=DEBUG` pass still completed tool, resource, and prompt calls without protocol contamination. Inspector-specific boxes remain unchecked because Inspector itself was not used in this pass.
+
 ### Streamable HTTP
 
 Start the server in one terminal:
@@ -142,7 +151,10 @@ Then connect Inspector to `http://127.0.0.1:8000/mcp`.
 - [x] `followupboss_get_identity` succeeds over streamable HTTP.
 - [x] At least one list or search tool, one get tool, one create or update tool, and one delete tool succeed over streamable HTTP.
 - [x] Resource access and prompt rendering both work over streamable HTTP.
+- [ ] A second fresh client session against the same long-running streamable HTTP server can still execute tools after the first session disconnects.
 - [x] Shutting the server down cleanly does not leave the next run wedged.
+
+Current run note: the first official Python streamable HTTP client session succeeded for tool, resource, and prompt checks. A second fresh session against the same server process failed `followupboss_get_identity` with `Cannot send a request, as the client has been closed.`, so reconnect health is currently blocked even though first-connect validation passed.
 
 ## Resource And Prompt Checks
 
@@ -167,7 +179,7 @@ Apply these checks wherever the surface below supports them.
 - [x] At least one safe failure path is exercised without leaking secrets, such as requesting a clearly invalid ID or intentionally omitting a required field in Inspector.
 - [x] If you hit permission-denied or rate-limit responses, confirm the surfaced MCP error text is understandable and record the limitation in the issues table.
 - [ ] If `FOLLOWUPBOSS_SYSTEM_NAME` and `FOLLOWUPBOSS_SYSTEM_KEY` are configured, at least one flow that depends on integration headers succeeds.
-- [ ] With `FOLLOWUPBOSS_LOG_LEVEL=DEBUG`, logs still stay off stdout in stdio mode.
+- [x] With `FOLLOWUPBOSS_LOG_LEVEL=DEBUG`, logs still stay off stdout in stdio mode.
 - [x] Capture any contract drift, unexpected payload shapes, or sandbox limitations in `Known Issues And Account Limitations`.
 
 ## Domain Checklist
@@ -184,14 +196,16 @@ Work through the sections below in order. If a domain depends on an object creat
 - [x] `followupboss_get_person`: fetch a person ID returned by the search call or from the created record below.
 - [x] `followupboss_create_person`: create a disposable person with clearly temporary data.
 - [x] `followupboss_update_person`: update the disposable person and confirm the changed fields are reflected in the response.
-- [ ] `followupboss_check_duplicate_person`: run once against the disposable person's email or phone and confirm the tool reports `found: true` with a sensible `matchedBy` or assignment summary.
-- [ ] `followupboss_check_duplicate_person`: run again with a clearly fake email or phone value and confirm the tool reports no match without surfacing a transport error.
-- [ ] `followupboss_list_unclaimed_people`: confirm the list output and `_metadata`. An empty `people` collection is acceptable, but record it if claim or ignore cannot be exercised in this account.
+- [x] `followupboss_check_duplicate_person`: run once against the disposable person's email or phone and confirm the tool reports `found: true` with a sensible `matchedBy` or assignment summary.
+- [x] `followupboss_check_duplicate_person`: run again with a clearly fake email or phone value and confirm the tool reports no match without surfacing a transport error.
+- [x] `followupboss_list_unclaimed_people`: confirm the list output and `_metadata`. An empty `people` collection is acceptable, but record it if claim or ignore cannot be exercised in this account.
 - [ ] `followupboss_claim_person`: claim one disposable unclaimed lead and confirm the returned person record reflects the new claimed or assigned state.
 - [ ] `followupboss_ignore_unclaimed_person`: ignore a separate disposable unclaimed lead, or explicitly re-seed the queue before testing, and confirm the structured confirmation uses `personId`.
 - [x] Record the created `personId` and reuse it in later sections where a person is required.
 - [ ] Record any manual rollback needed for claimed or ignored lead offers because these actions change the live unclaimed-lead queue state.
 - [x] Note that there is no MCP delete tool for people and plan manual cleanup.
+
+Current run note: the positive duplicate control matched by email for existing person `297000` and returned `assignedTo: The Perry Group`; the negative control returned `found: false`. The live unclaimed queue was empty, so claim and ignore were not attempted.
 
 ### People Relationships
 
@@ -270,9 +284,11 @@ Current run note: after adding `next_token` support to the MCP tool, successive 
 - [x] `followupboss_list_groups`: confirm list output and `_metadata`.
 - [x] `followupboss_list_round_robin_groups`: confirm the round-robin-specific listing path works.
 - [x] `followupboss_get_group`: retrieve a known group by ID.
-- [ ] `followupboss_create_group`: create a disposable group.
-- [ ] `followupboss_update_group`: update the created group and confirm the mutated values.
-- [ ] `followupboss_delete_group`: delete the disposable group and confirm the structured delete response.
+- [x] `followupboss_create_group`: create a disposable group.
+- [x] `followupboss_update_group`: update the created group and confirm the mutated values.
+- [x] `followupboss_delete_group`: delete the disposable group and confirm the structured delete response.
+
+Current run note: live group update succeeded when the existing `users` list was resubmitted alongside the new name. A name-only update previously failed with `Groups must have at least one user.`
 
 ### Inbox Apps
 
@@ -303,6 +319,8 @@ These checks require a real inbox app setup with valid installation, conversatio
 - [ ] `followupboss_update_custom_field`: update the disposable field and confirm the changed values.
 - [ ] `followupboss_delete_custom_field`: delete the disposable field and confirm the structured delete response.
 
+Current run note: `followupboss_create_custom_field` returned `You do not have access to update custom field information.` under the current credential.
+
 ### Deals
 
 - [x] `followupboss_list_deals`: confirm list output and `_metadata`.
@@ -323,6 +341,8 @@ Current run note: deal list and get now succeed against the live API even when `
 - [ ] `followupboss_delete_deal_custom_field`: delete the disposable field and confirm the structured delete response uses `dealCustomFieldId`.
 - [ ] Record the created field ID and generated `name` in the scratchpad if the field will be reused in later deal-write tests.
 
+Current run note: live list calls returned `_metadata.total=1` but empty `dealCustomfields` arrays both with and without `next_token`, so no ID was available for `followupboss_get_deal_custom_field`. `followupboss_create_deal_custom_field` also returned `You do not have access to update custom field information.`
+
 ### Appointment Outcomes
 
 - [x] `followupboss_list_appointment_outcomes`: confirm list output and `_metadata`.
@@ -331,6 +351,8 @@ Current run note: deal list and get now succeed against the live API even when `
 - [ ] `followupboss_update_appointment_outcome`: update the disposable outcome and confirm the changed values.
 - [ ] `followupboss_delete_appointment_outcome`: delete the disposable outcome with a reassignment target if required and confirm the structured delete response.
 
+Current run note: `followupboss_create_appointment_outcome` returned `You do not have access to update appointment outcomes.` under the current credential.
+
 ### Appointment Types
 
 - [x] `followupboss_list_appointment_types`: confirm list output and `_metadata`.
@@ -338,6 +360,8 @@ Current run note: deal list and get now succeed against the live API even when `
 - [ ] `followupboss_create_appointment_type`: create a disposable type.
 - [ ] `followupboss_update_appointment_type`: update the disposable type and confirm the changed values.
 - [ ] `followupboss_delete_appointment_type`: delete the disposable type with a reassignment target if required and confirm the structured delete response.
+
+Current run note: `followupboss_create_appointment_type` returned `You do not have access to update appointment types.` under the current credential.
 
 ### Appointments
 
@@ -367,13 +391,17 @@ Current run note: the live API validated `outcome` against the documented enum; 
 - [ ] `followupboss_update_pipeline`: update the disposable pipeline and confirm the changed values.
 - [ ] `followupboss_delete_pipeline`: delete the disposable pipeline and confirm the structured delete response.
 
+Current run note: `followupboss_create_pipeline` returned `You do not have access to create pipelines.` under the current credential.
+
 ### Ponds
 
 - [x] `followupboss_list_ponds`: confirm list output and `_metadata`.
 - [x] `followupboss_get_pond`: fetch one pond by ID.
-- [ ] `followupboss_create_pond`: create a disposable pond.
-- [ ] `followupboss_update_pond`: update the disposable pond and confirm the changed values.
-- [ ] `followupboss_delete_pond`: delete the disposable pond with a valid reassignment target and confirm the structured delete response.
+- [x] `followupboss_create_pond`: create a disposable pond.
+- [x] `followupboss_update_pond`: update the disposable pond and confirm the changed values.
+- [x] `followupboss_delete_pond`: delete the disposable pond with a valid reassignment target and confirm the structured delete response.
+
+Current run note: live pond `29` was created, updated, and deleted successfully using `assign_to=405` on delete.
 
 ### Smart Lists
 
@@ -387,6 +415,8 @@ Current run note: the live API validated `outcome` against the documented enum; 
 - [ ] `followupboss_create_stage`: create a disposable stage in a valid pipeline.
 - [ ] `followupboss_update_stage`: update the disposable stage and confirm the changed values.
 - [ ] `followupboss_delete_stage`: delete the disposable stage with a valid reassignment target and confirm the structured delete response.
+
+Current run note: `followupboss_create_stage` returned `You do not have access to update account information.` under the current credential.
 
 ### Tasks
 
@@ -413,6 +443,8 @@ Current run note: the live API returned the expected five timeframe values, incl
 - [ ] `followupboss_create_team`: create a disposable team.
 - [ ] `followupboss_update_team`: update the disposable team and confirm the changed values.
 - [ ] `followupboss_delete_team`: delete the disposable team and confirm the structured delete response, including any member-move behavior you depend on.
+
+Current run note: team mutations were intentionally skipped in this automated pass because they directly change live user or team membership and no disposable staffing fixture was available.
 
 ### Templates
 

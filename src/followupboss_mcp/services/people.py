@@ -92,6 +92,14 @@ class PeopleService:
         payload = await self._client.request_json("GET", f"/people/{person_id}", params=query)
         return PersonRecord.model_validate(payload)
 
+    async def delete_person(self, person_id: int) -> None:
+        """Delete a person by ID.
+
+        Args:
+            person_id: The Follow Up Boss person identifier.
+        """
+        await self._client.request_json("DELETE", f"/people/{person_id}")
+
     async def check_duplicate_person(
         self,
         request: PersonDuplicateCheckRequest,

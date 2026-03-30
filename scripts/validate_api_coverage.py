@@ -424,11 +424,11 @@ COVERAGE_MAP: dict[str, dict[str, str]] = {
         "tests": "Yes",
     },
     "DELETE /people/:id": {
-        "implementation": "Deferred",
-        "mcp": "No",
-        "models": "No",
-        "notes": "Not part of the requested MCP tool surface.",
-        "tests": "No",
+        "implementation": "Implemented",
+        "mcp": "Yes",
+        "models": "Input only",
+        "notes": "Deletes a person and returns structured deletion confirmation.",
+        "tests": "Yes",
     },
     "GET /events": {
         "implementation": "Implemented",
@@ -465,12 +465,36 @@ COVERAGE_MAP: dict[str, dict[str, str]] = {
         "notes": "Single-user lookup.",
         "tests": "Yes",
     },
+    "GET /me": {
+        "implementation": "Implemented",
+        "mcp": "Yes",
+        "models": "Yes",
+        "notes": (
+            "Retrieves the current authenticated user profile, with sensitive keys "
+            "redacted in MCP output."
+        ),
+        "tests": "Yes",
+    },
+    "GET /webhookEvents/:id": {
+        "implementation": "Implemented",
+        "mcp": "Yes",
+        "models": "Yes",
+        "notes": "Fetches a single webhook event for a registered system by event ID.",
+        "tests": "Yes",
+    },
+    "PUT /webhooks/:id": {
+        "implementation": "Implemented",
+        "mcp": "Yes",
+        "models": "Yes",
+        "notes": "Updates a registered-system webhook event, status, or destination URL by ID.",
+        "tests": "Yes",
+    },
     "DELETE /users/:id": {
-        "implementation": "Deferred",
-        "mcp": "No",
-        "models": "No",
-        "notes": "Deferred until explicitly needed.",
-        "tests": "No",
+        "implementation": "Implemented",
+        "mcp": "Yes",
+        "models": "Input only",
+        "notes": "Deletes a user, requires assignTo, and returns structured deletion confirmation.",
+        "tests": "Yes",
     },
     "GET /customFields": {
         "implementation": "Implemented",
@@ -753,13 +777,6 @@ COVERAGE_MAP: dict[str, dict[str, str]] = {
         "models": "Yes",
         "notes": "Single-webhook lookup.",
         "tests": "Yes",
-    },
-    "PUT /webhooks/:id": {
-        "implementation": "Deferred",
-        "mcp": "No",
-        "models": "No",
-        "notes": "Deferred until explicitly needed.",
-        "tests": "No",
     },
     "DELETE /webhooks/:id": {
         "implementation": "Implemented",

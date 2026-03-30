@@ -173,7 +173,7 @@ What changes this grade:
 - Current grade: `A (99/100)`
 - Status: `Pass`
 - Last reviewed: `2026-03-28`
-- Change notes: Follow-up timeframe work kept the harsher re-review score in the same high band because the new read-only lookup tool landed cleanly without adding any special MCP adapter cases.
+- Change notes: Follow-up webhook update work kept the harsher re-review score in the same high band because the final non-destructive webhook admin mutation landed cleanly without adding any special MCP adapter cases.
 
 Why this matters:
 
@@ -218,7 +218,11 @@ Current strengths:
 - The broader MCP surface now includes people duplicate-check and unclaimed lead list/claim/ignore flows without needing any transport-specific adapter branches.
 - The broader MCP surface now includes people relationship list/get/create/update/delete flows without needing any special-case response shaping beyond synthetic collection metadata.
 - The broader MCP surface now includes reaction get/add/delete flows across notes, calls, and threaded replies without needing any transport-specific adapter branches.
+- The broader MCP surface now includes a dedicated threaded reply lookup helper without needing any special-case response shaping.
 - The broader MCP surface now includes a dedicated timeframe list helper for valid `timeframeId` values without needing any special-case response shaping.
+- The broader MCP surface now includes a dedicated webhook event lookup helper for registered-system diagnostics without needing any special-case response shaping.
+- The broader MCP surface now includes a current-user `/me` helper that keeps secret-like fields redacted instead of leaking them through the MCP transport.
+- The broader MCP surface now includes webhook update support, which makes the registered-system webhook domain effectively complete without introducing transport-specific adapter branches.
 - The broader MCP surface now includes externally logged text message creation plus email and text template merge previews without needing transport-specific adapter branches.
 - The broader MCP surface now includes typed team inbox discovery without needing any special-case response shaping.
 - The broader MCP surface now includes inbox app installation, participant, message, note, and conversation mutation flows without needing transport-specific adapter branches.
@@ -293,7 +297,7 @@ What changes this grade:
 - Current grade: `A (99/100)`
 - Status: `Pass`
 - Last reviewed: `2026-03-28`
-- Change notes: Follow-up timeframe work kept this category in the same top band because the new slice again shipped with full service, MCP, and wrapper-based validation coverage while the optional live path remained cleanly isolated.
+- Change notes: Follow-up webhook update work kept this category in the same top band because the new slice again shipped with full service, MCP, and wrapper-based validation coverage while the optional live path remained cleanly isolated.
 
 Why this matters:
 
@@ -341,7 +345,11 @@ Current strengths:
 - The reactions slice followed the same pattern, extending the communication surface with read/add/delete coverage without weakening the offline guarantees.
 - The deal custom field admin slice followed the same pattern, extending the existing deals domain from discovery-only support into full admin CRUD without weakening the offline guarantees.
 - The people admin utility slice followed the same pattern, extending the existing people domain with duplicate-check and unclaimed-lead workflows without weakening the offline guarantees.
+- The threaded-reply slice followed the same pattern, extending the communication domain with a focused lookup helper without weakening the offline guarantees.
 - The timeframe slice followed the same pattern, extending an existing cross-domain lookup reference without weakening the offline guarantees.
+- The webhook-event slice followed the same pattern, extending the existing webhook domain with a focused registered-system diagnostic lookup without weakening the offline guarantees.
+- The `/me` slice followed the same pattern, extending the users domain with a current-user helper while preserving redaction guarantees in the MCP layer.
+- The webhook update slice followed the same pattern, extending the existing webhook domain with a final non-destructive admin mutation without weakening the offline guarantees.
 
 Current gaps:
 
@@ -361,7 +369,7 @@ What changes this grade:
 - Current grade: `A (100/100)`
 - Status: `Needs Work`
 - Last reviewed: `2026-03-28`
-- Change notes: Follow-up timeframe work expanded breadth again by closing another documented reference surface, but the harsh score still stays conservative because the official API surface remains much broader than the current scope.
+- Change notes: Follow-up webhook update work expanded breadth again by finishing another documented admin surface, but the harsh score still stays conservative because the official API surface remains much broader than the current scope.
 
 Why this matters:
 
@@ -437,7 +445,11 @@ Current strengths:
 - The repository now covers a full deals workflow domain with list, lookup, create, update, and delete support.
 - The repository now covers the documented deal custom field admin surface with list, lookup, create, update, and delete support instead of limiting that area to discovery-only reads.
 - The repository now covers people duplicate checks plus unclaimed lead list/claim/ignore flows instead of leaving those documented people-admin utilities deferred.
+- The repository now covers the documented threaded reply lookup surface instead of leaving reply retrieval implicit through adjacent note and reaction tooling.
 - The repository now covers the documented timeframe lookup surface instead of leaving valid `timeframeId` discovery to out-of-band knowledge.
+- The repository now covers the documented webhook event lookup surface instead of leaving registered-system delivery diagnostics deferred.
+- The repository now covers the documented current-user `/me` surface instead of requiring callers to infer their own user context only through `/identity` or a separate `/users/:id` lookup.
+- The repository now covers the documented webhook update surface instead of leaving webhook lifecycle management partially read-only.
 - The repository now covers both collection and single-resource read flows for events and webhooks instead of only the collection paths.
 - The repository now covers both person and deal attachment CRUD for registered systems instead of leaving those documented attachment surfaces deferred.
 - The repository now covers the documented custom field admin surface with get/create/update/delete support instead of limiting the domain to list-only discovery.
@@ -466,7 +478,7 @@ Current gaps:
 
 - Breadth is the clearest structural gap in the current repository.
 - Many official endpoints remain intentionally deferred, so the current scope is high quality but still much narrower than the official API surface an integration may expect.
-- The repository currently implements `147` official endpoints while the generated manifest tracks a much larger documented surface.
+- The repository currently implements `151` official endpoints while the generated manifest tracks a much larger documented surface.
 
 What changes this grade:
 
@@ -480,7 +492,7 @@ What changes this grade:
 - Current grade: `A (95/100)`
 - Status: `Pass`
 - Last reviewed: `2026-03-28`
-- Change notes: The timeframe slice kept the docs score at the baseline because the README, MCP usage guide, coverage matrix, and final validation report all moved in lockstep with the code and validation totals.
+- Change notes: The webhook update slice kept the docs score at the baseline because the README, MCP usage guide, coverage matrix, and final validation report all moved in lockstep with the code and validation totals.
 
 Why this matters:
 
@@ -529,7 +541,11 @@ Current strengths:
 - The same alignment discipline held again when the reaction surface was added.
 - The same alignment discipline held again when the deal custom field admin surface was added.
 - The same alignment discipline held again when the people admin utility surface was added.
+- The same alignment discipline held again when the threaded-reply surface was added.
 - The same alignment discipline held again when the timeframe surface was added.
+- The same alignment discipline held again when the webhook-event surface was added.
+- The same alignment discipline held again when the webhook update surface was added.
+- The same alignment discipline held again when the `/me` surface was added.
 
 Current gaps:
 
@@ -690,12 +706,16 @@ Use this mini-template when you revisit the file after a code change:
 | `2026-03-28` | `GPT-5.4` | Reactions breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed reaction get/create/delete support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
 | `2026-03-28` | `GPT-5.4` | Deal-custom-fields breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed deal custom field get/create/update/delete support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
 | `2026-03-28` | `GPT-5.4` | People-admin utilities breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed people duplicate-check, unclaimed lead list, claim, and ignore support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
+| `2026-03-28` | `GPT-5.4` | Threaded-replies breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed threaded reply lookup support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
 | `2026-03-28` | `GPT-5.4` | Timeframes breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed timeframe list support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
+| `2026-03-28` | `GPT-5.4` | Webhook-events breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed webhook event lookup support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
+| `2026-03-28` | `GPT-5.4` | Current-user breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed `/me` support with MCP-side redaction of secret-like fields, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
+| `2026-03-28` | `GPT-5.4` | Webhook-update breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed webhook update support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
 
 ## Next Improvement Targets
 
 If you want the fastest path to a higher overall score, focus here first:
 
-1. Expand implemented breadth into another high-value deferred official area such as `threadedReplies`, `webhookEvents`, or the remaining smaller admin endpoints now that timeframes, people admin utilities, deal custom fields, reactions, inbox apps, people relationships, custom field admin, messaging merge helpers, email marketing, and attachments are covered.
+1. Decide whether the remaining destructive admin endpoints `DELETE /people/:id` and `DELETE /users/:id` belong in scope now that the non-destructive official surface is effectively complete.
 2. Expand the current live validation beyond the identity path into a broader optional Follow Up Boss sandbox contract suite.
 3. Improve day-two operations with richer telemetry and, if needed later, a broader CI matrix across multiple Python versions or operating systems.

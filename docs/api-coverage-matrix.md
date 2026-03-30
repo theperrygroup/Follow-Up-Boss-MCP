@@ -15,7 +15,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `DELETE /inboxApps/{inboxAppId}` | Implemented | Input only | Yes | Yes | Deactivates an inbox app installation and returns structured deletion confirmation. |
 | `DELETE /inboxApps/{inboxAppId}/conversations/{extConversationId}/participants/{participantId}` | Implemented | Input only | Yes | Yes | Removes an inbox app conversation participant and returns structured deletion confirmation. |
 | `DELETE /notes/:id` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
-| `DELETE /people/:id` | Deferred | No | No | No | Not part of the requested MCP tool surface. |
+| `DELETE /people/:id` | Implemented | Input only | Yes | Yes | Deletes a person and returns structured deletion confirmation. |
 | `DELETE /peopleRelationships/:id` | Implemented | Input only | Yes | Yes | Deletes a people relationship and returns structured deletion confirmation. |
 | `DELETE /personAttachments/{id}` | Implemented | Input only | Yes | Yes | Deletes a person attachment and returns structured deletion confirmation. |
 | `DELETE /pipelines/:id` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
@@ -26,7 +26,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `DELETE /teams/:id` | Implemented | Input only | Yes | Yes | Delete optionally supports moveToTeamId and returns structured deletion confirmation. |
 | `DELETE /templates/:id` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
 | `DELETE /textMessageTemplates/:id` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
-| `DELETE /users/:id` | Deferred | No | No | No | Deferred until explicitly needed. |
+| `DELETE /users/:id` | Implemented | Input only | Yes | Yes | Deletes a user, requires assignTo, and returns structured deletion confirmation. |
 | `DELETE /webhooks/:id` | Implemented | Input only | Yes | Yes | Delete endpoint exposed through MCP. |
 | `GET /actionPlans` | Implemented | Yes | Yes | Yes | Lists action plans with documented filters and pagination metadata. |
 | `GET /actionPlansPeople` | Implemented | Yes | Yes | Yes | Lists action-plan-person relationships with documented filters and pagination metadata. |
@@ -59,7 +59,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `GET /identity` | Implemented | Yes | Yes | Yes | Used as the health check path. |
 | `GET /inboxApps/installedApps/{publishedInboxAppId}` | Implemented | Yes | Yes | Yes | Lists installed inbox app installations for a published inbox app. |
 | `GET /inboxApps/{inboxAppId}/conversations/{extConversationId}/participants` | Implemented | Yes | Yes | Yes | Lists inbox app conversation participants with synthetic pagination metadata. |
-| `GET /me` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `GET /me` | Implemented | Yes | Yes | Yes | Retrieves the current authenticated user profile, with sensitive keys redacted in MCP output. |
 | `GET /notes/:id` | Implemented | Yes | Yes | Yes | Single-note lookup. |
 | `GET /people` | Implemented | Yes | Yes | Yes | Supports next-token and offset pagination. |
 | `GET /people/:id` | Implemented | Yes | Yes | Yes | Supports fields selection. |
@@ -92,7 +92,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `GET /timeframes` | Implemented | Yes | Yes | Yes | Lists valid Follow Up Boss timeframes for people timeframeId values. |
 | `GET /users` | Implemented | Yes | Yes | Yes | Collection query coverage included. |
 | `GET /users/:id` | Implemented | Yes | Yes | Yes | Single-user lookup. |
-| `GET /webhookEvents/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `GET /webhookEvents/:id` | Implemented | Yes | Yes | Yes | Fetches a single webhook event for a registered system by event ID. |
 | `GET /webhooks` | Implemented | Yes | Yes | Yes | Requires registered system headers. |
 | `GET /webhooks/:id` | Implemented | Yes | Yes | Yes | Single-webhook lookup. |
 | `POST /actionPlansPeople` | Implemented | Yes | Yes | Yes | Applies an action plan to a specific person. |
@@ -156,4 +156,4 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `PUT /teams/:id` | Implemented | Yes | Yes | Yes | Updates team metadata and expects complete member and leader replacement semantics. |
 | `PUT /templates/:id` | Implemented | Yes | Yes | Yes | Updates template name, subject, and body. |
 | `PUT /textMessageTemplates/:id` | Implemented | Yes | Yes | Yes | Updates text message template content and sharing state. |
-| `PUT /webhooks/:id` | Deferred | No | No | No | Deferred until explicitly needed. |
+| `PUT /webhooks/:id` | Implemented | Yes | Yes | Yes | Updates a registered-system webhook event, status, or destination URL by ID. |

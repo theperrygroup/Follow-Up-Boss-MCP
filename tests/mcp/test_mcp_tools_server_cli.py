@@ -40,6 +40,7 @@ from followupboss_mcp.mcp_tools import (
     DeleteNoteToolInput,
     DeletePeopleRelationshipToolInput,
     DeletePersonAttachmentToolInput,
+    DeletePersonToolInput,
     DeletePipelineToolInput,
     DeletePondToolInput,
     DeleteReactionToolInput,
@@ -48,6 +49,7 @@ from followupboss_mcp.mcp_tools import (
     DeleteTeamToolInput,
     DeleteTemplateToolInput,
     DeleteTextMessageTemplateToolInput,
+    DeleteUserToolInput,
     DeleteWebhookToolInput,
     FollowUpBossToolAdapter,
     GetAppointmentOutcomeToolInput,
@@ -78,6 +80,7 @@ from followupboss_mcp.mcp_tools import (
     GetTextMessageToolInput,
     GetThreadedReplyToolInput,
     GetUserToolInput,
+    GetWebhookEventToolInput,
     GetWebhookToolInput,
     IgnoreUnclaimedPersonToolInput,
     ListInboxAppInstallationsToolInput,
@@ -108,6 +111,7 @@ from followupboss_mcp.mcp_tools import (
     UpdateTeamToolInput,
     UpdateTemplateToolInput,
     UpdateTextMessageTemplateToolInput,
+    UpdateWebhookToolInput,
 )
 from followupboss_mcp.models.action_plans import (
     ActionPlanListRequest,
@@ -245,8 +249,20 @@ from followupboss_mcp.models.text_messages import (
 )
 from followupboss_mcp.models.threaded_replies import ThreadedReplyRecord
 from followupboss_mcp.models.timeframes import TimeframeListRequest, TimeframeRecord
-from followupboss_mcp.models.users import UserListRequest, UserRecord
-from followupboss_mcp.models.webhooks import CreateWebhookRequest, WebhookListRequest, WebhookRecord
+from followupboss_mcp.models.users import (
+    ConnectedEmailRecord,
+    CurrentUserRecord,
+    DeleteUserRequest,
+    IntercomSettingsRecord,
+    UserListRequest,
+    UserRecord,
+)
+from followupboss_mcp.models.webhooks import (
+    CreateWebhookRequest,
+    WebhookEventRecord,
+    WebhookListRequest,
+    WebhookRecord,
+)
 from followupboss_mcp.pagination import PageResult, PaginationMetadata
 from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
@@ -338,6 +354,9 @@ class StubBundle:
 
         async def people_ignore_unclaimed(_: IgnoreUnclaimedPersonRequest) -> None:
             return None
+
+        async def people_delete(person_id: int) -> None:
+            del person_id
 
         async def person_attachments_get(person_attachment_id: int) -> PersonAttachmentRecord:
             return PersonAttachmentRecord(
@@ -845,6 +864,49 @@ class StubBundle:
 
         async def users_get(user_id: int) -> UserRecord:
             return UserRecord(id=user_id, name="Crusher")
+
+        async def users_get_me() -> CurrentUserRecord:
+            return CurrentUserRecord(
+                id=1,
+                name="Gerald Leenerts",
+                role="admin",
+                email="gerald@followupboss.com",
+                phone="(123) 456-7890",
+                timeZone="America/Chicago",
+                signature="<div>Cheers,<br></div><div>-Gerald</div>",
+                rawSignature="<div>Cheers,<br></div><div>-Gerald</div>",
+                apiKey="secret-api-key",
+                algoliaKey="secret-algolia-key",
+                intercomSettings=IntercomSettingsRecord(
+                    app_id="abc123",
+                    created_at="1313236940",
+                    user_hash="secret-hash",
+                    user_id="1234-1",
+                ),
+                account=1234,
+                teamMember=None,
+                beta=True,
+                betaOnly=False,
+                connectedEmail=ConnectedEmailRecord(
+                    email="gerald@followupboss.com",
+                    oauthProvider="google",
+                    shareEmails=False,
+                    imapLeadProcessing=True,
+                    hasSmtp=True,
+                ),
+                leadEmailAddress="gerald@followupboss.me",
+                callingEnabled=True,
+                voicemailEnabled=False,
+                voicemailUrl=None,
+                callingCapabilityToken="secret-calling-token",
+                isOwner=True,
+                unreadConversationCount=0,
+                notifyBy="Email only",
+                features=["calling", "link-tracking"],
+            )
+
+        async def users_delete(user_id: int, request: DeleteUserRequest) -> None:
+            del user_id, request
 
         async def appointment_outcomes_list(
             _: AppointmentOutcomeListRequest,
@@ -1487,6 +1549,26 @@ class StubBundle:
         async def webhooks_get(webhook_id: int) -> WebhookRecord:
             return WebhookRecord(id=webhook_id, event="peopleCreated", url="https://example.com")
 
+        async def webhooks_get_event(webhook_event_id: str) -> WebhookEventRecord:
+            return WebhookEventRecord(
+                id=webhook_event_id,
+                eventId="4b762cb3-d7b6-4cf4-b7fb-fbd8cb0dfe11",
+                eventCreated="2016-12-12T18:36:26Z",
+                event="peopleUpdated",
+                resourceIds=[99],
+                uri="https://api.followupboss.com/v1/people/99",
+                data={"changed": ["tags"]},
+            )
+
+        async def webhooks_update(webhook_id: int, request: object) -> WebhookRecord:
+            del request
+            return WebhookRecord(
+                id=webhook_id,
+                event="peopleUpdated",
+                status="Disabled",
+                url="https://example.com",
+            )
+
         async def webhooks_delete(webhook_id: int) -> None:
             del webhook_id
 
@@ -1607,6 +1689,7 @@ class StubBundle:
                 list_unclaimed_people=people_list_unclaimed,
                 claim_person=people_claim,
                 ignore_unclaimed_person=people_ignore_unclaimed,
+                delete_person=people_delete,
             ),
             person_attachments=_service_stub(
                 get_person_attachment=person_attachments_get,
@@ -1695,11 +1778,18 @@ class StubBundle:
                 update_template=templates_update,
                 delete_template=templates_delete,
             ),
-            users=_service_stub(list_users=users_list, get_user=users_get),
+            users=_service_stub(
+                list_users=users_list,
+                get_user=users_get,
+                get_me=users_get_me,
+                delete_user=users_delete,
+            ),
             webhooks=_service_stub(
                 list_webhooks=webhooks_list,
                 get_webhook=webhooks_get,
+                get_webhook_event=webhooks_get_event,
                 create_webhook=webhooks_create,
+                update_webhook=webhooks_update,
                 delete_webhook=webhooks_delete,
             ),
         )
@@ -1711,6 +1801,11 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     services = StubBundle().bundle
     adapter = FollowUpBossToolAdapter(services)
     assert (await adapter.get_identity())["id"] == 1
+    assert (await adapter.get_me())["id"] == 1
+    assert (await adapter.get_me())["apiKey"] == "***redacted***"
+    assert (await adapter.get_me())["algoliaKey"] == "***redacted***"
+    assert (await adapter.get_me())["callingCapabilityToken"] == "***redacted***"
+    assert (await adapter.get_me())["intercomSettings"]["user_hash"] == "***redacted***"
     assert (await adapter.search_people(PeopleSearchRequest()))["people"][0]["id"] == 2
     assert (await adapter.get_person(GetPersonToolInput(person_id=3)))["id"] == 3
     assert (await adapter.create_person(CreatePersonRequest(first_name="Tom")))["id"] == 3
@@ -1731,6 +1826,10 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert (await adapter.ignore_unclaimed_person(IgnoreUnclaimedPersonToolInput(person_id=7))) == {
         "deleted": True,
         "personId": 7,
+    }
+    assert (await adapter.delete_person(DeletePersonToolInput(person_id=8))) == {
+        "deleted": True,
+        "personId": 8,
     }
     assert (
         await adapter.get_person_attachment(GetPersonAttachmentToolInput(person_attachment_id=2))
@@ -1812,6 +1911,10 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     )["id"] == 5
     assert (await adapter.list_users(UserListRequest()))["users"][0]["id"] == 6
     assert (await adapter.get_user(GetUserToolInput(user_id=7)))["id"] == 7
+    assert (await adapter.delete_user(DeleteUserToolInput(user_id=8, assign_to=5))) == {
+        "deleted": True,
+        "userId": 8,
+    }
     assert (await adapter.list_appointment_outcomes(AppointmentOutcomeListRequest()))[
         "appointmentoutcomes"
     ][0]["id"] == 7
@@ -2377,10 +2480,18 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert (await adapter.list_webhooks(WebhookListRequest()))["webhooks"][0]["id"] == 9
     assert (await adapter.get_webhook(GetWebhookToolInput(webhook_id=11)))["id"] == 11
     assert (
+        await adapter.get_webhook_event(
+            GetWebhookEventToolInput(webhook_event_id="db36048a6b06d80e7f9d3440233ae915")
+        )
+    )["id"] == "db36048a6b06d80e7f9d3440233ae915"
+    assert (
         await adapter.create_webhook(
             CreateWebhookRequest(event="peopleCreated", url="https://example.com")
         )
     )["id"] == 10
+    assert (await adapter.update_webhook(UpdateWebhookToolInput(webhook_id=12, status="Disabled")))[
+        "status"
+    ] == "Disabled"
     assert (await adapter.delete_webhook(DeleteWebhookToolInput(webhook_id=12))) == {
         "deleted": True,
         "webhookId": 12,
@@ -2440,12 +2551,20 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         text_message_templates=services.text_message_templates,
         text_messages=services.text_messages,
         templates=services.templates,
-        users=services.users,
+        users=_service_stub(
+            list_users=services.users.list_users,
+            get_user=services.users.get_user,
+            get_me=lambda: (_ for _ in ()).throw(
+                FollowUpBossValidationError("bad me", status_code=400)
+            ),
+        ),
         webhooks=services.webhooks,
     )
     adapter = FollowUpBossToolAdapter(failing)
     with pytest.raises(RuntimeError, match="Retry after 9 seconds"):
         await adapter.get_identity()
+    with pytest.raises(RuntimeError, match="bad me"):
+        await adapter.get_me()
     with pytest.raises(RuntimeError, match="bad people"):
         await adapter.search_people(PeopleSearchRequest())
     with pytest.raises(RuntimeError, match="bad delete"):
@@ -2482,6 +2601,44 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         client=QueueClient(
             [
                 {"id": 1},
+                {
+                    "id": 1,
+                    "name": "Gerald Leenerts",
+                    "role": "admin",
+                    "email": "gerald@followupboss.com",
+                    "phone": "(123) 456-7890",
+                    "timeZone": "America/Chicago",
+                    "signature": "<div>Cheers,<br></div><div>-Gerald</div>",
+                    "rawSignature": "<div>Cheers,<br></div><div>-Gerald</div>",
+                    "apiKey": "secret-api-key",
+                    "algoliaKey": "secret-algolia-key",
+                    "intercomSettings": {
+                        "app_id": "abc123",
+                        "created_at": "1313236940",
+                        "user_hash": "secret-hash",
+                        "user_id": "1234-1",
+                    },
+                    "account": 1234,
+                    "teamMember": None,
+                    "beta": True,
+                    "betaOnly": False,
+                    "connectedEmail": {
+                        "email": "gerald@followupboss.com",
+                        "oauthProvider": "google",
+                        "shareEmails": False,
+                        "imapLeadProcessing": True,
+                        "hasSmtp": True,
+                    },
+                    "leadEmailAddress": "gerald@followupboss.me",
+                    "callingEnabled": True,
+                    "voicemailEnabled": False,
+                    "voicemailUrl": None,
+                    "callingCapabilityToken": "secret-calling-token",
+                    "isOwner": True,
+                    "unreadConversationCount": 0,
+                    "notifyBy": "Email only",
+                    "features": ["calling", "link-tracking"],
+                },
                 {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "people": [{"id": 2}]},
                 {"id": 3},
                 {"id": 4},
@@ -2509,6 +2666,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                     "assignedTo": "Agent Smith",
                     "claimed": False,
                 },
+                {},
                 {},
                 {
                     "personId": 1,
@@ -2609,6 +2767,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                 {"id": 8},
                 {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "users": [{"id": 9}]},
                 {"id": 10},
+                {},
                 {
                     "_metadata": {"limit": 10, "offset": 0, "total": 1},
                     "actionPlans": [{"id": 11, "name": "Qualify buyer leads"}],
@@ -3027,7 +3186,22 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                     ],
                 },
                 {"id": 28, "event": "peopleCreated", "url": "https://example.com"},
+                {
+                    "id": "db36048a6b06d80e7f9d3440233ae915",
+                    "eventId": "4b762cb3-d7b6-4cf4-b7fb-fbd8cb0dfe11",
+                    "eventCreated": "2016-12-12T18:36:26Z",
+                    "event": "peopleUpdated",
+                    "resourceIds": [99],
+                    "uri": "https://api.followupboss.com/v1/people/99",
+                    "data": {"changed": ["tags"]},
+                },
                 {"id": 29, "event": "peopleCreated", "url": "https://example.com"},
+                {
+                    "id": 29,
+                    "event": "peopleUpdated",
+                    "status": "Disabled",
+                    "url": "https://example.com",
+                },
                 {},
                 {
                     "_metadata": {"limit": 10, "offset": 0, "total": 1},
@@ -3090,6 +3264,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_delete_group",
         "followupboss_delete_note",
         "followupboss_delete_people_relationship",
+        "followupboss_delete_person",
         "followupboss_delete_person_attachment",
         "followupboss_delete_pipeline",
         "followupboss_delete_pond",
@@ -3099,6 +3274,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_delete_team",
         "followupboss_delete_template",
         "followupboss_delete_text_message_template",
+        "followupboss_delete_user",
         "followupboss_delete_webhook",
         "followupboss_get_appointment",
         "followupboss_get_appointment_outcome",
@@ -3113,6 +3289,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_get_event",
         "followupboss_get_group",
         "followupboss_get_identity",
+        "followupboss_get_me",
         "followupboss_get_note",
         "followupboss_get_people_relationship",
         "followupboss_get_person",
@@ -3130,6 +3307,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_get_threaded_reply",
         "followupboss_get_user",
         "followupboss_get_webhook",
+        "followupboss_get_webhook_event",
         "followupboss_ignore_unclaimed_person",
         "followupboss_install_inbox_app",
         "followupboss_list_action_plan_people",
@@ -3197,9 +3375,11 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_update_team",
         "followupboss_update_template",
         "followupboss_update_text_message_template",
+        "followupboss_update_webhook",
     ]
 
     assert await tools["followupboss_get_identity"].fn() == {"id": 1}
+    assert (await tools["followupboss_get_me"].fn())["apiKey"] == "***redacted***"
     assert (await tools["followupboss_search_people"].fn(email="a@example.com"))["people"][0][
         "id"
     ] == 2
@@ -3216,6 +3396,10 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     assert await tools["followupboss_ignore_unclaimed_person"].fn(7) == {
         "deleted": True,
         "personId": 7,
+    }
+    assert await tools["followupboss_delete_person"].fn(8) == {
+        "deleted": True,
+        "personId": 8,
     }
     assert (await tools["followupboss_get_person_attachment"].fn(2))["id"] == 2
     assert (
@@ -3266,6 +3450,10 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     )["id"] == 8
     assert (await tools["followupboss_list_users"].fn())["users"][0]["id"] == 9
     assert (await tools["followupboss_get_user"].fn(10))["id"] == 10
+    assert await tools["followupboss_delete_user"].fn(10, 5) == {
+        "deleted": True,
+        "userId": 10,
+    }
     assert (await tools["followupboss_list_action_plans"].fn())["actionPlans"][0]["id"] == 11
     assert (await tools["followupboss_list_action_plan_people"].fn())["actionPlansPeople"][0][
         "id"
@@ -3606,9 +3794,15 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     assert await tools["followupboss_delete_note"].fn(27) == {"deleted": True, "noteId": 27}
     assert (await tools["followupboss_list_webhooks"].fn())["webhooks"][0]["id"] == 27
     assert (await tools["followupboss_get_webhook"].fn(28))["id"] == 28
+    assert (await tools["followupboss_get_webhook_event"].fn("db36048a6b06d80e7f9d3440233ae915"))[
+        "id"
+    ] == "db36048a6b06d80e7f9d3440233ae915"
     assert (await tools["followupboss_create_webhook"].fn("peopleCreated", "https://example.com"))[
         "id"
     ] == 29
+    assert (await tools["followupboss_update_webhook"].fn(29, status="Disabled"))[
+        "status"
+    ] == "Disabled"
     assert await tools["followupboss_delete_webhook"].fn(30) == {"deleted": True, "webhookId": 30}
     assert (await tools["followupboss_list_appointments"].fn())["appointments"][0]["id"] == 30
     assert (await tools["followupboss_get_appointment"].fn(31))["id"] == 31

@@ -158,8 +158,18 @@ from followupboss_mcp.models.text_messages import (
 )
 from followupboss_mcp.models.threaded_replies import ThreadedReplyRecord
 from followupboss_mcp.models.timeframes import TimeframeListRequest
-from followupboss_mcp.models.users import UserListRequest
-from followupboss_mcp.models.webhooks import CreateWebhookRequest, WebhookListRequest
+from followupboss_mcp.models.users import (
+    CurrentUserRecord,
+    DeleteUserRequest,
+    IntercomSettingsRecord,
+    UserListRequest,
+)
+from followupboss_mcp.models.webhooks import (
+    CreateWebhookRequest,
+    UpdateWebhookRequest,
+    WebhookEventRecord,
+    WebhookListRequest,
+)
 from followupboss_mcp.services.action_plans import ActionPlansService
 from followupboss_mcp.services.appointment_metadata import (
     AppointmentOutcomesService,
@@ -3554,6 +3564,45 @@ async def test_events_users_notes_and_webhooks_services() -> None:
                 "users": [{"id": 5, "name": "Data"}],
             },
             {"id": 6, "name": "Geordi"},
+            {
+                "id": 1,
+                "name": "Gerald Leenerts",
+                "role": "admin",
+                "email": "gerald@followupboss.com",
+                "phone": "(123) 456-7890",
+                "timeZone": "America/Chicago",
+                "signature": "<div>Cheers,<br></div><div>-Gerald</div>",
+                "rawSignature": "<div>Cheers,<br></div><div>-Gerald</div>",
+                "apiKey": "secret-api-key",
+                "algoliaKey": "secret-algolia-key",
+                "intercomSettings": {
+                    "app_id": "abc123",
+                    "created_at": "1313236940",
+                    "user_hash": "secret-hash",
+                    "user_id": "1234-1",
+                },
+                "account": 1234,
+                "teamMember": None,
+                "beta": True,
+                "betaOnly": False,
+                "connectedEmail": {
+                    "email": "gerald@followupboss.com",
+                    "oauthProvider": "google",
+                    "shareEmails": False,
+                    "imapLeadProcessing": True,
+                    "hasSmtp": True,
+                },
+                "leadEmailAddress": "gerald@followupboss.me",
+                "callingEnabled": True,
+                "voicemailEnabled": False,
+                "voicemailUrl": None,
+                "callingCapabilityToken": "secret-calling-token",
+                "isOwner": True,
+                "unreadConversationCount": 0,
+                "notifyBy": "Email only",
+                "features": ["calling", "link-tracking"],
+            },
+            {},
             {"id": 7, "body": "created"},
             {"id": 8, "body": "loaded"},
             {"id": 9, "body": "updated"},
@@ -3563,7 +3612,22 @@ async def test_events_users_notes_and_webhooks_services() -> None:
                 "webhooks": [{"id": 10, "event": "peopleCreated", "url": "https://example.com"}],
             },
             {"id": 11, "event": "peopleCreated", "url": "https://example.com"},
-            {"id": 12, "event": "peopleCreated", "url": "https://example.com"},
+            {
+                "id": "db36048a6b06d80e7f9d3440233ae915",
+                "eventId": "4b762cb3-d7b6-4cf4-b7fb-fbd8cb0dfe11",
+                "eventCreated": "2016-12-12T18:36:26Z",
+                "event": "peopleUpdated",
+                "resourceIds": [99],
+                "uri": "https://api.followupboss.com/v1/people/99",
+                "data": {"changed": ["tags"]},
+            },
+            {
+                "id": 12,
+                "event": "peopleUpdated",
+                "status": "Disabled",
+                "url": "https://example.com",
+            },
+            {},
             {},
         ]
     )
@@ -3600,6 +3664,21 @@ async def test_events_users_notes_and_webhooks_services() -> None:
     assert users_page.items[0].id == 5
     assert client.calls[3].params == {"role": "Agent"}
     assert (await users_service.get_user(6)).id == 6
+    current_user = await users_service.get_me()
+    assert isinstance(current_user, CurrentUserRecord)
+    assert current_user.api_key == "secret-api-key"
+    assert current_user.algolia_key == "secret-algolia-key"
+    assert current_user.intercom_settings is not None
+    assert current_user.intercom_settings.user_hash == "secret-hash"
+    assert current_user.connected_email is not None
+    assert current_user.connected_email.oauth_provider == "google"
+    sanitized_user = CurrentUserRecord(id=2, intercomSettings=IntercomSettingsRecord(app_id="abc"))
+    sanitized_me = sanitized_user.redacted_for_mcp()
+    assert sanitized_me.intercom_settings is not None
+    assert sanitized_me.intercom_settings.user_hash is None
+
+    await people_service.delete_person(77)
+    assert client.calls[6].path == "/people/77"
 
     wait_calls = {"count": 0}
 
@@ -3621,7 +3700,7 @@ async def test_events_users_notes_and_webhooks_services() -> None:
     )
     assert created_note.id == 7
     assert wait_calls["count"] == 1
-    assert client.calls[5].json_body == {"body": "created", "personId": 1}
+    assert client.calls[7].json_body == {"body": "created", "personId": 1}
 
     assert (await notes_service.get_note(8)).id == 8
     assert (await notes_service.update_note(9, UpdateNoteRequest(body="updated"))).id == 9
@@ -3629,14 +3708,32 @@ async def test_events_users_notes_and_webhooks_services() -> None:
 
     webhooks_page = await webhooks_service.list_webhooks(WebhookListRequest(event="peopleCreated"))
     assert webhooks_page.items[0].id == 10
-    assert client.calls[9].params == {"event": "peopleCreated"}
+    assert client.calls[11].params == {"event": "peopleCreated"}
     assert (
         await webhooks_service.create_webhook(
             CreateWebhookRequest(event="peopleCreated", url="https://example.com")
         )
     ).id == 11
-    assert (await webhooks_service.get_webhook(12)).id == 12
+    webhook_event = await webhooks_service.get_webhook_event("db36048a6b06d80e7f9d3440233ae915")
+    assert isinstance(webhook_event, WebhookEventRecord)
+    assert webhook_event.event_id == "4b762cb3-d7b6-4cf4-b7fb-fbd8cb0dfe11"
+    assert webhook_event.resource_ids == [99]
+    assert webhook_event.data == {"changed": ["tags"]}
+    updated_webhook = await webhooks_service.update_webhook(
+        12,
+        UpdateWebhookRequest(status="Disabled"),
+    )
+    assert updated_webhook.status == "Disabled"
     await webhooks_service.delete_webhook(13)
+    await users_service.delete_user(14, DeleteUserRequest(assign_to=5))
+    assert client.calls[16].path == "/users/14"
+    assert client.calls[16].params == {"assignTo": "5"}
+
+    with pytest.raises(ValueError, match="Unexpected current user response"):
+        await UsersService(StubClient([[]])).get_me()
+
+    with pytest.raises(ValueError, match="Unexpected webhook events response"):
+        await WebhooksService(StubClient([[]])).get_webhook_event("event-1")
 
 
 @pytest.mark.asyncio

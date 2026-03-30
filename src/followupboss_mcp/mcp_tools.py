@@ -143,8 +143,12 @@ from followupboss_mcp.models.text_messages import (
     UpdateTextMessageTemplateRequest,
 )
 from followupboss_mcp.models.timeframes import TimeframeListRequest
-from followupboss_mcp.models.users import UserListRequest
-from followupboss_mcp.models.webhooks import CreateWebhookRequest, WebhookListRequest
+from followupboss_mcp.models.users import DeleteUserRequest, UserListRequest
+from followupboss_mcp.models.webhooks import (
+    CreateWebhookRequest,
+    UpdateWebhookRequest,
+    WebhookListRequest,
+)
 from followupboss_mcp.services.action_plans import ActionPlansService
 from followupboss_mcp.services.appointment_metadata import (
     AppointmentOutcomesService,
@@ -231,6 +235,18 @@ class UpdatePersonToolInput(UpdatePersonRequest):
 
 class GetUserToolInput(RequestModel):
     """Tool input for fetching a user by ID."""
+
+    user_id: int
+
+
+class DeletePersonToolInput(RequestModel):
+    """Tool input for deleting a person."""
+
+    person_id: int
+
+
+class DeleteUserToolInput(DeleteUserRequest):
+    """Tool input for deleting a user."""
 
     user_id: int
 
@@ -409,6 +425,12 @@ class GetWebhookToolInput(RequestModel):
     webhook_id: int
 
 
+class GetWebhookEventToolInput(RequestModel):
+    """Tool input for fetching a webhook event by ID."""
+
+    webhook_event_id: str
+
+
 class UpdateNoteToolInput(UpdateNoteRequest):
     """Tool input for updating a note."""
 
@@ -419,6 +441,12 @@ class UpdateTaskToolInput(UpdateTaskRequest):
     """Tool input for updating a task."""
 
     task_id: int
+
+
+class UpdateWebhookToolInput(UpdateWebhookRequest):
+    """Tool input for updating a webhook."""
+
+    webhook_id: int
 
 
 class UpdateCallToolInput(UpdateCallRequest):
@@ -1035,6 +1063,14 @@ class FollowUpBossToolAdapter:
             identifier_value=tool_input.person_id,
         )
 
+    async def delete_person(self, tool_input: DeletePersonToolInput) -> dict[str, Any]:
+        """Delete a person."""
+        return await self._delete_result(
+            lambda: self._services.people.delete_person(tool_input.person_id),
+            identifier_key="personId",
+            identifier_value=tool_input.person_id,
+        )
+
     async def get_person_attachment(
         self,
         tool_input: GetPersonAttachmentToolInput,
@@ -1392,9 +1428,32 @@ class FollowUpBossToolAdapter:
             key="users",
         )
 
+    async def get_me(self) -> dict[str, Any]:
+        """Get the currently authenticated user with sensitive fields redacted."""
+        try:
+            result = await self._services.users.get_me()
+        except FollowUpBossError as exc:
+            raise RuntimeError(_mcp_safe_error(exc)) from exc
+        safe_result = result.redacted_for_mcp()
+        return safe_result.model_dump(
+            mode="json",
+            by_alias=True,
+            exclude_defaults=True,
+            exclude_none=True,
+        )
+
     async def get_user(self, tool_input: GetUserToolInput) -> dict[str, Any]:
         """Get a user."""
         return await self._single_result(lambda: self._services.users.get_user(tool_input.user_id))
+
+    async def delete_user(self, tool_input: DeleteUserToolInput) -> dict[str, Any]:
+        """Delete a user."""
+        request = DeleteUserRequest.model_validate(tool_input.model_dump(exclude={"user_id"}))
+        return await self._delete_result(
+            lambda: self._services.users.delete_user(tool_input.user_id, request),
+            identifier_key="userId",
+            identifier_value=tool_input.user_id,
+        )
 
     async def list_custom_fields(self, tool_input: CustomFieldListRequest) -> dict[str, Any]:
         """List custom fields."""
@@ -2013,9 +2072,22 @@ class FollowUpBossToolAdapter:
             lambda: self._services.webhooks.get_webhook(tool_input.webhook_id)
         )
 
+    async def get_webhook_event(self, tool_input: GetWebhookEventToolInput) -> dict[str, Any]:
+        """Get a webhook event."""
+        return await self._single_result(
+            lambda: self._services.webhooks.get_webhook_event(tool_input.webhook_event_id)
+        )
+
     async def create_webhook(self, tool_input: CreateWebhookRequest) -> dict[str, Any]:
         """Create a webhook."""
         return await self._single_result(lambda: self._services.webhooks.create_webhook(tool_input))
+
+    async def update_webhook(self, tool_input: UpdateWebhookToolInput) -> dict[str, Any]:
+        """Update a webhook."""
+        request = UpdateWebhookRequest.model_validate(tool_input.model_dump(exclude={"webhook_id"}))
+        return await self._single_result(
+            lambda: self._services.webhooks.update_webhook(tool_input.webhook_id, request)
+        )
 
     async def delete_webhook(self, tool_input: DeleteWebhookToolInput) -> dict[str, Any]:
         """Delete a webhook."""

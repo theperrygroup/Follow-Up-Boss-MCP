@@ -24,6 +24,7 @@ from followupboss_mcp.mcp_tools import (
     DeleteNoteToolInput,
     DeletePeopleRelationshipToolInput,
     DeletePersonAttachmentToolInput,
+    DeletePersonToolInput,
     DeletePipelineToolInput,
     DeletePondToolInput,
     DeleteReactionToolInput,
@@ -32,6 +33,7 @@ from followupboss_mcp.mcp_tools import (
     DeleteTeamToolInput,
     DeleteTemplateToolInput,
     DeleteTextMessageTemplateToolInput,
+    DeleteUserToolInput,
     DeleteWebhookToolInput,
     FollowUpBossToolAdapter,
     GetAppointmentOutcomeToolInput,
@@ -62,6 +64,7 @@ from followupboss_mcp.mcp_tools import (
     GetTextMessageToolInput,
     GetThreadedReplyToolInput,
     GetUserToolInput,
+    GetWebhookEventToolInput,
     GetWebhookToolInput,
     IgnoreUnclaimedPersonToolInput,
     ListInboxAppInstallationsToolInput,
@@ -91,6 +94,7 @@ from followupboss_mcp.mcp_tools import (
     UpdateTeamToolInput,
     UpdateTemplateToolInput,
     UpdateTextMessageTemplateToolInput,
+    UpdateWebhookToolInput,
 )
 from followupboss_mcp.models.action_plans import (
     ActionPlanListRequest,
@@ -177,7 +181,10 @@ from followupboss_mcp.models.text_messages import (
 )
 from followupboss_mcp.models.timeframes import TimeframeListRequest
 from followupboss_mcp.models.users import UserListRequest
-from followupboss_mcp.models.webhooks import CreateWebhookRequest, WebhookListRequest
+from followupboss_mcp.models.webhooks import (
+    CreateWebhookRequest,
+    WebhookListRequest,
+)
 from mcp.server.fastmcp import FastMCP
 
 
@@ -472,6 +479,13 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
         return await adapter.ignore_unclaimed_person(
             IgnoreUnclaimedPersonToolInput(person_id=person_id)
         )
+
+    @mcp.tool(
+        name="followupboss_delete_person",
+        description="Delete a Follow Up Boss person by ID.",
+    )
+    async def followupboss_delete_person(person_id: int) -> dict[str, object]:
+        return await adapter.delete_person(DeletePersonToolInput(person_id=person_id))
 
 
 def _register_people_relationship_tools(
@@ -1506,6 +1520,15 @@ def _register_user_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
     """
 
     @mcp.tool(
+        name="followupboss_get_me",
+        description=(
+            "Retrieve the current Follow Up Boss user profile with sensitive keys redacted."
+        ),
+    )
+    async def followupboss_get_me() -> dict[str, object]:
+        return await adapter.get_me()
+
+    @mcp.tool(
         name="followupboss_list_users",
         description="List Follow Up Boss users with pagination metadata.",
     )
@@ -1549,6 +1572,13 @@ def _register_user_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
     )
     async def followupboss_get_user(user_id: int) -> dict[str, object]:
         return await adapter.get_user(GetUserToolInput(user_id=user_id))
+
+    @mcp.tool(
+        name="followupboss_delete_user",
+        description="Delete a Follow Up Boss user by ID and reassign their leads.",
+    )
+    async def followupboss_delete_user(user_id: int, assign_to: int) -> dict[str, object]:
+        return await adapter.delete_user(DeleteUserToolInput(user_id=user_id, assign_to=assign_to))
 
 
 def _register_appointment_metadata_tools(
@@ -3170,11 +3200,42 @@ def _register_webhook_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> N
         return await adapter.get_webhook(GetWebhookToolInput(webhook_id=webhook_id))
 
     @mcp.tool(
+        name="followupboss_get_webhook_event",
+        description="Fetch a single Follow Up Boss webhook event by ID.",
+    )
+    async def followupboss_get_webhook_event(webhook_event_id: str) -> dict[str, object]:
+        return await adapter.get_webhook_event(
+            GetWebhookEventToolInput(webhook_event_id=webhook_event_id)
+        )
+
+    @mcp.tool(
         name="followupboss_create_webhook",
         description="Create a Follow Up Boss webhook for a documented event name.",
     )
     async def followupboss_create_webhook(event: str, url: str) -> dict[str, object]:
         return await adapter.create_webhook(CreateWebhookRequest(event=event, url=url))
+
+    @mcp.tool(
+        name="followupboss_update_webhook",
+        description="Update a Follow Up Boss webhook by ID.",
+    )
+    async def followupboss_update_webhook(
+        webhook_id: int,
+        *,
+        event: str | None = None,
+        status: str | None = None,
+        url: str | None = None,
+    ) -> dict[str, object]:
+        return await adapter.update_webhook(
+            UpdateWebhookToolInput.model_validate(
+                {
+                    "webhook_id": webhook_id,
+                    "event": event,
+                    "status": status,
+                    "url": url,
+                }
+            )
+        )
 
     @mcp.tool(
         name="followupboss_delete_webhook",

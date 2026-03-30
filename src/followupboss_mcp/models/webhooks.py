@@ -38,6 +38,18 @@ class WebhookRecord(ResponseModel):
     url: str | None = None
 
 
+class WebhookEventRecord(ResponseModel):
+    """Webhook event resource returned by the API."""
+
+    data: dict[str, object] | None = None
+    event: str | None = None
+    event_created: str | None = Field(default=None, alias="eventCreated")
+    event_id: str | None = Field(default=None, alias="eventId")
+    id: str
+    resource_ids: list[int] = Field(default_factory=list, alias="resourceIds")
+    uri: str | None = None
+
+
 class WebhookEventNotification(ResponseModel):
     """Inbound webhook notification payload."""
 

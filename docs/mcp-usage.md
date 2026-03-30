@@ -21,10 +21,12 @@ All tools are namespaced with the `followupboss_` prefix.
 | Tool | Purpose |
 | --- | --- |
 | `followupboss_get_identity` | Return identity information for the authenticated Follow Up Boss account and user. |
+| `followupboss_get_me` | Retrieve the current Follow Up Boss user profile with sensitive keys redacted. |
 | `followupboss_search_people` | Search people with documented filters and pagination metadata. |
 | `followupboss_get_person` | Retrieve one person by ID. |
 | `followupboss_create_person` | Create a person directly. |
 | `followupboss_update_person` | Update a person directly. |
+| `followupboss_delete_person` | Delete a person by ID and return a structured confirmation. |
 | `followupboss_check_duplicate_person` | Check whether a person already exists by email or phone. |
 | `followupboss_list_unclaimed_people` | List unclaimed leads available to the authenticated user. |
 | `followupboss_claim_person` | Claim an unclaimed lead by person ID. |
@@ -34,6 +36,7 @@ All tools are namespaced with the `followupboss_` prefix.
 | `followupboss_send_event` | Send a canonical `POST /events` lead or lead-activity payload. |
 | `followupboss_list_users` | List users with pagination metadata. |
 | `followupboss_get_user` | Retrieve one user by ID. |
+| `followupboss_delete_user` | Delete a user by ID, require a reassignment target, and return a structured confirmation. |
 | `followupboss_list_custom_fields` | List available Follow Up Boss custom fields. |
 | `followupboss_get_custom_field` | Retrieve one custom field by ID. |
 | `followupboss_create_custom_field` | Create a custom field. |
@@ -166,7 +169,9 @@ All tools are namespaced with the `followupboss_` prefix.
 | `followupboss_delete_note` | Delete one note by ID and return a structured confirmation. |
 | `followupboss_list_webhooks` | List registered webhooks with pagination metadata. |
 | `followupboss_get_webhook` | Retrieve one webhook by ID. |
+| `followupboss_get_webhook_event` | Retrieve one webhook event by ID. |
 | `followupboss_create_webhook` | Create a webhook subscription. |
+| `followupboss_update_webhook` | Update one webhook by ID. |
 | `followupboss_delete_webhook` | Delete a webhook by ID and return a structured confirmation. |
 
 ## MCP Resource
