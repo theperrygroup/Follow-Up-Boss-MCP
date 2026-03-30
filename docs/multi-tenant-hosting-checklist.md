@@ -65,7 +65,7 @@ of a single process-wide credential.
 - [ ] Decide what local development fallback is acceptable for secret storage.
 - [ ] Define minimum audit logging requirements for tenant authentication and upstream Follow Up
       Boss usage.
-- [ ] Define token revocation, expiration, and credential-rotation requirements.
+- [x] Define token revocation, expiration, and credential-rotation requirements.
 
 ## Phase 1: Split Server Config From Tenant Credentials
 
@@ -92,7 +92,7 @@ of a single process-wide credential.
 - [ ] Another production-safe secret storage pattern.
 - [x] Implement a development-safe store for local testing.
 - [ ] Ensure tenant credentials are encrypted at rest or retrieved from a managed secret store.
-- [ ] Define how secret rotation updates the stored tenant credential without downtime.
+- [x] Define how secret rotation updates the stored tenant credential without downtime.
 - [x] Define how disabled tenants, revoked credentials, and missing credentials are surfaced.
 - [x] Add tests for tenant lookup, credential lookup, disabled tenants, and missing-secret cases.
 
@@ -143,7 +143,7 @@ of a single process-wide credential.
 - [x] Add per-tenant audit events for authentication, tenant resolution, and upstream credential
       usage where appropriate.
 - [x] Add per-tenant rate limiting or abuse controls for the hosted endpoint.
-- [ ] Document token revocation and emergency credential rotation procedures.
+- [x] Document token revocation and emergency credential rotation procedures.
 - [x] Confirm the hosted design fails closed when the tenant store or secret store is unavailable.
 - [ ] Re-review webhook and attachment flows for tenant-isolation assumptions.
 
@@ -164,10 +164,10 @@ of a single process-wide credential.
 
 - [ ] Update `docs/architecture.md` for the new hosted multi-tenant runtime model.
 - [ ] Update `docs/mcp-usage.md` to explain hosted authentication requirements.
-- [ ] Update `docs/security.md` with tenant secret handling, inbound auth, and rotation guidance.
+- [x] Update `docs/security.md` with tenant secret handling, inbound auth, and rotation guidance.
 - [ ] Add a hosted deployment guide that explains required infrastructure and secrets.
 - [ ] Document the expected customer onboarding flow for saving their Follow Up Boss credential.
-- [ ] Document how to disable a tenant, revoke a token, and rotate a compromised credential.
+- [x] Document how to disable a tenant, revoke a token, and rotate a compromised credential.
 - [ ] Decide whether `README.md` should describe the hosted multi-tenant path directly or point to
       a dedicated deployment document.
 
@@ -200,7 +200,7 @@ of a single process-wide credential.
 
 - [ ] Record the FastMCP auth hook choice and the rationale.
 - [ ] Record the tenant store interface and production implementation choice.
-- [ ] Record the inbound auth token format and revocation model.
+- [x] Record the inbound auth token format and revocation model.
 - [x] Record the client lifecycle choice: request-scoped or session-scoped.
 - [ ] Record the final staged validation commands and results.
 
@@ -257,3 +257,7 @@ of a single process-wide credential.
       explicit backend failure modes with fail-closed `503 temporarily_unavailable` as the default,
       and proved tenant/client budgets do not bleed across bearer tokens with
       `uv run pytest tests/unit/test_hosted_rate_limits.py tests/unit/test_hosted_auth.py tests/integration/test_hosted_auth_integration.py tests/mcp/test_hosted_auth_streamable_http.py`.
+- [x] Updated `docs/security.md` and `docs/security-incident-playbook.md` to record the hosted
+      bearer-token contract, per-request revocation model, no-downtime tenant credential-rotation
+      guidance, fail-closed operator expectations, audit signals, and the exact disable, revoke,
+      rotate, and recovery runbook for hosted tenants.
