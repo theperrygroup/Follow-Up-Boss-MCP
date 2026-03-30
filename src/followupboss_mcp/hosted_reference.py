@@ -923,9 +923,7 @@ def create_reference_hosted_server(
         region_name=resolved_hosted_settings.tenant_secret_region,
         secret_prefix=resolved_hosted_settings.tenant_secret_prefix,
     )
-    shared_postgres_pool = ReferenceHostedPostgresPool(
-        resolved_hosted_settings.tenant_database_url
-    )
+    shared_postgres_pool = ReferenceHostedPostgresPool(resolved_hosted_settings.tenant_database_url)
     tenant_store = PostgresAwsTenantStore(
         resolved_hosted_settings.tenant_database_url,
         secret_store=secret_store,
