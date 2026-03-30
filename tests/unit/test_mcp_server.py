@@ -373,3 +373,134 @@ async def test_create_server_hosted_lifespan_closes_rate_limiter(
     async with server._mcp_server.lifespan(server._mcp_server):
         assert rate_limiter.closed is False
     assert rate_limiter.closed is True
+
+
+@pytest.mark.asyncio
+async def test_create_server_hosted_lifespan_opens_and_closes_managed_resources(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Hosted lifespan should open managed resources and close them in reverse order."""
+
+    class RecordingRateLimiter(HostedEndpointRateLimiter):
+        """Hosted rate limiter stub that records whether `aclose()` was called."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.closed = False
+
+        async def aclose(self) -> None:
+            """Record hosted rate limiter shutdown."""
+            self.closed = True
+
+    class RecordingResource:
+        """Async managed resource stub that records open and close ordering."""
+
+        def __init__(self, name: str, events: list[str]) -> None:
+            """Initialize the recording resource.
+
+            Args:
+                name: The resource label recorded in lifecycle events.
+                events: Shared lifecycle event log.
+            """
+            self._events = events
+            self._name = name
+
+        async def open(self) -> None:
+            """Record resource startup."""
+            self._events.append(f"open:{self._name}")
+
+        async def aclose(self) -> None:
+            """Record resource shutdown."""
+            self._events.append(f"close:{self._name}")
+
+    monkeypatch.setattr(
+        "followupboss_mcp.mcp_server.register_server_surface",
+        _noop_register_server_surface,
+    )
+    events: list[str] = []
+    rate_limiter = RecordingRateLimiter()
+    resources = (
+        RecordingResource("first", events),
+        RecordingResource("second", events),
+    )
+    server = cast(
+        FollowUpBossFastMCP,
+        create_server(
+            hosted_auth=_hosted_auth_settings(),
+            hosted_token_verifier=_hosted_token_verifier(),
+            tenant_store=_tenant_store(),
+            hosted_rate_limiter=rate_limiter,
+            managed_resources=resources,
+        ),
+    )
+
+    async with server._mcp_server.lifespan(server._mcp_server):
+        assert events == ["open:first", "open:second"]
+        assert rate_limiter.closed is False
+    assert events == [
+        "open:first",
+        "open:second",
+        "close:second",
+        "close:first",
+    ]
+    assert rate_limiter.closed is True
+
+
+@pytest.mark.asyncio
+async def test_create_server_local_lifespan_skips_rate_limiter_shutdown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Local lifespan should still open and close managed resources without a hosted limiter."""
+
+    class RecordingClient:
+        """Minimal client stub that records shutdown."""
+
+        def __init__(self) -> None:
+            """Initialize the recording client."""
+            self.closed = False
+
+        async def aclose(self) -> None:
+            """Record client shutdown."""
+            self.closed = True
+
+    class RecordingResource:
+        """Async managed resource stub that records open and close ordering."""
+
+        def __init__(self, name: str, events: list[str]) -> None:
+            """Initialize the recording resource.
+
+            Args:
+                name: The resource label recorded in lifecycle events.
+                events: Shared lifecycle event log.
+            """
+            self._events = events
+            self._name = name
+
+        async def open(self) -> None:
+            """Record resource startup."""
+            self._events.append(f"open:{self._name}")
+
+        async def aclose(self) -> None:
+            """Record resource shutdown."""
+            self._events.append(f"close:{self._name}")
+
+    monkeypatch.setattr(
+        "followupboss_mcp.mcp_server.register_server_surface",
+        _noop_register_server_surface,
+    )
+    events: list[str] = []
+    client = RecordingClient()
+    resources = (RecordingResource("only", events),)
+    server = cast(
+        FollowUpBossFastMCP,
+        create_server(
+            client=cast(FollowUpBossClientProtocol, client),
+            managed_resources=resources,
+        ),
+    )
+
+    async with server._mcp_server.lifespan(server._mcp_server):
+        assert events == ["open:only"]
+        assert client.closed is False
+    assert events == ["open:only", "close:only"]
+    assert client.closed is True

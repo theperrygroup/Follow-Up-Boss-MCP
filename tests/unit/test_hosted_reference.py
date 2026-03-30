@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from pydantic import SecretStr, ValidationError
@@ -161,11 +162,11 @@ class FakeConnection:
         """Exit the async context manager for the fake connection."""
         del exc_type, exc, tb
 
-    def cursor(self, *, row_factory: object) -> FakeCursor:
+    def cursor(self, *, row_factory: object | None = None) -> FakeCursor:
         """Return one fake cursor.
 
         Args:
-            row_factory: The requested row factory.
+            row_factory: The requested row factory when one is supplied.
 
         Returns:
             The fake cursor bound to this connection.
@@ -175,7 +176,7 @@ class FakeConnection:
 
 
 class FakeConnectionFactory:
-    """Factory stub for `psycopg.AsyncConnection.connect`."""
+    """Factory stub that can act as a fake PostgreSQL pool."""
 
     def __init__(self, results: list[Mapping[str, object] | None | Exception]) -> None:
         """Initialize the fake connection factory.
@@ -187,13 +188,12 @@ class FakeConnectionFactory:
         self._results = list(results)
         self.connection_strings: list[str] = []
         self.execute_calls: list[tuple[str, tuple[object, ...]]] = []
+        self.connection_requests = 0
+        self.open_calls = 0
+        self.closed = False
 
-    async def connect(self, connection_string: str) -> FakeConnection:
+    def _next_connection(self) -> FakeConnection:
         """Return the next fake connection or raise the next configured error.
-
-        Args:
-            connection_string: The PostgreSQL connection string supplied by the
-                production code.
 
         Returns:
             A fake async connection object.
@@ -201,11 +201,80 @@ class FakeConnectionFactory:
         Raises:
             Exception: The next configured exception result.
         """
-        self.connection_strings.append(connection_string)
+        self.connection_requests += 1
         next_result = self._results.pop(0)
         if isinstance(next_result, Exception):
             raise next_result
         return FakeConnection(row=next_result, execute_calls=self.execute_calls)
+
+    async def connect(self, connection_string: str, **kwargs: object) -> FakeConnection:
+        """Return the next fake connection for direct psycopg connect calls.
+
+        Args:
+            connection_string: The PostgreSQL connection string supplied by the
+                production code.
+            **kwargs: Additional connection keyword arguments.
+
+        Returns:
+            A fake async connection object.
+        """
+        del kwargs
+        self.connection_strings.append(connection_string)
+        return self._next_connection()
+
+    async def open(self) -> None:
+        """Record that the fake pool was opened."""
+        self.open_calls += 1
+
+    @asynccontextmanager
+    async def connection(self) -> AsyncIterator[FakeConnection]:
+        """Yield the next fake connection through the pool interface."""
+        yield self._next_connection()
+
+    async def aclose(self) -> None:
+        """Mark the fake pool as closed."""
+        self.closed = True
+
+
+class FakeAsyncConnectionManager:
+    """Async context manager stub used by pool-wrapper tests."""
+
+    async def __aenter__(self) -> FakeConnection:
+        """Return one empty fake connection."""
+        return FakeConnection(row=None, execute_calls=[])
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: object | None,
+    ) -> None:
+        """Exit the async context manager for the fake pooled connection."""
+        del exc_type, exc, tb
+
+
+class FakeAsyncConnectionPool:
+    """Minimal async pool stub used by `ReferenceHostedPostgresPool` tests."""
+
+    def __init__(self) -> None:
+        """Initialize the fake async pool."""
+        self.connection_calls = 0
+        self.connection_manager = FakeAsyncConnectionManager()
+        self.open_calls = 0
+        self.close_calls = 0
+
+    async def open(self) -> None:
+        """Record one pool-open request."""
+        self.open_calls += 1
+
+    def connection(self) -> FakeAsyncConnectionManager:
+        """Return the configured async connection manager."""
+        self.connection_calls += 1
+        return self.connection_manager
+
+    async def close(self) -> None:
+        """Record one pool-close request."""
+        self.close_calls += 1
 
 
 class FakeRedisClient:
@@ -262,6 +331,62 @@ def test_hash_hosted_bearer_token_and_secret_payload_validation() -> None:
                 "access_token": "oauth-token",
             }
         )
+
+
+@pytest.mark.asyncio
+async def test_reference_hosted_postgres_pool_wraps_pool_methods(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The managed PostgreSQL pool wrapper should proxy open, connection, and close calls."""
+    captured: dict[str, object] = {}
+    fake_pool = FakeAsyncConnectionPool()
+
+    def fake_async_connection_pool(
+        *, conninfo: str, kwargs: dict[str, object], open: bool
+    ) -> FakeAsyncConnectionPool:
+        captured["conninfo"] = conninfo
+        captured["kwargs"] = kwargs
+        captured["open"] = open
+        return fake_pool
+
+    monkeypatch.setattr(
+        "followupboss_mcp.hosted_reference.AsyncConnectionPool",
+        fake_async_connection_pool,
+    )
+
+    pool = hosted_reference.ReferenceHostedPostgresPool(
+        "postgresql://app:secret@db.example.com:5432/fub"
+    )
+    await pool.open()
+    pool.connection()
+    await pool.aclose()
+
+    assert hosted_reference._secret_value("plain-secret") == "plain-secret"
+    assert captured["conninfo"] == "postgresql://app:secret@db.example.com:5432/fub"
+    assert captured["open"] is False
+    kwargs = cast(dict[str, object], captured["kwargs"])
+    assert set(kwargs) == {"row_factory"}
+    assert fake_pool.open_calls == 1
+    assert fake_pool.connection_calls == 1
+    assert fake_pool.close_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_reference_hosted_postgres_pool_skips_close_for_injected_pool() -> None:
+    """Injected async pools should not be closed by the wrapper."""
+    fake_pool = FakeAsyncConnectionPool()
+    pool = hosted_reference.ReferenceHostedPostgresPool(
+        "postgresql://app:secret@db.example.com:5432/fub",
+        pool=cast(Any, fake_pool),
+    )
+
+    await pool.open()
+    pool.connection()
+    await pool.aclose()
+
+    assert fake_pool.open_calls == 1
+    assert fake_pool.connection_calls == 1
+    assert fake_pool.close_calls == 0
 
 
 def test_hosted_deployment_settings_normalize_and_project_models() -> None:
@@ -411,9 +536,7 @@ async def test_aws_secret_store_accepts_bytes_payload_and_rejects_missing_payloa
 
 
 @pytest.mark.asyncio
-async def test_postgres_hosted_token_verifier_hashes_tokens_and_returns_identity(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_postgres_hosted_token_verifier_hashes_tokens_and_returns_identity() -> None:
     """The PostgreSQL hosted token verifier should hash tokens and return matching identities."""
     factory = FakeConnectionFactory(
         [
@@ -429,12 +552,8 @@ async def test_postgres_hosted_token_verifier_hashes_tokens_and_returns_identity
             None,
         ]
     )
-    monkeypatch.setattr(
-        "followupboss_mcp.hosted_reference.psycopg.AsyncConnection.connect",
-        factory.connect,
-    )
     verifier = PostgresHostedTokenVerifier(
-        SecretStr("postgresql://app:secret@db.example.com:5432/fub"),
+        pool=cast(hosted_reference.ReferenceHostedPostgresPool, factory),
         time_provider=lambda: 123,
     )
 
@@ -446,17 +565,25 @@ async def test_postgres_hosted_token_verifier_hashes_tokens_and_returns_identity
     assert identity.scopes == ("followupboss:mcp",)
     assert identity.credential_id == "credential-1"
     assert missing_identity is None
-    assert factory.connection_strings == [
-        "postgresql://app:secret@db.example.com:5432/fub",
-        "postgresql://app:secret@db.example.com:5432/fub",
-    ]
+    assert factory.open_calls == 2
+    assert factory.connection_requests == 2
     assert factory.execute_calls[0][1] == (hash_hosted_bearer_token("hosted-token"), 123)
 
 
+def test_postgres_hosted_components_require_database_url_without_injected_pool() -> None:
+    """Hosted PostgreSQL components should reject missing database URLs without a pool."""
+    with pytest.raises(ValueError, match="database_url is required when pool is not provided."):
+        PostgresHostedTokenVerifier()
+    with pytest.raises(ValueError, match="database_url is required when pool is not provided."):
+        PostgresAwsTenantStore(
+            secret_store=FakeSecretStore(
+                ReferenceHostedSecretPayload.model_validate({"api_key": "secret-key"})
+            )
+        )
+
+
 @pytest.mark.asyncio
-async def test_postgres_aws_tenant_store_resolves_tenant_with_string_system_name(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_postgres_aws_tenant_store_resolves_tenant_with_string_system_name() -> None:
     """The PostgreSQL and AWS-backed tenant store should assemble tenant credentials."""
     factory = FakeConnectionFactory(
         [
@@ -477,16 +604,12 @@ async def test_postgres_aws_tenant_store_resolves_tenant_with_string_system_name
             },
         ]
     )
-    monkeypatch.setattr(
-        "followupboss_mcp.hosted_reference.psycopg.AsyncConnection.connect",
-        factory.connect,
-    )
     secret_store = FakeSecretStore(
         ReferenceHostedSecretPayload.model_validate({"api_key": "secret-key"})
     )
     store = PostgresAwsTenantStore(
-        SecretStr("postgresql://app:secret@db.example.com:5432/fub"),
         secret_store=secret_store,
+        pool=cast(hosted_reference.ReferenceHostedPostgresPool, factory),
     )
 
     resolved = await store.resolve_tenant("tenant-1")
@@ -496,16 +619,12 @@ async def test_postgres_aws_tenant_store_resolves_tenant_with_string_system_name
     assert resolved.credential.api_key is not None
     assert resolved.credential.api_key.get_secret_value() == "secret-key"
     assert secret_store.secret_refs == ["followupboss/prod/tenants/tenant-1/credential-1"]
-    assert factory.connection_strings == [
-        "postgresql://app:secret@db.example.com:5432/fub",
-        "postgresql://app:secret@db.example.com:5432/fub",
-    ]
+    assert factory.open_calls == 2
+    assert factory.connection_requests == 2
 
 
 @pytest.mark.asyncio
-async def test_postgres_aws_tenant_store_supports_missing_rows_and_optional_system_name(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_postgres_aws_tenant_store_supports_missing_rows_and_optional_system_name() -> None:
     """The PostgreSQL and AWS-backed tenant store should pass through missing rows safely."""
     factory = FakeConnectionFactory(
         [
@@ -521,15 +640,12 @@ async def test_postgres_aws_tenant_store_supports_missing_rows_and_optional_syst
             None,
         ]
     )
-    monkeypatch.setattr(
-        "followupboss_mcp.hosted_reference.psycopg.AsyncConnection.connect",
-        factory.connect,
-    )
     secret_store = FakeSecretStore(
         ReferenceHostedSecretPayload.model_validate({"access_token": "oauth-token"})
     )
     store = PostgresAwsTenantStore(
-        "postgresql://app:secret@db.example.com:5432/fub", secret_store=secret_store
+        secret_store=secret_store,
+        pool=cast(hosted_reference.ReferenceHostedPostgresPool, factory),
     )
 
     missing_tenant = await store.get_tenant("missing-tenant")
@@ -545,37 +661,95 @@ async def test_postgres_aws_tenant_store_supports_missing_rows_and_optional_syst
 
 
 @pytest.mark.asyncio
-async def test_postgres_aws_tenant_store_wraps_database_failures(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_postgres_aws_tenant_store_wraps_database_failures() -> None:
     """The PostgreSQL and AWS-backed tenant store should map database failures to safe errors."""
     tenant_factory = FakeConnectionFactory([RuntimeError("db down")])
-    monkeypatch.setattr(
-        "followupboss_mcp.hosted_reference.psycopg.AsyncConnection.connect",
-        tenant_factory.connect,
-    )
     tenant_store = PostgresAwsTenantStore(
-        "postgresql://app:secret@db.example.com:5432/fub",
         secret_store=FakeSecretStore(
             ReferenceHostedSecretPayload.model_validate({"api_key": "secret-key"})
         ),
+        pool=cast(hosted_reference.ReferenceHostedPostgresPool, tenant_factory),
     )
     with pytest.raises(TenantStoreUnavailableError, match="Tenant store is unavailable."):
         await tenant_store.get_tenant("tenant-1")
 
     credential_factory = FakeConnectionFactory([RuntimeError("db down")])
-    monkeypatch.setattr(
-        "followupboss_mcp.hosted_reference.psycopg.AsyncConnection.connect",
-        credential_factory.connect,
-    )
     credential_store = PostgresAwsTenantStore(
-        "postgresql://app:secret@db.example.com:5432/fub",
+        secret_store=FakeSecretStore(
+            ReferenceHostedSecretPayload.model_validate({"api_key": "secret-key"})
+        ),
+        pool=cast(hosted_reference.ReferenceHostedPostgresPool, credential_factory),
+    )
+    with pytest.raises(TenantStoreUnavailableError, match="Tenant store is unavailable."):
+        await credential_store.get_credential("credential-1")
+
+
+@pytest.mark.asyncio
+async def test_postgres_hosted_components_close_owned_pools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Hosted PostgreSQL components should close pools they construct themselves."""
+    created_pools: list[object] = []
+
+    class RecordingPool:
+        def __init__(self, database_url: SecretStr | str) -> None:
+            self.database_url = database_url
+            self.closed = False
+            created_pools.append(self)
+
+        async def open(self) -> None:
+            """Reject unexpected open requests in this close-path test."""
+            raise AssertionError("open() should not be called in this test.")
+
+        def connection(self) -> FakeAsyncConnectionManager:
+            """Reject unexpected connection requests in this close-path test."""
+            raise AssertionError("connection() should not be called in this test.")
+
+        async def aclose(self) -> None:
+            """Record that the fake owned pool was closed."""
+            self.closed = True
+
+    monkeypatch.setattr(
+        "followupboss_mcp.hosted_reference.ReferenceHostedPostgresPool", RecordingPool
+    )
+
+    verifier = PostgresHostedTokenVerifier(
+        SecretStr("postgresql://app:secret@db.example.com:5432/fub")
+    )
+    store = PostgresAwsTenantStore(
+        SecretStr("postgresql://app:secret@db.example.com:5432/fub"),
         secret_store=FakeSecretStore(
             ReferenceHostedSecretPayload.model_validate({"api_key": "secret-key"})
         ),
     )
-    with pytest.raises(TenantStoreUnavailableError, match="Tenant store is unavailable."):
-        await credential_store.get_credential("credential-1")
+
+    await verifier.aclose()
+    await store.aclose()
+
+    assert len(created_pools) == 2
+    assert all(getattr(pool, "closed", False) for pool in created_pools)
+
+
+@pytest.mark.asyncio
+async def test_postgres_hosted_components_skip_close_for_injected_pools() -> None:
+    """Injected PostgreSQL pools should not be closed by hosted components."""
+    verifier_pool = FakeConnectionFactory([])
+    credential_pool = FakeConnectionFactory([])
+    verifier = PostgresHostedTokenVerifier(
+        pool=cast(hosted_reference.ReferenceHostedPostgresPool, verifier_pool)
+    )
+    store = PostgresAwsTenantStore(
+        secret_store=FakeSecretStore(
+            ReferenceHostedSecretPayload.model_validate({"api_key": "secret-key"})
+        ),
+        pool=cast(hosted_reference.ReferenceHostedPostgresPool, credential_pool),
+    )
+
+    await verifier.aclose()
+    await store.aclose()
+
+    assert verifier_pool.closed is False
+    assert credential_pool.closed is False
 
 
 @pytest.mark.asyncio
@@ -650,10 +824,17 @@ def test_create_reference_hosted_server_builds_reference_components(
             }
 
     class FakeTenantStore:
-        def __init__(self, database_url: SecretStr, *, secret_store: object) -> None:
+        def __init__(
+            self,
+            database_url: SecretStr,
+            *,
+            secret_store: object,
+            pool: object | None = None,
+        ) -> None:
             captured["tenant_store"] = {
                 "database_url": database_url.get_secret_value(),
                 "secret_store": secret_store,
+                "pool": pool,
             }
 
     class FakeRedisBackend:
@@ -661,8 +842,11 @@ def test_create_reference_hosted_server_builds_reference_components(
             captured["redis_backend"] = redis_url.get_secret_value()
 
     class FakeTokenVerifier:
-        def __init__(self, database_url: SecretStr) -> None:
-            captured["token_verifier"] = database_url.get_secret_value()
+        def __init__(self, database_url: SecretStr, *, pool: object | None = None) -> None:
+            captured["token_verifier"] = {
+                "database_url": database_url.get_secret_value(),
+                "pool": pool,
+            }
 
     class FakeServer:
         pass
@@ -725,7 +909,11 @@ def test_create_reference_hosted_server_builds_reference_components(
         == "postgresql://app:secret@db.example.com:5432/fub"
     )
     assert captured["redis_backend"] == "redis://cache.example.com:6379/0"
-    assert captured["token_verifier"] == "postgresql://app:secret@db.example.com:5432/fub"
+    assert (
+        captured["token_verifier"]["database_url"]
+        == "postgresql://app:secret@db.example.com:5432/fub"
+    )
+    assert captured["tenant_store"]["pool"] is captured["token_verifier"]["pool"]
     created_kwargs = captured["create_server"]["kwargs"]
     assert created_kwargs["server_settings"].transport == "streamable-http"
     assert created_kwargs["hosted_auth"].required_scopes == ("followupboss:mcp",)
@@ -753,16 +941,22 @@ def test_create_reference_hosted_server_loads_hosted_settings_from_environment(
             captured["secret_store"] = (region_name, secret_prefix)
 
     class FakeTenantStore:
-        def __init__(self, database_url: SecretStr, *, secret_store: object) -> None:
-            captured["tenant_store"] = (database_url.get_secret_value(), secret_store)
+        def __init__(
+            self,
+            database_url: SecretStr,
+            *,
+            secret_store: object,
+            pool: object | None = None,
+        ) -> None:
+            captured["tenant_store"] = (database_url.get_secret_value(), secret_store, pool)
 
     class FakeRedisBackend:
         def __init__(self, redis_url: SecretStr) -> None:
             captured["redis_backend"] = redis_url.get_secret_value()
 
     class FakeTokenVerifier:
-        def __init__(self, database_url: SecretStr) -> None:
-            captured["token_verifier"] = database_url.get_secret_value()
+        def __init__(self, database_url: SecretStr, *, pool: object | None = None) -> None:
+            captured["token_verifier"] = (database_url.get_secret_value(), pool)
 
     class FakeServer:
         pass
@@ -803,6 +997,7 @@ def test_create_reference_hosted_server_loads_hosted_settings_from_environment(
     assert captured["secret_store"] == ("us-east-1", "followupboss/prod/tenants/")
     assert captured["tenant_store"][0] == "postgresql://app:secret@db.example.com:5432/fub"
     assert captured["redis_backend"] == "redis://cache.example.com:6379/0"
+    assert captured["tenant_store"][2] is captured["token_verifier"][1]
     assert captured["create_server"]["kwargs"]["hosted_auth"].required_scopes == (
         "followupboss:mcp",
     )
