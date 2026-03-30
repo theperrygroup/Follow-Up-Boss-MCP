@@ -20,7 +20,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `DELETE /personAttachments/{id}` | Implemented | Input only | Yes | Yes | Deletes a person attachment and returns structured deletion confirmation. |
 | `DELETE /pipelines/:id` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
 | `DELETE /ponds/:id` | Implemented | Input only | Yes | Yes | Delete requires assignTo and returns structured deletion confirmation. |
-| `DELETE /reactions/{refType}/{refId}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `DELETE /reactions/{refType}/{refId}` | Implemented | Input only | Yes | Yes | Deletes a reaction from a note, call, or threaded reply. |
 | `DELETE /stages/:id` | Implemented | Input only | Yes | Yes | Delete requires assignStageId and returns structured deletion confirmation. |
 | `DELETE /tasks/:id` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
 | `DELETE /teams/:id` | Implemented | Input only | Yes | Yes | Delete optionally supports moveToTeamId and returns structured deletion confirmation. |
@@ -72,7 +72,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `GET /pipelines/{id}` | Implemented | Yes | Yes | Yes | Single-pipeline lookup including stage definitions. |
 | `GET /ponds` | Implemented | Yes | Yes | Yes | Lists ponds with documented pagination metadata. |
 | `GET /ponds/:id` | Implemented | Yes | Yes | Yes | Single-pond lookup. |
-| `GET /reactions/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `GET /reactions/{id}` | Implemented | Yes | Yes | Yes | Fetches a single reaction by ID. |
 | `GET /smartLists` | Implemented | Yes | Yes | Yes | Lists smart lists with pagination metadata and documented fub2/all filters. |
 | `GET /smartLists/:id` | Implemented | Yes | Yes | Yes | Single-smart-list lookup. |
 | `GET /stages` | Implemented | Yes | Yes | Yes | Lists stages with pagination metadata and documented sort support. |
@@ -121,7 +121,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `POST /personAttachments` | Implemented | Yes | Yes | Yes | Creates a registered-system person attachment using an external URI. |
 | `POST /pipelines` | Implemented | Yes | Yes | Yes | Creates a pipeline with optional ordered stages. |
 | `POST /ponds` | Implemented | Yes | Yes | Yes | Creates a pond with a lead agent and full member list. |
-| `POST /reactions/{refType}/{refId}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `POST /reactions/{refType}/{refId}` | Implemented | Yes | Yes | Yes | Adds a reaction to a note, call, or threaded reply. |
 | `POST /stages` | Implemented | Yes | Yes | Yes | Creates a stage with optional orderWeight support. |
 | `POST /tasks` | Implemented | Yes | Yes | Yes | Requires a related person and an assignee. |
 | `POST /teams` | Implemented | Yes | Yes | Yes | Creates a team with members and optional leader IDs. |

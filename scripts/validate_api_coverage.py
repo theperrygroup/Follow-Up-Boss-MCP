@@ -318,6 +318,13 @@ COVERAGE_MAP: dict[str, dict[str, str]] = {
         "notes": "Deletes a people relationship and returns structured deletion confirmation.",
         "tests": "Yes",
     },
+    "DELETE /reactions/{refType}/{refId}": {
+        "implementation": "Implemented",
+        "mcp": "Yes",
+        "models": "Input only",
+        "notes": "Deletes a reaction from a note, call, or threaded reply.",
+        "tests": "Yes",
+    },
     "DELETE /personAttachments/{id}": {
         "implementation": "Implemented",
         "mcp": "Yes",
@@ -332,6 +339,13 @@ COVERAGE_MAP: dict[str, dict[str, str]] = {
         "notes": "Fetches a registered-system person attachment by ID.",
         "tests": "Yes",
     },
+    "GET /reactions/{id}": {
+        "implementation": "Implemented",
+        "mcp": "Yes",
+        "models": "Yes",
+        "notes": "Fetches a single reaction by ID.",
+        "tests": "Yes",
+    },
     "PUT /personAttachments/{id}": {
         "implementation": "Implemented",
         "mcp": "Yes",
@@ -344,6 +358,13 @@ COVERAGE_MAP: dict[str, dict[str, str]] = {
         "mcp": "Yes",
         "models": "Yes",
         "notes": "Creates a registered-system person attachment using an external URI.",
+        "tests": "Yes",
+    },
+    "POST /reactions/{refType}/{refId}": {
+        "implementation": "Implemented",
+        "mcp": "Yes",
+        "models": "Yes",
+        "notes": "Adds a reaction to a note, call, or threaded reply.",
         "tests": "Yes",
     },
     "GET /people": {

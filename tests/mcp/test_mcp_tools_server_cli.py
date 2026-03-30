@@ -21,10 +21,10 @@ from followupboss_mcp.config import FollowUpBossSettings
 from followupboss_mcp.errors import FollowUpBossRateLimitError, FollowUpBossValidationError
 from followupboss_mcp.mcp_server import create_server
 from followupboss_mcp.mcp_tools import (
-    AddReactionToolInput,
     AddInboxAppMessageToolInput,
     AddInboxAppNoteToolInput,
     AddInboxAppParticipantToolInput,
+    AddReactionToolInput,
     DeactivateInboxAppToolInput,
     DeleteAppointmentOutcomeToolInput,
     DeleteAppointmentToolInput,
@@ -196,7 +196,7 @@ from followupboss_mcp.models.pipelines import (
     PipelineStageInput,
 )
 from followupboss_mcp.models.ponds import CreatePondRequest, PondListRequest, PondRecord
-from followupboss_mcp.models.reactions import ReactionRecord
+from followupboss_mcp.models.reactions import ReactionAckRecord, ReactionRecord
 from followupboss_mcp.models.smart_lists import SmartListListRequest, SmartListRecord
 from followupboss_mcp.models.stages import (
     CreateStageRequest,
@@ -400,7 +400,7 @@ class StubBundle:
 
         async def reactions_add(ref_type: str, ref_id: int, request: object) -> object:
             del ref_type, ref_id, request
-            return SimpleNamespace(model_dump=lambda exclude_none=True: {})
+            return ReactionAckRecord()
 
         async def reactions_delete(
             ref_type: str,
@@ -1640,9 +1640,7 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     }
     assert (await adapter.get_reaction(GetReactionToolInput(reaction_id=1363)))["id"] == 1363
     assert (
-        await adapter.add_reaction(
-            AddReactionToolInput(ref_type="Note", ref_id=2144705, body="🤣")
-        )
+        await adapter.add_reaction(AddReactionToolInput(ref_type="Note", ref_id=2144705, body="🤣"))
     ) == {}
     assert (
         await adapter.delete_reaction(
@@ -2249,6 +2247,7 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         people_relationships=services.people_relationships,
         ponds=services.ponds,
         pipelines=services.pipelines,
+        reactions=services.reactions,
         smart_lists=services.smart_lists,
         stages=services.stages,
         tasks=services.tasks,
@@ -2798,6 +2797,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_add_inbox_app_note",
         "followupboss_add_inbox_app_participant",
         "followupboss_add_note",
+        "followupboss_add_reaction",
         "followupboss_apply_action_plan",
         "followupboss_create_appointment",
         "followupboss_create_appointment_outcome",
@@ -2833,6 +2833,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_delete_person_attachment",
         "followupboss_delete_pipeline",
         "followupboss_delete_pond",
+        "followupboss_delete_reaction",
         "followupboss_delete_stage",
         "followupboss_delete_task",
         "followupboss_delete_team",
@@ -2857,6 +2858,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_get_person_attachment",
         "followupboss_get_pipeline",
         "followupboss_get_pond",
+        "followupboss_get_reaction",
         "followupboss_get_smart_list",
         "followupboss_get_stage",
         "followupboss_get_task",
@@ -2967,6 +2969,12 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     assert await tools["followupboss_delete_people_relationship"].fn(423) == {
         "deleted": True,
         "peopleRelationshipId": 423,
+    }
+    assert (await tools["followupboss_get_reaction"].fn(1363))["id"] == 1363
+    assert await tools["followupboss_add_reaction"].fn("Note", 2144705, "🤣") == {}
+    assert await tools["followupboss_delete_reaction"].fn("Note", 2144705, emoji="👏") == {
+        "deleted": True,
+        "refId": 2144705,
     }
     assert (await tools["followupboss_search_events"].fn(person_id=1))["events"][0]["id"] == 6
     assert (await tools["followupboss_get_event"].fn(7))["id"] == 7

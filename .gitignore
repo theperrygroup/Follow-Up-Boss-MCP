@@ -12,3 +12,4 @@ uv.lock
 *.pyd
 *.swp
 .DS_Store
+.env
