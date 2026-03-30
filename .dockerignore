@@ -7,7 +7,6 @@
 .venv
 __pycache__
 dist
-docs
 examples
 htmlcov
 tests

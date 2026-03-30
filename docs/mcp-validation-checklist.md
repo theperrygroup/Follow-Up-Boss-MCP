@@ -80,7 +80,12 @@ The domain sections below follow the registration order from `register_server_su
 - [ ] Confirm the shell exports the repository-expected `FOLLOWUPBOSS_*` variables from `.env`.
 - [ ] Confirm `.env` provides either `FOLLOWUPBOSS_API_KEY` or `FOLLOWUPBOSS_ACCESS_TOKEN`, plus `FOLLOWUPBOSS_AUTH_MODE` if the default API-key mode is not being used.
 - [ ] If you want the owner-only webhook CRUD path to pass instead of skip, provide `FOLLOWUPBOSS_OWNER_API_KEY` or `FOLLOWUPBOSS_OWNER_ACCESS_TOKEN`, plus optional `FOLLOWUPBOSS_OWNER_AUTH_MODE`, `FOLLOWUPBOSS_OWNER_SYSTEM_NAME`, and `FOLLOWUPBOSS_OWNER_SYSTEM_KEY` overrides when needed.
-- [ ] Confirm optional `FOLLOWUPBOSS_SYSTEM_NAME` and `FOLLOWUPBOSS_SYSTEM_KEY` are present if you plan to validate webhook signing or any integration-header-dependent flow.
+- [ ] If you plan to validate webhook signing or any integration-header-dependent flow, confirm the
+  integration has been registered through Follow Up Boss's official
+  [Registration and Identification](https://docs.followupboss.com/reference/identification) flow.
+- [ ] Confirm optional registered-system env vars are present when needed:
+  `FOLLOWUPBOSS_SYSTEM_NAME` / `FOLLOWUPBOSS_SYSTEM_KEY`, `FOLLOWUPBOSS_X_SYSTEM` /
+  `FOLLOWUPBOSS_X_SYSTEM_KEY`, or the legacy `FOLLOW_UP_BOSS_*` equivalents.
 - [ ] Confirm `uv`, `make`, and `npx` are available locally.
 - [ ] Confirm the validation target is a sandbox or clearly disposable account with a temporary-data naming convention such as `MCP Validation <date>`.
 - [ ] Confirm you have one reusable disposable person fixture or a plan to create one near the start of the run.
@@ -175,7 +180,8 @@ Apply these checks wherever the surface below supports them.
 - [ ] For acknowledgement-style responses that do not return a full resource, confirm the returned payload still leaves enough information to reconcile the side effect, or record the gap in `Known Issues And Account Limitations`.
 - [ ] At least one safe failure path is exercised without leaking secrets, such as a clearly invalid ID or a missing required field.
 - [ ] If you hit permission-denied or rate-limit responses, confirm the surfaced MCP error text is understandable and record the limitation in the issues table.
-- [ ] If `FOLLOWUPBOSS_SYSTEM_NAME` and `FOLLOWUPBOSS_SYSTEM_KEY` are configured, at least one integration-header-dependent flow succeeds.
+- [ ] If registered-system env vars are configured through either the `SYSTEM_NAME` or `X_SYSTEM`
+  aliases, at least one integration-header-dependent flow succeeds.
 - [ ] With `FOLLOWUPBOSS_LOG_LEVEL=DEBUG`, logs still stay off `stdout` in `stdio` mode.
 - [ ] Every stateful flow without an inverse MCP delete or undo path is captured in the scratchpad with a manual rollback note before you move on.
 - [ ] Capture any contract drift, unexpected payload shapes, or sandbox limitations in `Known Issues And Account Limitations`.

@@ -271,6 +271,35 @@ That keeps the local CLI explicitly single-tenant while letting the hosted wrapp
 those non-secret defaults come from environment variables, another config source, or the repository
 constants.
 
+## Registered System Identification
+
+Follow Up Boss also expects integrations to register a system and send the issued `X-System` and
+`X-System-Key` headers on API requests. See the official identification guide:
+[Registration and Identification](https://docs.followupboss.com/reference/identification).
+
+In this repository, those headers map to the tenant runtime fields:
+
+- `system_name` -> `X-System`
+- `system_key` -> `X-System-Key`
+
+Local single-tenant development can provide them through any of these supported environment
+variables:
+
+- `FOLLOWUPBOSS_SYSTEM_NAME`
+- `FOLLOWUPBOSS_SYSTEM_KEY`
+- `FOLLOWUPBOSS_X_SYSTEM`
+- `FOLLOWUPBOSS_X_SYSTEM_KEY`
+- legacy `FOLLOW_UP_BOSS_SYSTEM_NAME`
+- legacy `FOLLOW_UP_BOSS_SYSTEM_KEY`
+- legacy `FOLLOW_UP_BOSS_X_SYSTEM`
+- legacy `FOLLOW_UP_BOSS_X_SYSTEM_KEY`
+
+Hosted deployments should not place those values in shared bootstrap environment variables. The
+current hosted runtime resolves `system_name` and `system_key` through `TenantStore`, which means
+operators should store the registered-system identification with the tenant credential payload when
+that tenant must use registered-system-dependent Follow Up Boss endpoints such as attachment or
+webhook flows.
+
 ## HTTPS And Proxy Assumptions
 
 The reference deployment assumes:

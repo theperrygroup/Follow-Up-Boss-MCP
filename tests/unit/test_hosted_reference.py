@@ -773,6 +773,7 @@ def test_create_reference_hosted_server_loads_hosted_settings_from_environment(
 
     monkeypatch.setenv("FOLLOWUPBOSS_HOSTED_ISSUER_URL", "https://issuer.example.com")
     monkeypatch.setenv("FOLLOWUPBOSS_HOSTED_RESOURCE_SERVER_URL", "https://mcp.example.com/mcp")
+    monkeypatch.setenv("FOLLOWUPBOSS_HOSTED_REQUIRED_SCOPES", "followupboss:mcp")
     monkeypatch.setenv(
         "FOLLOWUPBOSS_TENANT_DATABASE_URL", "postgresql://app:secret@db.example.com:5432/fub"
     )
@@ -802,6 +803,7 @@ def test_create_reference_hosted_server_loads_hosted_settings_from_environment(
     assert captured["secret_store"] == ("us-east-1", "followupboss/prod/tenants/")
     assert captured["tenant_store"][0] == "postgresql://app:secret@db.example.com:5432/fub"
     assert captured["redis_backend"] == "redis://cache.example.com:6379/0"
+    assert captured["create_server"]["kwargs"]["hosted_auth"].required_scopes == ("followupboss:mcp",)
 
 
 def test_hosted_reference_cli_parser_and_main(monkeypatch: pytest.MonkeyPatch) -> None:

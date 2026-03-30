@@ -8,7 +8,7 @@ import hashlib
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from typing import Protocol, Self, cast
+from typing import Annotated, Protocol, Self, cast
 
 import boto3.session  # type: ignore[import-untyped]
 import psycopg
@@ -23,7 +23,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from redis.asyncio import from_url as redis_from_url
 
 from followupboss_mcp.auth import AuthMode
@@ -270,7 +270,7 @@ class FollowUpBossHostedDeploymentSettings(BaseSettings):
     resource_server_url: AnyHttpUrl = Field(
         validation_alias=_settings_env_aliases("FOLLOWUPBOSS_HOSTED_RESOURCE_SERVER_URL")
     )
-    required_scopes: tuple[str, ...] = Field(
+    required_scopes: Annotated[tuple[str, ...], NoDecode] = Field(
         default=(_DEFAULT_HOSTED_REQUIRED_SCOPE,),
         validation_alias=_settings_env_aliases("FOLLOWUPBOSS_HOSTED_REQUIRED_SCOPES"),
     )

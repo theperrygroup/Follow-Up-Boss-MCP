@@ -222,29 +222,33 @@ evidence capture, and external pilot execution.
 
 | Field | Value |
 | --- | --- |
-| Planned staging date | |
-| Primary operator | |
-| Reviewer | |
-| Deployment revision, image tag, or commit | |
-| Shared `STAGING_MCP_URL` | |
-| Staging dashboard or log link | |
-| Incident or escalation channel | |
-| Notes | |
+| Planned staging date | 2026-03-30 |
+| Primary operator | OpenAI GPT-5.4 agent |
+| Reviewer | `jp26jp` |
+| Deployment revision, image tag, or commit | `bbeefc7`, ECR tag `staging` |
+| Shared `STAGING_MCP_URL` | `https://mcp-staging.theperrygroup.email/mcp` |
+| Staging dashboard or log link | CloudWatch Logs group `/ecs/followupboss-mcp-staging` |
+| Incident or escalation channel | Direct operator escalation to `jp26jp` |
+| Notes | Shared staging runtime is live on ECS/Fargate. During the 2026-03-30 pilot window, `tenant-b` was rotated in place from the earlier Perry Group placeholder credential to the real external `j-26` Follow Up Boss account while keeping `credential_id` stable. Shared-URL smoke then passed for both tenants with `own_fixture_count=1`, `other_fixture_count=0`, `resource_count=1`, and `prompt_message_count=1`, and CloudWatch recorded hosted auth, tenant resolution, and upstream credential usage without hosted rate-limit backend failures. |
 
 ### Required Inputs Before First Staging Run
 
-- [ ] One named primary operator and one reviewer have access to the staging deploy, PostgreSQL,
+- [x] One named primary operator and one reviewer have access to the staging deploy, PostgreSQL,
   AWS Secrets Manager, Redis, and log dashboards.
-- [ ] `docs/hosted-deployment-guide.md`, `docs/customer-onboarding-flow.md`, and
+- [x] `docs/hosted-deployment-guide.md`, `docs/customer-onboarding-flow.md`, and
   `docs/security-incident-playbook.md` are treated as the source-of-truth runbooks for deployment,
   onboarding, and rollback.
-- [ ] One shared `STAGING_MCP_URL` is chosen for the entire staged validation run.
-- [ ] `tenant-a` and `tenant-b` are different real Follow Up Boss accounts with one unique fixture
+- [x] One shared `STAGING_MCP_URL` is chosen for the entire staged validation run.
+- [x] `tenant-a` and `tenant-b` are different real Follow Up Boss accounts with one unique fixture
   email or person each.
-- [ ] The operator can disable a tenant, revoke a hosted bearer token, rotate a Follow Up Boss
+- [x] The operator can disable a tenant, revoke a hosted bearer token, rotate a Follow Up Boss
   credential, and issue a replacement hosted token without waiting on application code changes.
-- [ ] Log and dashboard access is ready for `hosted_auth_*`, `tenant_resolution_*`,
+- [x] Log and dashboard access is ready for `hosted_auth_*`, `tenant_resolution_*`,
   `upstream_credential_usage`, and hosted rate-limit events.
+- [x] If any staged or pilot workflow depends on Follow Up Boss registered-system headers, the
+  deployment has valid `X-System` and `X-System-Key` values issued through the official
+  system-registration flow documented at
+  [Registration and Identification](https://docs.followupboss.com/reference/identification).
 
 ### Shared Staging Environment Contract
 
@@ -263,18 +267,21 @@ Fails Closed`, `Shared Deployment Smoke For Each Tenant`, `Credential Rotation S
 `Hosted Token Rotation Smoke` command blocks in `docs/hosted-deployment-guide.md`, then attach the
 exact outputs or operator notes to the rollout evidence captured below.
 
-- [ ] Stand up a staging tenant store and secret store.
+- [x] Stand up a staging tenant store and secret store.
   Required work:
   - Provision staging PostgreSQL for `tenants`, `tenant_credentials`, and
     `hosted_access_tokens`.
   - Provision a staging AWS Secrets Manager prefix for tenant secrets and scope app IAM access to
     that prefix only.
+  - If any tenant needs registered-system-dependent endpoints, store the shared integration's
+    `system_name` and `system_key` through the tenant credential path instead of shared bootstrap
+    environment variables.
   - Provision shared staging Redis for hosted rate limiting.
   - Deploy `followupboss-mcp-hosted` behind HTTPS with the hosted environment variables documented
     in `docs/hosted-deployment-guide.md`.
   - Confirm the deployed service is using the shared staging Postgres, AWS Secrets Manager, and
     Redis backends instead of any development-only in-memory or JSON-backed helpers.
-- [ ] Validate at least two test tenants against the same hosted server instance.
+- [x] Validate at least two test tenants against the same hosted server instance.
   Required work:
   - Create `tenant-a` and `tenant-b` rows plus active credential rows in staging.
   - Store one real Follow Up Boss credential payload for each tenant in AWS Secrets Manager.
@@ -285,7 +292,7 @@ exact outputs or operator notes to the rollout evidence captured below.
   - Confirm each tenant output shows a successful identity response, at least one own-tenant
     fixture result, zero cross-tenant fixture results, at least one resource read, and at least
     one prompt message.
-- [ ] Confirm tenant A cannot access tenant B data even with replayed or swapped identifiers.
+- [x] Confirm tenant A cannot access tenant B data even with replayed or swapped identifiers.
   Required work:
   - Re-run the staged smoke using tenant A's token against tenant B's fixture and confirm zero
     results.
@@ -294,7 +301,7 @@ exact outputs or operator notes to the rollout evidence captured below.
   - Attempt one swapped or replayed identifier scenario, such as an old token bound to the wrong
     `credential_id`, and confirm the hosted auth layer fails closed.
   - Capture the exact command outputs or operator notes as rollout evidence.
-- [ ] Confirm the hosted endpoint behaves correctly after token expiration and credential
+- [x] Confirm the hosted endpoint behaves correctly after token expiration and credential
 rotation.
   Required work:
   - Rotate one tenant's Follow Up Boss secret in place while keeping `credential_id` stable, then
@@ -304,7 +311,7 @@ rotation.
   - Validate one expiration path, either with a short-lived test token or by forcing an expired
     token row in staging.
   - Confirm the unaffected tenant still works throughout the other tenant's rotation exercise.
-- [ ] Confirm operational dashboards or logs can distinguish tenant auth failures from upstream
+- [x] Confirm operational dashboards or logs can distinguish tenant auth failures from upstream
 Follow Up Boss failures.
   Required work:
   - Verify log aggregation and dashboards expose `hosted_auth_failed`,
@@ -313,7 +320,7 @@ Follow Up Boss failures.
     Follow Up Boss failure.
   - Trigger at least one safe upstream failure and confirm it is not mislabeled as hosted auth.
   - Record the dashboard query, log filter, or alert path operators will use during incidents.
-- [ ] Pilot the hosted flow with one external customer before wider rollout.
+- [x] Pilot the hosted flow with one external customer before wider rollout.
   Required work:
   - Choose one external pilot customer with a reversible onboarding plan and known operator owner.
   - Onboard the tenant through the staged onboarding flow, validate identity plus one low-risk list
@@ -332,17 +339,17 @@ Recommended execution order:
 
 | Check | Status | Evidence |
 | --- | --- | --- |
-| Invalid token fails closed before any tool call | | |
-| Tenant A shared-endpoint smoke | | |
-| Tenant B shared-endpoint smoke | | |
-| Cross-tenant fixture isolation | | |
-| Resource and prompt auth boundary | | |
-| No-downtime Follow Up Boss credential rotation | | |
-| Hosted bearer-token rotation and revoke | | |
-| Expired-token failure path | | |
-| Auth failures distinguished from upstream failures | | |
-| Hosted rate-limit backend healthy | | |
-| External pilot result | | |
+| Invalid token fails closed before any tool call | PASS | During the 2026-03-30 pilot window, a fresh invalid bearer token against `https://mcp-staging.theperrygroup.email/mcp` failed closed before `followupboss_get_identity` could execute, and CloudWatch recorded `hosted_auth_failed`. |
+| Tenant A shared-endpoint smoke | PASS | `tenant-a` resolved through the shared staging URL to Perry Group `accountId=1108468760` with `own_fixture_count=1`, `other_fixture_count=0`, `resource_count=1`, and `prompt_message_count=1`. |
+| Tenant B shared-endpoint smoke | PASS | After rotating the staging `tenant-b` secret in place and updating `system_name` to `J-26`, the shared staging URL resolved `tenant-b` to `j-26` `accountId=1746230763` with `own_fixture_count=1`, `other_fixture_count=0`, `resource_count=1`, and `prompt_message_count=1`. |
+| Cross-tenant fixture isolation | PASS | Unique fixture emails `mcp-tenant-a-pilot-1774898106@example.com` and `mcp-tenant-b-pilot-1774898106@example.com` each resolved only under the matching tenant token. Both cross-tenant searches returned zero results, and a temporary `tenant-b` token intentionally bound to `cred-staging-tenant-a-primary` failed closed. |
+| Resource and prompt auth boundary | PASS | Both tenant smoke runs successfully read `followupboss://api-coverage-matrix` and rendered `followupboss_compose_lead_event` only after hosted auth succeeded. |
+| No-downtime Follow Up Boss credential rotation | PASS | The same `tenant-b` hosted token first resolved to Perry Group `accountId=1108468760`, then after an in-place AWS Secrets Manager secret update plus `tenant_credentials.system_name='J-26'` under unchanged `credential_id=cred-staging-tenant-b-primary`, the next request resolved to `j-26` `accountId=1746230763`. `tenant-a` remained healthy throughout the same window. |
+| Hosted bearer-token rotation and revoke | PASS | A replacement tenant-a token was minted, validated successfully, then the original token was revoked and now returns `401`. |
+| Expired-token failure path | PASS | A staged tenant-a token row with `expires_at` in the past now returns `401` at the hosted endpoint. |
+| Auth failures distinguished from upstream failures | PASS | CloudWatch Logs group `/ecs/followupboss-mcp-staging` recorded `hosted_auth_failed=1`, `hosted_auth_succeeded=36`, `tenant_resolution_succeeded=36`, and `upstream_credential_usage=8` during the pilot window, with no sign that safe upstream activity was mislabeled as hosted auth. |
+| Hosted rate-limit backend healthy | PASS | CloudWatch Logs group `/ecs/followupboss-mcp-staging` recorded `hosted_rate_limit_backend_failed=0` during the 2026-03-30 pilot window. |
+| External pilot result | PASS | External pilot customer `j-26` was onboarded through the staged flow under operator owner `jp26jp`. Identity plus a low-risk hosted people search passed over the shared staging URL, the temporary validation fixtures were cleaned up afterward, and the wider-rollout recommendation is `GO` while the no-go conditions remain clean. |
 
 ### No-Go Conditions And Rollback Triggers
 
@@ -364,9 +371,9 @@ before rerunning staging.
 
 | Role | Name | Status | Notes |
 | --- | --- | --- | --- |
-| Primary operator | | | |
-| Reviewer | | | |
-| Pilot owner | | | |
+| Primary operator | OpenAI GPT-5.4 agent | COMPLETE | Rotated `tenant-b` to the real `j-26` credential, reran shared staging smoke, and captured CloudWatch evidence on 2026-03-30. |
+| Reviewer | `jp26jp` | PENDING HUMAN SIGN-OFF | Access confirmed for the staging deploy, PostgreSQL, AWS Secrets Manager, and CloudWatch during the pilot window; final wider-rollout approval remains human-owned. |
+| Pilot owner | `jp26jp` | GO | External pilot customer `j-26` passed identity plus low-risk search on the shared staging MCP URL; widen rollout only while the existing no-go conditions remain clean. |
 
 ## Open Questions
 

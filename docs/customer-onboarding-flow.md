@@ -69,6 +69,8 @@ Before creating a tenant, collect:
 - one stable internal `tenant_id`
 - Follow Up Boss auth mode: `api_key` or `oauth`
 - the raw Follow Up Boss API key or OAuth access token
+- the registered system name and key when the tenant must use endpoints that require `X-System`
+  and `X-System-Key`
 - optional `system_name`
 - optional `system_key`
 - the client integration identifier to place in hosted tokens, such as `customer-portal` or
@@ -77,6 +79,9 @@ Before creating a tenant, collect:
 
 For the first hosted release, the data model and runtime remain dual-mode. The default operator
 path should still prefer API key onboarding when the customer does not specifically need OAuth.
+For registered-system-dependent calls, operators should first register the integration with Follow
+Up Boss and capture the issued header values from the official flow described in
+[Registration and Identification](https://docs.followupboss.com/reference/identification).
 
 ## Onboarding Sequence
 
@@ -131,6 +136,8 @@ Rules:
 - store exactly one of `api_key` or `access_token`
 - keep `credential_id` stable if the intent is a future in-place secret rotation
 - grant secret-read access only to the app role and tightly scoped operator workflows
+- if the tenant needs registered-system-dependent endpoints, persist the issued `X-System-Key` in
+  the secret payload and persist the corresponding `system_name` in the credential metadata row
 
 ### 3. Validate The Follow Up Boss Credential Before Activation
 

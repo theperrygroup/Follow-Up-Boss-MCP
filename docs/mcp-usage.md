@@ -107,6 +107,8 @@ The current local single-tenant runtime variables remain:
 - `FOLLOWUPBOSS_ACCESS_TOKEN`
 - `FOLLOWUPBOSS_SYSTEM_NAME`
 - `FOLLOWUPBOSS_SYSTEM_KEY`
+- `FOLLOWUPBOSS_X_SYSTEM`
+- `FOLLOWUPBOSS_X_SYSTEM_KEY`
 - `FOLLOWUPBOSS_BASE_URL`
 - `FOLLOWUPBOSS_TIMEOUT_SECONDS`
 - `FOLLOWUPBOSS_MAX_RETRIES`
@@ -114,6 +116,14 @@ The current local single-tenant runtime variables remain:
 Hosted deployments should use the server-only environment variables for process bootstrap.
 Customer-specific Follow Up Boss credentials should come from `TenantStore`, not process-wide
 environment variables.
+
+`FOLLOWUPBOSS_SYSTEM_NAME` and `FOLLOWUPBOSS_SYSTEM_KEY` map to the outbound `X-System` and
+`X-System-Key` headers. The `FOLLOWUPBOSS_X_SYSTEM` and `FOLLOWUPBOSS_X_SYSTEM_KEY` aliases are
+also accepted, along with the legacy `FOLLOW_UP_BOSS_*` forms. Those values come from the Follow Up
+Boss system-registration flow described in
+[Registration and Identification](https://docs.followupboss.com/reference/identification). Some
+Follow Up Boss endpoints, especially integration-specific attachment or webhook paths, can require
+those headers even when basic account auth succeeds.
 
 For local hosted-style testing, `DevelopmentTenantStore.from_local_dev_settings(...)` and
 `DevelopmentHostedTokenVerifier` provide a development-safe bridge without changing the local CLI

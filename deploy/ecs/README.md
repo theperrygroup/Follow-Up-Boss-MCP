@@ -41,6 +41,9 @@ Use one public Application Load Balancer plus one ECS/Fargate service in the def
 equivalent trusted VPC. The container should listen on port `8000`, and the ALB should forward
 HTTPS traffic for `/mcp` to the task target group over HTTP.
 
+The hosted `/mcp` path intentionally returns `401 invalid_token` to unauthenticated health probes.
+That is a healthy hosted response, so the ALB target group matcher should accept `401`.
+
 Recommended resources:
 
 - 1 ECS cluster for the hosted MCP environment
@@ -70,14 +73,14 @@ aws ecr get-login-password --region us-west-1 | docker login \
   --password-stdin 581917479192.dkr.ecr.us-west-1.amazonaws.com
 ```
 
-Build and push the hosted image:
+Build and push the hosted image as a multi-architecture manifest so default ECS/Fargate runtimes
+can pull it on either `linux/amd64` or `linux/arm64`:
 
 ```bash
-docker build \
-  -t 581917479192.dkr.ecr.us-west-1.amazonaws.com/followupboss-mcp-hosted:staging .
-
-docker push \
-  581917479192.dkr.ecr.us-west-1.amazonaws.com/followupboss-mcp-hosted:staging
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  --tag 581917479192.dkr.ecr.us-west-1.amazonaws.com/followupboss-mcp-hosted:staging \
+  --push .
 ```
 
 ## Secrets Layout
