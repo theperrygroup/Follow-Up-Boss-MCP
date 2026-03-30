@@ -9,7 +9,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `DELETE /appointments/:id` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
 | `DELETE /customFields/:id` | Implemented | Input only | Yes | Yes | Deletes a custom field and returns structured deletion confirmation. |
 | `DELETE /dealAttachments/{id}` | Implemented | Input only | Yes | Yes | Deletes a deal attachment and returns structured deletion confirmation. |
-| `DELETE /dealCustomFields/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `DELETE /dealCustomFields/:id` | Implemented | Input only | Yes | Yes | Deletes a deal custom field and returns structured deletion confirmation. |
 | `DELETE /deals/{id}` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
 | `DELETE /groups/:id` | Implemented | Input only | Yes | Yes | Delete returns structured deletion confirmation. |
 | `DELETE /inboxApps/{inboxAppId}` | Implemented | Input only | Yes | Yes | Deactivates an inbox app installation and returns structured deletion confirmation. |
@@ -46,7 +46,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `GET /customFields/:id` | Implemented | Yes | Yes | Yes | Fetches a single custom field by ID. |
 | `GET /dealAttachments/{id}` | Implemented | Yes | Yes | Yes | Fetches a registered-system deal attachment by ID. |
 | `GET /dealCustomFields` | Implemented | Yes | Yes | Yes | Lists deal custom fields for write-time field-name discovery. |
-| `GET /dealCustomFields/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `GET /dealCustomFields/:id` | Implemented | Yes | Yes | Yes | Fetches a single deal custom field by ID. |
 | `GET /deals` | Implemented | Yes | Yes | Yes | Supports documented deal filters and pagination metadata. |
 | `GET /deals/{id}` | Implemented | Yes | Yes | Yes | Single-deal lookup with dynamic custom field support. |
 | `GET /emCampaigns` | Implemented | Yes | Yes | Yes | Lists email marketing campaigns with origin and originId filtering. |
@@ -103,7 +103,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `POST /calls` | Implemented | Yes | Yes | Yes | Creates a call log entry for a related person. |
 | `POST /customFields` | Implemented | Yes | Yes | Yes | Creates a custom field for the authenticated account owner. |
 | `POST /dealAttachments` | Implemented | Yes | Yes | Yes | Creates a registered-system deal attachment using an external URI. |
-| `POST /dealCustomFields` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `POST /dealCustomFields` | Implemented | Yes | Yes | Yes | Creates a deal custom field with the documented admin-only options. |
 | `POST /deals` | Implemented | Yes | Yes | Yes | Creates a deal and supports dynamic deal custom field values. |
 | `POST /emCampaigns` | Implemented | Yes | Yes | Yes | Creates an email marketing campaign with required origin identifiers. |
 | `POST /emEvents` | Implemented | Yes | Yes | Yes | Posts batched email marketing events and returns accepted IDs plus skipped recipients. |
@@ -139,7 +139,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `PUT /calls/:id` | Implemented | Yes | Yes | Yes | Updates a call log entry. |
 | `PUT /customFields/:id` | Implemented | Yes | Yes | Yes | Updates custom field metadata and dropdown-choice mappings by ID. |
 | `PUT /dealAttachments/{id}` | Implemented | Yes | Yes | Yes | Updates a registered-system deal attachment by ID. |
-| `PUT /dealCustomFields/:id` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `PUT /dealCustomFields/:id` | Implemented | Yes | Yes | Yes | Updates a deal custom field and preserves dropdown choice remapping support. |
 | `PUT /deals/{id}` | Implemented | Yes | Yes | Yes | Updates a deal and preserves documented custom field semantics. |
 | `PUT /emCampaigns/:id` | Implemented | Yes | Yes | Yes | Updates an email marketing campaign subject, name, or HTML body. |
 | `PUT /groups/:id` | Implemented | Yes | Yes | Yes | Updates group metadata and member assignment defaults. |

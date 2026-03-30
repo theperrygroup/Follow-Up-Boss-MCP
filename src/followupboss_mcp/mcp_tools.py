@@ -1522,9 +1522,7 @@ class FollowUpBossToolAdapter:
     ) -> dict[str, Any]:
         """Delete a deal custom field."""
         return await self._delete_result(
-            lambda: self._services.deals.delete_deal_custom_field(
-                tool_input.deal_custom_field_id
-            ),
+            lambda: self._services.deals.delete_deal_custom_field(tool_input.deal_custom_field_id),
             identifier_key="dealCustomFieldId",
             identifier_value=tool_input.deal_custom_field_id,
         )

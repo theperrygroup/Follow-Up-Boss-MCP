@@ -222,7 +222,7 @@ class DealRecord(ResponseModel):
     stage_id: int | None = Field(default=None, alias="stageId")
     status: str | None = None
     team_commission: int | None = Field(default=None, alias="teamCommission")
-    type: str | None = None
+    type: str | int | None = None
     users: list[DealUserSummary] = Field(default_factory=list)
 
 

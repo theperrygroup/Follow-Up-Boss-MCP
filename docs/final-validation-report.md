@@ -9,7 +9,7 @@ The repository now contains:
 - grouped MCP registration helpers plus an official stdio MCP interoperability test
 - a contributor guide and a repository-local security incident playbook
 - typed appointment collection and CRUD coverage across the SDK, MCP surface, tests, and docs
-- typed deals collection and CRUD coverage plus deal custom field discovery across the SDK, MCP surface, tests, and docs
+- typed deals collection and CRUD coverage plus deal custom field discovery and admin CRUD across the SDK, MCP surface, tests, and docs
 - typed pipeline collection and CRUD coverage with stage-aware payload support across the SDK, MCP surface, tests, and docs
 - typed pond collection and CRUD coverage with explicit reassignment semantics on delete across the SDK, MCP surface, tests, and docs
 - typed smart-list collection and lookup coverage across the SDK, MCP surface, tests, and docs
@@ -128,6 +128,10 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `PUT /deals/{id}`
 - `DELETE /deals/{id}`
 - `GET /dealCustomFields`
+- `GET /dealCustomFields/:id`
+- `POST /dealCustomFields`
+- `PUT /dealCustomFields/:id`
+- `DELETE /dealCustomFields/:id`
 - `GET /dealAttachments/{id}`
 - `POST /dealAttachments`
 - `PUT /dealAttachments/{id}`
@@ -205,7 +209,7 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `POST /webhooks`
 - `DELETE /webhooks/:id`
 
-Total implemented official endpoints in this repository scope: `138`
+Total implemented official endpoints in this repository scope: `142`
 
 All additional discovered official endpoints are marked explicitly as deferred in `docs/api-coverage-matrix.md`.
 
@@ -213,7 +217,7 @@ All additional discovered official endpoints are marked explicitly as deferred i
 
 Registered MCP surface:
 
-- tools: `138`
+- tools: `142`
 - resources: `1`
 - prompts: `1`
 
@@ -249,6 +253,10 @@ Registered tools:
 - `followupboss_update_deal_attachment`
 - `followupboss_delete_deal_attachment`
 - `followupboss_list_deal_custom_fields`
+- `followupboss_get_deal_custom_field`
+- `followupboss_create_deal_custom_field`
+- `followupboss_update_deal_custom_field`
+- `followupboss_delete_deal_custom_field`
 - `followupboss_list_pipelines`
 - `followupboss_get_pipeline`
 - `followupboss_create_pipeline`
@@ -396,8 +404,8 @@ make live-identity-check
 
 - `uv run coverage run --branch -m pytest`: passed
 - `uv run coverage report --fail-under=100`: passed
-- total statements: `4027`
-- total branches: `350`
+- total statements: `4109`
+- total branches: `356`
 - line coverage: `100.00%`
 - branch coverage: `100.00%`
 

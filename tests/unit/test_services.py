@@ -245,11 +245,56 @@ async def test_identity_service() -> None:
     assert isinstance(identity, IdentityResponse)
     assert identity.id == 1
 
-    client = StubClient([{"id": 2, "name": "Will"}])
+    client = StubClient(
+        [
+            {
+                "account": {
+                    "id": 17,
+                    "name": "Enterprise",
+                    "domain": "fleet",
+                    "owner": {"email": "captain@example.com", "name": "Captain"},
+                },
+                "user": {
+                    "id": 2,
+                    "name": "Will",
+                    "email": "will@example.com",
+                    "isOwner": False,
+                },
+            }
+        ]
+    )
     service = IdentityService(client)
     health = await service.health_check()
     assert health.ok is True
     assert health.identity.id == 2
+    assert health.identity.name == "Will"
+    assert health.identity.email == "will@example.com"
+    assert health.identity.account_id == 17
+
+    identity = IdentityResponse.model_validate(
+        {
+            "account": {
+                "id": 18,
+                "name": "Voyager",
+                "domain": "delta",
+                "owner": {"email": "janeway@example.com"},
+            }
+        }
+    )
+    assert identity.id == 18
+    assert identity.name == "Voyager"
+    assert identity.email == "janeway@example.com"
+    assert identity.system == "delta"
+
+    empty_identity = IdentityResponse.model_validate({})
+    assert empty_identity.id is None
+    assert empty_identity.email is None
+
+    preserved_identity = IdentityResponse.model_validate(
+        {"id": 19, "email": "existing@example.com"}
+    )
+    assert preserved_identity.id == 19
+    assert preserved_identity.email == "existing@example.com"
 
 
 @pytest.mark.asyncio
@@ -773,6 +818,7 @@ async def test_automations_service() -> None:
             enabled_only=True,
             limit=5,
             manual_only=False,
+            next_token="cursor-123",
             offset=10,
             status="Active",
         )
@@ -782,6 +828,7 @@ async def test_automations_service() -> None:
         "enabledOnly": "true",
         "limit": "5",
         "manualOnly": "false",
+        "next": "cursor-123",
         "offset": "10",
         "status": "Active",
     }
@@ -1191,34 +1238,37 @@ async def test_people_relationships_service() -> None:
     """People relationships service should map list/get/create/update/delete correctly."""
     client = StubClient(
         [
-            [
-                {
-                    "id": 423,
-                    "created": "2021-02-19T14:12:36Z",
-                    "updated": "2021-02-19T14:12:41Z",
-                    "createdById": 41,
-                    "updatedById": 41,
-                    "personId": 46977,
-                    "name": "Billy Bob",
-                    "firstName": "Billy",
-                    "lastName": "Bob",
-                    "type": "Husband",
-                    "isPriority": True,
-                    "emails": [],
-                    "phones": [
-                        {
-                            "value": "5551113333",
-                            "type": "mobile",
-                            "status": "Valid",
-                            "isPrimary": 1,
-                            "normalized": "5551113333",
-                        }
-                    ],
-                    "addresses": [],
-                    "picture": None,
-                    "socialData": [],
-                }
-            ],
+            {
+                "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                "peoplerelationships": [
+                    {
+                        "id": 423,
+                        "created": "2021-02-19T14:12:36Z",
+                        "updated": "2021-02-19T14:12:41Z",
+                        "createdById": 41,
+                        "updatedById": 41,
+                        "personId": 46977,
+                        "name": "Billy Bob",
+                        "firstName": "Billy",
+                        "lastName": "Bob",
+                        "type": "Husband",
+                        "isPriority": True,
+                        "emails": [],
+                        "phones": [
+                            {
+                                "value": "5551113333",
+                                "type": "mobile",
+                                "status": "Valid",
+                                "isPrimary": 1,
+                                "normalized": "5551113333",
+                            }
+                        ],
+                        "addresses": [],
+                        "picture": None,
+                        "socialData": [],
+                    }
+                ],
+            },
             {
                 "id": 423,
                 "created": "2021-02-19T14:12:36Z",
@@ -1261,6 +1311,23 @@ async def test_people_relationships_service() -> None:
         "name": "Billy Bob",
         "sort": "name",
     }
+
+    legacy_page = await PeopleRelationshipsService(
+        StubClient([[{"id": 424, "personId": 46977, "name": "Legacy Shape"}]])
+    ).list_people_relationships()
+    assert legacy_page.items[0].id == 424
+
+    camel_case_page = await PeopleRelationshipsService(
+        StubClient(
+            [
+                {
+                    "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                    "peopleRelationships": [{"id": 425, "personId": 46977, "name": "Camel Shape"}],
+                }
+            ]
+        )
+    ).list_people_relationships()
+    assert camel_case_page.items[0].id == 425
 
     relationship = await service.get_people_relationship(423)
     assert relationship.id == 423
@@ -1320,6 +1387,10 @@ async def test_people_relationships_service() -> None:
         ValidationError, match="At least one people relationship field must be provided"
     ):
         UpdatePeopleRelationshipRequest()
+
+    scalar_payload_service = PeopleRelationshipsService(StubClient([cast(Any, "invalid payload")]))
+    with pytest.raises(ValueError, match="Unexpected people relationships response"):
+        await scalar_payload_service.list_people_relationships()
 
 
 @pytest.mark.asyncio
@@ -1839,6 +1910,7 @@ async def test_deals_service() -> None:
                         "name": "Buyer contract",
                         "pipelineId": 3,
                         "stageId": 7,
+                        "type": 0,
                         "people": [{"id": 99, "name": "Data"}],
                         "users": [{"id": 5, "name": "Picard"}],
                     }
@@ -1849,6 +1921,7 @@ async def test_deals_service() -> None:
                 "name": "Buyer contract",
                 "pipelineId": 3,
                 "stageId": 7,
+                "type": 1,
             },
             {
                 "id": 3,
@@ -1917,6 +1990,7 @@ async def test_deals_service() -> None:
         )
     )
     assert deals_page.items[0].name == "Buyer contract"
+    assert deals_page.items[0].type == 0
     assert client.calls[0].params == {
         "pipelineId": "3",
         "userId": "5",
@@ -1926,7 +2000,9 @@ async def test_deals_service() -> None:
         "status": "Active",
     }
 
-    assert (await service.get_deal(2)).id == 2
+    deal = await service.get_deal(2)
+    assert deal.id == 2
+    assert deal.type == 1
 
     created = await service.create_deal(
         CreateDealRequest(
@@ -3349,6 +3425,40 @@ async def test_events_users_notes_and_webhooks_services() -> None:
     ).id == 11
     assert (await webhooks_service.get_webhook(12)).id == 12
     await webhooks_service.delete_webhook(13)
+
+
+@pytest.mark.asyncio
+async def test_send_event_accepts_camel_case_person_input() -> None:
+    """Event creation should accept camelCase keys inside nested person payloads."""
+    client = StubClient([{"id": 14, "personId": 99, "type": "Inquiry"}])
+    service = EventsService(client)
+
+    sent = await service.send_event(
+        CreateEventRequest.model_validate(
+            {
+                "source": "Portal",
+                "system": "Portal",
+                "type": "Inquiry",
+                "person": {
+                    "firstName": "Deanna",
+                    "lastName": "Troi",
+                    "emails": [{"value": "deanna@example.com", "type": "work"}],
+                },
+            }
+        )
+    )
+
+    assert sent.id == 14
+    assert client.calls[0].json_body == {
+        "source": "Portal",
+        "system": "Portal",
+        "type": "Inquiry",
+        "person": {
+            "firstName": "Deanna",
+            "lastName": "Troi",
+            "emails": [{"value": "deanna@example.com", "type": "work"}],
+        },
+    }
 
 
 @pytest.mark.asyncio

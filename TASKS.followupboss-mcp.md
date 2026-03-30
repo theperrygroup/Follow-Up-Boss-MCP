@@ -66,6 +66,8 @@ Build a production-grade Python 3.12+ repository that ingests official Follow Up
 - `DONE` Write `docs/final-validation-report.md`.
 - `DONE` Implement typed reaction get/create/delete coverage across models, services, MCP tools, tests, and docs.
 - `DONE` Re-run `make release-validate` and `make live-identity-check` after the reactions slice.
+- `DONE` Implement typed deal custom field get/create/update/delete coverage across models, services, MCP tools, tests, and docs.
+- `DONE` Re-run `make release-validate` and `make live-identity-check` after the deal custom field admin slice.
 
 ## Blockers
 
@@ -93,6 +95,9 @@ Build a production-grade Python 3.12+ repository that ingests official Follow Up
 - Wrote `docs/final-validation-report.md` with the final validated status.
 - Expanded the implementation to include typed reactions get/create/delete support across the SDK, MCP surface, tests, and generated coverage docs.
 - Re-ran `make release-validate` with successful output: `Success: no issues found in 80 source files`, `105 passed, 1 skipped`, and `TOTAL 4027 0 350 0 100.00%`.
+- Re-ran `make live-identity-check` with successful output: `1 skipped` when live credentials were not enabled.
+- Expanded the implementation to include typed deal custom field get/create/update/delete support across the SDK, MCP surface, tests, and generated coverage docs.
+- Re-ran `make release-validate` with successful output: `Success: no issues found in 80 source files`, `105 passed, 1 skipped`, and `TOTAL 4109 0 356 0 100.00%`.
 - Re-ran `make live-identity-check` with successful output: `1 skipped` when live credentials were not enabled.
 
 ## Final Acceptance Checklist

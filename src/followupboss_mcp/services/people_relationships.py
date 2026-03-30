@@ -40,14 +40,26 @@ class PeopleRelationshipsService:
         """
         query = request.to_query_params() if request is not None else None
         payload = await self._client.request_json("GET", "/peopleRelationships", params=query)
-        if not isinstance(payload, list):
+        metadata_source: dict[str, object]
+        if isinstance(payload, list):
+            items_raw = payload
+            metadata_source = {}
+        elif isinstance(payload, dict):
+            items_value = payload.get("peopleRelationships")
+            if not isinstance(items_value, list):
+                items_value = payload.get("peoplerelationships")
+            if not isinstance(items_value, list):
+                raise ValueError("Unexpected people relationships response.")
+            items_raw = items_value
+            metadata_source = payload
+        else:
             raise ValueError("Unexpected people relationships response.")
         items = [
             PeopleRelationshipRecord.model_validate(item)
-            for item in payload
+            for item in items_raw
             if isinstance(item, dict)
         ]
-        metadata = parse_pagination_metadata({}, item_count=len(items))
+        metadata = parse_pagination_metadata(metadata_source, item_count=len(items))
         return PageResult(items=items, metadata=metadata)
 
     async def get_people_relationship(

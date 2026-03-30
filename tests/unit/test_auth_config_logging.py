@@ -63,8 +63,15 @@ def test_build_auth_strategy_success_and_errors() -> None:
         build_auth_strategy(auth_mode=AuthMode.OAUTH, api_key=None, access_token=None)
 
 
-def test_settings_validation_and_normalization() -> None:
+def test_settings_validation_and_normalization(monkeypatch: pytest.MonkeyPatch) -> None:
     """Settings should normalize and validate important fields."""
+    for key in (
+        "FOLLOWUPBOSS_API_KEY",
+        "FOLLOWUPBOSS_ACCESS_TOKEN",
+        "FOLLOWUPBOSS_AUTH_MODE",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
     settings = FollowUpBossSettings.model_validate(
         {
             "api_key": "key",

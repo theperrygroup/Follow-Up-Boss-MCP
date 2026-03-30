@@ -18,6 +18,7 @@ class AutomationListRequest(QueryModel):
     enabled_only: bool | None = Field(default=None, serialization_alias="enabledOnly")
     limit: int | None = None
     manual_only: bool | None = Field(default=None, serialization_alias="manualOnly")
+    next_token: str | None = Field(default=None, serialization_alias="next")
     offset: int | None = None
     status: str | None = None
 

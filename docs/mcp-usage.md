@@ -46,6 +46,10 @@ All tools are namespaced with the `followupboss_` prefix.
 | `followupboss_update_deal` | Update one deal by ID. |
 | `followupboss_delete_deal` | Delete one deal by ID and return a structured confirmation. |
 | `followupboss_list_deal_custom_fields` | List deal custom fields with pagination metadata for valid write-time field names. |
+| `followupboss_get_deal_custom_field` | Retrieve one deal custom field by ID. |
+| `followupboss_create_deal_custom_field` | Create a deal custom field. |
+| `followupboss_update_deal_custom_field` | Update one deal custom field by ID. |
+| `followupboss_delete_deal_custom_field` | Delete one deal custom field by ID and return a structured confirmation. |
 | `followupboss_list_pipelines` | List pipelines with exact-name filtering and pagination metadata. |
 | `followupboss_get_pipeline` | Retrieve one pipeline by ID. |
 | `followupboss_create_pipeline` | Create a pipeline. |

@@ -149,7 +149,9 @@ class DealsService:
         Raises:
             FollowUpBossValidationError: If the API returns an unexpected payload shape.
         """
-        payload = await self._client.request_json("GET", f"/dealCustomFields/{deal_custom_field_id}")
+        payload = await self._client.request_json(
+            "GET", f"/dealCustomFields/{deal_custom_field_id}"
+        )
         payload = self._require_deal_custom_field_payload(payload)
         return DealCustomFieldRecord.model_validate(payload)
 

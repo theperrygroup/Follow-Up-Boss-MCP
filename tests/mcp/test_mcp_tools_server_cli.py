@@ -151,7 +151,6 @@ from followupboss_mcp.models.deals import (
     DealCustomFieldRecord,
     DealListRequest,
     DealRecord,
-    UpdateDealCustomFieldRequest,
 )
 from followupboss_mcp.models.email_marketing import (
     CreateEmailCampaignRequest,
@@ -2015,9 +2014,9 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert (await adapter.list_deal_custom_fields(DealCustomFieldListRequest()))[
         "dealCustomfields"
     ][0]["id"] == 10
-    assert (await adapter.get_deal_custom_field(GetDealCustomFieldToolInput(deal_custom_field_id=45)))[
-        "id"
-    ] == 45
+    assert (
+        await adapter.get_deal_custom_field(GetDealCustomFieldToolInput(deal_custom_field_id=45))
+    )["id"] == 45
     assert (
         await adapter.create_deal_custom_field(
             CreateDealCustomFieldRequest(
@@ -3291,6 +3290,26 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     assert (await tools["followupboss_list_deal_custom_fields"].fn())["dealCustomfields"][0][
         "id"
     ] == 44
+    assert (await tools["followupboss_get_deal_custom_field"].fn(45))["id"] == 45
+    assert (
+        await tools["followupboss_create_deal_custom_field"].fn(
+            "Priority",
+            "dropdown",
+            choices=["High", "Medium", "Low"],
+        )
+    )["id"] == 46
+    assert (
+        await tools["followupboss_update_deal_custom_field"].fn(
+            47,
+            label="Priority",
+            choices=["Critical", "High", "Medium"],
+            read_only=True,
+        )
+    )["id"] == 47
+    assert await tools["followupboss_delete_deal_custom_field"].fn(47) == {
+        "deleted": True,
+        "dealCustomFieldId": 47,
+    }
     assert (await tools["followupboss_list_pipelines"].fn())["pipelines"][0]["id"] == 60
     assert (await tools["followupboss_get_pipeline"].fn(61))["id"] == 61
     assert (await tools["followupboss_create_pipeline"].fn(name="New pipeline"))["id"] == 62

@@ -123,7 +123,6 @@ from followupboss_mcp.models.deals import (
     CreateDealRequest,
     DealCustomFieldListRequest,
     DealListRequest,
-    UpdateDealCustomFieldRequest,
 )
 from followupboss_mcp.models.email_marketing import (
     CreateEmailCampaignRequest,
@@ -993,6 +992,7 @@ def _register_automation_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -
         enabled_only: bool | None = None,
         limit: int | None = None,
         manual_only: bool | None = None,
+        next_token: str | None = None,
         offset: int | None = None,
         status: str | None = None,
     ) -> dict[str, object]:
@@ -1001,6 +1001,7 @@ def _register_automation_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -
                 enabled_only=enabled_only,
                 limit=limit,
                 manual_only=manual_only,
+                next_token=next_token,
                 offset=offset,
                 status=status,
             )
