@@ -703,6 +703,8 @@ class FollowUpBossToolAdapter:
             services: Either one fixed service bundle or a resolver that creates
                 a tenant-specific bundle for each call.
         """
+        self._fixed_services: ServiceBundle | None
+        self._service_bundle_resolver: ServiceBundleResolver | None
         if isinstance(services, ServiceBundle):
             self._fixed_services = services
             self._service_bundle_resolver = None
@@ -1389,11 +1391,14 @@ class FollowUpBossToolAdapter:
         except FollowUpBossError as exc:
             raise RuntimeError(_mcp_safe_error(exc)) from exc
         safe_result = result.redacted_for_mcp()
-        return safe_result.model_dump(
-            mode="json",
-            by_alias=True,
-            exclude_defaults=True,
-            exclude_none=True,
+        return cast(
+            dict[str, Any],
+            safe_result.model_dump(
+                mode="json",
+                by_alias=True,
+                exclude_defaults=True,
+                exclude_none=True,
+            ),
         )
 
     async def get_user(self, tool_input: GetUserToolInput) -> dict[str, Any]:

@@ -141,6 +141,11 @@ uv run python -m followupboss_mcp.cli stdio
 uv run python -m followupboss_mcp.cli streamable-http --host 127.0.0.1 --port 8000 --path /mcp
 ```
 
+Hosted multi-tenant operator guidance lives in
+`docs/hosted-deployment-guide.md` and `docs/customer-onboarding-flow.md`.
+Treat the local commands above as developer workflows, not as the production
+recipe for the shared hosted deployment.
+
 ## Examples
 
 Identity-based health check:
@@ -178,6 +183,8 @@ For a streamable HTTP server, start the server first and then connect Inspector 
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 - [docs/followupboss-doc-ingestion.md](docs/followupboss-doc-ingestion.md)
 - [docs/api-coverage-matrix.md](docs/api-coverage-matrix.md)
+- [docs/hosted-deployment-guide.md](docs/hosted-deployment-guide.md)
+- [docs/customer-onboarding-flow.md](docs/customer-onboarding-flow.md)
 - [docs/mcp-usage.md](docs/mcp-usage.md)
 - [docs/mcp-validation-checklist.md](docs/mcp-validation-checklist.md)
 - [docs/testing.md](docs/testing.md)

@@ -6,7 +6,7 @@ import io
 import logging
 
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from followupboss_mcp.auth import AuthMode
 from followupboss_mcp.hosted_auth import (
@@ -17,6 +17,10 @@ from followupboss_mcp.hosted_auth import (
     HostedAuthSettings,
     HostedTenantTokenVerifier,
     HostedVerifiedIdentity,
+    _normalize_optional_string,
+    _normalize_scopes,
+    get_hosted_authenticated_tenant,
+    get_hosted_verified_identity,
 )
 from followupboss_mcp.tenant_store import (
     DevelopmentTenantStore,
@@ -115,6 +119,87 @@ def test_hosted_verified_identity_and_auth_settings_validation() -> None:
                 "required_scopes": ["tools:read", ""],
             }
         )
+    with pytest.raises(ValidationError, match="expires_at must be greater than zero."):
+        HostedVerifiedIdentity.model_validate(
+            {
+                "tenant_id": "tenant-1",
+                "subject": "user-123",
+                "client_id": "portal-app",
+                "expires_at": 0,
+            }
+        )
+
+
+def test_hosted_auth_normalization_helpers_preserve_invalid_shapes() -> None:
+    """Hosted-auth helpers should preserve unsupported values for downstream validation."""
+    unsupported_optional_value = object()
+    unsupported_scope_value = object()
+    invalid_scope_sequence: tuple[object, ...] = ("tools:read", 1)
+
+    assert _normalize_optional_string(unsupported_optional_value) is unsupported_optional_value
+    assert _normalize_scopes(None) == ()
+    assert _normalize_scopes(unsupported_scope_value) is unsupported_scope_value
+    assert _normalize_scopes(invalid_scope_sequence) is invalid_scope_sequence
+
+
+def test_development_hosted_token_record_accepts_secretstr_inputs() -> None:
+    """Development hosted-token records should accept `SecretStr` and reject invalid types."""
+    identity = HostedVerifiedIdentity.model_validate(
+        {
+            "tenant_id": "tenant-1",
+            "subject": "user-123",
+            "client_id": "portal-app",
+        }
+    )
+
+    record = DevelopmentHostedTokenRecord.model_validate(
+        {
+            "token": SecretStr("dev-token"),
+            "identity": identity,
+        }
+    )
+
+    assert record.token_value() == "dev-token"
+    with pytest.raises(ValidationError):
+        DevelopmentHostedTokenRecord.model_validate(
+            {
+                "token": 123,
+                "identity": identity,
+            }
+        )
+
+
+def test_hosted_auth_context_accessors_resolve_identity_and_tenant(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Hosted-auth accessors should unwrap FastMCP auth context safely."""
+    access_token = HostedAccessToken.from_verified_identity(
+        token="dev-token",
+        identity=HostedVerifiedIdentity.model_validate(
+            {
+                "tenant_id": "tenant-1",
+                "subject": "user-123",
+                "client_id": "portal-app",
+                "credential_id": "credential-1",
+            }
+        ),
+        tenant=HostedAuthenticatedTenant.model_validate(
+            {
+                "tenant_id": "tenant-1",
+                "tenant_slug": "tenant-one",
+                "display_name": "Tenant One",
+                "credential_id": "credential-1",
+            }
+        ),
+    )
+
+    monkeypatch.setattr("followupboss_mcp.hosted_auth.get_access_token", lambda: access_token)
+    assert get_hosted_verified_identity() == access_token.identity
+    assert get_hosted_authenticated_tenant() == access_token.tenant
+
+    monkeypatch.setattr("followupboss_mcp.hosted_auth.get_access_token", lambda: None)
+    assert get_hosted_verified_identity() is None
+    assert get_hosted_authenticated_tenant() is None
 
 
 @pytest.mark.asyncio

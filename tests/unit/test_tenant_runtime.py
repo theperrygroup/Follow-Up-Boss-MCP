@@ -4,14 +4,22 @@ from __future__ import annotations
 
 import io
 import logging
+from typing import cast
 
 import pytest
 
 from followupboss_mcp.auth import AuthMode
-from followupboss_mcp.config import FollowUpBossSettings
+from followupboss_mcp.config import (
+    FollowUpBossTenantRuntimeDefaults,
+    FollowUpBossTenantSettings,
+)
 from followupboss_mcp.errors import TenantCredentialNotFoundError
 from followupboss_mcp.hosted_auth import HostedAuthenticatedTenant
-from followupboss_mcp.tenant_runtime import TenantRuntimeFactory
+from followupboss_mcp.http_client import FollowUpBossAsyncClient, FollowUpBossClientProtocol
+from followupboss_mcp.tenant_runtime import (
+    RequestScopedTenantServiceBundleResolver,
+    TenantRuntimeFactory,
+)
 from followupboss_mcp.tenant_store import (
     DevelopmentTenantStore,
     TenantCredentialRecord,
@@ -98,12 +106,42 @@ class RecordingClient:
         return {"ok": True}
 
 
+class ClosingRecordingClient(RecordingClient):
+    """Client stub that records whether cleanup ran."""
+
+    def __init__(self) -> None:
+        """Initialize the cleanup-tracking client stub."""
+        self.closed = False
+
+    async def aclose(self) -> None:
+        """Record that cleanup ran for the client."""
+        self.closed = True
+
+
+def _authenticated_tenant(**overrides: object) -> HostedAuthenticatedTenant:
+    """Build a representative authenticated tenant context for tests.
+
+    Args:
+        **overrides: Field overrides for the default authenticated payload.
+
+    Returns:
+        A validated authenticated tenant context.
+    """
+    payload: dict[str, object] = {
+        "tenant_id": "tenant-1",
+        "tenant_slug": "tenant-one",
+        "display_name": "Tenant One",
+        "credential_id": "credential-1",
+    }
+    payload.update(overrides)
+    return HostedAuthenticatedTenant.model_validate(payload)
+
+
 @pytest.mark.asyncio
 async def test_tenant_runtime_factory_builds_runtime_from_authenticated_tenant() -> None:
     """The runtime factory should merge tenant credentials with shared defaults."""
-    default_settings = FollowUpBossSettings.model_validate(
+    default_settings = FollowUpBossTenantRuntimeDefaults.model_validate(
         {
-            "api_key": "bootstrap-key",
             "base_url": "https://api.followupboss.com/v1/",
             "timeout_seconds": 12,
             "max_retries": 2,
@@ -149,13 +187,16 @@ async def test_tenant_runtime_factory_emits_audit_event_for_upstream_credential_
     logger.propagate = False
     logger.addHandler(logging.StreamHandler(stream))
     factory = TenantRuntimeFactory(
-        default_settings=FollowUpBossSettings.model_validate({"api_key": "bootstrap-key"}),
+        default_settings=FollowUpBossTenantRuntimeDefaults.model_validate({}),
         tenant_store=DevelopmentTenantStore(
             tenants=[_tenant_record()],
             credentials=[_credential_record()],
         ),
         logger=logger,
-        client_factory=lambda settings, logger: RecordingClient(),
+        client_factory=lambda settings, logger: cast(
+            FollowUpBossClientProtocol,
+            RecordingClient(),
+        ),
     )
     authenticated_tenant = HostedAuthenticatedTenant.model_validate(
         {
@@ -184,7 +225,7 @@ async def test_tenant_runtime_factory_emits_audit_event_for_upstream_credential_
 async def test_tenant_runtime_factory_rejects_mismatched_authenticated_credential() -> None:
     """Mismatched authenticated credential bindings should fail closed."""
     factory = TenantRuntimeFactory(
-        default_settings=FollowUpBossSettings.model_validate({"api_key": "bootstrap-key"}),
+        default_settings=FollowUpBossTenantRuntimeDefaults.model_validate({}),
         tenant_store=DevelopmentTenantStore(
             tenants=[_tenant_record()],
             credentials=[_credential_record()],
@@ -221,7 +262,7 @@ async def test_tenant_runtime_factory_resolves_current_tenant_from_auth_context(
         lambda: authenticated_tenant,
     )
     factory = TenantRuntimeFactory(
-        default_settings=FollowUpBossSettings.model_validate({"api_key": "bootstrap-key"}),
+        default_settings=FollowUpBossTenantRuntimeDefaults.model_validate({}),
         tenant_store=DevelopmentTenantStore(
             tenants=[_tenant_record()],
             credentials=[_credential_record()],
@@ -239,7 +280,7 @@ async def test_tenant_runtime_factory_resolves_current_tenant_from_auth_context(
 async def test_tenant_runtime_factory_rejects_missing_auth_context() -> None:
     """Missing hosted auth context should fail closed when resolving current runtime."""
     factory = TenantRuntimeFactory(
-        default_settings=FollowUpBossSettings.model_validate({"api_key": "bootstrap-key"}),
+        default_settings=FollowUpBossTenantRuntimeDefaults.model_validate({}),
         tenant_store=DevelopmentTenantStore(
             tenants=[_tenant_record()],
             credentials=[_credential_record()],
@@ -268,7 +309,7 @@ async def test_tenant_runtime_factory_rejects_unavailable_secret_store(
         lambda: authenticated_tenant,
     )
     factory = TenantRuntimeFactory(
-        default_settings=FollowUpBossSettings.model_validate({"api_key": "bootstrap-key"}),
+        default_settings=FollowUpBossTenantRuntimeDefaults.model_validate({}),
         tenant_store=UnavailableSecretStore(),
     )
 
@@ -276,3 +317,113 @@ async def test_tenant_runtime_factory_rejects_unavailable_secret_store(
         await factory.runtime_for_current_tenant()
 
     assert "secret backend unavailable" not in str(exc_info.value)
+
+
+def test_tenant_runtime_factory_accepts_tenant_settings_defaults() -> None:
+    """Tenant settings inputs should be reduced to runtime defaults."""
+    factory = TenantRuntimeFactory(
+        default_settings=FollowUpBossTenantSettings.model_validate(
+            {
+                "auth_mode": AuthMode.API_KEY,
+                "api_key": "bootstrap-api-key",
+                "base_url": "https://example.followupboss.test/v1/",
+                "timeout_seconds": 21,
+                "max_retries": 4,
+            }
+        ),
+        tenant_store=DevelopmentTenantStore(
+            tenants=[_tenant_record()],
+            credentials=[_credential_record(api_key="tenant-runtime-api-key")],
+        ),
+    )
+
+    projected_settings = factory.settings_from_credential(_credential_record())
+
+    assert projected_settings.api_key is not None
+    assert projected_settings.api_key.get_secret_value() == "tenant-one-api-key"
+    assert str(projected_settings.base_url) == "https://example.followupboss.test/v1"
+    assert projected_settings.timeout_seconds == 21
+    assert projected_settings.max_retries == 4
+
+
+@pytest.mark.asyncio
+async def test_tenant_runtime_factory_service_bundle_for_tenant_closes_client() -> None:
+    """Tenant-specific service bundles should always close their request client."""
+    created_clients: list[ClosingRecordingClient] = []
+
+    def client_factory(
+        settings: FollowUpBossTenantSettings,
+        logger: logging.Logger | None,
+    ) -> FollowUpBossClientProtocol:
+        del settings, logger
+        client = ClosingRecordingClient()
+        created_clients.append(client)
+        return cast(FollowUpBossClientProtocol, client)
+
+    factory = TenantRuntimeFactory(
+        default_settings=FollowUpBossTenantRuntimeDefaults.model_validate({}),
+        tenant_store=DevelopmentTenantStore(
+            tenants=[_tenant_record()],
+            credentials=[_credential_record()],
+        ),
+        client_factory=client_factory,
+    )
+
+    async with factory.service_bundle_for_tenant(_authenticated_tenant()) as services:
+        assert services.identity is not None
+
+    assert len(created_clients) == 1
+    assert created_clients[0].closed is True
+
+
+@pytest.mark.asyncio
+async def test_request_scoped_service_bundle_resolver_uses_current_tenant_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The request-scoped resolver should reuse the current auth context safely."""
+    created_clients: list[ClosingRecordingClient] = []
+
+    def client_factory(
+        settings: FollowUpBossTenantSettings,
+        logger: logging.Logger | None,
+    ) -> FollowUpBossClientProtocol:
+        del settings, logger
+        client = ClosingRecordingClient()
+        created_clients.append(client)
+        return cast(FollowUpBossClientProtocol, client)
+
+    monkeypatch.setattr(
+        "followupboss_mcp.tenant_runtime.get_hosted_authenticated_tenant",
+        lambda: _authenticated_tenant(),
+    )
+    factory = TenantRuntimeFactory(
+        default_settings=FollowUpBossTenantRuntimeDefaults.model_validate({}),
+        tenant_store=DevelopmentTenantStore(
+            tenants=[_tenant_record()],
+            credentials=[_credential_record()],
+        ),
+        client_factory=client_factory,
+    )
+    resolver = RequestScopedTenantServiceBundleResolver(factory)
+
+    async with resolver.service_bundle() as services:
+        assert services.people is not None
+
+    assert len(created_clients) == 1
+    assert created_clients[0].closed is True
+
+
+@pytest.mark.asyncio
+async def test_tenant_runtime_factory_default_client_factory_builds_async_client() -> None:
+    """The default client factory should return the shared async client type."""
+    settings = FollowUpBossTenantSettings.model_validate(
+        {
+            "auth_mode": AuthMode.API_KEY,
+            "api_key": "runtime-api-key",
+        }
+    )
+
+    client = TenantRuntimeFactory._default_client_factory(settings, logger=None)
+
+    assert isinstance(client, FollowUpBossAsyncClient)
+    await client.aclose()

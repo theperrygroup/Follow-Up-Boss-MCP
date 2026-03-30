@@ -1,30 +1,92 @@
 # MCP Usage
 
-## Server Transports
+## Operating Modes
 
-The repository currently exposes two local-development transports through the CLI:
+The repository now supports two intentionally different runtime shapes:
 
-- `stdio`
-- `streamable-http`
+| Mode | Transport | Intended use | Follow Up Boss credential source |
+| --- | --- | --- | --- |
+| Local single-tenant | `stdio` or `streamable-http` | local development, MCP Inspector, focused tests | `FollowUpBossSettings` loaded from environment variables |
+| Hosted multi-tenant | `streamable-http` only | shared customer-facing deployment | `TenantStore` lookup on each authenticated call |
 
-Run them with:
+`stdio` remains an explicit local-development-only path. Hosted deployments should expose only
+`streamable-http`.
+
+## Local Development
+
+Run the local server with:
 
 ```bash
 uv run python -m followupboss_mcp.cli stdio
 uv run python -m followupboss_mcp.cli streamable-http --host 127.0.0.1 --port 8000 --path /mcp
 ```
 
-Both commands are still explicit single-tenant local-development flows today. Hosted multi-tenant
-authentication and tenant resolution are not wired yet, so `streamable-http` should still be
-treated as a local inspection path rather than the final hosted product shape.
+These CLI commands still create one local single-tenant runtime from `FollowUpBossSettings`. They
+are useful for manual inspection and development tooling, but they do not represent the hosted
+multi-tenant contract.
+
+## Hosted Authentication Contract
+
+Hosted `streamable-http` deployments add a separate inbound bearer-token layer in front of the
+Follow Up Boss client:
+
+- Every hosted request to tools, resources, and prompts must send `Authorization: Bearer <token>`.
+- FastMCP resource-server settings come from `HostedAuthSettings`.
+- Actual token verification is delegated to a deployment-specific `HostedIdentityVerifier`.
+- The verifier may be backed by signed JWTs, opaque token lookup, or another auth system, as long
+  as it returns the canonical `HostedVerifiedIdentity` payload.
+- Required verified identity fields are `tenant_id`, `subject`, and `client_id`.
+- Optional verified identity fields are `scopes`, `expires_at`, `token_id`, and `credential_id`.
+- `tenant_id` is always resolved through `TenantStore` before any `FollowUpBossAsyncClient` is
+  created.
+- When `credential_id` is present, it must match the tenant's currently active stored credential.
+- Hosted mode exposes no intentionally public tools, resources, or prompts.
+
+When auth fails, the hosted endpoint fails closed before any upstream Follow Up Boss credential is
+used. The common client-visible response is:
+
+```json
+{"error":"invalid_token","error_description":"Authentication required"}
+```
+
+When hosted endpoint rate limiting is configured in fail-closed mode and the limiter backend is
+unavailable, the client receives `503 temporarily_unavailable` with `Retry-After` instead of
+falling through to tenant runtime creation.
+
+## Hosted Runtime Model
+
+Hosted runtime wiring is request-scoped rather than session-scoped:
+
+1. FastMCP auth middleware verifies the inbound bearer token.
+2. `HostedTenantTokenVerifier` resolves the token's `tenant_id` to one active tenant and
+   credential pair in `TenantStore`.
+3. FastMCP stores a `HostedAccessToken` containing the verified identity and an auth-safe tenant
+   context.
+4. For each tool, resource, or prompt call, `TenantRuntimeFactory` re-resolves the current tenant
+   from `TenantStore`.
+5. The runtime factory projects the stored credential into `FollowUpBossTenantSettings` while
+   inheriting shared `base_url`, `timeout_seconds`, and `max_retries` defaults.
+6. A fresh `FollowUpBossAsyncClient` and typed service bundle are created for that call and closed
+   afterward.
+
+This makes bearer-token revocation and tenant credential rotation visible on the next request, and
+it prevents one caller from reusing another tenant's Follow Up Boss client state.
 
 ## Runtime Configuration
 
-The runtime settings are now split deliberately:
+The runtime settings are split deliberately:
 
-- `FollowUpBossServerSettings` owns bootstrap-only fields such as `transport`, `host`, `port`, `streamable_http_path`, and `log_level`.
-- `FollowUpBossTenantSettings` owns single-tenant credential and HTTP-client fields such as `auth_mode`, `api_key`, `access_token`, `system_name`, `system_key`, `base_url`, `timeout_seconds`, and `max_retries`.
-- `FollowUpBossSettings` remains as the backward-compatible composite model used by the current local CLI and examples.
+- `FollowUpBossServerSettings` owns bootstrap-only fields such as `transport`, `host`, `port`,
+  `streamable_http_path`, and `log_level`.
+- `HostedAuthSettings` owns the FastMCP resource-server auth configuration for hosted deployments:
+  `issuer_url`, `resource_server_url`, and optional `required_scopes`.
+- `FollowUpBossTenantRuntimeDefaults` owns the shared non-secret hosted HTTP-client defaults:
+  `base_url`, `timeout_seconds`, and `max_retries`.
+- `FollowUpBossTenantSettings` owns one tenant's Follow Up Boss credential and HTTP-client fields
+  such as `auth_mode`, `api_key`, `access_token`, `system_name`, `system_key`, plus the inherited
+  `base_url`, `timeout_seconds`, and `max_retries` values used by the actual upstream client.
+- `FollowUpBossSettings` remains as the backward-compatible composite model used by the local CLI
+  and examples.
 
 The server-only environment variables are:
 
@@ -33,6 +95,10 @@ The server-only environment variables are:
 - `FOLLOWUPBOSS_PORT`
 - `FOLLOWUPBOSS_STREAMABLE_HTTP_PATH`
 - `FOLLOWUPBOSS_LOG_LEVEL`
+
+When hosted auth is enabled and no explicit `FollowUpBossTenantRuntimeDefaults` object is passed,
+the server uses built-in Follow Up Boss client defaults rather than reading process-wide tenant
+credential environment variables.
 
 The current local single-tenant runtime variables remain:
 
@@ -44,6 +110,14 @@ The current local single-tenant runtime variables remain:
 - `FOLLOWUPBOSS_BASE_URL`
 - `FOLLOWUPBOSS_TIMEOUT_SECONDS`
 - `FOLLOWUPBOSS_MAX_RETRIES`
+
+Hosted deployments should use the server-only environment variables for process bootstrap.
+Customer-specific Follow Up Boss credentials should come from `TenantStore`, not process-wide
+environment variables.
+
+For local hosted-style testing, `DevelopmentTenantStore.from_local_dev_settings(...)` and
+`DevelopmentHostedTokenVerifier` provide a development-safe bridge without changing the local CLI
+contract.
 
 ## Tool Namespace
 
@@ -264,7 +338,12 @@ For streamable HTTP:
 
 1. start the server with the `streamable-http` transport
 2. point Inspector at the configured HTTP endpoint
-3. exercise tools, resources, and prompts through the Inspector UI
+3. add `Authorization: Bearer <token>` when you are testing the hosted multi-tenant flow
+4. exercise tools, resources, and prompts through the Inspector UI
+
+Hosted tools, resources, and prompts all share the same auth boundary. If the bearer token is
+missing, invalid, expired, or mapped to a disabled tenant, Inspector should receive the same
+fail-closed auth response rather than a partial or anonymous surface.
 
 ## Debugging Notes
 

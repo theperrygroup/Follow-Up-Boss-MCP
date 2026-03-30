@@ -3,6 +3,7 @@
 from followupboss_mcp.config import (
     FollowUpBossServerSettings,
     FollowUpBossSettings,
+    FollowUpBossTenantRuntimeDefaults,
     FollowUpBossTenantSettings,
 )
 from followupboss_mcp.hosted_auth import (
@@ -43,6 +44,7 @@ __all__ = [
     "FollowUpBossAsyncClient",
     "FollowUpBossServerSettings",
     "FollowUpBossSettings",
+    "FollowUpBossTenantRuntimeDefaults",
     "FollowUpBossTenantSettings",
     "HostedAccessToken",
     "HostedAuthenticatedTenant",

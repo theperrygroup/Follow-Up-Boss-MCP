@@ -14,8 +14,7 @@ import pytest
 from followupboss_mcp.config import FollowUpBossSettings
 from followupboss_mcp.errors import FollowUpBossForbiddenError, FollowUpBossNotFoundError
 from followupboss_mcp.http_client import FollowUpBossAsyncClient
-from followupboss_mcp.mcp_server import build_service_bundle
-from followupboss_mcp.mcp_tools import FollowUpBossToolAdapter, ServiceBundle
+from followupboss_mcp.mcp_tools import FollowUpBossToolAdapter
 from followupboss_mcp.models.appointments import (
     AppointmentInviteeInput,
     AppointmentRecord,
@@ -45,6 +44,7 @@ from followupboss_mcp.models.webhooks import (
     UpdateWebhookRequest,
     WebhookRecord,
 )
+from followupboss_mcp.tenant_runtime import ServiceBundle, build_service_bundle
 
 pytestmark = [pytest.mark.live]
 
@@ -124,6 +124,7 @@ def _owner_live_settings() -> tuple[FollowUpBossSettings, bool]:
         The resolved owner-capable settings plus a flag indicating whether
         owner-specific authentication overrides were supplied.
     """
+    _require_live_validation_enabled()
     base_settings = FollowUpBossSettings()
     settings_data = _settings_as_init_values(base_settings)
 
@@ -933,6 +934,7 @@ async def test_live_person_and_note_write_contracts() -> None:
 @pytest.mark.asyncio
 async def test_live_person_attachment_write_contracts() -> None:
     """Validate disposable person attachment CRUD with registered-system headers."""
+    _require_live_validation_enabled()
     settings = FollowUpBossSettings()
     if settings.system_name is None or settings.system_key_value() is None:
         pytest.skip("Registered system headers are required for live attachment CRUD.")

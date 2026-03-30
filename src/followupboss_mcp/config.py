@@ -129,8 +129,8 @@ class FollowUpBossServerSettings(BaseSettings):
         return cast(LogLevel, normalized)
 
 
-class FollowUpBossTenantSettings(BaseSettings):
-    """Environment-backed single-tenant runtime settings."""
+class FollowUpBossTenantRuntimeDefaults(BaseSettings):
+    """Environment-backed non-secret HTTP-client defaults for tenant runtimes."""
 
     model_config = SettingsConfigDict(
         env_prefix="FOLLOWUPBOSS_",
@@ -139,45 +139,6 @@ class FollowUpBossTenantSettings(BaseSettings):
         populate_by_name=True,
     )
 
-    auth_mode: AuthMode = Field(
-        default=AuthMode.API_KEY,
-        validation_alias=_settings_env_aliases(
-            "FOLLOWUPBOSS_AUTH_MODE",
-            "FOLLOW_UP_BOSS_AUTH_MODE",
-        ),
-    )
-    api_key: SecretStr | None = Field(
-        default=None,
-        validation_alias=_settings_env_aliases(
-            "FOLLOWUPBOSS_API_KEY",
-            "FOLLOW_UP_BOSS_API_KEY",
-        ),
-    )
-    access_token: SecretStr | None = Field(
-        default=None,
-        validation_alias=_settings_env_aliases(
-            "FOLLOWUPBOSS_ACCESS_TOKEN",
-            "FOLLOW_UP_BOSS_ACCESS_TOKEN",
-        ),
-    )
-    system_name: str | None = Field(
-        default=None,
-        validation_alias=_settings_env_aliases(
-            "FOLLOWUPBOSS_SYSTEM_NAME",
-            "FOLLOW_UP_BOSS_SYSTEM_NAME",
-            "FOLLOWUPBOSS_X_SYSTEM",
-            "FOLLOW_UP_BOSS_X_SYSTEM",
-        ),
-    )
-    system_key: SecretStr | None = Field(
-        default=None,
-        validation_alias=_settings_env_aliases(
-            "FOLLOWUPBOSS_SYSTEM_KEY",
-            "FOLLOW_UP_BOSS_SYSTEM_KEY",
-            "FOLLOWUPBOSS_X_SYSTEM_KEY",
-            "FOLLOW_UP_BOSS_X_SYSTEM_KEY",
-        ),
-    )
     base_url: AnyHttpUrl = Field(
         default_factory=_default_base_url,
         validation_alias=_settings_env_aliases(
@@ -224,6 +185,65 @@ class FollowUpBossTenantSettings(BaseSettings):
             raise ValueError("max_retries must be greater than or equal to zero.")
         return value
 
+    @classmethod
+    def builtin_defaults(cls) -> FollowUpBossTenantRuntimeDefaults:
+        """Return validated built-in defaults without consulting environment sources.
+
+        Returns:
+            A runtime-defaults model seeded only from repository constants.
+        """
+        return cls.model_validate(
+            {
+                "base_url": _default_base_url(),
+                "timeout_seconds": DEFAULT_TIMEOUT_SECONDS,
+                "max_retries": DEFAULT_MAX_RETRIES,
+            }
+        )
+
+
+class FollowUpBossTenantSettings(FollowUpBossTenantRuntimeDefaults):
+    """Environment-backed credentialed settings for one tenant runtime."""
+
+    auth_mode: AuthMode = Field(
+        default=AuthMode.API_KEY,
+        validation_alias=_settings_env_aliases(
+            "FOLLOWUPBOSS_AUTH_MODE",
+            "FOLLOW_UP_BOSS_AUTH_MODE",
+        ),
+    )
+    api_key: SecretStr | None = Field(
+        default=None,
+        validation_alias=_settings_env_aliases(
+            "FOLLOWUPBOSS_API_KEY",
+            "FOLLOW_UP_BOSS_API_KEY",
+        ),
+    )
+    access_token: SecretStr | None = Field(
+        default=None,
+        validation_alias=_settings_env_aliases(
+            "FOLLOWUPBOSS_ACCESS_TOKEN",
+            "FOLLOW_UP_BOSS_ACCESS_TOKEN",
+        ),
+    )
+    system_name: str | None = Field(
+        default=None,
+        validation_alias=_settings_env_aliases(
+            "FOLLOWUPBOSS_SYSTEM_NAME",
+            "FOLLOW_UP_BOSS_SYSTEM_NAME",
+            "FOLLOWUPBOSS_X_SYSTEM",
+            "FOLLOW_UP_BOSS_X_SYSTEM",
+        ),
+    )
+    system_key: SecretStr | None = Field(
+        default=None,
+        validation_alias=_settings_env_aliases(
+            "FOLLOWUPBOSS_SYSTEM_KEY",
+            "FOLLOW_UP_BOSS_SYSTEM_KEY",
+            "FOLLOWUPBOSS_X_SYSTEM_KEY",
+            "FOLLOW_UP_BOSS_X_SYSTEM_KEY",
+        ),
+    )
+
     @model_validator(mode="after")
     def _validate_auth_mode(self) -> FollowUpBossTenantSettings:
         """Ensure credentials match the chosen auth mode."""
@@ -256,6 +276,21 @@ class FollowUpBossTenantSettings(BaseSettings):
         if self.system_key is None:
             return None
         return self.system_key.get_secret_value()
+
+    def tenant_runtime_defaults(self) -> FollowUpBossTenantRuntimeDefaults:
+        """Project the credentialed settings into non-secret runtime defaults.
+
+        Returns:
+            A runtime-defaults model containing only the shared HTTP-client
+            configuration needed for hosted tenant construction.
+        """
+        return FollowUpBossTenantRuntimeDefaults.model_validate(
+            {
+                "base_url": self.base_url,
+                "timeout_seconds": self.timeout_seconds,
+                "max_retries": self.max_retries,
+            }
+        )
 
 
 class FollowUpBossSettings(FollowUpBossTenantSettings):

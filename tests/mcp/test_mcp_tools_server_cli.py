@@ -85,7 +85,6 @@ from followupboss_mcp.mcp_tools import (
     IgnoreUnclaimedPersonToolInput,
     ListInboxAppInstallationsToolInput,
     ListInboxAppParticipantsToolInput,
-    ServiceBundle,
     UpdateActionPlanPersonToolInput,
     UpdateAppointmentOutcomeToolInput,
     UpdateAppointmentToolInput,
@@ -264,6 +263,7 @@ from followupboss_mcp.models.webhooks import (
     WebhookRecord,
 )
 from followupboss_mcp.pagination import PageResult, PaginationMetadata
+from followupboss_mcp.tenant_runtime import ServiceBundle
 from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.streamable_http import streamable_http_client

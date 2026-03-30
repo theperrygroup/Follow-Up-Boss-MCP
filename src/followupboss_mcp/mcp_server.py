@@ -12,6 +12,7 @@ from starlette.routing import Route
 from followupboss_mcp.config import (
     FollowUpBossServerSettings,
     FollowUpBossSettings,
+    FollowUpBossTenantRuntimeDefaults,
     FollowUpBossTenantSettings,
 )
 from followupboss_mcp.hosted_auth import (
@@ -75,6 +76,51 @@ def _resolve_hosted_auth(
     )
 
 
+def _resolve_local_tenant_settings(
+    settings: FollowUpBossTenantRuntimeDefaults | FollowUpBossTenantSettings | None,
+    *,
+    client: FollowUpBossClientProtocol | None,
+) -> FollowUpBossTenantSettings | None:
+    """Resolve credentialed settings for local single-tenant paths.
+
+    Args:
+        settings: Optional caller-supplied settings object.
+        client: Optional injected client that makes credentialed settings
+            unnecessary for local tests.
+
+    Returns:
+        Credentialed local settings when the server must build its own shared
+        client, otherwise `None`.
+    """
+    if settings is None:
+        return None if client is not None else FollowUpBossSettings().tenant_settings()
+    if isinstance(settings, FollowUpBossSettings):
+        return settings.tenant_settings()
+    if isinstance(settings, FollowUpBossTenantSettings):
+        return settings
+    return None
+
+
+def _resolve_tenant_runtime_defaults(
+    settings: FollowUpBossTenantRuntimeDefaults | FollowUpBossTenantSettings | None,
+) -> FollowUpBossTenantRuntimeDefaults:
+    """Resolve non-secret hosted runtime defaults from caller settings.
+
+    Args:
+        settings: Optional caller-supplied settings object.
+
+    Returns:
+        Non-secret client defaults used for hosted tenant runtime construction.
+        When omitted, built-in defaults are used without loading tenant-related
+        environment variables.
+    """
+    if settings is None:
+        return FollowUpBossTenantRuntimeDefaults.builtin_defaults()
+    if isinstance(settings, FollowUpBossTenantSettings):
+        return settings.tenant_runtime_defaults()
+    return settings
+
+
 class FollowUpBossFastMCP(FastMCP):
     """FastMCP subclass with hosted endpoint abuse controls."""
 
@@ -105,7 +151,7 @@ class FollowUpBossFastMCP(FastMCP):
 
 
 def create_server(
-    settings: FollowUpBossTenantSettings | FollowUpBossSettings | None = None,
+    settings: FollowUpBossTenantRuntimeDefaults | FollowUpBossTenantSettings | None = None,
     *,
     server_settings: FollowUpBossServerSettings | None = None,
     client: FollowUpBossClientProtocol | None = None,
@@ -120,9 +166,11 @@ def create_server(
     """Create and register the FastMCP server.
 
     Args:
-        settings: Optional tenant-scoped runtime settings. When omitted and no
-            client is injected, the backward-compatible local-dev settings model
-            is loaded from the environment.
+        settings: Optional non-secret hosted runtime defaults or credentialed
+            local tenant settings. When omitted, local single-tenant flows keep
+            using the backward-compatible environment-backed credential model,
+            while hosted flows use only built-in client defaults unless the
+            caller passes explicit hosted runtime defaults.
         server_settings: Optional server-only bootstrap settings for host, port,
             transport, and log level.
         client: Optional prebuilt client implementation used mainly by tests.
@@ -154,14 +202,6 @@ def create_server(
 
     resolved_logger = configure_logging(resolved_server_settings.log_level)
 
-    resolved_settings: FollowUpBossTenantSettings | None
-    if settings is None:
-        resolved_settings = None if client is not None else FollowUpBossSettings().tenant_settings()
-    elif isinstance(settings, FollowUpBossSettings):
-        resolved_settings = settings.tenant_settings()
-    else:
-        resolved_settings = settings
-
     resolved_mcp_auth_settings, resolved_token_verifier = _resolve_hosted_auth(
         hosted_auth=hosted_auth,
         hosted_token_verifier=hosted_token_verifier,
@@ -171,10 +211,10 @@ def create_server(
     runtime_factory: TenantRuntimeFactory | None = None
     resolved_hosted_rate_limiter = hosted_rate_limiter
     if resolved_mcp_auth_settings is not None:
-        if resolved_settings is None or tenant_store is None:
-            raise ValueError("settings and tenant_store are required when hosted auth is enabled.")
+        if tenant_store is None:
+            raise ValueError("tenant_store is required when hosted auth is enabled.")
         runtime_factory = TenantRuntimeFactory(
-            default_settings=resolved_settings,
+            default_settings=_resolve_tenant_runtime_defaults(settings),
             tenant_store=tenant_store,
             logger=resolved_logger,
         )
@@ -189,7 +229,13 @@ def create_server(
     elif runtime_factory is not None:
         service_bundle_resolver = RequestScopedTenantServiceBundleResolver(runtime_factory)
     else:
-        shared_client = FollowUpBossAsyncClient(resolved_settings, logger=resolved_logger)
+        resolved_local_settings = _resolve_local_tenant_settings(settings, client=client)
+        if resolved_local_settings is None:
+            raise ValueError(
+                "Credentialed tenant settings are required when hosted auth is disabled "
+                "and no client is injected."
+            )
+        shared_client = FollowUpBossAsyncClient(resolved_local_settings, logger=resolved_logger)
         service_bundle_resolver = StaticServiceBundleResolver(build_service_bundle(shared_client))
     adapter = FollowUpBossToolAdapter(service_bundle_resolver)
     resolved_host = host if host is not None else resolved_server_settings.host

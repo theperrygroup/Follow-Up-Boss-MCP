@@ -480,8 +480,9 @@ async def test_streamable_http_hosted_auth_isolates_tools_resources_and_prompts_
 
 
 @pytest.mark.asyncio
-async def test_streamable_http_hosted_auth_resource_and_prompt_runtime_errors_remain_mcp_safe(
-) -> None:
+async def test_streamable_http_hosted_auth_resource_and_prompt_runtime_errors_remain_mcp_safe() -> (
+    None
+):
     """Hosted resource and prompt runtime failures should stay MCP-safe."""
     port = _reserve_port()
     server_script = textwrap.dedent(

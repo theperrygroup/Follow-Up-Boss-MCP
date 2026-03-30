@@ -98,10 +98,39 @@ class UnavailableTenantSecretStore(TenantStore):
         raise RuntimeError("secret backend unavailable")
 
 
+class PassthroughTenantMetadataErrorStore(TenantStore):
+    """Tenant store stub that raises an already-safe metadata error."""
+
+    async def get_tenant(self, tenant_id: str) -> TenantRecord | None:
+        """Raise a safe metadata-store error directly."""
+        del tenant_id
+        raise TenantStoreUnavailableError("safe metadata failure")
+
+    async def get_credential(self, credential_id: str) -> TenantCredentialRecord | None:
+        """Return no credential because metadata lookup should fail first."""
+        del credential_id
+        return None
+
+
+class PassthroughTenantSecretErrorStore(TenantStore):
+    """Tenant store stub that raises an already-safe secret-store error."""
+
+    async def get_tenant(self, tenant_id: str) -> TenantRecord | None:
+        """Return one tenant so credential lookup is attempted."""
+        del tenant_id
+        return _tenant_record()
+
+    async def get_credential(self, credential_id: str) -> TenantCredentialRecord | None:
+        """Raise a safe secret-store error directly."""
+        del credential_id
+        raise TenantSecretStoreUnavailableError("safe secret failure")
+
+
 def test_tenant_record_and_credential_record_validation() -> None:
     """Tenant records and credential records should validate required fields."""
     tenant = _tenant_record(display_name="  Tenant One  ")
     assert tenant.display_name == "Tenant One"
+    assert _tenant_record(display_name=None).display_name is None
 
     api_key_record = _credential_record(system_name="  Local System  ")
     assert api_key_record.system_name == "Local System"
@@ -117,6 +146,7 @@ def test_tenant_record_and_credential_record_validation() -> None:
         system_key=None,
     )
     assert isinstance(oauth_record.auth_strategy(), BearerAuthStrategy)
+    assert oauth_record.system_key_value() is None
 
     with pytest.raises(ValidationError):
         TenantRecord.model_validate(
@@ -132,6 +162,16 @@ def test_tenant_record_and_credential_record_validation() -> None:
                 "credential_id": "credential-1",
                 "tenant_id": "tenant-1",
                 "auth_mode": AuthMode.API_KEY,
+            }
+        )
+    with pytest.raises(ValidationError):
+        TenantCredentialRecord.model_validate(
+            {
+                "credential_id": "credential-1",
+                "tenant_id": "tenant-1",
+                "auth_mode": AuthMode.OAUTH,
+                "api_key": None,
+                "access_token": None,
             }
         )
 
@@ -177,12 +217,28 @@ def test_development_tenant_store_rejects_duplicate_identifiers() -> None:
     """The development store should reject duplicate tenant or credential IDs."""
     tenant = _tenant_record()
     duplicate_tenant = _tenant_record(tenant_id="tenant-1", tenant_slug="tenant-two")
+    duplicate_slug_tenant = _tenant_record(tenant_id="tenant-2", tenant_slug="tenant-one")
     credential = _credential_record()
+    duplicate_credential = _credential_record(
+        credential_id="credential-1",
+        tenant_id="tenant-2",
+        api_key="secret-key-two",
+    )
 
     with pytest.raises(ValidationError):
         DevelopmentTenantStore(
             tenants=[tenant, duplicate_tenant],
             credentials=[credential],
+        )
+    with pytest.raises(ValidationError):
+        DevelopmentTenantStore(
+            tenants=[tenant, duplicate_slug_tenant],
+            credentials=[credential],
+        )
+    with pytest.raises(ValidationError):
+        DevelopmentTenantStore(
+            tenants=[tenant, _tenant_record(tenant_id="tenant-2", tenant_slug="tenant-two")],
+            credentials=[credential, duplicate_credential],
         )
 
 
@@ -293,3 +349,17 @@ async def test_tenant_store_wraps_unavailable_secret_backend() -> None:
         match="Tenant secret store is unavailable.",
     ):
         await UnavailableTenantSecretStore().resolve_tenant("tenant-1")
+
+
+@pytest.mark.asyncio
+async def test_tenant_store_preserves_existing_safe_metadata_errors() -> None:
+    """Existing tenant-store errors should be re-raised instead of wrapped again."""
+    with pytest.raises(TenantStoreUnavailableError, match="safe metadata failure"):
+        await PassthroughTenantMetadataErrorStore().resolve_tenant("tenant-1")
+
+
+@pytest.mark.asyncio
+async def test_tenant_store_preserves_existing_safe_secret_errors() -> None:
+    """Existing secret-store errors should be re-raised instead of wrapped again."""
+    with pytest.raises(TenantSecretStoreUnavailableError, match="safe secret failure"):
+        await PassthroughTenantSecretErrorStore().resolve_tenant("tenant-1")

@@ -20,9 +20,14 @@ from followupboss_mcp.auth import (
 from followupboss_mcp.config import (
     FollowUpBossServerSettings,
     FollowUpBossSettings,
+    FollowUpBossTenantRuntimeDefaults,
     FollowUpBossTenantSettings,
 )
-from followupboss_mcp.errors import FollowUpBossConfigError, TenantCredentialRevokedError
+from followupboss_mcp.errors import (
+    FollowUpBossConfigError,
+    TenantCredentialRevokedError,
+    TenantStoreError,
+)
 from followupboss_mcp.logging import (
     configure_logging,
     emit_audit_event,
@@ -41,6 +46,7 @@ def test_package_exports() -> None:
     assert "FollowUpBossAsyncClient" in followupboss_mcp.__all__
     assert "FollowUpBossServerSettings" in followupboss_mcp.__all__
     assert "FollowUpBossSettings" in followupboss_mcp.__all__
+    assert "FollowUpBossTenantRuntimeDefaults" in followupboss_mcp.__all__
     assert "FollowUpBossTenantSettings" in followupboss_mcp.__all__
     assert "HostedAccessToken" in followupboss_mcp.__all__
     assert "HostedAuthenticatedTenant" in followupboss_mcp.__all__
@@ -155,9 +161,35 @@ def test_server_settings_validation_and_normalization() -> None:
     assert settings.log_level == "DEBUG"
 
     with pytest.raises(ValidationError):
+        FollowUpBossServerSettings.model_validate({"host": "   "})
+    with pytest.raises(TypeError, match="log_level must be a string"):
+        FollowUpBossServerSettings.model_validate({"log_level": 1})
+    with pytest.raises(ValidationError):
         FollowUpBossServerSettings.model_validate({"port": 0})
     with pytest.raises(ValidationError):
+        FollowUpBossServerSettings.model_validate({"log_level": "verbose"})
+    with pytest.raises(ValidationError):
         FollowUpBossServerSettings.model_validate({"streamable_http_path": "mcp"})
+
+
+def test_tenant_runtime_defaults_validation_and_normalization() -> None:
+    """Hosted runtime defaults should normalize and validate shared HTTP fields."""
+    defaults = FollowUpBossTenantRuntimeDefaults.model_validate(
+        {
+            "base_url": "https://api.followupboss.com/v1/",
+            "timeout_seconds": 15,
+            "max_retries": 4,
+        }
+    )
+
+    assert str(defaults.base_url) == "https://api.followupboss.com/v1"
+    assert defaults.timeout_seconds == 15
+    assert defaults.max_retries == 4
+
+    with pytest.raises(ValidationError):
+        FollowUpBossTenantRuntimeDefaults.model_validate({"timeout_seconds": 0})
+    with pytest.raises(ValidationError):
+        FollowUpBossTenantRuntimeDefaults.model_validate({"max_retries": -1})
 
 
 def test_composite_settings_project_split_models() -> None:
@@ -177,6 +209,7 @@ def test_composite_settings_project_split_models() -> None:
 
     server_settings = settings.server_settings()
     tenant_settings = settings.tenant_settings()
+    tenant_runtime_defaults = settings.tenant_runtime_defaults()
 
     assert server_settings.transport == "streamable-http"
     assert server_settings.host == "0.0.0.0"
@@ -187,6 +220,28 @@ def test_composite_settings_project_split_models() -> None:
     assert tenant_settings.timeout_seconds == 12
     assert "log_level" not in tenant_settings.model_dump()
     assert "host" not in tenant_settings.model_dump()
+    assert tenant_settings.system_key_value() is None
+    assert tenant_runtime_defaults.max_retries == 2
+    assert tenant_runtime_defaults.timeout_seconds == 12
+    assert "api_key" not in tenant_runtime_defaults.model_dump()
+    assert "auth_mode" not in tenant_runtime_defaults.model_dump()
+
+
+def test_composite_settings_validate_bootstrap_fields() -> None:
+    """Composite settings should validate mirrored server bootstrap fields."""
+    with pytest.raises(ValidationError):
+        FollowUpBossSettings.model_validate({"api_key": "key", "host": "   "})
+    with pytest.raises(ValidationError):
+        FollowUpBossSettings.model_validate({"api_key": "key", "port": 0})
+    with pytest.raises(ValidationError):
+        FollowUpBossSettings.model_validate({"api_key": "key", "streamable_http_path": "mcp"})
+    with pytest.raises(TypeError, match="log_level must be a string"):
+        FollowUpBossSettings.model_validate({"api_key": "key", "log_level": 1})
+    with pytest.raises(
+        ValidationError,
+        match="log_level must be one of DEBUG, INFO, WARNING, ERROR, CRITICAL.",
+    ):
+        FollowUpBossSettings.model_validate({"api_key": "key", "log_level": "verbose"})
 
 
 def test_tenant_settings_support_follow_up_boss_env_aliases(
@@ -261,6 +316,30 @@ def test_server_settings_support_follow_up_boss_env_aliases(
     assert settings.log_level == "WARNING"
 
 
+def test_tenant_runtime_defaults_support_follow_up_boss_env_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Legacy runtime-default environment aliases should still load settings."""
+    for key in (
+        "FOLLOWUPBOSS_BASE_URL",
+        "FOLLOWUPBOSS_TIMEOUT_SECONDS",
+        "FOLLOWUPBOSS_MAX_RETRIES",
+        "FOLLOW_UP_BOSS_BASE_URL",
+        "FOLLOW_UP_BOSS_TIMEOUT_SECONDS",
+        "FOLLOW_UP_BOSS_MAX_RETRIES",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    monkeypatch.setenv("FOLLOW_UP_BOSS_BASE_URL", "https://api.example.com/v1/")
+    monkeypatch.setenv("FOLLOW_UP_BOSS_TIMEOUT_SECONDS", "7")
+    monkeypatch.setenv("FOLLOW_UP_BOSS_MAX_RETRIES", "5")
+
+    defaults = FollowUpBossTenantRuntimeDefaults()
+    assert str(defaults.base_url) == "https://api.example.com/v1"
+    assert defaults.timeout_seconds == 7
+    assert defaults.max_retries == 5
+
+
 def test_redaction_helpers_and_logger_configuration() -> None:
     """Sensitive values should be redacted and logging should reuse handlers."""
     logger = logging.getLogger("followupboss_mcp")
@@ -332,5 +411,9 @@ def test_redaction_helpers_and_logger_configuration() -> None:
     assert '"tenant_id": "tenant-1"' in audit_output
     assert "super-secret-token" not in audit_output
     assert "***redacted***" in audit_output
+    emit_audit_event(audit_logger, event="tenant_resolution_succeeded")
+    audit_output = audit_stream.getvalue()
+    assert '"event": "tenant_resolution_succeeded"' in audit_output
 
     assert tenant_store_error_reason(TenantCredentialRevokedError()) == "credential_revoked"
+    assert tenant_store_error_reason(TenantStoreError()) == "tenant_store_error"

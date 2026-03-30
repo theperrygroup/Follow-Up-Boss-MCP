@@ -10,7 +10,11 @@ from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict
 
-from followupboss_mcp.config import FollowUpBossSettings, FollowUpBossTenantSettings
+from followupboss_mcp.config import (
+    FollowUpBossSettings,
+    FollowUpBossTenantRuntimeDefaults,
+    FollowUpBossTenantSettings,
+)
 from followupboss_mcp.errors import TenantCredentialNotFoundError, TenantStoreError
 from followupboss_mcp.hosted_auth import (
     HostedAuthenticatedTenant,
@@ -228,7 +232,9 @@ class TenantRuntimeFactory:
     def __init__(
         self,
         *,
-        default_settings: FollowUpBossTenantSettings | FollowUpBossSettings,
+        default_settings: (
+            FollowUpBossTenantRuntimeDefaults | FollowUpBossTenantSettings | FollowUpBossSettings
+        ),
         tenant_store: TenantStore,
         logger: logging.Logger | None = None,
         client_factory: TenantClientFactory | None = None,
@@ -236,16 +242,17 @@ class TenantRuntimeFactory:
         """Initialize the tenant runtime factory.
 
         Args:
-            default_settings: Default Follow Up Boss transport settings whose
+            default_settings: Non-secret Follow Up Boss client defaults whose
                 `base_url`, `timeout_seconds`, and `max_retries` are inherited by
-                every tenant runtime while credentials come from the tenant store.
+                every tenant runtime while credentials come from the tenant
+                store.
             tenant_store: Store used to re-resolve active tenant credentials for
                 each authenticated call.
             logger: Optional logger forwarded to created HTTP clients.
             client_factory: Optional client factory used mainly by focused tests.
         """
-        if isinstance(default_settings, FollowUpBossSettings):
-            resolved_default_settings = default_settings.tenant_settings()
+        if isinstance(default_settings, FollowUpBossTenantSettings):
+            resolved_default_settings = default_settings.tenant_runtime_defaults()
         else:
             resolved_default_settings = default_settings
         self._default_settings = resolved_default_settings
@@ -299,8 +306,7 @@ class TenantRuntimeFactory:
         return TenantRuntime.model_validate(
             {
                 "tenant": (
-                    authenticated_tenant
-                    or HostedAuthenticatedTenant.from_resolved_tenant(resolved)
+                    authenticated_tenant or HostedAuthenticatedTenant.from_resolved_tenant(resolved)
                 ),
                 "settings": self.settings_from_credential(resolved.credential),
             }
