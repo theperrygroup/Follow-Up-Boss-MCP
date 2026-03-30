@@ -1,0 +1,106 @@
+{
+  "family": "followupboss-mcp-hosted",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "__TASK_EXECUTION_ROLE_ARN__",
+  "taskRoleArn": "__TASK_ROLE_ARN__",
+  "containerDefinitions": [
+    {
+      "name": "followupboss-mcp-hosted",
+      "image": "__IMAGE_URI__",
+      "essential": true,
+      "command": [
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--path",
+        "/mcp"
+      ],
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "hostPort": 8000,
+          "protocol": "tcp",
+          "appProtocol": "http"
+        }
+      ],
+      "environment": [
+        {
+          "name": "FOLLOWUPBOSS_TRANSPORT",
+          "value": "streamable-http"
+        },
+        {
+          "name": "FOLLOWUPBOSS_HOST",
+          "value": "0.0.0.0"
+        },
+        {
+          "name": "FOLLOWUPBOSS_PORT",
+          "value": "8000"
+        },
+        {
+          "name": "FOLLOWUPBOSS_STREAMABLE_HTTP_PATH",
+          "value": "/mcp"
+        },
+        {
+          "name": "FOLLOWUPBOSS_LOG_LEVEL",
+          "value": "INFO"
+        },
+        {
+          "name": "FOLLOWUPBOSS_BASE_URL",
+          "value": "https://api.followupboss.com/v1"
+        },
+        {
+          "name": "FOLLOWUPBOSS_TIMEOUT_SECONDS",
+          "value": "10"
+        },
+        {
+          "name": "FOLLOWUPBOSS_MAX_RETRIES",
+          "value": "3"
+        },
+        {
+          "name": "FOLLOWUPBOSS_HOSTED_ISSUER_URL",
+          "value": "__HOSTED_ISSUER_URL__"
+        },
+        {
+          "name": "FOLLOWUPBOSS_HOSTED_RESOURCE_SERVER_URL",
+          "value": "__HOSTED_RESOURCE_SERVER_URL__"
+        },
+        {
+          "name": "FOLLOWUPBOSS_HOSTED_REQUIRED_SCOPES",
+          "value": "followupboss:mcp"
+        },
+        {
+          "name": "FOLLOWUPBOSS_TENANT_SECRET_PREFIX",
+          "value": "__TENANT_SECRET_PREFIX__"
+        },
+        {
+          "name": "FOLLOWUPBOSS_TENANT_SECRET_REGION",
+          "value": "__TENANT_SECRET_REGION__"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "FOLLOWUPBOSS_TENANT_DATABASE_URL",
+          "valueFrom": "__TENANT_DATABASE_URL_SECRET_ARN__"
+        },
+        {
+          "name": "FOLLOWUPBOSS_REDIS_URL",
+          "valueFrom": "__REDIS_URL_SECRET_ARN__"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "__LOG_GROUP_NAME__",
+          "awslogs-region": "__AWS_REGION__",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

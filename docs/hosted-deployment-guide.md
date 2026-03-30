@@ -238,6 +238,19 @@ Equivalent module form:
 uv run python -m followupboss_mcp.hosted_reference --host 0.0.0.0 --port 8000 --path /mcp
 ```
 
+### Repository Deployment Assets
+
+The repository now includes a minimal containerized deployment bundle for ECS/Fargate:
+
+- `Dockerfile`
+- `.dockerignore`
+- `deploy/ecs/task-definition.template.json`
+- `deploy/ecs/task-role-policy.template.json`
+- `deploy/ecs/README.md`
+
+Use those files to build the hosted image, wire the ECS task role, and register the hosted task
+definition without falling back to the local single-tenant CLI.
+
 ### Hosted Wrapper Construction
 
 The dedicated hosted wrapper should remain the production entrypoint. The repository reference

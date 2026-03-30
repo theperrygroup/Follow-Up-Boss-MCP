@@ -186,6 +186,7 @@ For a streamable HTTP server, start the server first and then connect Inspector 
 - [docs/followupboss-doc-ingestion.md](docs/followupboss-doc-ingestion.md)
 - [docs/api-coverage-matrix.md](docs/api-coverage-matrix.md)
 - [docs/hosted-deployment-guide.md](docs/hosted-deployment-guide.md)
+- [deploy/ecs/README.md](deploy/ecs/README.md)
 - [docs/customer-onboarding-flow.md](docs/customer-onboarding-flow.md)
 - [docs/mcp-usage.md](docs/mcp-usage.md)
 - [docs/mcp-validation-checklist.md](docs/mcp-validation-checklist.md)

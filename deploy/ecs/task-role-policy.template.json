@@ -1,0 +1,26 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadHostedConfigSecrets",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetSecretValue"
+      ],
+      "Resource": [
+        "__TENANT_DATABASE_URL_SECRET_ARN__",
+        "__REDIS_URL_SECRET_ARN__"
+      ]
+    },
+    {
+      "Sid": "ReadTenantCredentialSecrets",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetSecretValue"
+      ],
+      "Resource": "__TENANT_SECRET_PREFIX_ARN__*"
+    }
+  ]
+}
