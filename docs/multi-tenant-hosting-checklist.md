@@ -214,14 +214,159 @@ Status: reference hosted Postgres, AWS Secrets Manager, and Redis integrations n
 `followupboss-mcp-hosted` as the dedicated hosted entrypoint. The checklist items below remain
 open until a real shared staging environment and external tenants validate them end to end.
 
+No further in-repo implementation is required before attempting these rollout steps unless staging
+finds a real gap. The remaining work is infrastructure setup, staged validation, operational
+evidence capture, and external pilot execution.
+
+### Run Metadata
+
+| Field | Value |
+| --- | --- |
+| Planned staging date | |
+| Primary operator | |
+| Reviewer | |
+| Deployment revision, image tag, or commit | |
+| Shared `STAGING_MCP_URL` | |
+| Staging dashboard or log link | |
+| Incident or escalation channel | |
+| Notes | |
+
+### Required Inputs Before First Staging Run
+
+- [ ] One named primary operator and one reviewer have access to the staging deploy, PostgreSQL,
+  AWS Secrets Manager, Redis, and log dashboards.
+- [ ] `docs/hosted-deployment-guide.md`, `docs/customer-onboarding-flow.md`, and
+  `docs/security-incident-playbook.md` are treated as the source-of-truth runbooks for deployment,
+  onboarding, and rollback.
+- [ ] One shared `STAGING_MCP_URL` is chosen for the entire staged validation run.
+- [ ] `tenant-a` and `tenant-b` are different real Follow Up Boss accounts with one unique fixture
+  email or person each.
+- [ ] The operator can disable a tenant, revoke a hosted bearer token, rotate a Follow Up Boss
+  credential, and issue a replacement hosted token without waiting on application code changes.
+- [ ] Log and dashboard access is ready for `hosted_auth_*`, `tenant_resolution_*`,
+  `upstream_credential_usage`, and hosted rate-limit events.
+
+### Shared Staging Environment Contract
+
+Export these values before running the staged validation commands:
+
+```bash
+export STAGING_MCP_URL="https://staging-mcp.example.com/mcp"
+export TENANT_A_TOKEN="replace-with-real-hosted-token"
+export TENANT_B_TOKEN="replace-with-real-hosted-token"
+export TENANT_A_FIXTURE_EMAIL="mcp-tenant-a@example.com"
+export TENANT_B_FIXTURE_EMAIL="mcp-tenant-b@example.com"
+```
+
+`tenant-a` and `tenant-b` must both use the same `STAGING_MCP_URL`. Execute the `Invalid Token
+Fails Closed`, `Shared Deployment Smoke For Each Tenant`, `Credential Rotation Smoke`, and
+`Hosted Token Rotation Smoke` command blocks in `docs/hosted-deployment-guide.md`, then attach the
+exact outputs or operator notes to the rollout evidence captured below.
+
 - [ ] Stand up a staging tenant store and secret store.
+  Required work:
+  - Provision staging PostgreSQL for `tenants`, `tenant_credentials`, and
+    `hosted_access_tokens`.
+  - Provision a staging AWS Secrets Manager prefix for tenant secrets and scope app IAM access to
+    that prefix only.
+  - Provision shared staging Redis for hosted rate limiting.
+  - Deploy `followupboss-mcp-hosted` behind HTTPS with the hosted environment variables documented
+    in `docs/hosted-deployment-guide.md`.
+  - Confirm the deployed service is using the shared staging Postgres, AWS Secrets Manager, and
+    Redis backends instead of any development-only in-memory or JSON-backed helpers.
 - [ ] Validate at least two test tenants against the same hosted server instance.
+  Required work:
+  - Create `tenant-a` and `tenant-b` rows plus active credential rows in staging.
+  - Store one real Follow Up Boss credential payload for each tenant in AWS Secrets Manager.
+  - Mint one hosted bearer token for each tenant bound to the active `credential_id`.
+  - Create one unique fixture person or email in each tenant account.
+  - Run the shared-endpoint smoke commands in `docs/hosted-deployment-guide.md` against one
+    shared `STAGING_MCP_URL`.
+  - Confirm each tenant output shows a successful identity response, at least one own-tenant
+    fixture result, zero cross-tenant fixture results, at least one resource read, and at least
+    one prompt message.
 - [ ] Confirm tenant A cannot access tenant B data even with replayed or swapped identifiers.
+  Required work:
+  - Re-run the staged smoke using tenant A's token against tenant B's fixture and confirm zero
+    results.
+  - Re-run the staged smoke using tenant B's token against tenant A's fixture and confirm zero
+    results.
+  - Attempt one swapped or replayed identifier scenario, such as an old token bound to the wrong
+    `credential_id`, and confirm the hosted auth layer fails closed.
+  - Capture the exact command outputs or operator notes as rollout evidence.
 - [ ] Confirm the hosted endpoint behaves correctly after token expiration and credential
 rotation.
+  Required work:
+  - Rotate one tenant's Follow Up Boss secret in place while keeping `credential_id` stable, then
+    rerun the tenant smoke check.
+  - Mint a replacement hosted bearer token for one tenant, validate it, revoke the previous token,
+    and confirm the old token now fails closed.
+  - Validate one expiration path, either with a short-lived test token or by forcing an expired
+    token row in staging.
+  - Confirm the unaffected tenant still works throughout the other tenant's rotation exercise.
 - [ ] Confirm operational dashboards or logs can distinguish tenant auth failures from upstream
 Follow Up Boss failures.
+  Required work:
+  - Verify log aggregation and dashboards expose `hosted_auth_failed`,
+    `tenant_resolution_failed`, `upstream_credential_usage`, and hosted rate-limit events.
+  - Trigger at least one safe auth failure and confirm it is distinguishable from an upstream
+    Follow Up Boss failure.
+  - Trigger at least one safe upstream failure and confirm it is not mislabeled as hosted auth.
+  - Record the dashboard query, log filter, or alert path operators will use during incidents.
 - [ ] Pilot the hosted flow with one external customer before wider rollout.
+  Required work:
+  - Choose one external pilot customer with a reversible onboarding plan and known operator owner.
+  - Onboard the tenant through the staged onboarding flow, validate identity plus one low-risk list
+    or search call, and monitor initial usage.
+  - Confirm token rotation, tenant disable, and rollback instructions are ready before pilot start.
+  - Record pilot outcomes, open issues, and explicit go or no-go criteria for wider rollout.
+
+Recommended execution order:
+1. Provision staging infrastructure and deploy `followupboss-mcp-hosted`.
+2. Seed `tenant-a` and `tenant-b` plus hosted tokens and fixture records.
+3. Run the staged validation commands in `docs/hosted-deployment-guide.md`.
+4. Capture auth, isolation, rotation, and observability evidence.
+5. Only after the staged checklist is clean, run the external pilot.
+
+### Required Rollout Evidence
+
+| Check | Status | Evidence |
+| --- | --- | --- |
+| Invalid token fails closed before any tool call | | |
+| Tenant A shared-endpoint smoke | | |
+| Tenant B shared-endpoint smoke | | |
+| Cross-tenant fixture isolation | | |
+| Resource and prompt auth boundary | | |
+| No-downtime Follow Up Boss credential rotation | | |
+| Hosted bearer-token rotation and revoke | | |
+| Expired-token failure path | | |
+| Auth failures distinguished from upstream failures | | |
+| Hosted rate-limit backend healthy | | |
+| External pilot result | | |
+
+### No-Go Conditions And Rollback Triggers
+
+Do not widen rollout if any of the following are true:
+
+- an invalid, expired, revoked, or tenant-mismatched hosted token can still reach a tool, resource,
+  or prompt successfully
+- tenant A can retrieve tenant B fixture data, or tenant B can retrieve tenant A fixture data
+- credential rotation or bearer-token revocation is not visible on the next request
+- dashboards or logs cannot separate `hosted_auth_failed`, `tenant_resolution_failed`,
+  `upstream_credential_usage`, upstream Follow Up Boss failures, and hosted rate-limit backend
+  failures
+- pilot rollback steps are not ready for immediate use
+
+If any no-go condition is hit, pause rollout and follow `docs/security-incident-playbook.md`
+before rerunning staging.
+
+### Final Sign-Off
+
+| Role | Name | Status | Notes |
+| --- | --- | --- | --- |
+| Primary operator | | | |
+| Reviewer | | | |
+| Pilot owner | | | |
 
 ## Open Questions
 
@@ -251,7 +396,8 @@ surfaces follow the same tenant-auth boundary.
 - [x] Record the tenant store interface and production implementation choice.
 - [x] Record the inbound auth token format and revocation model.
 - [x] Record the client lifecycle choice: request-scoped or session-scoped.
-- [x] Record the final staged validation commands and results.
+- [x] Record the staged validation commands and evidence capture template.
+- [ ] Record the final staged validation results from the shared staging deployment.
 
 ## Done Definition
 
