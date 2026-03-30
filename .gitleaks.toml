@@ -1,0 +1,15 @@
+title = "Follow Up Boss MCP gitleaks allowlist"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Hosted tenant secret-prefix examples in docs and tests are not secrets."
+paths = [
+  '''^docs/hosted-deployment-guide\.md$''',
+  '''^tests/unit/test_hosted_reference\.py$''',
+]
+regexTarget = "match"
+regexes = [
+  '''followupboss/(prod|staging)/tenants/''',
+]
