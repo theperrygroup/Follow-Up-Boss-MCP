@@ -1,11 +1,12 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help sync audit format-check lint typecheck test coverage cli-help live-identity-check validate build build-smoke release-validate
+.PHONY: help sync audit docs-check format-check lint typecheck test coverage cli-help live-identity-check live-contract-check validate build build-smoke release-validate
 
 help:
 	@printf "%s\n" \
 		"make sync             Install locked project dependencies with uv" \
 		"make audit            Run the dependency audit" \
+		"make docs-check       Validate markdown links and MCP usage docs" \
 		"make format-check     Check Ruff formatting" \
 		"make lint             Run Ruff lint checks" \
 		"make typecheck        Run mypy" \
@@ -13,6 +14,7 @@ help:
 		"make coverage         Run branch coverage and enforce 100%%" \
 		"make cli-help         Check the CLI entrypoint" \
 		"make live-identity-check Run the optional live identity sandbox check" \
+		"make live-contract-check Run the broader optional live contract suite" \
 		"make validate         Run the full local validation stack" \
 		"make build            Build sdist and wheel artifacts" \
 		"make build-smoke      Build artifacts and validate wheel install/CLI" \
@@ -24,6 +26,9 @@ sync:
 audit:
 	uv export --format requirements.txt --all-groups --locked --no-editable --no-emit-project --output-file /tmp/followupboss-mcp-requirements.txt
 	uvx --from pip-audit pip-audit -r /tmp/followupboss-mcp-requirements.txt --strict --disable-pip --no-deps --ignore-vuln CVE-2026-4539
+
+docs-check:
+	uv run python scripts/validate_docs_links.py
 
 format-check:
 	uv run ruff format --check .
@@ -45,11 +50,15 @@ cli-help:
 	uv run python -m followupboss_mcp.cli --help
 
 live-identity-check:
-	uv run pytest tests/live/test_identity_sandbox.py -m live
+	if [ -f ".env" ]; then set -a; . ".env"; set +a; fi; uv run pytest tests/live/test_identity_sandbox.py -m live
+
+live-contract-check:
+	if [ -f ".env" ]; then set -a; . ".env"; set +a; fi; uv run pytest tests/live -m live
 
 validate:
 	$(MAKE) sync
 	$(MAKE) audit
+	$(MAKE) docs-check
 	$(MAKE) format-check
 	$(MAKE) lint
 	$(MAKE) typecheck

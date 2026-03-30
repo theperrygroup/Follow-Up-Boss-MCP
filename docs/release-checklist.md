@@ -27,6 +27,12 @@
    make build-smoke
    ```
 
+   For broader upstream contract confidence when sandbox credentials are available:
+
+   ```bash
+   FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check
+   ```
+
 ## Security Checks
 
 4. Confirm no secrets or real customer payloads are present in tracked files.
@@ -36,13 +42,19 @@
 
 ## Documentation Checks
 
-8. Verify `README.md` matches the current tool surface, examples, and commands.
-9. Verify `docs/mcp-usage.md` matches the registered MCP tools, resource, and prompt.
-10. Verify `docs/final-validation-report.md` reflects the latest validation run.
-11. Verify `CONTRIBUTING.md` still matches the current development workflow and package layout.
+8. Run the automated docs validation gate:
+
+   ```bash
+   make docs-check
+   ```
+
+9. Verify `README.md` matches the current tool surface, examples, and commands.
+10. Verify `docs/mcp-usage.md` matches the registered MCP tools, resource, and prompt.
+11. Verify `docs/final-validation-report.md` reflects the latest validation run.
+12. Verify `CONTRIBUTING.md` still matches the current development workflow and package layout.
 
 ## Release Readiness
 
-12. Confirm the API coverage matrix still marks deferred endpoints explicitly.
-13. Confirm examples still execute against the current package layout.
-14. Confirm CI is green on the release candidate commit.
+13. Confirm the API coverage matrix still marks deferred endpoints explicitly, or states clearly that none remain in scope.
+14. Confirm examples still execute against the current package layout.
+15. Confirm CI is green on the release candidate commit.

@@ -39,19 +39,19 @@ This document is the living quality scorecard for the Follow Up Boss MCP project
 
 ## Current Scorecard Summary
 
-Weighted overall score: `94.1 / 100`
+Weighted overall score: `94.6 / 100`
 
 Weighted overall grade: `A`
 
 | Category | Weight | Baseline grade | Current grade | Status | Last reviewed |
 | --- | --- | --- | --- | --- | --- |
 | Architecture and layering | `10%` | `A (95/100)` | `B (89/100)` | `Pass` | `2026-03-28` |
-| Follow Up Boss transport correctness and resilience | `18%` | `A (92/100)` | `A (91/100)` | `Pass` | `2026-03-28` |
-| MCP surface and tool design | `14%` | `A (90/100)` | `A (99/100)` | `Pass` | `2026-03-28` |
+| Follow Up Boss transport correctness and resilience | `18%` | `A (92/100)` | `A (92/100)` | `Pass` | `2026-03-28` |
+| MCP surface and tool design | `14%` | `A (90/100)` | `A (100/100)` | `Pass` | `2026-03-28` |
 | Security and trust boundaries | `14%` | `B (89/100)` | `B (88/100)` | `Pass` | `2026-03-28` |
 | Testing and regression resistance | `16%` | `A (96/100)` | `A (99/100)` | `Pass` | `2026-03-28` |
-| Feature and API coverage breadth | `10%` | `B (82/100)` | `A (100/100)` | `Needs Work` | `2026-03-28` |
-| Documentation and source-of-truth alignment | `8%` | `A (95/100)` | `A (95/100)` | `Pass` | `2026-03-28` |
+| Feature and API coverage breadth | `10%` | `B (82/100)` | `A (100/100)` | `Pass` | `2026-03-28` |
+| Documentation and source-of-truth alignment | `8%` | `A (95/100)` | `A (97/100)` | `Pass` | `2026-03-28` |
 | Build, packaging, and CI readiness | `6%` | `A (92/100)` | `A (93/100)` | `Pass` | `2026-03-28` |
 | Operability and developer ergonomics | `4%` | `B (83/100)` | `A (90/100)` | `Pass` | `2026-03-28` |
 
@@ -59,9 +59,9 @@ Weighted overall grade: `A`
 
 These are the first categories to revisit after meaningful code changes:
 
-1. Feature and API coverage breadth
-2. Security and trust boundaries
-3. Architecture and layering
+1. Security and trust boundaries
+2. Architecture and layering
+3. Follow Up Boss transport correctness and resilience
 
 ## 1. Architecture And Layering
 
@@ -116,10 +116,10 @@ What changes this grade:
 
 - Weight: `18%`
 - Baseline grade: `A (92/100)`
-- Current grade: `A (91/100)`
+- Current grade: `A (92/100)`
 - Status: `Pass`
 - Last reviewed: `2026-03-28`
-- Change notes: Live validation and request-completion logging improved the harsher re-review score because the repository now includes an opt-in real Follow Up Boss identity check and richer per-request response visibility without weakening the offline defaults.
+- Change notes: Live write-and-rollback follow-up restored this category to the baseline band because the optional sandbox suite now exercises disposable person, note, and task mutation flows with real cleanup instead of stopping at read-heavy checks.
 
 Why this matters:
 
@@ -154,26 +154,27 @@ Current strengths:
 - Retry, rate-limit parsing, and pagination logic all have focused tests.
 - Service code adds project-specific safeguards such as custom field validation and note creation waits.
 - The transport layer now rejects caller-supplied overrides for auth, system, and JSON content headers.
-- The repository now includes an opt-in live identity check and request-completion logs with status plus elapsed time.
+- The repository now includes opt-in live identity and broader live contract checks plus request-completion logs with status and elapsed time.
+- The optional live suite now exercises both eventual-consistency reads and safe write-and-rollback behavior for disposable people, notes, and tasks.
 
 Current gaps:
 
 - The default test suite is intentionally offline, which is great for determinism but still leaves a real gap around upstream Follow Up Boss contract drift.
-- The current live validation slice is intentionally narrow and identity-only; broader upstream contract coverage is still deferred.
+- The optional live suite now covers a small set of safe write-and-rollback flows, but it is still not exhaustive across owner-only or multi-resource upstream behavior.
 
 What changes this grade:
 
-- Raise this grade if optional sandbox contract tests are added and security-sensitive header overrides are locked down.
+- Raise this grade if the optional sandbox suite broadens further across additional safe rollback paths or owner-only fixtures without weakening the deterministic offline path.
 - Lower this grade if new service methods bypass the central client or if retry and pagination logic starts diverging across services.
 
 ## 3. MCP Surface And Tool Design
 
 - Weight: `14%`
 - Baseline grade: `A (90/100)`
-- Current grade: `A (99/100)`
+- Current grade: `A (100/100)`
 - Status: `Pass`
 - Last reviewed: `2026-03-28`
-- Change notes: Follow-up webhook update work kept the harsher re-review score in the same high band because the final non-destructive webhook admin mutation landed cleanly without adding any special MCP adapter cases.
+- Change notes: MCP-coupling follow-up improved the harsher re-review score by moving exact registration assertions onto public FastMCP and official stdio client surfaces while keeping broad stub-driven tool coverage in place.
 
 Why this matters:
 
@@ -205,6 +206,7 @@ Current strengths:
 - `mcp-usage.md` and the tests align with the actual registered tool surface.
 - The transport options are exposed clearly through the CLI.
 - The suite now verifies tools, resources, and prompts through an official stdio MCP client session instead of relying only on FastMCP internals.
+- The stdio client-session coverage now asserts the full registered tool list over the public protocol instead of spot-checking only a subset of names.
 - The grouped registration helpers absorbed another full domain cleanly, which is a much better signal than the old single-function registration bottleneck.
 - The official client-session tests now exercise both `stdio` and `streamable-http` transports with representative tool, resource, and prompt coverage.
 - The broader MCP surface now includes CRUD-style workflows across deals, groups, pipelines, ponds, appointments, tasks, templates, and supporting lookup domains without losing consistency.
@@ -223,6 +225,7 @@ Current strengths:
 - The broader MCP surface now includes a dedicated webhook event lookup helper for registered-system diagnostics without needing any special-case response shaping.
 - The broader MCP surface now includes a current-user `/me` helper that keeps secret-like fields redacted instead of leaking them through the MCP transport.
 - The broader MCP surface now includes webhook update support, which makes the registered-system webhook domain effectively complete without introducing transport-specific adapter branches.
+- The broader MCP surface now also includes the remaining person and user delete flows, which closes the last official endpoint gaps in the current manifest.
 - The broader MCP surface now includes externally logged text message creation plus email and text template merge previews without needing transport-specific adapter branches.
 - The broader MCP surface now includes typed team inbox discovery without needing any special-case response shaping.
 - The broader MCP surface now includes inbox app installation, participant, message, note, and conversation mutation flows without needing transport-specific adapter branches.
@@ -230,11 +233,11 @@ Current strengths:
 
 Current gaps:
 
-- [../tests/mcp/test_mcp_tools_server_cli.py](../tests/mcp/test_mcp_tools_server_cli.py) still reaches into private FastMCP managers for exact registration assertions, which leaves some framework-internal coupling in place.
+- The broad server-surface smoke test still uses direct tool-object invocation for breadth, so there is still room to migrate more behavior onto full client-session calls if the protocol suite grows further.
 
 What changes this grade:
 
-- Raise this grade if the MCP surface gains stronger end-to-end automation or modular registration.
+- Raise this grade if more of the broad server-surface smoke behavior migrates onto official client-session calls without making the suite brittle.
 - Lower this grade if docs and tests stop matching the registered tool surface or if non-JSON-safe responses start leaking through the adapter.
 
 ## 4. Security And Trust Boundaries
@@ -297,7 +300,7 @@ What changes this grade:
 - Current grade: `A (99/100)`
 - Status: `Pass`
 - Last reviewed: `2026-03-28`
-- Change notes: Follow-up webhook update work kept this category in the same top band because the new slice again shipped with full service, MCP, and wrapper-based validation coverage while the optional live path remained cleanly isolated.
+- Change notes: Live write-and-rollback follow-up kept this category in the same top band because the optional upstream suite now includes disposable person, note, and task lifecycles and still surfaced real schema drift without weakening the deterministic offline suite.
 
 Why this matters:
 
@@ -312,6 +315,7 @@ Evidence anchors:
 - [../tests/mcp/test_mcp_tools_server_cli.py](../tests/mcp/test_mcp_tools_server_cli.py)
 - [../tests/integration/test_runtime_integration.py](../tests/integration/test_runtime_integration.py)
 - [../tests/contracts/test_edge_contracts.py](../tests/contracts/test_edge_contracts.py)
+- [../tests/live/test_contract_suite.py](../tests/live/test_contract_suite.py)
 - [../.github/workflows/ci.yml](../.github/workflows/ci.yml)
 
 Checklist:
@@ -334,7 +338,9 @@ Current strengths:
 - The tasks and templates domains both landed with focused unit coverage plus MCP surface coverage instead of relying on one broad smoke test.
 - The calls domain followed the same pattern, keeping the growth in surface area proportional to the test growth.
 - The appointments domain followed the same pattern, including list, lookup, write, delete, and MCP coverage without weakening the offline guarantees.
-- The repository now includes an opt-in live identity test that validates real auth and transport behavior without changing the default offline suite.
+- The repository now includes an opt-in live suite that validates real auth, users, people, timeframes, MCP `/me` redaction, and disposable person, note, and task lifecycles without changing the default offline suite.
+- The broadened live suite already paid off by surfacing a real `/me` payload mismatch where `notifyBy` arrived as a list instead of a string.
+- The same live suite now also proves the person wait helper plus note and task CRUD flows against a real sandbox account while cleaning up after itself.
 - The text messaging slice followed the same pattern, including text timeline reads and template CRUD with full wrapper-based validation.
 - The inbox app message and conversation slice followed the same pattern, completing the domain with service, adapter, registration, and MCP tool coverage without weakening the offline guarantees.
 - The people relationship slice followed the same pattern, including list/get/create/update/delete coverage without weakening the offline guarantees.
@@ -350,16 +356,17 @@ Current strengths:
 - The webhook-event slice followed the same pattern, extending the existing webhook domain with a focused registered-system diagnostic lookup without weakening the offline guarantees.
 - The `/me` slice followed the same pattern, extending the users domain with a current-user helper while preserving redaction guarantees in the MCP layer.
 - The webhook update slice followed the same pattern, extending the existing webhook domain with a final non-destructive admin mutation without weakening the offline guarantees.
+- The final delete slice followed the same pattern, extending people and users with the remaining destructive admin operations while preserving the existing structured-delete MCP conventions.
 
 Current gaps:
 
 - There is still a difference between exhaustive offline verification and real upstream contract verification.
 - [../tests/integration/test_runtime_integration.py](../tests/integration/test_runtime_integration.py) is intentionally lightweight, so runtime integration confidence is narrower than the coverage numbers may suggest.
-- The current live validation slice exercises only the identity path, not broader upstream behavior across the implemented resource surface.
+- The optional live suite is now broader and includes a small set of safe rollback-backed mutation paths, but it is still not exhaustive across owner-only or multi-resource mutation surfaces.
 
 What changes this grade:
 
-- Raise this grade if optional sandbox tests are added without weakening the offline suite.
+- Raise this grade if the optional sandbox suite broadens further through additional safe write-and-rollback paths or more official client-session coverage without weakening the offline suite.
 - Lower this grade if new production modules are added without preserving the same strict coverage and typing discipline.
 
 ## 6. Feature And API Coverage Breadth
@@ -367,9 +374,9 @@ What changes this grade:
 - Weight: `10%`
 - Baseline grade: `B (82/100)`
 - Current grade: `A (100/100)`
-- Status: `Needs Work`
+- Status: `Pass`
 - Last reviewed: `2026-03-28`
-- Change notes: Follow-up webhook update work expanded breadth again by finishing another documented admin surface, but the harsh score still stays conservative because the official API surface remains much broader than the current scope.
+- Change notes: Follow-up final delete work closed the last discovered official endpoint gaps in the generated manifest, so breadth is now a true pass for the current repository scope.
 
 Why this matters:
 
@@ -450,6 +457,7 @@ Current strengths:
 - The repository now covers the documented webhook event lookup surface instead of leaving registered-system delivery diagnostics deferred.
 - The repository now covers the documented current-user `/me` surface instead of requiring callers to infer their own user context only through `/identity` or a separate `/users/:id` lookup.
 - The repository now covers the documented webhook update surface instead of leaving webhook lifecycle management partially read-only.
+- The repository now covers the remaining documented destructive admin deletes for people and users instead of leaving the official surface partially deferred.
 - The repository now covers both collection and single-resource read flows for events and webhooks instead of only the collection paths.
 - The repository now covers both person and deal attachment CRUD for registered systems instead of leaving those documented attachment surfaces deferred.
 - The repository now covers the documented custom field admin surface with get/create/update/delete support instead of limiting the domain to list-only discovery.
@@ -476,23 +484,21 @@ Current strengths:
 
 Current gaps:
 
-- Breadth is the clearest structural gap in the current repository.
-- Many official endpoints remain intentionally deferred, so the current scope is high quality but still much narrower than the official API surface an integration may expect.
-- The repository currently implements `151` official endpoints while the generated manifest tracks a much larger documented surface.
+- No discovered official endpoint gaps remain in the current repository scope; future breadth risk is now mostly upstream API drift or newly documented endpoints rather than current missing coverage.
 
 What changes this grade:
 
-- Raise this grade by implementing additional official endpoints and exposing them through models, services, tests, docs, and MCP tools.
-- Lower this grade if new code changes remove clarity around what is implemented versus deferred.
+- Raise this grade by keeping future upstream endpoint additions aligned just as rigorously across models, services, tests, docs, and MCP tools.
+- Lower this grade if new code changes reintroduce ambiguity around what is implemented versus deferred.
 
 ## 7. Documentation And Source-Of-Truth Alignment
 
 - Weight: `8%`
 - Baseline grade: `A (95/100)`
-- Current grade: `A (95/100)`
+- Current grade: `A (97/100)`
 - Status: `Pass`
 - Last reviewed: `2026-03-28`
-- Change notes: The webhook update slice kept the docs score at the baseline because the README, MCP usage guide, coverage matrix, and final validation report all moved in lockstep with the code and validation totals.
+- Change notes: Docs-validation automation follow-up improved the harsher re-review score by adding a repository-local markdown link and MCP usage coverage validator to the shared validation wrapper and CI flow.
 
 Why this matters:
 
@@ -512,6 +518,7 @@ Evidence anchors:
 - [../Makefile](../Makefile)
 - [release-checklist.md](release-checklist.md)
 - [final-validation-report.md](final-validation-report.md)
+- [mcp-validation-checklist.md](mcp-validation-checklist.md)
 
 Checklist:
 
@@ -520,7 +527,7 @@ Checklist:
 - [x] The API coverage matrix explicitly distinguishes implemented and deferred endpoints.
 - [x] The README command set matches the quality gates and runtime entrypoints.
 - [x] The docs clearly explain the project's intended architecture and operational expectations.
-- [ ] CI performs automated docs drift or link validation.
+- [x] CI performs automated docs drift or link validation.
 
 Current strengths:
 
@@ -546,14 +553,16 @@ Current strengths:
 - The same alignment discipline held again when the webhook-event surface was added.
 - The same alignment discipline held again when the webhook update surface was added.
 - The same alignment discipline held again when the `/me` surface was added.
+- The same alignment discipline held again when the final delete surface was added.
+- The repository now runs an automated docs/link validator that checks local markdown links plus MCP usage coverage against the registration file.
 
 Current gaps:
 
-- The repository does not yet automate documentation drift or link checking in CI.
+- The current docs validator intentionally skips external URL reachability to avoid flaky CI, so only repository-local links and MCP usage coverage are enforced automatically today.
 
 What changes this grade:
 
-- Raise this grade if doc consistency or link validation becomes automated.
+- Raise this grade if broader docs drift checks or safe external link validation become automated.
 - Lower this grade if the README, MCP docs, coverage matrix, or release checklist stop matching the current code.
 
 ## 8. Build, Packaging, And CI Readiness
@@ -592,6 +601,7 @@ Current strengths:
 
 - The packaging and CI story is straightforward and reproducible.
 - Local and CI commands are intentionally aligned, which reduces "works on my machine" drift.
+- The shared validation wrapper now enforces repository-local docs links and MCP usage coverage before code-quality gates proceed.
 - CI now includes dependency-audit and secret-scanning steps in addition to the existing formatting, linting, typing, test, coverage, and CLI checks.
 - The repository now builds distributions explicitly and validates the wheel in an isolated virtual environment before treating the release path as healthy.
 
@@ -711,11 +721,16 @@ Use this mini-template when you revisit the file after a code change:
 | `2026-03-28` | `GPT-5.4` | Webhook-events breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed webhook event lookup support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
 | `2026-03-28` | `GPT-5.4` | Current-user breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed `/me` support with MCP-side redaction of secret-like fields, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
 | `2026-03-28` | `GPT-5.4` | Webhook-update breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed webhook update support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
+| `2026-03-28` | `GPT-5.4` | Final delete breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed person and user delete support, removed the last deferred official endpoints from the generated coverage matrix, and revalidated through the shared wrapper plus the optional live identity check. |
+| `2026-03-28` | `GPT-5.4` | Docs-validation automation follow-up | `7, 8` | `94.1 -> 94.2` | Added a repository-local markdown link and MCP usage coverage validator, wired it into `make validate`, refreshed contributor/release docs, fixed the live smoke wrapper to auto-load `.env`, and revalidated the automation directly. |
+| `2026-03-28` | `GPT-5.4` | Live-contract-suite follow-up | `2, 5, 9` | `94.2 -> 94.2` | Added a broader optional live contract target across identity, users, people, timeframes, and MCP `/me` redaction, fixed a real live `/me` schema mismatch around `notifyBy`, and revalidated both the focused live suite and the shared release wrapper. |
+| `2026-03-28` | `GPT-5.4` | MCP-coupling follow-up | `3` | `94.2 -> 94.3` | Moved exact MCP surface registration assertions onto public FastMCP and official stdio client surfaces, kept broad tool smoke coverage intact, and revalidated the focused MCP suite plus the shared release wrapper. |
+| `2026-03-28` | `GPT-5.4` | Live-write rollback follow-up | `2, 5` | `94.3 -> 94.6` | Added disposable person, note, and task live write-and-rollback flows, proved cleanup against the real sandbox account, and revalidated both the live contract suite and the shared release wrapper. |
 
 ## Next Improvement Targets
 
 If you want the fastest path to a higher overall score, focus here first:
 
-1. Decide whether the remaining destructive admin endpoints `DELETE /people/:id` and `DELETE /users/:id` belong in scope now that the non-destructive official surface is effectively complete.
-2. Expand the current live validation beyond the identity path into a broader optional Follow Up Boss sandbox contract suite.
-3. Improve day-two operations with richer telemetry and, if needed later, a broader CI matrix across multiple Python versions or operating systems.
+1. Improve day-two operations with richer telemetry and, if needed later, a broader CI matrix across multiple Python versions or operating systems.
+2. Extend the optional live suite into additional safe rollback-backed domains or owner-only fixture flows so upstream mutation contracts are exercised even more broadly.
+3. Migrate more of the broad server-surface smoke behavior onto official client-session calls if you want even less framework-coupled MCP coverage.

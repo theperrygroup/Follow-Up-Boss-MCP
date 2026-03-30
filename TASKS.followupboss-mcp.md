@@ -82,6 +82,16 @@ Build a production-grade Python 3.12+ repository that ingests official Follow Up
 - `DONE` Re-run `make release-validate` and `make live-identity-check` after the webhook update slice.
 - `DONE` Implement typed person and user delete coverage across models, services, MCP tools, tests, and docs.
 - `DONE` Re-run `make release-validate` and `make live-identity-check` after the final delete slice.
+- `DONE` Add automated markdown link and MCP usage validation across scripts, the shared validation wrapper, contributor docs, and release docs.
+- `DONE` Restore and relink the MCP validation runbook, then make `make live-identity-check` auto-load a repository-local `.env` when present.
+- `DONE` Re-run `make release-validate` and `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check` after the docs-validation automation slice.
+- `DONE` Broaden the optional live validation suite beyond the identity path into representative multi-domain contract checks across identity, users, people, timeframes, and MCP `/me` redaction.
+- `DONE` Fix live-discovered `/me` schema drift so `notifyBy` accepts both string and list payloads.
+- `DONE` Re-run `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check` and `make release-validate` after the broader live-suite slice.
+- `DONE` Reduce private FastMCP-manager coupling in the server-surface test by moving exact registration assertions onto public FastMCP and official stdio client surfaces.
+- `DONE` Re-run focused MCP tests and `make release-validate` after the MCP-coupling slice.
+- `DONE` Extend the optional live suite with disposable person, note, and task write-and-rollback flows that exercise real create, update, lookup, and cleanup behavior.
+- `DONE` Re-run `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check` and `make release-validate` after the live write-and-rollback slice.
 
 ## Blockers
 
@@ -138,6 +148,19 @@ Build a production-grade Python 3.12+ repository that ingests official Follow Up
 - Re-ran `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check` with successful output: `1 passed`.
 - Ran credential-backed MCP validation with the current `.env` and updated `docs/mcp-validation-checklist.md` with live results for transports, pagination, error handling, and domain coverage across people, relationships, attachments, reactions, events, action plans, automations, calls, text messages, appointments, deals, deal attachments, templates, text message templates, and notes.
 - Added settings support for both documented `FOLLOWUPBOSS_*` variables and legacy `FOLLOW_UP_BOSS_*` aliases, then verified `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check` works with the raw `.env` names directly.
+- Added `scripts/validate_docs_links.py`, wired it into `make validate`, refreshed the README, contributing guide, release checklist, final validation report, and harsh review checklist, and restored `docs/mcp-validation-checklist.md` so local docs validation now has a complete repository target set.
+- Re-ran `uv run python scripts/validate_docs_links.py` with successful output: `Docs validation passed.`.
+- Re-ran `make release-validate` with successful output: `Success: no issues found in 84 source files`, `110 passed, 1 skipped`, `TOTAL 4423 0 410 0 100.00%`, and `Validated build artifacts: followupboss_mcp-0.1.0.tar.gz followupboss_mcp-0.1.0-py3-none-any.whl`.
+- Re-ran `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check` with successful output: `1 passed`, and verified the target auto-loads a repository-local `.env` when present.
+- Added `tests/live/test_contract_suite.py` plus the `make live-contract-check` wrapper, refreshed the README, contributing guide, testing guide, release checklist, validation runbook, final validation report, and harsh review checklist, and widened `/me` parsing so `notifyBy` accepts both string and list payloads observed in live data.
+- Re-ran `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check` with successful output: `3 passed`.
+- Re-ran `make release-validate` with successful output: `Success: no issues found in 85 source files`, `110 passed, 3 skipped`, `TOTAL 4423 0 410 0 100.00%`, and `Validated build artifacts: followupboss_mcp-0.1.0.tar.gz followupboss_mcp-0.1.0-py3-none-any.whl`.
+- Moved the broad MCP server-surface registration assertions off private FastMCP manager maps and onto public FastMCP list/read APIs plus the official stdio client session, while keeping the broad tool smoke coverage intact.
+- Re-ran `uv run pytest tests/mcp/test_mcp_tools_server_cli.py` with successful output: `5 passed`.
+- Re-ran `make release-validate` with successful output: `Success: no issues found in 85 source files`, `110 passed, 3 skipped`, `TOTAL 4423 0 410 0 100.00%`, and `Validated build artifacts: followupboss_mcp-0.1.0.tar.gz followupboss_mcp-0.1.0-py3-none-any.whl`.
+- Extended `tests/live/test_contract_suite.py` with disposable person, note, and task create/update/get/delete rollback flows, refreshed the README, contributing guide, testing guide, validation runbook, final validation report, harsh review checklist, and task tracker, and verified cleanup reaches real `404` reads after person and task deletion.
+- Re-ran `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check` with successful output: `4 passed`.
+- Re-ran `make release-validate` with successful output: `Success: no issues found in 85 source files`, `110 passed, 3 skipped`, `TOTAL 4423 0 410 0 100.00%`, and `Validated build artifacts: followupboss_mcp-0.1.0.tar.gz followupboss_mcp-0.1.0-py3-none-any.whl`.
 
 ## Final Acceptance Checklist
 

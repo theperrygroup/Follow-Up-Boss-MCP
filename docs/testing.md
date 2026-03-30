@@ -91,10 +91,16 @@ Live Follow Up Boss tests are intentionally not required for the default suite. 
 3. keep the offline suite sufficient to preserve the `100.00%` coverage requirement
 4. never weaken the default coverage gate in order to accommodate live tests
 
-The current opt-in live check is:
+The current opt-in live checks are:
 
 ```bash
 FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check
+FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check
 ```
 
-This only exercises the `GET /identity` path and is intended to validate real auth and transport behavior without turning the default suite into a live dependency.
+`live-identity-check` only exercises the `GET /identity` path and is intended to validate
+real auth and transport behavior without turning the default suite into a live dependency.
+
+`live-contract-check` keeps the same opt-in behavior while broadening upstream verification
+across identity, users, people, timeframes, MCP-layer current-user redaction, and
+disposable person-plus-note-plus-task write-and-rollback flows.

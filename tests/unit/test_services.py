@@ -3599,7 +3599,7 @@ async def test_events_users_notes_and_webhooks_services() -> None:
                 "callingCapabilityToken": "secret-calling-token",
                 "isOwner": True,
                 "unreadConversationCount": 0,
-                "notifyBy": "Email only",
+                "notifyBy": ["email", "sms"],
                 "features": ["calling", "link-tracking"],
             },
             {},
@@ -3672,6 +3672,7 @@ async def test_events_users_notes_and_webhooks_services() -> None:
     assert current_user.intercom_settings.user_hash == "secret-hash"
     assert current_user.connected_email is not None
     assert current_user.connected_email.oauth_provider == "google"
+    assert current_user.notify_by == ["email", "sms"]
     sanitized_user = CurrentUserRecord(id=2, intercomSettings=IntercomSettingsRecord(app_id="abc"))
     sanitized_me = sanitized_user.redacted_for_mcp()
     assert sanitized_me.intercom_settings is not None

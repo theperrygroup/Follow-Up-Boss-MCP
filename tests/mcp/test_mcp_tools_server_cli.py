@@ -270,6 +270,164 @@ from mcp.client.streamable_http import streamable_http_client
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
+EXPECTED_REGISTERED_TOOL_NAMES = [
+    "followupboss_add_inbox_app_message",
+    "followupboss_add_inbox_app_note",
+    "followupboss_add_inbox_app_participant",
+    "followupboss_add_note",
+    "followupboss_add_reaction",
+    "followupboss_apply_action_plan",
+    "followupboss_check_duplicate_person",
+    "followupboss_claim_person",
+    "followupboss_create_appointment",
+    "followupboss_create_appointment_outcome",
+    "followupboss_create_appointment_type",
+    "followupboss_create_call",
+    "followupboss_create_custom_field",
+    "followupboss_create_deal",
+    "followupboss_create_deal_attachment",
+    "followupboss_create_deal_custom_field",
+    "followupboss_create_email_campaign",
+    "followupboss_create_group",
+    "followupboss_create_people_relationship",
+    "followupboss_create_person",
+    "followupboss_create_person_attachment",
+    "followupboss_create_pipeline",
+    "followupboss_create_pond",
+    "followupboss_create_stage",
+    "followupboss_create_task",
+    "followupboss_create_team",
+    "followupboss_create_template",
+    "followupboss_create_text_message",
+    "followupboss_create_text_message_template",
+    "followupboss_create_webhook",
+    "followupboss_deactivate_inbox_app",
+    "followupboss_delete_appointment",
+    "followupboss_delete_appointment_outcome",
+    "followupboss_delete_appointment_type",
+    "followupboss_delete_custom_field",
+    "followupboss_delete_deal",
+    "followupboss_delete_deal_attachment",
+    "followupboss_delete_deal_custom_field",
+    "followupboss_delete_group",
+    "followupboss_delete_note",
+    "followupboss_delete_people_relationship",
+    "followupboss_delete_person",
+    "followupboss_delete_person_attachment",
+    "followupboss_delete_pipeline",
+    "followupboss_delete_pond",
+    "followupboss_delete_reaction",
+    "followupboss_delete_stage",
+    "followupboss_delete_task",
+    "followupboss_delete_team",
+    "followupboss_delete_template",
+    "followupboss_delete_text_message_template",
+    "followupboss_delete_user",
+    "followupboss_delete_webhook",
+    "followupboss_get_appointment",
+    "followupboss_get_appointment_outcome",
+    "followupboss_get_appointment_type",
+    "followupboss_get_automation",
+    "followupboss_get_automation_person",
+    "followupboss_get_call",
+    "followupboss_get_custom_field",
+    "followupboss_get_deal",
+    "followupboss_get_deal_attachment",
+    "followupboss_get_deal_custom_field",
+    "followupboss_get_event",
+    "followupboss_get_group",
+    "followupboss_get_identity",
+    "followupboss_get_me",
+    "followupboss_get_note",
+    "followupboss_get_people_relationship",
+    "followupboss_get_person",
+    "followupboss_get_person_attachment",
+    "followupboss_get_pipeline",
+    "followupboss_get_pond",
+    "followupboss_get_reaction",
+    "followupboss_get_smart_list",
+    "followupboss_get_stage",
+    "followupboss_get_task",
+    "followupboss_get_team",
+    "followupboss_get_template",
+    "followupboss_get_text_message",
+    "followupboss_get_text_message_template",
+    "followupboss_get_threaded_reply",
+    "followupboss_get_user",
+    "followupboss_get_webhook",
+    "followupboss_get_webhook_event",
+    "followupboss_ignore_unclaimed_person",
+    "followupboss_install_inbox_app",
+    "followupboss_list_action_plan_people",
+    "followupboss_list_action_plans",
+    "followupboss_list_appointment_outcomes",
+    "followupboss_list_appointment_types",
+    "followupboss_list_appointments",
+    "followupboss_list_automation_people",
+    "followupboss_list_automations",
+    "followupboss_list_calls",
+    "followupboss_list_custom_fields",
+    "followupboss_list_deal_custom_fields",
+    "followupboss_list_deals",
+    "followupboss_list_email_campaigns",
+    "followupboss_list_email_events",
+    "followupboss_list_groups",
+    "followupboss_list_inbox_app_installations",
+    "followupboss_list_inbox_app_participants",
+    "followupboss_list_people_relationships",
+    "followupboss_list_pipelines",
+    "followupboss_list_ponds",
+    "followupboss_list_round_robin_groups",
+    "followupboss_list_smart_lists",
+    "followupboss_list_stages",
+    "followupboss_list_tasks",
+    "followupboss_list_team_inboxes",
+    "followupboss_list_teams",
+    "followupboss_list_templates",
+    "followupboss_list_text_message_templates",
+    "followupboss_list_text_messages",
+    "followupboss_list_timeframes",
+    "followupboss_list_unclaimed_people",
+    "followupboss_list_users",
+    "followupboss_list_webhooks",
+    "followupboss_merge_template",
+    "followupboss_merge_text_message_template",
+    "followupboss_remove_inbox_app_participant",
+    "followupboss_search_events",
+    "followupboss_search_people",
+    "followupboss_send_email_events",
+    "followupboss_send_event",
+    "followupboss_trigger_automation",
+    "followupboss_update_action_plan_person",
+    "followupboss_update_appointment",
+    "followupboss_update_appointment_outcome",
+    "followupboss_update_appointment_type",
+    "followupboss_update_automation_person",
+    "followupboss_update_call",
+    "followupboss_update_custom_field",
+    "followupboss_update_deal",
+    "followupboss_update_deal_attachment",
+    "followupboss_update_deal_custom_field",
+    "followupboss_update_email_campaign",
+    "followupboss_update_group",
+    "followupboss_update_inbox_app_conversation",
+    "followupboss_update_inbox_app_message",
+    "followupboss_update_note",
+    "followupboss_update_people_relationship",
+    "followupboss_update_person",
+    "followupboss_update_person_attachment",
+    "followupboss_update_pipeline",
+    "followupboss_update_pond",
+    "followupboss_update_stage",
+    "followupboss_update_task",
+    "followupboss_update_team",
+    "followupboss_update_template",
+    "followupboss_update_text_message_template",
+    "followupboss_update_webhook",
+]
+EXPECTED_RESOURCE_URIS = ["followupboss://api-coverage-matrix"]
+EXPECTED_PROMPT_NAMES = ["followupboss_compose_lead_event"]
+
 
 def _page_metadata() -> PaginationMetadata:
     return PaginationMetadata(count=1, limit=10, next_token=None, next_link=None, offset=0, total=1)
@@ -293,6 +451,22 @@ async def _wait_for_port(host: str, port: int, *, attempts: int = 50) -> None:
         await writer.wait_closed()
         return
     raise AssertionError(f"Timed out waiting for {host}:{port} to accept connections.")
+
+
+def _server_python_env() -> dict[str, str]:
+    """Build the environment used by subprocess MCP server tests.
+
+    Returns:
+        An environment mapping that exposes the repository's `src/` layout to the
+        subprocess-based MCP server tests.
+    """
+    server_env = dict(os.environ)
+    existing_pythonpath = server_env.get("PYTHONPATH")
+    pythonpath_entries = [str(PROJECT_ROOT / "src")]
+    if existing_pythonpath:
+        pythonpath_entries.append(existing_pythonpath)
+    server_env["PYTHONPATH"] = os.pathsep.join(pythonpath_entries)
+    return server_env
 
 
 def _service_stub(**methods: object) -> Any:
@@ -901,7 +1075,7 @@ class StubBundle:
                 callingCapabilityToken="secret-calling-token",
                 isOwner=True,
                 unreadConversationCount=0,
-                notifyBy="Email only",
+                notifyBy=["email", "sms"],
                 features=["calling", "link-tracking"],
             )
 
@@ -2636,7 +2810,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                     "callingCapabilityToken": "secret-calling-token",
                     "isOwner": True,
                     "unreadConversationCount": 0,
-                    "notifyBy": "Email only",
+                    "notifyBy": ["email", "sms"],
                     "features": ["calling", "link-tracking"],
                 },
                 {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "people": [{"id": 2}]},
@@ -3221,8 +3395,9 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
             ]
         ),
     )
+    tool_names = sorted(tool.name for tool in await server.list_tools())
     tools = server._tool_manager._tools
-    assert sorted(tools) == [
+    assert tool_names == [
         "followupboss_add_inbox_app_message",
         "followupboss_add_inbox_app_note",
         "followupboss_add_inbox_app_participant",
@@ -3827,20 +4002,23 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     }
     assert (await tools["followupboss_list_timeframes"].fn())["timeframes"][0]["id"] == 1
 
-    resource = server._resource_manager._resources["followupboss://api-coverage-matrix"]
-    resource_text = await resource.read()
-    assert "API Coverage Matrix" in resource_text
+    resources = await server.list_resources()
+    assert [str(resource.uri) for resource in resources] == EXPECTED_RESOURCE_URIS
+    resource_contents = list(await server.read_resource(EXPECTED_RESOURCE_URIS[0]))
+    assert "API Coverage Matrix" in resource_contents[0].content
 
-    prompt = server._prompt_manager._prompts["followupboss_compose_lead_event"]
-    messages = await prompt.render(
-        arguments={
+    prompts = await server.list_prompts()
+    assert [prompt.name for prompt in prompts] == EXPECTED_PROMPT_NAMES
+    prompt_result = await server.get_prompt(
+        "followupboss_compose_lead_event",
+        {
             "source": "Portal",
             "type": "Inquiry",
             "message": "Hi",
             "email": "a@example.com",
-        }
+        },
     )
-    content_text = getattr(messages[0].content, "text", None)
+    content_text = getattr(prompt_result.messages[0].content, "text", None)
     assert isinstance(content_text, str)
     assert content_text.startswith("Create a Follow Up Boss POST /events payload")
 
@@ -3860,7 +4038,22 @@ async def test_stdio_client_interoperates_with_server_surface() -> None:
             def __init__(self) -> None:
                 self.responses = [
                     {"id": 1, "name": "Picard"},
+                    {
+                        "id": 1,
+                        "name": "Gerald Leenerts",
+                        "apiKey": "secret-api-key",
+                        "algoliaKey": "secret-algolia-key",
+                        "callingCapabilityToken": "secret-calling-token",
+                        "notifyBy": ["email", "sms"],
+                        "intercomSettings": {"user_hash": "secret-hash"},
+                    },
                     {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "people": [{"id": 2}]},
+                    {"id": 3, "firstName": "Tom"},
+                    {},
+                    {
+                        "_metadata": {"limit": 10, "offset": 0, "total": 2},
+                        "timeframes": [{"id": 10, "timeframe": "0-3 Months"}],
+                    },
                     {"id": 3, "personId": 2, "type": "Inquiry"},
                     {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "tasks": [{"id": 4}]},
                     {"id": 5, "personId": 2, "assignedTo": "Data", "type": "Call"},
@@ -3897,19 +4090,13 @@ async def test_stdio_client_interoperates_with_server_surface() -> None:
         ).run(transport="stdio")
         """
     )
-    server_env = dict(os.environ)
-    existing_pythonpath = server_env.get("PYTHONPATH")
-    pythonpath_entries = [str(PROJECT_ROOT / "src")]
-    if existing_pythonpath:
-        pythonpath_entries.append(existing_pythonpath)
-    server_env["PYTHONPATH"] = os.pathsep.join(pythonpath_entries)
     server = StdioServerParameters(
         command=sys.executable,
         args=["-c", server_script],
         cwd=str(PROJECT_ROOT),
-        env=server_env,
+        env=_server_python_env(),
     )
-    resource_uri = TypeAdapter(AnyUrl).validate_python("followupboss://api-coverage-matrix")
+    resource_uri = TypeAdapter(AnyUrl).validate_python(EXPECTED_RESOURCE_URIS[0])
 
     async with stdio_client(server) as (read_stream, write_stream):
         async with ClientSession(read_stream, write_stream) as session:
@@ -3917,21 +4104,21 @@ async def test_stdio_client_interoperates_with_server_surface() -> None:
 
             tools = await session.list_tools()
             tool_names = sorted(tool.name for tool in tools.tools)
-            assert "followupboss_get_appointment" in tool_names
-            assert "followupboss_get_call" in tool_names
-            assert "followupboss_get_event" in tool_names
-            assert "followupboss_get_identity" in tool_names
-            assert "followupboss_get_task" in tool_names
-            assert "followupboss_get_template" in tool_names
-            assert "followupboss_list_appointments" in tool_names
-            assert "followupboss_list_calls" in tool_names
-            assert "followupboss_list_tasks" in tool_names
-            assert "followupboss_list_templates" in tool_names
-            assert "followupboss_search_people" in tool_names
+            assert tool_names == EXPECTED_REGISTERED_TOOL_NAMES
 
             identity_result = await session.call_tool("followupboss_get_identity")
             assert identity_result.isError is False
             assert identity_result.structuredContent == {"id": 1, "name": "Picard"}
+
+            me_result = await session.call_tool("followupboss_get_me")
+            assert me_result.isError is False
+            assert me_result.structuredContent is not None
+            assert me_result.structuredContent["id"] == 1
+            assert me_result.structuredContent["apiKey"] == "***redacted***"
+            assert me_result.structuredContent["algoliaKey"] == "***redacted***"
+            assert me_result.structuredContent["callingCapabilityToken"] == "***redacted***"
+            assert me_result.structuredContent["notifyBy"] == ["email", "sms"]
+            assert me_result.structuredContent["intercomSettings"]["user_hash"] == "***redacted***"
 
             people_result = await session.call_tool(
                 "followupboss_search_people",
@@ -3950,6 +4137,35 @@ async def test_stdio_client_interoperates_with_server_surface() -> None:
             people = people_result.structuredContent["people"]
             assert isinstance(people, list)
             assert people[0]["id"] == 2
+
+            create_person_result = await session.call_tool(
+                "followupboss_create_person",
+                {"first_name": "Tom"},
+            )
+            assert create_person_result.isError is False
+            assert create_person_result.structuredContent == {"id": 3, "firstName": "Tom"}
+
+            delete_person_result = await session.call_tool(
+                "followupboss_delete_person",
+                {"person_id": 4},
+            )
+            assert delete_person_result.isError is False
+            assert delete_person_result.structuredContent == {"deleted": True, "personId": 4}
+
+            timeframes_result = await session.call_tool("followupboss_list_timeframes")
+            assert timeframes_result.isError is False
+            assert timeframes_result.structuredContent is not None
+            assert timeframes_result.structuredContent["_metadata"] == {
+                "count": 1,
+                "limit": 10,
+                "next_token": None,
+                "next_link": None,
+                "offset": 0,
+                "total": 2,
+            }
+            timeframes = timeframes_result.structuredContent["timeframes"]
+            assert isinstance(timeframes, list)
+            assert timeframes[0]["id"] == 10
 
             event_result = await session.call_tool("followupboss_get_event", {"event_id": 3})
             assert event_result.isError is False
@@ -4010,20 +4226,16 @@ async def test_stdio_client_interoperates_with_server_surface() -> None:
             assert appointment_result.structuredContent["id"] == 11
 
             resources = await session.list_resources()
-            assert [str(resource.uri) for resource in resources.resources] == [
-                "followupboss://api-coverage-matrix"
-            ]
+            assert [str(resource.uri) for resource in resources.resources] == EXPECTED_RESOURCE_URIS
             resource_result = await session.read_resource(resource_uri)
             resource_text = getattr(resource_result.contents[0], "text", None)
             assert isinstance(resource_text, str)
             assert "API Coverage Matrix" in resource_text
 
             prompts = await session.list_prompts()
-            assert [prompt.name for prompt in prompts.prompts] == [
-                "followupboss_compose_lead_event"
-            ]
+            assert [prompt.name for prompt in prompts.prompts] == EXPECTED_PROMPT_NAMES
             prompt_result = await session.get_prompt(
-                "followupboss_compose_lead_event",
+                EXPECTED_PROMPT_NAMES[0],
                 {
                     "source": "Portal",
                     "type": "Inquiry",
@@ -4079,23 +4291,16 @@ async def test_streamable_http_client_interoperates_with_server_surface() -> Non
         ).run(transport="streamable-http")
         """
     )
-    server_env = dict(os.environ)
-    existing_pythonpath = server_env.get("PYTHONPATH")
-    pythonpath_entries = [str(PROJECT_ROOT / "src")]
-    if existing_pythonpath:
-        pythonpath_entries.append(existing_pythonpath)
-    server_env["PYTHONPATH"] = os.pathsep.join(pythonpath_entries)
-
     process = await asyncio.create_subprocess_exec(
         sys.executable,
         "-c",
         server_script,
         cwd=str(PROJECT_ROOT),
-        env=server_env,
+        env=_server_python_env(),
     )
     try:
         await _wait_for_port("127.0.0.1", port)
-        resource_uri = TypeAdapter(AnyUrl).validate_python("followupboss://api-coverage-matrix")
+        resource_uri = TypeAdapter(AnyUrl).validate_python(EXPECTED_RESOURCE_URIS[0])
         async with streamable_http_client(f"http://127.0.0.1:{port}/mcp") as (
             read_stream,
             write_stream,
@@ -4113,20 +4318,18 @@ async def test_streamable_http_client_interoperates_with_server_surface() -> Non
                 assert identity_result.structuredContent == {"id": 1, "name": "Picard"}
 
                 resources = await session.list_resources()
-                assert [str(resource.uri) for resource in resources.resources] == [
-                    "followupboss://api-coverage-matrix"
-                ]
+                assert [
+                    str(resource.uri) for resource in resources.resources
+                ] == EXPECTED_RESOURCE_URIS
                 resource_result = await session.read_resource(resource_uri)
                 resource_text = getattr(resource_result.contents[0], "text", None)
                 assert isinstance(resource_text, str)
                 assert "API Coverage Matrix" in resource_text
 
                 prompts = await session.list_prompts()
-                assert [prompt.name for prompt in prompts.prompts] == [
-                    "followupboss_compose_lead_event"
-                ]
+                assert [prompt.name for prompt in prompts.prompts] == EXPECTED_PROMPT_NAMES
                 prompt_result = await session.get_prompt(
-                    "followupboss_compose_lead_event",
+                    EXPECTED_PROMPT_NAMES[0],
                     {
                         "source": "Portal",
                         "type": "Inquiry",

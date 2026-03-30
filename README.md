@@ -85,12 +85,19 @@ Run the exact quality gates enforced locally and in CI:
 make validate
 ```
 
+Run only the docs and markdown validation checks with:
+
+```bash
+make docs-check
+```
+
 For the explicit underlying commands:
 
 ```bash
 uv sync
 uv export --format requirements.txt --all-groups --locked --no-editable --no-emit-project --output-file /tmp/followupboss-mcp-requirements.txt
 uvx --from pip-audit pip-audit -r /tmp/followupboss-mcp-requirements.txt --strict --disable-pip --no-deps --ignore-vuln CVE-2026-4539
+uv run python scripts/validate_docs_links.py
 uv run ruff format --check .
 uv run ruff check .
 uv run mypy src tests
@@ -106,11 +113,18 @@ Build and validate the distribution artifacts with:
 make build-smoke
 ```
 
-Run the optional live identity check only when sandbox credentials are available:
+Run the optional live checks only when sandbox credentials are available:
 
 ```bash
 FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check
+FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check
 ```
+
+`live-identity-check` is the quick auth and transport smoke path. `live-contract-check`
+adds a broader suite across identity, users, people, timeframes, MCP-layer `/me`
+redaction, and disposable person-plus-note-plus-task write-and-rollback flows.
+
+Both targets auto-load a repository-local `.env` when present, so manual export is optional for the common local workflow.
 
 ## Running The MCP Server
 

@@ -6,7 +6,8 @@ The repository now contains:
 
 - a typed Follow Up Boss client and domain service package under `src/followupboss_mcp`
 - a production-grade FastMCP server with stdio and streamable HTTP transports
-- grouped MCP registration helpers plus an official stdio MCP interoperability test
+- grouped MCP registration helpers plus official stdio and streamable HTTP MCP interoperability tests
+- full registered-tool-list verification over the official stdio MCP client session plus public FastMCP resource and prompt checks
 - a contributor guide and a repository-local security incident playbook
 - typed appointment collection and CRUD coverage across the SDK, MCP surface, tests, and docs
 - typed deals collection and CRUD coverage plus deal custom field discovery and admin CRUD across the SDK, MCP surface, tests, and docs
@@ -32,6 +33,10 @@ The repository now contains:
 - typed user delete coverage across the SDK, MCP surface, tests, and docs
 - typed webhook update coverage across the SDK, MCP surface, tests, and docs
 - typed webhook event lookup coverage across the SDK, MCP surface, tests, and docs
+- a repository-local docs validation script integrated into `make validate` and CI
+- a `.env`-aware live identity wrapper so the documented smoke-check command works directly in the common local workflow
+- a broader optional live contract suite across identity, users, people, timeframes, MCP-layer current-user redaction, and disposable person-plus-note-plus-task write-and-rollback flows
+- widened `/me` parsing so `notifyBy` accepts both string and list payloads observed in live data
 - typed team inbox collection coverage across the SDK, MCP surface, tests, and docs
 - typed team collection and CRUD coverage with optional member-migration semantics on delete across the SDK, MCP surface, tests, and docs
 - typed text message read support, external log creation, and text message template CRUD plus merge coverage across the SDK, MCP surface, tests, and docs
@@ -404,15 +409,20 @@ Additional MCP assets:
 ## Commands Run
 
 ```bash
-make validate
-make build-smoke
+make release-validate
 FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check
+FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check
 ```
 
 ## Final Lint Status
 
 - `uv run ruff format --check .`: passed
 - `uv run ruff check .`: passed
+
+## Final Docs Validation Status
+
+- `uv run python scripts/validate_docs_links.py`: passed
+- result: `Docs validation passed.`
 
 ## Final Dependency Audit Status
 
@@ -424,12 +434,13 @@ FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check
 ## Final Mypy Status
 
 - `uv run mypy src tests`: passed
-- result: `Success: no issues found in 84 source files`
+- result: `Success: no issues found in 85 source files`
 
 ## Final Test Status
 
 - `uv run pytest`: passed
-- result: `110 passed, 1 skipped`
+- result: `110 passed, 4 skipped`
+- note: the MCP-focused suite now verifies the full registered tool list over the official stdio client session instead of spot-checking only a subset of names.
 
 ## Final Coverage Numbers
 
@@ -454,6 +465,11 @@ FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check
 
 - `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check`: passed
 - result: `1 passed`
+- note: the `make live-identity-check` target now auto-loads a repository-local `.env` when present.
+- `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check`: passed
+- result: `4 passed`
+- note: the broader suite now covers identity, users, people search/get plus negative duplicate checks, timeframes, MCP `/me` redaction, and disposable person-plus-note-plus-task write-and-rollback flows.
+- note: the broader suite exposed a live `/me` contract mismatch where `notifyBy` arrived as a list, and the model now accepts both string and list payloads.
 - note: the current `.env` now works directly with either the documented `FOLLOWUPBOSS_*` names or the legacy `FOLLOW_UP_BOSS_*` aliases.
 - `docs/mcp-validation-checklist.md`: updated with credential-backed MCP validation results across stdio, streamable HTTP, pagination, safe error paths, and live domain checks.
 - confirmed live MCP flows: identity, people, people relationships list/get/create/update/delete, person attachments CRUD, reactions add/delete, events search/get/send, action plans list/apply/pause, automations get/trigger/get-person/pause, calls create/list/get/update, text messages create/list/get, appointments create/get/update/delete, deals list/get/create/update/delete, deal attachments CRUD, timeframes list, templates CRUD plus merge, text message templates CRUD plus merge, and notes CRUD.
@@ -467,3 +483,5 @@ The repository includes `.github/workflows/ci.yml` that runs:
 - `make validate`
 - `make build`
 - `make build-smoke`
+
+The shared `make validate` wrapper now includes repository-local markdown link validation plus MCP usage coverage checks.

@@ -76,7 +76,7 @@ class CurrentUserRecord(UserRecord):
         alias="intercomSettings",
     )
     lead_email_address: str | None = Field(default=None, alias="leadEmailAddress")
-    notify_by: str | None = Field(default=None, alias="notifyBy")
+    notify_by: str | list[str] | None = Field(default=None, alias="notifyBy")
     raw_signature: str | None = Field(default=None, alias="rawSignature")
     signature: str | None = None
     team_member: object | None = Field(default=None, alias="teamMember")

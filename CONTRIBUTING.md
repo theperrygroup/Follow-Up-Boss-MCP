@@ -20,9 +20,11 @@ uv sync
 
 ```bash
 make validate
+make docs-check
 make build-smoke
 make release-validate
 make live-identity-check
+make live-contract-check
 ```
 
 ## Core Validation Commands
@@ -32,6 +34,7 @@ Run the same checks locally that CI enforces:
 ```bash
 uv export --format requirements.txt --all-groups --locked --no-editable --no-emit-project --output-file /tmp/followupboss-mcp-requirements.txt
 uvx --from pip-audit pip-audit -r /tmp/followupboss-mcp-requirements.txt --strict --disable-pip --no-deps --ignore-vuln CVE-2026-4539
+uv run python scripts/validate_docs_links.py
 uv run ruff format --check .
 uv run ruff check .
 uv run mypy src tests
@@ -48,11 +51,18 @@ uv build --clear
 uv run python scripts/validate_build_artifacts.py
 ```
 
-If you need a real upstream smoke check and the required credentials are available, run:
+If you need real upstream contract checks and the required credentials are available, run:
 
 ```bash
 FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check
+FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check
 ```
+
+`live-identity-check` is the smallest auth and transport smoke path. `live-contract-check`
+adds a broader representative suite across identity, users, people, timeframes,
+MCP-layer `/me` redaction, and disposable person-plus-note-plus-task write-and-rollback flows.
+
+Both targets auto-load a repository-local `.env` when present, so manual export is optional for the common local workflow.
 
 ## Project Structure
 
