@@ -6,6 +6,9 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from starlette.applications import Starlette
+from starlette.routing import Route
+
 from followupboss_mcp.config import (
     FollowUpBossServerSettings,
     FollowUpBossSettings,
@@ -15,6 +18,10 @@ from followupboss_mcp.hosted_auth import (
     HostedAuthSettings,
     HostedIdentityVerifier,
     HostedTenantTokenVerifier,
+)
+from followupboss_mcp.hosted_rate_limits import (
+    HostedEndpointRateLimiter,
+    HostedRateLimitMiddleware,
 )
 from followupboss_mcp.http_client import FollowUpBossAsyncClient, FollowUpBossClientProtocol
 from followupboss_mcp.logging import configure_logging
@@ -68,6 +75,35 @@ def _resolve_hosted_auth(
     )
 
 
+class FollowUpBossFastMCP(FastMCP):
+    """FastMCP subclass with hosted endpoint abuse controls."""
+
+    _hosted_rate_limiter: HostedEndpointRateLimiter | None = None
+
+    def streamable_http_app(self) -> Starlette:
+        """Return the streamable HTTP app with hosted abuse controls applied.
+
+        Returns:
+            The configured streamable HTTP Starlette application.
+        """
+        app = super().streamable_http_app()
+        if self._hosted_rate_limiter is None or self._token_verifier is None:
+            return app
+
+        for route in app.routes:
+            if (
+                isinstance(route, Route)
+                and route.path == self.settings.streamable_http_path
+                and not isinstance(route.app, HostedRateLimitMiddleware)
+            ):
+                route.app = HostedRateLimitMiddleware(
+                    route.app,
+                    rate_limiter=self._hosted_rate_limiter,
+                )
+                break
+        return app
+
+
 def create_server(
     settings: FollowUpBossTenantSettings | FollowUpBossSettings | None = None,
     *,
@@ -76,6 +112,7 @@ def create_server(
     hosted_auth: HostedAuthSettings | None = None,
     hosted_token_verifier: HostedIdentityVerifier | None = None,
     tenant_store: TenantStore | None = None,
+    hosted_rate_limiter: HostedEndpointRateLimiter | None = None,
     host: str | None = None,
     port: int | None = None,
     streamable_http_path: str | None = None,
@@ -95,6 +132,10 @@ def create_server(
             bearer tokens into the canonical hosted identity payload.
         tenant_store: Optional tenant store used to resolve the canonical
             hosted `tenant_id` claim into one active tenant.
+        hosted_rate_limiter: Optional hosted endpoint rate limiter. When hosted
+            auth is enabled and no limiter is provided, a default in-memory
+            per-tenant/per-client limiter is applied to the streamable HTTP
+            endpoint.
         host: Optional explicit host override.
         port: Optional explicit port override.
         streamable_http_path: Optional explicit streamable HTTP path override.
@@ -128,6 +169,7 @@ def create_server(
     )
 
     runtime_factory: TenantRuntimeFactory | None = None
+    resolved_hosted_rate_limiter = hosted_rate_limiter
     if resolved_mcp_auth_settings is not None:
         if resolved_settings is None or tenant_store is None:
             raise ValueError("settings and tenant_store are required when hosted auth is enabled.")
@@ -136,6 +178,8 @@ def create_server(
             tenant_store=tenant_store,
             logger=resolved_logger,
         )
+        if resolved_hosted_rate_limiter is None:
+            resolved_hosted_rate_limiter = HostedEndpointRateLimiter(logger=resolved_logger)
 
     shared_client: FollowUpBossClientProtocol | None = None
     service_bundle_resolver: ServiceBundleResolver
@@ -162,7 +206,7 @@ def create_server(
         if shared_client is not None:
             await shared_client.aclose()
 
-    mcp = FastMCP(
+    mcp = FollowUpBossFastMCP(
         "Follow Up Boss MCP",
         instructions=(
             "Use the typed Follow Up Boss tools for identity checks, lead search, lead ingestion, "
@@ -181,6 +225,7 @@ def create_server(
         auth=resolved_mcp_auth_settings,
         token_verifier=resolved_token_verifier,
     )
+    mcp._hosted_rate_limiter = resolved_hosted_rate_limiter
     register_server_surface(
         mcp,
         adapter,

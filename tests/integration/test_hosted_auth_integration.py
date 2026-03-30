@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 import pytest
 from starlette.testclient import TestClient
 
@@ -11,6 +13,12 @@ from followupboss_mcp.hosted_auth import (
     DevelopmentHostedTokenVerifier,
     HostedAuthSettings,
     HostedVerifiedIdentity,
+)
+from followupboss_mcp.hosted_rate_limits import (
+    HostedEndpointRateLimiter,
+    HostedRateLimitDecision,
+    HostedRateLimitKey,
+    HostedRateLimitSettings,
 )
 from followupboss_mcp.mcp_server import create_server
 from followupboss_mcp.tenant_store import (
@@ -207,6 +215,21 @@ class UnavailableHostedTenantStore(TenantStore):
         return _credential_record()
 
 
+class FailingHostedRateLimitBackend:
+    """Rate-limit backend stub that always raises."""
+
+    async def consume(
+        self,
+        key: HostedRateLimitKey,
+        *,
+        limit: int,
+        window_seconds: float,
+    ) -> HostedRateLimitDecision:
+        """Raise a backend failure for every rate-limit check."""
+        del key, limit, window_seconds
+        raise RuntimeError("rate limit backend unavailable")
+
+
 @pytest.mark.parametrize(
     "token",
     [
@@ -307,3 +330,154 @@ def test_hosted_streamable_http_unavailable_store_fails_closed_before_client_cre
     assert "tenant database unavailable" not in response.text
     assert "secret backend unavailable" not in response.text
     assert created_clients == []
+
+
+def test_hosted_streamable_http_rate_limit_budgets_are_isolated_per_tenant_and_client() -> None:
+    """Hosted rate limits should isolate budgets by tenant and client."""
+    tenant_store = DevelopmentTenantStore(
+        tenants=[
+            _tenant_record(),
+            _tenant_record(
+                tenant_id="tenant-2",
+                tenant_slug="tenant-two",
+                display_name="Tenant Two",
+                credential_id="credential-2",
+            ),
+        ],
+        credentials=[
+            _credential_record(),
+            _credential_record(
+                credential_id="credential-2",
+                tenant_id="tenant-2",
+                api_key="secret-key-two",
+            ),
+        ],
+    )
+    token_verifier = DevelopmentHostedTokenVerifier.from_mapping(
+        {
+            "tenant-1-client-a": HostedVerifiedIdentity.model_validate(
+                {
+                    "tenant_id": "tenant-1",
+                    "subject": "user-tenant-1-a",
+                    "client_id": "portal-app",
+                }
+            ),
+            "tenant-2-client-a": HostedVerifiedIdentity.model_validate(
+                {
+                    "tenant_id": "tenant-2",
+                    "subject": "user-tenant-2-a",
+                    "client_id": "portal-app",
+                }
+            ),
+            "tenant-1-client-b": HostedVerifiedIdentity.model_validate(
+                {
+                    "tenant_id": "tenant-1",
+                    "subject": "user-tenant-1-b",
+                    "client_id": "automation-app",
+                }
+            ),
+        }
+    )
+    server = create_server(
+        FollowUpBossSettings.model_validate({"api_key": "local-dev-key"}),
+        hosted_auth=_hosted_auth_settings(),
+        hosted_token_verifier=token_verifier,
+        tenant_store=tenant_store,
+        hosted_rate_limiter=HostedEndpointRateLimiter(
+            settings=HostedRateLimitSettings(
+                requests_per_window=1,
+                window_seconds=60.0,
+            )
+        ),
+    )
+
+    with TestClient(server.streamable_http_app(), base_url="http://127.0.0.1:8000") as client:
+        first_response = client.post(
+            "/mcp",
+            json=_INITIALIZE_REQUEST,
+            headers={
+                "Authorization": "Bearer tenant-1-client-a",
+                "Accept": "application/json",
+            },
+        )
+        second_same_budget_response = client.post(
+            "/mcp",
+            json=_INITIALIZE_REQUEST,
+            headers={
+                "Authorization": "Bearer tenant-1-client-a",
+                "Accept": "application/json",
+            },
+        )
+        different_tenant_response = client.post(
+            "/mcp",
+            json=_INITIALIZE_REQUEST,
+            headers={
+                "Authorization": "Bearer tenant-2-client-a",
+                "Accept": "application/json",
+            },
+        )
+        different_client_response = client.post(
+            "/mcp",
+            json=_INITIALIZE_REQUEST,
+            headers={
+                "Authorization": "Bearer tenant-1-client-b",
+                "Accept": "application/json",
+            },
+        )
+
+    assert first_response.status_code == 200
+    assert second_same_budget_response.status_code == 429
+    assert second_same_budget_response.json() == {
+        "error": "rate_limited",
+        "error_description": "Rate limit exceeded",
+    }
+    assert second_same_budget_response.headers["Retry-After"] == "60"
+    assert different_tenant_response.status_code == 200
+    assert different_client_response.status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("backend_failure_mode", "expected_status_code"),
+    [
+        ("closed", 503),
+        ("open", 200),
+    ],
+)
+def test_hosted_streamable_http_rate_limit_backend_failures_are_handled_explicitly(
+    backend_failure_mode: Literal["closed", "open"],
+    expected_status_code: int,
+) -> None:
+    """Hosted rate-limit backend failures should follow the configured failure mode."""
+    server = create_server(
+        FollowUpBossSettings.model_validate({"api_key": "local-dev-key"}),
+        hosted_auth=_hosted_auth_settings(),
+        hosted_token_verifier=_hosted_token_verifier(),
+        tenant_store=_tenant_store(),
+        hosted_rate_limiter=HostedEndpointRateLimiter(
+            settings=HostedRateLimitSettings(
+                requests_per_window=1,
+                window_seconds=60.0,
+                backend_failure_mode=backend_failure_mode,
+            ),
+            backend=FailingHostedRateLimitBackend(),
+        ),
+    )
+
+    with TestClient(server.streamable_http_app(), base_url="http://127.0.0.1:8000") as client:
+        response = client.post(
+            "/mcp",
+            json=_INITIALIZE_REQUEST,
+            headers={
+                "Authorization": "Bearer valid-token",
+                "Accept": "application/json",
+            },
+        )
+
+    assert response.status_code == expected_status_code
+    assert "rate limit backend unavailable" not in response.text
+    if expected_status_code == 503:
+        assert response.json() == {
+            "error": "temporarily_unavailable",
+            "error_description": "Hosted rate limiting is temporarily unavailable",
+        }
+        assert response.headers["Retry-After"] == "60"

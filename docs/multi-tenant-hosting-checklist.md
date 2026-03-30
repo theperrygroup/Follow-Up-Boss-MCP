@@ -142,7 +142,7 @@ of a single process-wide credential.
 - [x] Ensure inbound auth tokens are never logged in plaintext.
 - [x] Add per-tenant audit events for authentication, tenant resolution, and upstream credential
       usage where appropriate.
-- [ ] Add per-tenant rate limiting or abuse controls for the hosted endpoint.
+- [x] Add per-tenant rate limiting or abuse controls for the hosted endpoint.
 - [ ] Document token revocation and emergency credential rotation procedures.
 - [x] Confirm the hosted design fails closed when the tenant store or secret store is unavailable.
 - [ ] Re-review webhook and attachment flows for tenant-isolation assumptions.
@@ -252,3 +252,8 @@ of a single process-wide credential.
       upstream credential usage without logging raw bearer tokens, API keys, access tokens, or
       system keys, and revalidated with
       `uv run pytest tests/unit/test_auth_config_logging.py tests/unit/test_hosted_auth.py tests/unit/test_tenant_runtime.py`.
+- [x] Added a hosted `streamable-http` rate limiter keyed by `tenant_id` and `client_id`, kept the
+      IP dimension optional and disabled by default until a proxy-trust policy is defined, chose
+      explicit backend failure modes with fail-closed `503 temporarily_unavailable` as the default,
+      and proved tenant/client budgets do not bleed across bearer tokens with
+      `uv run pytest tests/unit/test_hosted_rate_limits.py tests/unit/test_hosted_auth.py tests/integration/test_hosted_auth_integration.py tests/mcp/test_hosted_auth_streamable_http.py`.

@@ -18,6 +18,13 @@ from followupboss_mcp.hosted_auth import (
     get_hosted_authenticated_tenant,
     get_hosted_verified_identity,
 )
+from followupboss_mcp.hosted_rate_limits import (
+    HostedEndpointRateLimiter,
+    HostedRateLimitDecision,
+    HostedRateLimitKey,
+    HostedRateLimitSettings,
+    InMemoryHostedRateLimitBackend,
+)
 from followupboss_mcp.http_client import FollowUpBossAsyncClient
 from followupboss_mcp.tenant_store import (
     DevelopmentTenantStore,
@@ -41,8 +48,13 @@ __all__ = [
     "HostedAuthenticatedTenant",
     "HostedAuthSettings",
     "HostedIdentityVerifier",
+    "HostedEndpointRateLimiter",
+    "HostedRateLimitDecision",
+    "HostedRateLimitKey",
+    "HostedRateLimitSettings",
     "HostedTenantTokenVerifier",
     "HostedVerifiedIdentity",
+    "InMemoryHostedRateLimitBackend",
     "ResolvedTenantCredentials",
     "TenantCredentialRecord",
     "TenantCredentialStatus",
