@@ -15,6 +15,7 @@ from followupboss_mcp.mcp_tools import (
     DeleteAppointmentTypeToolInput,
     DeleteCustomFieldToolInput,
     DeleteDealAttachmentToolInput,
+    DeleteDealCustomFieldToolInput,
     DeleteDealToolInput,
     DeleteGroupToolInput,
     DeleteInboxAppParticipantToolInput,
@@ -39,6 +40,7 @@ from followupboss_mcp.mcp_tools import (
     GetCallToolInput,
     GetCustomFieldToolInput,
     GetDealAttachmentToolInput,
+    GetDealCustomFieldToolInput,
     GetDealToolInput,
     GetEventToolInput,
     GetGroupToolInput,
@@ -68,6 +70,7 @@ from followupboss_mcp.mcp_tools import (
     UpdateCallToolInput,
     UpdateCustomFieldToolInput,
     UpdateDealAttachmentToolInput,
+    UpdateDealCustomFieldToolInput,
     UpdateDealToolInput,
     UpdateEmailCampaignToolInput,
     UpdateGroupToolInput,
@@ -116,9 +119,11 @@ from followupboss_mcp.models.custom_fields import (
     CustomFieldType,
 )
 from followupboss_mcp.models.deals import (
+    CreateDealCustomFieldRequest,
     CreateDealRequest,
     DealCustomFieldListRequest,
     DealListRequest,
+    UpdateDealCustomFieldRequest,
 )
 from followupboss_mcp.models.email_marketing import (
     CreateEmailCampaignRequest,
@@ -1878,6 +1883,84 @@ def _register_deal_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
                 offset=offset,
                 sort=sort,
             )
+        )
+
+    @mcp.tool(
+        name="followupboss_get_deal_custom_field",
+        description="Fetch a single Follow Up Boss deal custom field by ID.",
+    )
+    async def followupboss_get_deal_custom_field(deal_custom_field_id: int) -> dict[str, object]:
+        return await adapter.get_deal_custom_field(
+            GetDealCustomFieldToolInput(deal_custom_field_id=deal_custom_field_id)
+        )
+
+    @mcp.tool(
+        name="followupboss_create_deal_custom_field",
+        description="Create a Follow Up Boss deal custom field.",
+    )
+    async def followupboss_create_deal_custom_field(
+        label: str,
+        type: CustomFieldType,
+        *,
+        choices: list[str] | None = None,
+        hide_if_empty: bool | None = None,
+        is_recurring: bool | None = None,
+        order_weight: int | None = None,
+        read_only: bool | None = None,
+    ) -> dict[str, object]:
+        return await adapter.create_deal_custom_field(
+            CreateDealCustomFieldRequest.model_validate(
+                {
+                    "label": label,
+                    "type": type,
+                    "choices": choices,
+                    "hide_if_empty": hide_if_empty,
+                    "is_recurring": is_recurring,
+                    "order_weight": order_weight,
+                    "read_only": read_only,
+                }
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_update_deal_custom_field",
+        description="Update a Follow Up Boss deal custom field by ID.",
+    )
+    async def followupboss_update_deal_custom_field(
+        deal_custom_field_id: int,
+        *,
+        choices: list[str] | None = None,
+        dropdown_choice_map: dict[str, int] | list[int] | None = None,
+        hide_if_empty: bool | None = None,
+        is_recurring: bool | None = None,
+        label: str | None = None,
+        order_weight: int | None = None,
+        read_only: bool | None = None,
+        type: CustomFieldType | None = None,
+    ) -> dict[str, object]:
+        return await adapter.update_deal_custom_field(
+            UpdateDealCustomFieldToolInput.model_validate(
+                {
+                    "deal_custom_field_id": deal_custom_field_id,
+                    "choices": choices,
+                    "dropdown_choice_map": dropdown_choice_map,
+                    "hide_if_empty": hide_if_empty,
+                    "is_recurring": is_recurring,
+                    "label": label,
+                    "order_weight": order_weight,
+                    "read_only": read_only,
+                    "type": type,
+                }
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_delete_deal_custom_field",
+        description="Delete a Follow Up Boss deal custom field by ID.",
+    )
+    async def followupboss_delete_deal_custom_field(deal_custom_field_id: int) -> dict[str, object]:
+        return await adapter.delete_deal_custom_field(
+            DeleteDealCustomFieldToolInput(deal_custom_field_id=deal_custom_field_id)
         )
 
 

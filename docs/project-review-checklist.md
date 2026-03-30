@@ -173,7 +173,7 @@ What changes this grade:
 - Current grade: `A (99/100)`
 - Status: `Pass`
 - Last reviewed: `2026-03-28`
-- Change notes: Follow-up attachment work kept the harsher re-review score in the same high band because the new deal and person attachment tools landed cleanly without adding any special MCP adapter cases.
+- Change notes: Follow-up reactions work kept the harsher re-review score in the same high band because the new reaction read and mutation tools landed cleanly without adding any special MCP adapter cases.
 
 Why this matters:
 
@@ -215,6 +215,7 @@ Current strengths:
 - The broader MCP surface now includes custom field owner-admin get/create/update/delete flows without needing any special-case response shaping.
 - The broader MCP surface now includes email marketing campaign list/create/update plus batched event list/post flows without needing any special-case response shaping.
 - The broader MCP surface now includes people relationship list/get/create/update/delete flows without needing any special-case response shaping beyond synthetic collection metadata.
+- The broader MCP surface now includes reaction get/add/delete flows across notes, calls, and threaded replies without needing any transport-specific adapter branches.
 - The broader MCP surface now includes externally logged text message creation plus email and text template merge previews without needing transport-specific adapter branches.
 - The broader MCP surface now includes typed team inbox discovery without needing any special-case response shaping.
 - The broader MCP surface now includes inbox app installation, participant, message, note, and conversation mutation flows without needing transport-specific adapter branches.
@@ -289,7 +290,7 @@ What changes this grade:
 - Current grade: `A (99/100)`
 - Status: `Pass`
 - Last reviewed: `2026-03-28`
-- Change notes: Follow-up attachment work kept this category in the same top band because the new slice again shipped with full service, MCP, and wrapper-based validation coverage while the optional live path remained cleanly isolated.
+- Change notes: Follow-up reactions work kept this category in the same top band because the new slice again shipped with full service, MCP, and wrapper-based validation coverage while the optional live path remained cleanly isolated.
 
 Why this matters:
 
@@ -334,6 +335,7 @@ Current strengths:
 - The text message send and merge slice followed the same pattern, extending the messaging domain with external-log creation and merge previews without weakening the offline guarantees.
 - The email marketing slice followed the same pattern, adding campaign and batched event flows without weakening the offline guarantees.
 - The attachment slice followed the same pattern, extending both people and deal resource families with registered-system CRUD without weakening the offline guarantees.
+- The reactions slice followed the same pattern, extending the communication surface with read/add/delete coverage without weakening the offline guarantees.
 
 Current gaps:
 
@@ -353,7 +355,7 @@ What changes this grade:
 - Current grade: `A (100/100)`
 - Status: `Needs Work`
 - Last reviewed: `2026-03-28`
-- Change notes: Follow-up attachment work expanded breadth again with another coherent multi-resource domain, but the harsh score still stays conservative because the official API surface remains much broader than the current scope.
+- Change notes: Follow-up reactions work expanded breadth again with another official communication slice, but the harsh score still stays conservative because the official API surface remains much broader than the current scope.
 
 Why this matters:
 
@@ -390,6 +392,8 @@ Evidence anchors:
 - [../src/followupboss_mcp/services/inbox_apps.py](../src/followupboss_mcp/services/inbox_apps.py)
 - [../src/followupboss_mcp/models/people_relationships.py](../src/followupboss_mcp/models/people_relationships.py)
 - [../src/followupboss_mcp/services/people_relationships.py](../src/followupboss_mcp/services/people_relationships.py)
+- [../src/followupboss_mcp/models/reactions.py](../src/followupboss_mcp/models/reactions.py)
+- [../src/followupboss_mcp/services/reactions.py](../src/followupboss_mcp/services/reactions.py)
 - [../src/followupboss_mcp/models/ponds.py](../src/followupboss_mcp/models/ponds.py)
 - [../src/followupboss_mcp/services/ponds.py](../src/followupboss_mcp/services/ponds.py)
 - [../src/followupboss_mcp/models/smart_lists.py](../src/followupboss_mcp/models/smart_lists.py)
@@ -437,6 +441,7 @@ Current strengths:
 - The repository now covers a full group workflow domain with list, round-robin list, lookup, create, update, and delete support.
 - The repository now covers the full documented inbox app operational surface, including installation, participant, message, note, and conversation mutation flows.
 - The repository now covers a full people relationship domain with list, lookup, create, update, and delete support.
+- The repository now covers the documented reactions read/add/delete surface instead of leaving that small communication domain deferred.
 - The repository now covers team inbox discovery instead of leaving that documented shared-inbox surface entirely deferred.
 - The repository now covers a full task workflow domain with list, lookup, create, update, and delete support.
 - The repository now covers a full team workflow domain with list, lookup, create, update, and delete support, including the optional member-migration parameter on delete.
@@ -453,7 +458,7 @@ Current gaps:
 
 - Breadth is the clearest structural gap in the current repository.
 - Many official endpoints remain intentionally deferred, so the current scope is high quality but still much narrower than the official API surface an integration may expect.
-- The repository currently implements `135` official endpoints while the generated manifest tracks a much larger documented surface.
+- The repository currently implements `138` official endpoints while the generated manifest tracks a much larger documented surface.
 
 What changes this grade:
 
@@ -467,7 +472,7 @@ What changes this grade:
 - Current grade: `A (95/100)`
 - Status: `Pass`
 - Last reviewed: `2026-03-28`
-- Change notes: The attachment slice kept the docs score at the baseline because the README, MCP usage guide, coverage matrix, and final validation report all moved in lockstep with the code and validation totals.
+- Change notes: The reactions slice kept the docs score at the baseline because the README, MCP usage guide, coverage matrix, and final validation report all moved in lockstep with the code and validation totals.
 
 Why this matters:
 
@@ -513,6 +518,7 @@ Current strengths:
 - The same alignment discipline held again when the text message send and merge surface was added.
 - The same alignment discipline held again when the email marketing surface was added.
 - The same alignment discipline held again when the attachment surface was added.
+- The same alignment discipline held again when the reaction surface was added.
 
 Current gaps:
 
@@ -670,12 +676,12 @@ Use this mini-template when you revisit the file after a code change:
 | `2026-03-28` | `GPT-5.4` | Text-message send and merge breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed external text-message logging plus email and text template merge support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
 | `2026-03-28` | `GPT-5.4` | Email-marketing breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed email marketing campaign list/create/update plus email event list/post support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
 | `2026-03-28` | `GPT-5.4` | Attachments breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed person and deal attachment get/create/update/delete support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
-| `YYYY-MM-DD` | `` | `` | `` | `` | `` |
+| `2026-03-28` | `GPT-5.4` | Reactions breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed reaction get/create/delete support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
 
 ## Next Improvement Targets
 
 If you want the fastest path to a higher overall score, focus here first:
 
-1. Expand implemented breadth into another high-value deferred official area such as reactions or more specialized people/admin surfaces now that inbox apps, people relationships, custom field admin, messaging merge helpers, email marketing, and attachments are covered.
+1. Expand implemented breadth into another high-value deferred official area such as narrower people/admin surfaces or remaining communication helpers now that reactions, inbox apps, people relationships, custom field admin, messaging merge helpers, email marketing, and attachments are covered.
 2. Expand the current live validation beyond the identity path into a broader optional Follow Up Boss sandbox contract suite.
 3. Improve day-two operations with richer telemetry and, if needed later, a broader CI matrix across multiple Python versions or operating systems.

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from datetime import date
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from followupboss_mcp.models.common import JsonValue, QueryModel, RequestModel, ResponseModel
+from followupboss_mcp.models.custom_fields import CustomFieldType, DropdownChoiceMap
 
 
 class DealListRequest(QueryModel):
@@ -40,6 +41,88 @@ class DealCustomFieldListRequest(QueryModel):
     limit: int | None = None
     offset: int | None = None
     sort: str | None = None
+
+
+class CreateDealCustomFieldRequest(RequestModel):
+    """Strict request model for creating a deal custom field."""
+
+    choices: list[str] | None = None
+    hide_if_empty: bool | None = Field(default=None, serialization_alias="hideIfEmpty")
+    is_recurring: bool | None = Field(default=None, serialization_alias="isRecurring")
+    label: str
+    order_weight: int | None = Field(default=None, serialization_alias="orderWeight")
+    read_only: bool | None = Field(default=None, serialization_alias="readOnly")
+    type: CustomFieldType
+
+    @model_validator(mode="after")
+    def _require_dropdown_choices(self) -> CreateDealCustomFieldRequest:
+        """Require dropdown fields to provide choices.
+
+        Returns:
+            The validated request instance.
+
+        Raises:
+            ValueError: If a dropdown field omits its choices.
+        """
+        if self.type == "dropdown" and not self.choices:
+            raise ValueError("Dropdown deal custom fields must provide at least one choice.")
+        return self
+
+
+class UpdateDealCustomFieldRequest(RequestModel):
+    """Strict request model for updating a deal custom field."""
+
+    choices: list[str] | None = None
+    dropdown_choice_map: DropdownChoiceMap | None = Field(
+        default=None,
+        serialization_alias="dropdownChoiceMap",
+    )
+    hide_if_empty: bool | None = Field(default=None, serialization_alias="hideIfEmpty")
+    is_recurring: bool | None = Field(default=None, serialization_alias="isRecurring")
+    label: str | None = None
+    order_weight: int | None = Field(default=None, serialization_alias="orderWeight")
+    read_only: bool | None = Field(default=None, serialization_alias="readOnly")
+    type: CustomFieldType | None = None
+
+    @model_validator(mode="after")
+    def _require_dropdown_choices(self) -> UpdateDealCustomFieldRequest:
+        """Require dropdown choices when explicitly changing the field type.
+
+        Returns:
+            The validated request instance.
+
+        Raises:
+            ValueError: If a dropdown field update omits its choices.
+        """
+        if self.type == "dropdown" and self.choices is None:
+            raise ValueError("Dropdown deal custom field updates must provide choices.")
+        return self
+
+    @model_validator(mode="after")
+    def _require_mutation(self) -> UpdateDealCustomFieldRequest:
+        """Require at least one deal-custom-field mutation.
+
+        Returns:
+            The validated request instance.
+
+        Raises:
+            ValueError: If no update fields are provided.
+        """
+        if all(
+            value is None
+            for value in (
+                self.label,
+                self.type,
+                self.choices,
+                self.is_recurring,
+                self.hide_if_empty,
+                self.order_weight,
+                self.read_only,
+                self.dropdown_choice_map,
+            )
+        ):
+            raise ValueError("At least one deal custom field update field must be provided.")
+        return self
 
 
 class CreateDealRequest(RequestModel):
@@ -146,8 +229,10 @@ class DealRecord(ResponseModel):
 class DealCustomFieldRecord(ResponseModel):
     """Deal custom field definition."""
 
+    choices: list[str] = Field(default_factory=list)
     hide_if_empty: bool | None = Field(default=None, alias="hideIfEmpty")
     id: int
+    is_recurring: bool | None = Field(default=None, alias="isRecurring")
     label: str
     name: str
     order_weight: int | None = Field(default=None, alias="orderWeight")

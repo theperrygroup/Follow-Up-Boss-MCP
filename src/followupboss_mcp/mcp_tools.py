@@ -52,9 +52,11 @@ from followupboss_mcp.models.custom_fields import (
     UpdateCustomFieldRequest,
 )
 from followupboss_mcp.models.deals import (
+    CreateDealCustomFieldRequest,
     CreateDealRequest,
     DealCustomFieldListRequest,
     DealListRequest,
+    UpdateDealCustomFieldRequest,
     UpdateDealRequest,
 )
 from followupboss_mcp.models.email_marketing import (
@@ -276,6 +278,12 @@ class GetDealToolInput(RequestModel):
     deal_id: int
 
 
+class GetDealCustomFieldToolInput(RequestModel):
+    """Tool input for fetching a deal custom field by ID."""
+
+    deal_custom_field_id: int
+
+
 class GetDealAttachmentToolInput(RequestModel):
     """Tool input for fetching a deal attachment by ID."""
 
@@ -490,6 +498,12 @@ class UpdateDealToolInput(UpdateDealRequest):
     deal_id: int
 
 
+class UpdateDealCustomFieldToolInput(UpdateDealCustomFieldRequest):
+    """Tool input for updating a deal custom field."""
+
+    deal_custom_field_id: int
+
+
 class UpdatePipelineToolInput(UpdatePipelineRequest):
     """Tool input for updating a pipeline."""
 
@@ -578,6 +592,12 @@ class DeleteDealToolInput(RequestModel):
     """Tool input for deleting a deal."""
 
     deal_id: int
+
+
+class DeleteDealCustomFieldToolInput(RequestModel):
+    """Tool input for deleting a deal custom field."""
+
+    deal_custom_field_id: int
 
 
 class DeletePipelineToolInput(RequestModel):
@@ -1461,6 +1481,52 @@ class FollowUpBossToolAdapter:
         return await self._page_result(
             lambda: self._services.deals.list_deal_custom_fields(tool_input),
             key="dealCustomfields",
+        )
+
+    async def get_deal_custom_field(
+        self,
+        tool_input: GetDealCustomFieldToolInput,
+    ) -> dict[str, Any]:
+        """Get a deal custom field."""
+        return await self._single_result(
+            lambda: self._services.deals.get_deal_custom_field(tool_input.deal_custom_field_id)
+        )
+
+    async def create_deal_custom_field(
+        self,
+        tool_input: CreateDealCustomFieldRequest,
+    ) -> dict[str, Any]:
+        """Create a deal custom field."""
+        return await self._single_result(
+            lambda: self._services.deals.create_deal_custom_field(tool_input)
+        )
+
+    async def update_deal_custom_field(
+        self,
+        tool_input: UpdateDealCustomFieldToolInput,
+    ) -> dict[str, Any]:
+        """Update a deal custom field."""
+        request = UpdateDealCustomFieldRequest.model_validate(
+            tool_input.model_dump(exclude={"deal_custom_field_id"})
+        )
+        return await self._single_result(
+            lambda: self._services.deals.update_deal_custom_field(
+                tool_input.deal_custom_field_id,
+                request,
+            )
+        )
+
+    async def delete_deal_custom_field(
+        self,
+        tool_input: DeleteDealCustomFieldToolInput,
+    ) -> dict[str, Any]:
+        """Delete a deal custom field."""
+        return await self._delete_result(
+            lambda: self._services.deals.delete_deal_custom_field(
+                tool_input.deal_custom_field_id
+            ),
+            identifier_key="dealCustomFieldId",
+            identifier_value=tool_input.deal_custom_field_id,
         )
 
     async def list_pipelines(self, tool_input: PipelineListRequest) -> dict[str, Any]:

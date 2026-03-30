@@ -54,9 +54,11 @@ from followupboss_mcp.models.custom_fields import (
     UpdateCustomFieldRequest,
 )
 from followupboss_mcp.models.deals import (
+    CreateDealCustomFieldRequest,
     CreateDealRequest,
     DealCustomFieldListRequest,
     DealListRequest,
+    UpdateDealCustomFieldRequest,
     UpdateDealRequest,
 )
 from followupboss_mcp.models.email_marketing import (
@@ -1872,6 +1874,34 @@ async def test_deals_service() -> None:
                     }
                 ],
             },
+            {
+                "id": 7,
+                "label": "Close Date",
+                "name": "customCloseDate",
+                "type": "date",
+                "isRecurring": False,
+                "hideIfEmpty": True,
+                "readOnly": False,
+            },
+            {
+                "id": 8,
+                "label": "Priority",
+                "name": "customPriority",
+                "type": "dropdown",
+                "choices": ["High", "Medium", "Low"],
+                "hideIfEmpty": False,
+                "readOnly": False,
+            },
+            {
+                "id": 9,
+                "label": "Priority",
+                "name": "customPriority",
+                "type": "dropdown",
+                "choices": ["Critical", "High", "Medium"],
+                "hideIfEmpty": True,
+                "readOnly": True,
+            },
+            {},
         ]
     )
     service = DealsService(client)
@@ -1945,14 +1975,75 @@ async def test_deals_service() -> None:
         "sort": "-id",
     }
 
+    custom_field = await service.get_deal_custom_field(7)
+    assert custom_field.id == 7
+    assert client.calls[6].path == "/dealCustomFields/7"
+
+    created_custom_field = await service.create_deal_custom_field(
+        CreateDealCustomFieldRequest(
+            label="Priority",
+            type="dropdown",
+            choices=["High", "Medium", "Low"],
+        )
+    )
+    assert created_custom_field.id == 8
+    assert client.calls[7].json_body == {
+        "label": "Priority",
+        "type": "dropdown",
+        "choices": ["High", "Medium", "Low"],
+    }
+
+    updated_custom_field = await service.update_deal_custom_field(
+        9,
+        UpdateDealCustomFieldRequest(
+            label="Priority",
+            choices=["Critical", "High", "Medium"],
+            hide_if_empty=True,
+            read_only=True,
+        ),
+    )
+    assert updated_custom_field.id == 9
+    assert client.calls[8].json_body == {
+        "label": "Priority",
+        "choices": ["Critical", "High", "Medium"],
+        "hideIfEmpty": True,
+        "readOnly": True,
+    }
+
+    await service.delete_deal_custom_field(9)
+    assert client.calls[9].path == "/dealCustomFields/9"
+
     with pytest.raises(FollowUpBossValidationError, match="Deal custom field keys"):
         DealsService.validate_deal_custom_field_names({"ClosePrice": 1})
 
-    invalid_service = DealsService(StubClient([[], {"dealCustomfields": {}}]))
+    with pytest.raises(ValidationError, match="Dropdown deal custom fields must provide"):
+        CreateDealCustomFieldRequest(label="Priority", type="dropdown")
+
+    with pytest.raises(ValidationError, match="Dropdown deal custom field updates must provide"):
+        UpdateDealCustomFieldRequest(type="dropdown")
+
+    with pytest.raises(
+        ValidationError,
+        match="At least one deal custom field update field must be provided",
+    ):
+        UpdateDealCustomFieldRequest()
+
+    invalid_service = DealsService(StubClient([[], {"dealCustomfields": {}}, [], [], []]))
     with pytest.raises(FollowUpBossValidationError, match="Unexpected deal custom fields"):
         await invalid_service.list_deal_custom_fields()
     with pytest.raises(FollowUpBossValidationError, match="Unexpected deal custom fields"):
         await invalid_service.list_deal_custom_fields()
+    with pytest.raises(FollowUpBossValidationError, match="Unexpected deal custom fields"):
+        await invalid_service.get_deal_custom_field(7)
+    with pytest.raises(FollowUpBossValidationError, match="Unexpected deal custom fields"):
+        await invalid_service.create_deal_custom_field(
+            CreateDealCustomFieldRequest(label="Priority", type="text")
+        )
+    with pytest.raises(FollowUpBossValidationError, match="Unexpected deal custom fields"):
+        await invalid_service.update_deal_custom_field(
+            9,
+            UpdateDealCustomFieldRequest(label="Priority"),
+        )
 
 
 @pytest.mark.asyncio

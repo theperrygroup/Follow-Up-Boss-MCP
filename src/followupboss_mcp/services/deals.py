@@ -8,11 +8,13 @@ from followupboss_mcp.errors import FollowUpBossValidationError
 from followupboss_mcp.http_client import FollowUpBossClientProtocol
 from followupboss_mcp.models.common import JsonValue
 from followupboss_mcp.models.deals import (
+    CreateDealCustomFieldRequest,
     CreateDealRequest,
     DealCustomFieldListRequest,
     DealCustomFieldRecord,
     DealListRequest,
     DealRecord,
+    UpdateDealCustomFieldRequest,
     UpdateDealRequest,
 )
 from followupboss_mcp.pagination import PageResult, parse_pagination_metadata
@@ -120,11 +122,7 @@ class DealsService:
         """
         query = request.to_query_params() if request is not None else None
         payload = await self._client.request_json("GET", "/dealCustomFields", params=query)
-        if not isinstance(payload, dict):
-            raise FollowUpBossValidationError(
-                "Unexpected deal custom fields response shape.",
-                status_code=500,
-            )
+        payload = self._require_deal_custom_field_payload(payload)
         items_raw = payload.get("dealCustomfields", [])
         if not isinstance(items_raw, list):
             raise FollowUpBossValidationError(
@@ -138,6 +136,76 @@ class DealsService:
         ]
         metadata = parse_pagination_metadata(payload, item_count=len(items))
         return PageResult(items=items, metadata=metadata)
+
+    async def get_deal_custom_field(self, deal_custom_field_id: int) -> DealCustomFieldRecord:
+        """Fetch a deal custom field by ID.
+
+        Args:
+            deal_custom_field_id: The Follow Up Boss deal custom field identifier.
+
+        Returns:
+            The typed deal custom field record returned by Follow Up Boss.
+
+        Raises:
+            FollowUpBossValidationError: If the API returns an unexpected payload shape.
+        """
+        payload = await self._client.request_json("GET", f"/dealCustomFields/{deal_custom_field_id}")
+        payload = self._require_deal_custom_field_payload(payload)
+        return DealCustomFieldRecord.model_validate(payload)
+
+    async def create_deal_custom_field(
+        self,
+        request: CreateDealCustomFieldRequest,
+    ) -> DealCustomFieldRecord:
+        """Create a deal custom field.
+
+        Args:
+            request: The typed deal custom field creation request.
+
+        Returns:
+            The created deal custom field record.
+
+        Raises:
+            FollowUpBossValidationError: If the API returns an unexpected payload shape.
+        """
+        payload = request.model_dump(mode="json", by_alias=True, exclude_none=True)
+        response = await self._client.request_json("POST", "/dealCustomFields", json_body=payload)
+        response = self._require_deal_custom_field_payload(response)
+        return DealCustomFieldRecord.model_validate(response)
+
+    async def update_deal_custom_field(
+        self,
+        deal_custom_field_id: int,
+        request: UpdateDealCustomFieldRequest,
+    ) -> DealCustomFieldRecord:
+        """Update a deal custom field.
+
+        Args:
+            deal_custom_field_id: The Follow Up Boss deal custom field identifier.
+            request: The typed deal custom field update request.
+
+        Returns:
+            The updated deal custom field record.
+
+        Raises:
+            FollowUpBossValidationError: If the API returns an unexpected payload shape.
+        """
+        payload = request.model_dump(mode="json", by_alias=True, exclude_none=True)
+        response = await self._client.request_json(
+            "PUT",
+            f"/dealCustomFields/{deal_custom_field_id}",
+            json_body=payload,
+        )
+        response = self._require_deal_custom_field_payload(response)
+        return DealCustomFieldRecord.model_validate(response)
+
+    async def delete_deal_custom_field(self, deal_custom_field_id: int) -> None:
+        """Delete a deal custom field.
+
+        Args:
+            deal_custom_field_id: The Follow Up Boss deal custom field identifier.
+        """
+        await self._client.request_json("DELETE", f"/dealCustomFields/{deal_custom_field_id}")
 
     @staticmethod
     def validate_deal_custom_field_names(
@@ -168,3 +236,23 @@ class DealsService:
                 payload={"invalidKeys": invalid_names},
             )
         return dict(custom_fields)
+
+    @staticmethod
+    def _require_deal_custom_field_payload(payload: object) -> dict[str, object]:
+        """Normalize deal-custom-field payloads that should be JSON objects.
+
+        Args:
+            payload: The raw payload returned by the HTTP client.
+
+        Returns:
+            The normalized dictionary payload.
+
+        Raises:
+            FollowUpBossValidationError: If the payload is not a dictionary.
+        """
+        if not isinstance(payload, dict):
+            raise FollowUpBossValidationError(
+                "Unexpected deal custom fields response shape.",
+                status_code=500,
+            )
+        return payload

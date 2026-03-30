@@ -31,6 +31,7 @@ from followupboss_mcp.mcp_tools import (
     DeleteAppointmentTypeToolInput,
     DeleteCustomFieldToolInput,
     DeleteDealAttachmentToolInput,
+    DeleteDealCustomFieldToolInput,
     DeleteDealToolInput,
     DeleteGroupToolInput,
     DeleteInboxAppParticipantToolInput,
@@ -55,6 +56,7 @@ from followupboss_mcp.mcp_tools import (
     GetCallToolInput,
     GetCustomFieldToolInput,
     GetDealAttachmentToolInput,
+    GetDealCustomFieldToolInput,
     GetDealToolInput,
     GetEventToolInput,
     GetGroupToolInput,
@@ -85,6 +87,7 @@ from followupboss_mcp.mcp_tools import (
     UpdateCallToolInput,
     UpdateCustomFieldToolInput,
     UpdateDealAttachmentToolInput,
+    UpdateDealCustomFieldToolInput,
     UpdateDealToolInput,
     UpdateEmailCampaignToolInput,
     UpdateGroupToolInput,
@@ -142,11 +145,13 @@ from followupboss_mcp.models.custom_fields import (
     CustomFieldRecord,
 )
 from followupboss_mcp.models.deals import (
+    CreateDealCustomFieldRequest,
     CreateDealRequest,
     DealCustomFieldListRequest,
     DealCustomFieldRecord,
     DealListRequest,
     DealRecord,
+    UpdateDealCustomFieldRequest,
 )
 from followupboss_mcp.models.email_marketing import (
     CreateEmailCampaignRequest,
@@ -1018,6 +1023,44 @@ class StubBundle:
                 metadata=_page_metadata(),
             )
 
+        async def deal_custom_fields_get(deal_custom_field_id: int) -> DealCustomFieldRecord:
+            return DealCustomFieldRecord(
+                id=deal_custom_field_id,
+                label="Priority",
+                name="customPriority",
+                type="dropdown",
+                choices=["High", "Medium", "Low"],
+            )
+
+        async def deal_custom_fields_create(
+            _: CreateDealCustomFieldRequest,
+        ) -> DealCustomFieldRecord:
+            return DealCustomFieldRecord(
+                id=45,
+                label="Priority",
+                name="customPriority",
+                type="dropdown",
+                choices=["High", "Medium", "Low"],
+            )
+
+        async def deal_custom_fields_update(
+            deal_custom_field_id: int,
+            request: object,
+        ) -> DealCustomFieldRecord:
+            del request
+            return DealCustomFieldRecord(
+                id=deal_custom_field_id,
+                label="Priority",
+                name="customPriority",
+                type="dropdown",
+                choices=["Critical", "High", "Medium"],
+                hideIfEmpty=True,
+                readOnly=True,
+            )
+
+        async def deal_custom_fields_delete(deal_custom_field_id: int) -> None:
+            del deal_custom_field_id
+
         async def pipelines_list(_: PipelineListRequest) -> PageResult[PipelineRecord]:
             return PageResult(
                 items=[PipelineRecord(id=11, name="Buyer pipeline", description="Buyer flow")],
@@ -1437,6 +1480,10 @@ class StubBundle:
                 update_deal=deals_update,
                 delete_deal=deals_delete,
                 list_deal_custom_fields=deal_custom_fields_list,
+                get_deal_custom_field=deal_custom_fields_get,
+                create_deal_custom_field=deal_custom_fields_create,
+                update_deal_custom_field=deal_custom_fields_update,
+                delete_deal_custom_field=deal_custom_fields_delete,
             ),
             email_marketing=_service_stub(
                 list_email_campaigns=email_marketing_list_campaigns,
@@ -1968,6 +2015,36 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert (await adapter.list_deal_custom_fields(DealCustomFieldListRequest()))[
         "dealCustomfields"
     ][0]["id"] == 10
+    assert (await adapter.get_deal_custom_field(GetDealCustomFieldToolInput(deal_custom_field_id=45)))[
+        "id"
+    ] == 45
+    assert (
+        await adapter.create_deal_custom_field(
+            CreateDealCustomFieldRequest(
+                label="Priority",
+                type="dropdown",
+                choices=["High", "Medium", "Low"],
+            )
+        )
+    )["id"] == 45
+    assert (
+        await adapter.update_deal_custom_field(
+            UpdateDealCustomFieldToolInput(
+                deal_custom_field_id=46,
+                label="Priority",
+                choices=["Critical", "High", "Medium"],
+                read_only=True,
+            )
+        )
+    )["id"] == 46
+    assert (
+        await adapter.delete_deal_custom_field(
+            DeleteDealCustomFieldToolInput(deal_custom_field_id=47)
+        )
+    ) == {
+        "deleted": True,
+        "dealCustomFieldId": 47,
+    }
     assert (await adapter.list_pipelines(PipelineListRequest()))["pipelines"][0]["id"] == 11
     assert (await adapter.get_pipeline(GetPipelineToolInput(pipeline_id=12)))["id"] == 12
     assert (
@@ -2688,6 +2765,29 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                         }
                     ],
                 },
+                {
+                    "id": 45,
+                    "label": "Priority",
+                    "name": "customPriority",
+                    "type": "dropdown",
+                    "choices": ["High", "Medium", "Low"],
+                },
+                {
+                    "id": 46,
+                    "label": "Priority",
+                    "name": "customPriority",
+                    "type": "dropdown",
+                    "choices": ["High", "Medium", "Low"],
+                },
+                {
+                    "id": 47,
+                    "label": "Priority",
+                    "name": "customPriority",
+                    "type": "dropdown",
+                    "choices": ["Critical", "High", "Medium"],
+                    "readOnly": True,
+                },
+                {},
                 {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "pipelines": [{"id": 60}]},
                 {"id": 61, "name": "Buyer pipeline", "description": "Buyer flow"},
                 {"id": 62, "name": "New pipeline", "description": "New flow"},
@@ -2806,6 +2906,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_create_custom_field",
         "followupboss_create_deal",
         "followupboss_create_deal_attachment",
+        "followupboss_create_deal_custom_field",
         "followupboss_create_email_campaign",
         "followupboss_create_group",
         "followupboss_create_people_relationship",
@@ -2827,6 +2928,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_delete_custom_field",
         "followupboss_delete_deal",
         "followupboss_delete_deal_attachment",
+        "followupboss_delete_deal_custom_field",
         "followupboss_delete_group",
         "followupboss_delete_note",
         "followupboss_delete_people_relationship",
@@ -2849,6 +2951,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_get_custom_field",
         "followupboss_get_deal",
         "followupboss_get_deal_attachment",
+        "followupboss_get_deal_custom_field",
         "followupboss_get_event",
         "followupboss_get_group",
         "followupboss_get_identity",
@@ -2916,6 +3019,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_update_custom_field",
         "followupboss_update_deal",
         "followupboss_update_deal_attachment",
+        "followupboss_update_deal_custom_field",
         "followupboss_update_email_campaign",
         "followupboss_update_group",
         "followupboss_update_inbox_app_conversation",
