@@ -22,6 +22,7 @@ Before registering the task definition, replace the placeholders below:
 
 | Placeholder | Meaning |
 | --- | --- |
+| `__AWS_ACCOUNT_ID__` | AWS account ID that owns the ECR repository. |
 | `__AWS_REGION__` | AWS region, such as `us-west-1`. |
 | `__HOSTED_ISSUER_URL__` | Stable issuer URL for hosted auth, such as the customer portal or control plane. |
 | `__HOSTED_RESOURCE_SERVER_URL__` | External HTTPS MCP URL, such as `https://mcp-staging.example.com/mcp`. |
@@ -62,15 +63,15 @@ Create the ECR repository once:
 ```bash
 aws ecr create-repository \
   --repository-name followupboss-mcp-hosted \
-  --region us-west-1
+  --region __AWS_REGION__
 ```
 
 Authenticate Docker against ECR:
 
 ```bash
-aws ecr get-login-password --region us-west-1 | docker login \
+aws ecr get-login-password --region __AWS_REGION__ | docker login \
   --username AWS \
-  --password-stdin 581917479192.dkr.ecr.us-west-1.amazonaws.com
+  --password-stdin __AWS_ACCOUNT_ID__.dkr.ecr.__AWS_REGION__.amazonaws.com
 ```
 
 Build and push the hosted image as a multi-architecture manifest so default ECS/Fargate runtimes
@@ -79,7 +80,7 @@ can pull it on either `linux/amd64` or `linux/arm64`:
 ```bash
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
-  --tag 581917479192.dkr.ecr.us-west-1.amazonaws.com/followupboss-mcp-hosted:staging \
+  --tag __AWS_ACCOUNT_ID__.dkr.ecr.__AWS_REGION__.amazonaws.com/followupboss-mcp-hosted:staging \
   --push .
 ```
 
@@ -122,3 +123,35 @@ Use the staged validation commands in [`docs/hosted-deployment-guide.md`](../../
 once the shared staging URL is live. Do not widen rollout until
 [`docs/multi-tenant-hosting-checklist.md`](../../docs/multi-tenant-hosting-checklist.md) Phase 9
 is completed with real evidence.
+
+## GitHub Actions Staging Deploy
+
+The repository now includes `.github/workflows/deploy-staging.yml` for automated staging deploys.
+It triggers on pushes to `main` and on manual dispatch, reruns `make release-validate`, builds and
+pushes the hosted image to ECR, renders `deploy/ecs/task-definition.template.json`, registers a new
+task definition revision, updates the ECS service, and waits for the service to become stable.
+
+Configure a GitHub Actions environment named `staging` with these repository or environment
+variables:
+
+- `AWS_REGION`
+- `ECR_REPOSITORY`
+- `ECS_CLUSTER`
+- `ECS_SERVICE`
+- `HOSTED_ISSUER_URL`
+- `HOSTED_RESOURCE_SERVER_URL`
+- `LOG_GROUP_NAME`
+- `TENANT_SECRET_PREFIX`
+- `TENANT_SECRET_REGION`
+
+Configure the same `staging` environment with these secrets:
+
+- `AWS_ROLE_TO_ASSUME`
+- `REDIS_URL_SECRET_ARN`
+- `TENANT_DATABASE_URL_SECRET_ARN`
+- `TASK_EXECUTION_ROLE_ARN`
+- `TASK_ROLE_ARN`
+
+The repository also includes `.github/workflows/publish.yml` for PyPI releases. That workflow
+triggers on `v*` tags, reruns `make release-validate`, verifies the tag matches
+`pyproject.toml`'s package version, and publishes the package only after those checks pass.

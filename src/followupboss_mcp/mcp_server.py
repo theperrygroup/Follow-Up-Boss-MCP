@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Protocol
 
 from starlette.applications import Starlette
 from starlette.routing import Route
@@ -40,6 +41,16 @@ from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import FastMCP
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+class AsyncManagedResource(Protocol):
+    """Protocol for async resources managed by the FastMCP lifespan."""
+
+    async def open(self) -> None:
+        """Open the resource before the server starts handling requests."""
+
+    async def aclose(self) -> None:
+        """Close the resource during server shutdown."""
 
 
 def _resolve_hosted_auth(
@@ -159,6 +170,7 @@ def create_server(
     hosted_token_verifier: HostedIdentityVerifier | None = None,
     tenant_store: TenantStore | None = None,
     hosted_rate_limiter: HostedEndpointRateLimiter | None = None,
+    managed_resources: Sequence[AsyncManagedResource] = (),
     host: str | None = None,
     port: int | None = None,
     streamable_http_path: str | None = None,
@@ -184,6 +196,8 @@ def create_server(
             auth is enabled and no limiter is provided, a default in-memory
             per-tenant/per-client limiter is applied to the streamable HTTP
             endpoint.
+        managed_resources: Optional async resources to open before serving and
+            close during shutdown, such as shared hosted metadata pools.
         host: Optional explicit host override.
         port: Optional explicit port override.
         streamable_http_path: Optional explicit streamable HTTP path override.
@@ -248,15 +262,23 @@ def create_server(
 
     @asynccontextmanager
     async def lifespan(_: FastMCP) -> AsyncIterator[None]:
+        opened_resources: list[AsyncManagedResource] = []
         try:
+            for resource in managed_resources:
+                await resource.open()
+                opened_resources.append(resource)
             yield
         finally:
             try:
                 if shared_client is not None:
                     await shared_client.aclose()
             finally:
-                if resolved_hosted_rate_limiter is not None:
-                    await resolved_hosted_rate_limiter.aclose()
+                try:
+                    for resource in reversed(opened_resources):
+                        await resource.aclose()
+                finally:
+                    if resolved_hosted_rate_limiter is not None:
+                        await resolved_hosted_rate_limiter.aclose()
 
     mcp = FollowUpBossFastMCP(
         "Follow Up Boss MCP",

@@ -8,11 +8,13 @@ import hashlib
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from contextlib import AbstractAsyncContextManager
 from typing import Annotated, Protocol, Self, cast
 
 import boto3.session  # type: ignore[import-untyped]
 import psycopg
 from psycopg.rows import dict_row
+from psycopg_pool import AsyncConnectionPool
 from pydantic import (
     AnyHttpUrl,
     BaseModel,
@@ -552,22 +554,104 @@ class AwsSecretsManagerTenantSecretStore:
             raise TenantSecretStoreUnavailableError("Tenant secret store is unavailable.") from exc
 
 
-class PostgresHostedTokenVerifier(HostedIdentityVerifier):
-    """PostgreSQL-backed verifier for opaque hosted bearer tokens."""
+class ReferenceHostedPostgresPool:
+    """Managed async PostgreSQL pool for hosted metadata lookups."""
 
     def __init__(
         self,
         database_url: SecretStr | str,
         *,
+        pool: AsyncConnectionPool[psycopg.AsyncConnection[dict[str, object]]] | None = None,
+    ) -> None:
+        """Initialize the managed PostgreSQL pool.
+
+        Args:
+            database_url: PostgreSQL connection string used when no pool is
+                injected.
+            pool: Optional prebuilt async connection pool used mainly by focused
+                tests or shared hosted-server wiring.
+        """
+        self._owns_pool = pool is None
+        self._pool = pool or AsyncConnectionPool(
+            conninfo=_secret_value(database_url),
+            kwargs={"row_factory": dict_row},
+            open=False,
+        )
+
+    async def open(self) -> None:
+        """Open the pool for hosted metadata queries."""
+        await self._pool.open()
+
+    def connection(
+        self,
+    ) -> AbstractAsyncContextManager[psycopg.AsyncConnection[dict[str, object]]]:
+        """Return one pooled async PostgreSQL connection context.
+
+        Returns:
+            An async context manager that yields one pooled PostgreSQL
+            connection.
+        """
+        return self._pool.connection()
+
+    async def aclose(self) -> None:
+        """Close the owned pool when this wrapper created it."""
+        if self._owns_pool:
+            await self._pool.close()
+
+
+async def _fetch_optional_postgres_row(
+    pool: ReferenceHostedPostgresPool,
+    query: str,
+    params: tuple[object, ...],
+) -> Mapping[str, object] | None:
+    """Fetch one optional row through the shared PostgreSQL pool.
+
+    Args:
+        pool: Managed PostgreSQL pool used for the query.
+        query: SQL query text to execute.
+        params: Bound parameter tuple for the query.
+
+    Returns:
+        One mapping row when the query finds a match, otherwise `None`.
+    """
+    await pool.open()
+    async with pool.connection() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(query, params)
+            raw_row = await cursor.fetchone()
+
+    if raw_row is None:
+        return None
+    return cast(Mapping[str, object], raw_row)
+
+
+class PostgresHostedTokenVerifier(HostedIdentityVerifier):
+    """PostgreSQL-backed verifier for opaque hosted bearer tokens."""
+
+    def __init__(
+        self,
+        database_url: SecretStr | str | None = None,
+        *,
+        pool: ReferenceHostedPostgresPool | None = None,
         time_provider: Callable[[], int] | None = None,
     ) -> None:
         """Initialize the PostgreSQL-backed hosted token verifier.
 
         Args:
-            database_url: PostgreSQL connection string for hosted-token metadata.
+            database_url: PostgreSQL connection string for hosted-token metadata
+                when no pool is injected.
+            pool: Optional shared PostgreSQL pool used to reuse connections
+                across hosted token and tenant lookups.
             time_provider: Optional Unix-timestamp provider used mainly by tests.
+
+        Raises:
+            ValueError: If neither `database_url` nor `pool` is provided.
         """
-        self._database_url = database_url
+        if database_url is None and pool is None:
+            raise ValueError("database_url is required when pool is not provided.")
+
+        self._pool = pool or ReferenceHostedPostgresPool(cast(SecretStr | str, database_url))
+        self._owns_pool = pool is None
         self._time_provider = time_provider or (lambda: int(time.time()))
 
     async def verify_token(self, token: str) -> HostedVerifiedIdentity | None:
@@ -580,18 +664,19 @@ class PostgresHostedTokenVerifier(HostedIdentityVerifier):
             The verified hosted identity when the token exists, is not revoked,
             and is not expired, otherwise `None`.
         """
-        async with await psycopg.AsyncConnection.connect(_secret_value(self._database_url)) as conn:
-            async with conn.cursor(row_factory=dict_row) as cursor:
-                await cursor.execute(
-                    _HOSTED_ACCESS_TOKEN_QUERY,
-                    (hash_hosted_bearer_token(token), self._time_provider()),
-                )
-                raw_row = await cursor.fetchone()
-
+        raw_row = await _fetch_optional_postgres_row(
+            self._pool,
+            _HOSTED_ACCESS_TOKEN_QUERY,
+            (hash_hosted_bearer_token(token), self._time_provider()),
+        )
         if raw_row is None:
             return None
-        row = cast(Mapping[str, object], raw_row)
-        return HostedVerifiedIdentity.model_validate(dict(row))
+        return HostedVerifiedIdentity.model_validate(dict(raw_row))
+
+    async def aclose(self) -> None:
+        """Close the owned PostgreSQL pool when this verifier created it."""
+        if self._owns_pool:
+            await self._pool.aclose()
 
 
 class PostgresAwsTenantStore(TenantStore):
@@ -599,18 +684,29 @@ class PostgresAwsTenantStore(TenantStore):
 
     def __init__(
         self,
-        database_url: SecretStr | str,
+        database_url: SecretStr | str | None = None,
         *,
         secret_store: HostedTenantSecretStore,
+        pool: ReferenceHostedPostgresPool | None = None,
     ) -> None:
         """Initialize the PostgreSQL and AWS-backed tenant store.
 
         Args:
-            database_url: PostgreSQL connection string for tenant metadata.
+            database_url: PostgreSQL connection string for tenant metadata when
+                no pool is injected.
             secret_store: Secret-store integration used to resolve raw Follow Up
                 Boss credentials.
+            pool: Optional shared PostgreSQL pool used to reuse connections
+                across hosted token and tenant lookups.
+
+        Raises:
+            ValueError: If neither `database_url` nor `pool` is provided.
         """
-        self._database_url = database_url
+        if database_url is None and pool is None:
+            raise ValueError("database_url is required when pool is not provided.")
+
+        self._pool = pool or ReferenceHostedPostgresPool(cast(SecretStr | str, database_url))
+        self._owns_pool = pool is None
         self._secret_store = secret_store
 
     async def get_tenant(self, tenant_id: str) -> TenantRecord | None:
@@ -627,12 +723,7 @@ class PostgresAwsTenantStore(TenantStore):
                 safely.
         """
         try:
-            async with await psycopg.AsyncConnection.connect(
-                _secret_value(self._database_url)
-            ) as conn:
-                async with conn.cursor(row_factory=dict_row) as cursor:
-                    await cursor.execute(_TENANT_QUERY, (tenant_id,))
-                    raw_row = await cursor.fetchone()
+            raw_row = await _fetch_optional_postgres_row(self._pool, _TENANT_QUERY, (tenant_id,))
         except Exception as exc:
             raise TenantStoreUnavailableError("Tenant store is unavailable.") from exc
 
@@ -658,12 +749,11 @@ class PostgresAwsTenantStore(TenantStore):
                 unavailable or the secret payload is invalid.
         """
         try:
-            async with await psycopg.AsyncConnection.connect(
-                _secret_value(self._database_url)
-            ) as conn:
-                async with conn.cursor(row_factory=dict_row) as cursor:
-                    await cursor.execute(_TENANT_CREDENTIAL_QUERY, (credential_id,))
-                    raw_row = await cursor.fetchone()
+            raw_row = await _fetch_optional_postgres_row(
+                self._pool,
+                _TENANT_CREDENTIAL_QUERY,
+                (credential_id,),
+            )
         except Exception as exc:
             raise TenantStoreUnavailableError("Tenant store is unavailable.") from exc
 
@@ -686,6 +776,11 @@ class PostgresAwsTenantStore(TenantStore):
                 "status": metadata.status,
             }
         )
+
+    async def aclose(self) -> None:
+        """Close the owned PostgreSQL pool when this store created it."""
+        if self._owns_pool:
+            await self._pool.aclose()
 
 
 class RedisHostedRateLimitBackend(HostedRateLimitBackend):
@@ -828,9 +923,13 @@ def create_reference_hosted_server(
         region_name=resolved_hosted_settings.tenant_secret_region,
         secret_prefix=resolved_hosted_settings.tenant_secret_prefix,
     )
+    shared_postgres_pool = ReferenceHostedPostgresPool(
+        resolved_hosted_settings.tenant_database_url
+    )
     tenant_store = PostgresAwsTenantStore(
         resolved_hosted_settings.tenant_database_url,
         secret_store=secret_store,
+        pool=shared_postgres_pool,
     )
     hosted_rate_limiter = HostedEndpointRateLimiter(
         settings=resolved_hosted_settings.hosted_rate_limit_settings(),
@@ -841,10 +940,12 @@ def create_reference_hosted_server(
         server_settings=resolved_server_settings,
         hosted_auth=resolved_hosted_settings.hosted_auth_settings(),
         hosted_token_verifier=PostgresHostedTokenVerifier(
-            resolved_hosted_settings.tenant_database_url
+            resolved_hosted_settings.tenant_database_url,
+            pool=shared_postgres_pool,
         ),
         tenant_store=tenant_store,
         hosted_rate_limiter=hosted_rate_limiter,
+        managed_resources=(shared_postgres_pool,),
     )
 
 

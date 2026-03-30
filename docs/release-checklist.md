@@ -58,3 +58,19 @@
 13. Confirm the API coverage matrix still marks deferred endpoints explicitly, or states clearly that none remain in scope.
 14. Confirm examples still execute against the current package layout.
 15. Confirm CI is green on the release candidate commit.
+
+## Automated Release Workflows
+
+16. Configure the GitHub Actions `pypi` environment before the first automated package release.
+
+    - Use PyPI trusted publishing, or add a `PYPI_API_TOKEN` secret to the `pypi` environment.
+    - Keep the published version in `pyproject.toml` aligned with the tag you intend to push.
+
+17. Push a version tag in the form `vX.Y.Z` after the release candidate passes review.
+
+    - `.github/workflows/publish.yml` reruns `make release-validate`, verifies the tag matches `project.version`, builds `dist/`, and publishes only after those checks pass.
+
+18. Keep the staging deployment workflow configured separately from package publishing.
+
+    - `.github/workflows/deploy-staging.yml` reruns `make release-validate` and then deploys `main` to the hosted ECS staging service.
+    - Configure the GitHub Actions `staging` environment as documented in `deploy/ecs/README.md`.
