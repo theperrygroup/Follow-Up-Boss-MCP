@@ -8,7 +8,7 @@ import httpx
 import pytest
 from pydantic import ValidationError
 
-from followupboss_mcp.config import FollowUpBossSettings
+from followupboss_mcp.config import FollowUpBossServerSettings, FollowUpBossSettings
 from followupboss_mcp.http_client import FollowUpBossAsyncClient
 from followupboss_mcp.pagination import PaginationMetadata, parse_pagination_metadata
 from followupboss_mcp.rate_limits import parse_retry_after
@@ -17,9 +17,9 @@ from followupboss_mcp.rate_limits import parse_retry_after
 def test_settings_invalid_log_levels_raise_clear_errors() -> None:
     """Settings validation should reject invalid log-level values."""
     with pytest.raises(ValidationError, match="log_level must be one of DEBUG"):
-        FollowUpBossSettings.model_validate({"api_key": "key", "log_level": "verbose"})
+        FollowUpBossServerSettings.model_validate({"log_level": "verbose"})
     with pytest.raises(TypeError, match="log_level must be a string"):
-        FollowUpBossSettings.model_validate({"api_key": "key", "log_level": 1})
+        FollowUpBossServerSettings.model_validate({"log_level": 1})
 
 
 def test_pagination_and_retry_after_edge_contracts() -> None:

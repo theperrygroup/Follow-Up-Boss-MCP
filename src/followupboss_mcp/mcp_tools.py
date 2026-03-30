@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import asdict, dataclass
+from contextvars import ContextVar
+from dataclasses import asdict
 from typing import Any, cast
 
 from followupboss_mcp.errors import FollowUpBossError, FollowUpBossRateLimitError
@@ -149,48 +150,12 @@ from followupboss_mcp.models.webhooks import (
     UpdateWebhookRequest,
     WebhookListRequest,
 )
-from followupboss_mcp.services.action_plans import ActionPlansService
-from followupboss_mcp.services.appointment_metadata import (
-    AppointmentOutcomesService,
-    AppointmentTypesService,
+from followupboss_mcp.tenant_runtime import ServiceBundle, ServiceBundleResolver
+
+_ACTIVE_SERVICE_BUNDLE: ContextVar[ServiceBundle | None] = ContextVar(
+    "followupboss_active_service_bundle",
+    default=None,
 )
-from followupboss_mcp.services.appointments import AppointmentsService
-from followupboss_mcp.services.attachments import (
-    DealAttachmentsService,
-    PersonAttachmentsService,
-)
-from followupboss_mcp.services.automations import (
-    AutomationPeopleService,
-    AutomationsService,
-)
-from followupboss_mcp.services.calls import CallsService
-from followupboss_mcp.services.custom_fields import CustomFieldsService
-from followupboss_mcp.services.deals import DealsService
-from followupboss_mcp.services.email_marketing import EmailMarketingService
-from followupboss_mcp.services.events import EventsService
-from followupboss_mcp.services.groups import GroupsService
-from followupboss_mcp.services.identity import IdentityService
-from followupboss_mcp.services.inbox_apps import InboxAppsService
-from followupboss_mcp.services.notes import NotesService
-from followupboss_mcp.services.people import PeopleService
-from followupboss_mcp.services.people_relationships import PeopleRelationshipsService
-from followupboss_mcp.services.pipelines import PipelinesService
-from followupboss_mcp.services.ponds import PondsService
-from followupboss_mcp.services.reactions import ReactionsService
-from followupboss_mcp.services.smart_lists import SmartListsService
-from followupboss_mcp.services.stages import StagesService
-from followupboss_mcp.services.tasks import TasksService
-from followupboss_mcp.services.team_inboxes import TeamInboxesService
-from followupboss_mcp.services.teams import TeamsService
-from followupboss_mcp.services.templates import TemplatesService
-from followupboss_mcp.services.text_messages import (
-    TextMessagesService,
-    TextMessageTemplatesService,
-)
-from followupboss_mcp.services.threaded_replies import ThreadedRepliesService
-from followupboss_mcp.services.timeframes import TimeframesService
-from followupboss_mcp.services.users import UsersService
-from followupboss_mcp.services.webhooks import WebhooksService
 
 
 class GetPersonToolInput(PersonLookupRequest):
@@ -728,56 +693,45 @@ class DeleteWebhookToolInput(RequestModel):
     webhook_id: int
 
 
-@dataclass(frozen=True)
-class ServiceBundle:
-    """Service bundle used by the MCP tool adapter."""
-
-    action_plans: ActionPlansService
-    appointments: AppointmentsService
-    appointment_outcomes: AppointmentOutcomesService
-    appointment_types: AppointmentTypesService
-    automation_people: AutomationPeopleService
-    automations: AutomationsService
-    calls: CallsService
-    custom_fields: CustomFieldsService
-    deal_attachments: DealAttachmentsService
-    deals: DealsService
-    email_marketing: EmailMarketingService
-    events: EventsService
-    groups: GroupsService
-    identity: IdentityService
-    inbox_apps: InboxAppsService
-    notes: NotesService
-    people: PeopleService
-    person_attachments: PersonAttachmentsService
-    people_relationships: PeopleRelationshipsService
-    ponds: PondsService
-    pipelines: PipelinesService
-    reactions: ReactionsService
-    smart_lists: SmartListsService
-    stages: StagesService
-    tasks: TasksService
-    team_inboxes: TeamInboxesService
-    teams: TeamsService
-    text_message_templates: TextMessageTemplatesService
-    text_messages: TextMessagesService
-    templates: TemplatesService
-    threaded_replies: ThreadedRepliesService
-    timeframes: TimeframesService
-    users: UsersService
-    webhooks: WebhooksService
-
-
 class FollowUpBossToolAdapter:
     """Thin MCP-safe adapter around typed domain services."""
 
-    def __init__(self, services: ServiceBundle) -> None:
-        """Initialize the adapter."""
-        self._services = services
+    def __init__(self, services: ServiceBundle | ServiceBundleResolver) -> None:
+        """Initialize the adapter.
+
+        Args:
+            services: Either one fixed service bundle or a resolver that creates
+                a tenant-specific bundle for each call.
+        """
+        if isinstance(services, ServiceBundle):
+            self._fixed_services = services
+            self._service_bundle_resolver = None
+        else:
+            self._fixed_services = None
+            self._service_bundle_resolver = services
+
+    @property
+    def _services(self) -> ServiceBundle:
+        """Return the active service bundle for the current tool call.
+
+        Returns:
+            The static service bundle for single-tenant flows or the request-
+            scoped bundle resolved for the active hosted call.
+
+        Raises:
+            RuntimeError: If a tenant-scoped bundle is requested outside an
+                active resolved runtime.
+        """
+        if self._fixed_services is not None:
+            return self._fixed_services
+        active_services = _ACTIVE_SERVICE_BUNDLE.get()
+        if active_services is None:
+            raise RuntimeError("Tenant runtime is unavailable.")
+        return active_services
 
     async def get_identity(self) -> dict[str, Any]:
         """Return identity information."""
-        return await self._single_result(self._services.identity.get_identity)
+        return await self._single_result(lambda: self._services.identity.get_identity())
 
     async def list_action_plans(self, tool_input: ActionPlanListRequest) -> dict[str, Any]:
         """List action plans."""
@@ -1431,7 +1385,7 @@ class FollowUpBossToolAdapter:
     async def get_me(self) -> dict[str, Any]:
         """Get the currently authenticated user with sensitive fields redacted."""
         try:
-            result = await self._services.users.get_me()
+            result = await self._execute_with_services(lambda: self._services.users.get_me())
         except FollowUpBossError as exc:
             raise RuntimeError(_mcp_safe_error(exc)) from exc
         safe_result = result.redacted_for_mcp()
@@ -2105,7 +2059,7 @@ class FollowUpBossToolAdapter:
     ) -> dict[str, Any]:
         """Run a paginated service call and normalize the result."""
         try:
-            page = await call()
+            page = await self._execute_with_services(call)
         except FollowUpBossError as exc:
             raise RuntimeError(_mcp_safe_error(exc)) from exc
         return {
@@ -2116,7 +2070,7 @@ class FollowUpBossToolAdapter:
     async def _single_result(self, call: Callable[[], Awaitable[Any]]) -> dict[str, Any]:
         """Run a single-object service call and normalize errors."""
         try:
-            result = cast(ResponseModel, await call())
+            result = cast(ResponseModel, await self._execute_with_services(call))
         except FollowUpBossError as exc:
             raise RuntimeError(_mcp_safe_error(exc)) from exc
         return result.model_dump(
@@ -2135,10 +2089,29 @@ class FollowUpBossToolAdapter:
     ) -> dict[str, Any]:
         """Run a delete operation and return a structured confirmation."""
         try:
-            await call()
+            await self._execute_with_services(call)
         except FollowUpBossError as exc:
             raise RuntimeError(_mcp_safe_error(exc)) from exc
         return {"deleted": True, identifier_key: identifier_value}
+
+    async def _execute_with_services(self, call: Callable[[], Awaitable[Any]]) -> Any:
+        """Run one callable with the correct service bundle in scope.
+
+        Args:
+            call: The service-bound callable to invoke.
+
+        Returns:
+            The value returned by the callable.
+        """
+        if self._service_bundle_resolver is None or _ACTIVE_SERVICE_BUNDLE.get() is not None:
+            return await call()
+
+        async with self._service_bundle_resolver.service_bundle() as services:
+            token = _ACTIVE_SERVICE_BUNDLE.set(services)
+            try:
+                return await call()
+            finally:
+                _ACTIVE_SERVICE_BUNDLE.reset(token)
 
 
 def _mcp_safe_error(exc: FollowUpBossError) -> str:

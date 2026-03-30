@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import runpy
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -42,7 +44,30 @@ async def test_create_server_lifespan_closes_injected_client() -> None:
 def test_cli_module_runs_main_when_executed_as_script(monkeypatch: pytest.MonkeyPatch) -> None:
     """Executing the CLI module as a script should trigger the `__main__` block."""
     created_settings: list[object] = []
-    runs: list[tuple[str, object]] = []
+    runs: list[tuple[str, Any]] = []
+
+    @dataclass
+    class FakeServerSettings:
+        """Tiny server-settings stand-in for CLI entrypoint tests."""
+
+        transport: str = "stdio"
+        host: str = "127.0.0.1"
+        port: int = 8000
+        streamable_http_path: str = "/mcp"
+
+        def model_copy(self, *, update: dict[str, Any]) -> FakeServerSettings:
+            """Return a copied settings object with updates applied."""
+            return FakeServerSettings(
+                transport=str(update.get("transport", self.transport)),
+                host=str(update.get("host", self.host)),
+                port=int(update.get("port", self.port)),
+                streamable_http_path=str(
+                    update.get(
+                        "streamable_http_path",
+                        self.streamable_http_path,
+                    )
+                ),
+            )
 
     class FakeServer:
         def run(self, transport: str) -> None:
@@ -54,6 +79,10 @@ def test_cli_module_runs_main_when_executed_as_script(monkeypatch: pytest.Monkey
         return FakeServer()
 
     monkeypatch.setattr("followupboss_mcp.config.FollowUpBossSettings", lambda: object())
+    monkeypatch.setattr(
+        "followupboss_mcp.config.FollowUpBossServerSettings",
+        lambda: FakeServerSettings(),
+    )
     monkeypatch.setattr("followupboss_mcp.mcp_server.create_server", fake_create_server)
     monkeypatch.setattr(sys, "argv", ["followupboss_mcp.cli", "stdio"])
 
@@ -62,7 +91,11 @@ def test_cli_module_runs_main_when_executed_as_script(monkeypatch: pytest.Monkey
         runpy.run_path(str(module_path), run_name="__main__")
 
     assert exc_info.value.code == 0
-    assert runs == [
-        ("create", {"kwargs": {}, "settings": created_settings[0]}),
-        ("run", "stdio"),
-    ]
+    assert runs[0][0] == "create"
+    assert runs[0][1] == {
+        "kwargs": {
+            "server_settings": FakeServerSettings(),
+        },
+        "settings": created_settings[0],
+    }
+    assert runs[1] == ("run", "stdio")

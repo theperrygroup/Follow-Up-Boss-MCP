@@ -186,7 +186,13 @@ from followupboss_mcp.models.webhooks import (
     CreateWebhookRequest,
     WebhookListRequest,
 )
+from followupboss_mcp.tenant_runtime import TenantRuntime, TenantRuntimeFactory
 from mcp.server.fastmcp import FastMCP
+
+_API_COVERAGE_RESOURCE_URI = "followupboss://api-coverage-matrix"
+_COMPOSE_LEAD_EVENT_PROMPT_NAME = "followupboss_compose_lead_event"
+_HOSTED_PUBLIC_RESOURCE_URIS: frozenset[str] = frozenset()
+_HOSTED_PUBLIC_PROMPT_NAMES: frozenset[str] = frozenset()
 
 
 def _validated_request[ModelT: RequestModel](
@@ -219,6 +225,7 @@ def register_server_surface(
     adapter: FollowUpBossToolAdapter,
     *,
     project_root: Path,
+    tenant_runtime_factory: TenantRuntimeFactory | None = None,
 ) -> None:
     """Register the complete Follow Up Boss MCP surface.
 
@@ -226,6 +233,8 @@ def register_server_surface(
         mcp: The FastMCP server instance to extend.
         adapter: The typed MCP adapter that delegates to domain services.
         project_root: The repository root used for resource-backed content.
+        tenant_runtime_factory: Optional hosted runtime factory used to resolve
+            tenant context for non-tool MCP surfaces.
     """
     _register_identity_tools(mcp, adapter)
     _register_people_tools(mcp, adapter)
@@ -257,7 +266,116 @@ def register_server_surface(
     _register_text_message_tools(mcp, adapter)
     _register_note_tools(mcp, adapter)
     _register_webhook_tools(mcp, adapter)
-    _register_resources_and_prompts(mcp, project_root=project_root)
+    _register_resources_and_prompts(
+        mcp,
+        project_root=project_root,
+        tenant_runtime_factory=tenant_runtime_factory,
+    )
+
+
+def _format_hosted_surface_context(runtime: TenantRuntime) -> str:
+    """Return a compact, non-secret hosted tenant context block.
+
+    Args:
+        runtime: The resolved hosted tenant runtime for the active MCP call.
+
+    Returns:
+        A stable text block that surfaces the authenticated tenant identity
+        without exposing credential material.
+    """
+    display_name = runtime.tenant.display_name or runtime.tenant.tenant_slug
+    return (
+        "Hosted tenant context:\n"
+        f"tenant_slug: {runtime.tenant.tenant_slug}\n"
+        f"display_name: {display_name}"
+    )
+
+
+async def _resolve_surface_runtime(
+    *,
+    surface_name: str,
+    public_surface_names: frozenset[str],
+    tenant_runtime_factory: TenantRuntimeFactory | None,
+) -> TenantRuntime | None:
+    """Resolve hosted tenant runtime for one non-tool MCP surface.
+
+    Args:
+        surface_name: The resource URI or prompt name being handled.
+        public_surface_names: The set of hosted surfaces intentionally left
+            public.
+        tenant_runtime_factory: Optional hosted runtime factory.
+
+    Returns:
+        The tenant runtime for the active hosted call, or `None` when hosted
+        runtime resolution is disabled or the surface is intentionally public.
+    """
+    if tenant_runtime_factory is None or surface_name in public_surface_names:
+        return None
+    return await tenant_runtime_factory.runtime_for_current_tenant()
+
+
+def _render_api_coverage_matrix_resource(
+    *,
+    resource_text: str,
+    runtime: TenantRuntime | None,
+) -> str:
+    """Render the API-coverage resource with optional hosted tenant context.
+
+    Args:
+        resource_text: The base repository-backed markdown content.
+        runtime: Optional hosted tenant runtime for the active call.
+
+    Returns:
+        The resource content with hosted tenant context appended when available.
+    """
+    if runtime is None:
+        return resource_text
+    return f"{resource_text.rstrip()}\n\n---\n\n{_format_hosted_surface_context(runtime)}\n"
+
+
+def _render_compose_lead_event_prompt(
+    *,
+    source: str,
+    type: str,
+    message: str,
+    email: str,
+    first_name: str,
+    last_name: str,
+    runtime: TenantRuntime | None,
+) -> str:
+    """Render the lead-event prompt with optional hosted tenant context.
+
+    Args:
+        source: The Follow Up Boss lead source.
+        type: The Follow Up Boss event type.
+        message: The lead or activity message.
+        email: The lead email address.
+        first_name: Optional lead first name.
+        last_name: Optional lead last name.
+        runtime: Optional hosted tenant runtime for the active call.
+
+    Returns:
+        The prompt text with hosted tenant context included when available.
+    """
+    tenant_context = ""
+    if runtime is not None:
+        tenant_context = (
+            "Use the authenticated hosted tenant context below for any "
+            "account-scoped assumptions.\n"
+            f"{_format_hosted_surface_context(runtime)}\n\n"
+        )
+    return (
+        "Create a Follow Up Boss POST /events payload using the canonical "
+        "lead-ingestion path.\n\n"
+        f"{tenant_context}"
+        f"source: {source}\n"
+        f"type: {type}\n"
+        f"message: {message}\n"
+        f"email: {email}\n"
+        f"first_name: {first_name}\n"
+        f"last_name: {last_name}\n\n"
+        "Return JSON with top-level source, system, type, message, and a nested person object."
+    )
 
 
 def _register_identity_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
@@ -2554,28 +2672,46 @@ def _register_webhook_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> N
         return await adapter.delete_webhook(_validated_request(DeleteWebhookToolInput, locals()))
 
 
-def _register_resources_and_prompts(mcp: FastMCP, *, project_root: Path) -> None:
+def _register_resources_and_prompts(
+    mcp: FastMCP,
+    *,
+    project_root: Path,
+    tenant_runtime_factory: TenantRuntimeFactory | None,
+) -> None:
     """Register MCP resources and prompts.
 
     Args:
         mcp: The FastMCP server instance.
         project_root: The repository root used for file-backed resources.
+        tenant_runtime_factory: Optional hosted runtime factory used to resolve
+            tenant context for resource and prompt handlers.
     """
 
     @mcp.resource(
-        "followupboss://api-coverage-matrix",
+        _API_COVERAGE_RESOURCE_URI,
         title="Follow Up Boss API Coverage Matrix",
         description="Repository API coverage matrix for Follow Up Boss endpoints.",
         mime_type="text/markdown",
     )
-    def followupboss_api_coverage_matrix() -> str:
-        return (project_root / "docs" / "api-coverage-matrix.md").read_text(encoding="utf-8")
+    async def followupboss_api_coverage_matrix() -> str:
+        resource_text = (project_root / "docs" / "api-coverage-matrix.md").read_text(
+            encoding="utf-8"
+        )
+        runtime = await _resolve_surface_runtime(
+            surface_name=_API_COVERAGE_RESOURCE_URI,
+            public_surface_names=_HOSTED_PUBLIC_RESOURCE_URIS,
+            tenant_runtime_factory=tenant_runtime_factory,
+        )
+        return _render_api_coverage_matrix_resource(
+            resource_text=resource_text,
+            runtime=runtime,
+        )
 
     @mcp.prompt(
-        name="followupboss_compose_lead_event",
+        name=_COMPOSE_LEAD_EVENT_PROMPT_NAME,
         description="Compose a canonical POST /events payload for a new lead or lead activity.",
     )
-    def followupboss_compose_lead_event(
+    async def followupboss_compose_lead_event(
         source: str,
         type: str,
         message: str,
@@ -2584,14 +2720,17 @@ def _register_resources_and_prompts(mcp: FastMCP, *, project_root: Path) -> None
         first_name: str = "",
         last_name: str = "",
     ) -> str:
-        return (
-            "Create a Follow Up Boss POST /events payload using the canonical "
-            "lead-ingestion path.\n\n"
-            f"source: {source}\n"
-            f"type: {type}\n"
-            f"message: {message}\n"
-            f"email: {email}\n"
-            f"first_name: {first_name}\n"
-            f"last_name: {last_name}\n\n"
-            "Return JSON with top-level source, system, type, message, and a nested person object."
+        runtime = await _resolve_surface_runtime(
+            surface_name=_COMPOSE_LEAD_EVENT_PROMPT_NAME,
+            public_surface_names=_HOSTED_PUBLIC_PROMPT_NAMES,
+            tenant_runtime_factory=tenant_runtime_factory,
+        )
+        return _render_compose_lead_event_prompt(
+            source=source,
+            type=type,
+            message=message,
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            runtime=runtime,
         )

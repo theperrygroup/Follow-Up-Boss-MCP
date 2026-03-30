@@ -16,7 +16,11 @@ from followupboss_mcp.auth import (
     build_auth_strategy,
     inject_authorization,
 )
-from followupboss_mcp.config import FollowUpBossSettings
+from followupboss_mcp.config import (
+    FollowUpBossServerSettings,
+    FollowUpBossSettings,
+    FollowUpBossTenantSettings,
+)
 from followupboss_mcp.errors import FollowUpBossConfigError
 from followupboss_mcp.logging import configure_logging, redact_headers, redact_value
 
@@ -24,8 +28,28 @@ from followupboss_mcp.logging import configure_logging, redact_headers, redact_v
 def test_package_exports() -> None:
     """The package root should expose the documented exports."""
     assert followupboss_mcp.__version__ == "0.1.0"
+    assert "DevelopmentTenantStore" in followupboss_mcp.__all__
+    assert "DevelopmentHostedTokenRecord" in followupboss_mcp.__all__
+    assert "DevelopmentHostedTokenVerifier" in followupboss_mcp.__all__
     assert "FollowUpBossAsyncClient" in followupboss_mcp.__all__
+    assert "FollowUpBossServerSettings" in followupboss_mcp.__all__
     assert "FollowUpBossSettings" in followupboss_mcp.__all__
+    assert "FollowUpBossTenantSettings" in followupboss_mcp.__all__
+    assert "HostedAccessToken" in followupboss_mcp.__all__
+    assert "HostedAuthenticatedTenant" in followupboss_mcp.__all__
+    assert "HostedAuthSettings" in followupboss_mcp.__all__
+    assert "HostedIdentityVerifier" in followupboss_mcp.__all__
+    assert "HostedTenantTokenVerifier" in followupboss_mcp.__all__
+    assert "HostedVerifiedIdentity" in followupboss_mcp.__all__
+    assert "ResolvedTenantCredentials" in followupboss_mcp.__all__
+    assert "TenantCredentialRecord" in followupboss_mcp.__all__
+    assert "TenantCredentialStatus" in followupboss_mcp.__all__
+    assert "TenantRecord" in followupboss_mcp.__all__
+    assert "TenantStatus" in followupboss_mcp.__all__
+    assert "TenantStore" in followupboss_mcp.__all__
+    assert "get_hosted_access_token" in followupboss_mcp.__all__
+    assert "get_hosted_authenticated_tenant" in followupboss_mcp.__all__
+    assert "get_hosted_verified_identity" in followupboss_mcp.__all__
 
 
 def test_basic_auth_strategy_and_injection() -> None:
@@ -63,8 +87,10 @@ def test_build_auth_strategy_success_and_errors() -> None:
         build_auth_strategy(auth_mode=AuthMode.OAUTH, api_key=None, access_token=None)
 
 
-def test_settings_validation_and_normalization(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Settings should normalize and validate important fields."""
+def test_tenant_settings_validation_and_normalization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Tenant settings should normalize and validate auth runtime fields."""
     for key in (
         "FOLLOWUPBOSS_API_KEY",
         "FOLLOWUPBOSS_ACCESS_TOKEN",
@@ -75,38 +101,88 @@ def test_settings_validation_and_normalization(monkeypatch: pytest.MonkeyPatch) 
     ):
         monkeypatch.delenv(key, raising=False)
 
-    settings = FollowUpBossSettings.model_validate(
+    settings = FollowUpBossTenantSettings.model_validate(
         {
             "api_key": "key",
             "auth_mode": AuthMode.API_KEY,
             "base_url": "https://api.followupboss.com/v1/",
             "timeout_seconds": 12,
             "max_retries": 2,
-            "log_level": "debug",
             "system_key": "system-secret",
         }
     )
     assert str(settings.base_url) == "https://api.followupboss.com/v1"
-    assert settings.log_level == "DEBUG"
     assert settings.system_key_value() == "system-secret"
     assert settings.auth_strategy().authorization_header().startswith("Basic ")
 
-    oauth_settings = FollowUpBossSettings.model_validate(
+    oauth_settings = FollowUpBossTenantSettings.model_validate(
         {"auth_mode": AuthMode.OAUTH, "access_token": "token"}
     )
     assert oauth_settings.auth_strategy().authorization_header() == "Bearer token"
 
     with pytest.raises(ValidationError):
-        FollowUpBossSettings(auth_mode=AuthMode.API_KEY)
+        FollowUpBossTenantSettings(auth_mode=AuthMode.API_KEY)
     with pytest.raises(ValidationError):
-        FollowUpBossSettings(auth_mode=AuthMode.OAUTH)
+        FollowUpBossTenantSettings(auth_mode=AuthMode.OAUTH)
     with pytest.raises(ValidationError):
-        FollowUpBossSettings.model_validate({"api_key": "key", "timeout_seconds": 0})
+        FollowUpBossTenantSettings.model_validate({"api_key": "key", "timeout_seconds": 0})
     with pytest.raises(ValidationError):
-        FollowUpBossSettings.model_validate({"api_key": "key", "max_retries": -1})
+        FollowUpBossTenantSettings.model_validate({"api_key": "key", "max_retries": -1})
 
 
-def test_settings_support_follow_up_boss_env_aliases(
+def test_server_settings_validation_and_normalization() -> None:
+    """Server settings should normalize and validate bootstrap-only fields."""
+    settings = FollowUpBossServerSettings.model_validate(
+        {
+            "transport": "streamable-http",
+            "host": "0.0.0.0",
+            "port": 9000,
+            "streamable_http_path": "/mcp/",
+            "log_level": "debug",
+        }
+    )
+    assert settings.transport == "streamable-http"
+    assert settings.host == "0.0.0.0"
+    assert settings.port == 9000
+    assert settings.streamable_http_path == "/mcp"
+    assert settings.log_level == "DEBUG"
+
+    with pytest.raises(ValidationError):
+        FollowUpBossServerSettings.model_validate({"port": 0})
+    with pytest.raises(ValidationError):
+        FollowUpBossServerSettings.model_validate({"streamable_http_path": "mcp"})
+
+
+def test_composite_settings_project_split_models() -> None:
+    """The legacy composite settings should project into split server and tenant models."""
+    settings = FollowUpBossSettings.model_validate(
+        {
+            "api_key": "key",
+            "transport": "streamable-http",
+            "host": "0.0.0.0",
+            "port": 9001,
+            "streamable_http_path": "/tenant/",
+            "log_level": "debug",
+            "timeout_seconds": 12,
+            "max_retries": 2,
+        }
+    )
+
+    server_settings = settings.server_settings()
+    tenant_settings = settings.tenant_settings()
+
+    assert server_settings.transport == "streamable-http"
+    assert server_settings.host == "0.0.0.0"
+    assert server_settings.port == 9001
+    assert server_settings.streamable_http_path == "/tenant"
+    assert server_settings.log_level == "DEBUG"
+    assert tenant_settings.max_retries == 2
+    assert tenant_settings.timeout_seconds == 12
+    assert "log_level" not in tenant_settings.model_dump()
+    assert "host" not in tenant_settings.model_dump()
+
+
+def test_tenant_settings_support_follow_up_boss_env_aliases(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Legacy `FOLLOW_UP_BOSS_*` environment variables should still load settings."""
@@ -129,7 +205,7 @@ def test_settings_support_follow_up_boss_env_aliases(
     monkeypatch.setenv("FOLLOW_UP_BOSS_X_SYSTEM", "Legacy System")
     monkeypatch.setenv("FOLLOW_UP_BOSS_X_SYSTEM_KEY", "legacy-system-secret")
 
-    settings = FollowUpBossSettings()
+    settings = FollowUpBossTenantSettings()
     assert settings.auth_mode is AuthMode.API_KEY
     assert settings.api_key is not None
     assert settings.api_key.get_secret_value() == "legacy-key"
@@ -140,10 +216,42 @@ def test_settings_support_follow_up_boss_env_aliases(
     monkeypatch.delenv("FOLLOW_UP_BOSS_API_KEY", raising=False)
     monkeypatch.setenv("FOLLOW_UP_BOSS_ACCESS_TOKEN", "legacy-token")
 
-    oauth_settings = FollowUpBossSettings()
+    oauth_settings = FollowUpBossTenantSettings()
     assert oauth_settings.auth_mode is AuthMode.OAUTH
     assert oauth_settings.access_token is not None
     assert oauth_settings.access_token.get_secret_value() == "legacy-token"
+
+
+def test_server_settings_support_follow_up_boss_env_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Legacy server-side environment aliases should still load bootstrap settings."""
+    for key in (
+        "FOLLOWUPBOSS_TRANSPORT",
+        "FOLLOWUPBOSS_HOST",
+        "FOLLOWUPBOSS_PORT",
+        "FOLLOWUPBOSS_STREAMABLE_HTTP_PATH",
+        "FOLLOWUPBOSS_LOG_LEVEL",
+        "FOLLOW_UP_BOSS_TRANSPORT",
+        "FOLLOW_UP_BOSS_HOST",
+        "FOLLOW_UP_BOSS_PORT",
+        "FOLLOW_UP_BOSS_MCP_PATH",
+        "FOLLOW_UP_BOSS_LOG_LEVEL",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    monkeypatch.setenv("FOLLOW_UP_BOSS_TRANSPORT", "streamable-http")
+    monkeypatch.setenv("FOLLOW_UP_BOSS_HOST", "0.0.0.0")
+    monkeypatch.setenv("FOLLOW_UP_BOSS_PORT", "9002")
+    monkeypatch.setenv("FOLLOW_UP_BOSS_MCP_PATH", "/tenant/")
+    monkeypatch.setenv("FOLLOW_UP_BOSS_LOG_LEVEL", "warning")
+
+    settings = FollowUpBossServerSettings()
+    assert settings.transport == "streamable-http"
+    assert settings.host == "0.0.0.0"
+    assert settings.port == 9002
+    assert settings.streamable_http_path == "/tenant"
+    assert settings.log_level == "WARNING"
 
 
 def test_redaction_helpers_and_logger_configuration() -> None:

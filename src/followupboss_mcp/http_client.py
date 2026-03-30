@@ -12,8 +12,9 @@ from typing import Any, Protocol, cast
 import httpx
 
 from followupboss_mcp.auth import AuthStrategy, inject_authorization
-from followupboss_mcp.config import FollowUpBossSettings
+from followupboss_mcp.config import FollowUpBossSettings, FollowUpBossTenantSettings
 from followupboss_mcp.constants import (
+    DEFAULT_LOG_LEVEL,
     DEFAULT_USER_AGENT,
     HEADER_ACCEPT,
     HEADER_AUTHORIZATION,
@@ -71,7 +72,7 @@ class FollowUpBossAsyncClient:
 
     def __init__(
         self,
-        settings: FollowUpBossSettings | None = None,
+        settings: FollowUpBossTenantSettings | FollowUpBossSettings | None = None,
         *,
         auth_strategy: AuthStrategy | None = None,
         http_client: httpx.AsyncClient | None = None,
@@ -83,7 +84,8 @@ class FollowUpBossAsyncClient:
         """Initialize the client."""
         self.settings = settings or FollowUpBossSettings()
         self._auth_strategy = auth_strategy or self.settings.auth_strategy()
-        self._logger = logger or configure_logging(self.settings.log_level)
+        resolved_log_level = cast(str, getattr(self.settings, "log_level", DEFAULT_LOG_LEVEL))
+        self._logger = logger or configure_logging(resolved_log_level)
         self._retry_policy = RetryPolicy(max_retries=self.settings.max_retries)
         self._clock = clock or time.perf_counter
         self._jitter_source = jitter_source or random.random

@@ -5,23 +5,30 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 
-from followupboss_mcp.config import FollowUpBossSettings
+from followupboss_mcp.config import FollowUpBossServerSettings, FollowUpBossSettings
 from followupboss_mcp.mcp_server import create_server
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the CLI argument parser."""
+    """Build the CLI argument parser.
+
+    Returns:
+        The configured argument parser for the supported server transports.
+    """
     parser = argparse.ArgumentParser(
         prog="followupboss-mcp",
         description="Run the Follow Up Boss MCP server.",
     )
     subparsers = parser.add_subparsers(dest="command")
 
-    subparsers.add_parser("stdio", help="Run the MCP server over stdio.")
+    subparsers.add_parser(
+        "stdio",
+        help="Run the single-tenant local-dev MCP server over stdio.",
+    )
 
     streamable_http = subparsers.add_parser(
         "streamable-http",
-        help="Run the MCP server over streamable HTTP.",
+        help="Run the single-tenant local-dev MCP server over streamable HTTP.",
     )
     streamable_http.add_argument("--host", default="127.0.0.1", help="Bind host.")
     streamable_http.add_argument("--port", default=8000, type=int, help="Bind port.")
@@ -35,18 +42,41 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run the CLI."""
+    """Run the CLI.
+
+    Args:
+        argv: Optional command-line arguments.
+
+    Returns:
+        The process exit code.
+    """
     parser = build_parser()
     args = parser.parse_args(argv)
-    command = args.command or "stdio"
+    server_settings = FollowUpBossServerSettings()
+    local_dev_settings = FollowUpBossSettings()
+    command = args.command or server_settings.transport
 
-    settings = FollowUpBossSettings()
     if command == "stdio":
-        server = create_server(settings)
+        server = create_server(
+            local_dev_settings,
+            server_settings=server_settings.model_copy(update={"transport": "stdio"}),
+        )
         server.run(transport="stdio")
         return 0
 
-    server = create_server(settings, host=args.host, port=args.port, streamable_http_path=args.path)
+    resolved_server_settings = server_settings.model_copy(
+        update={
+            "transport": "streamable-http",
+            "host": getattr(args, "host", server_settings.host),
+            "port": getattr(args, "port", server_settings.port),
+            "streamable_http_path": getattr(
+                args,
+                "path",
+                server_settings.streamable_http_path,
+            ),
+        }
+    )
+    server = create_server(local_dev_settings, server_settings=resolved_server_settings)
     server.run(transport="streamable-http")
     return 0
 

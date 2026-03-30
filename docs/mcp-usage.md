@@ -2,7 +2,7 @@
 
 ## Server Transports
 
-The repository supports the two transports exposed by the CLI:
+The repository currently exposes two local-development transports through the CLI:
 
 - `stdio`
 - `streamable-http`
@@ -13,6 +13,37 @@ Run them with:
 uv run python -m followupboss_mcp.cli stdio
 uv run python -m followupboss_mcp.cli streamable-http --host 127.0.0.1 --port 8000 --path /mcp
 ```
+
+Both commands are still explicit single-tenant local-development flows today. Hosted multi-tenant
+authentication and tenant resolution are not wired yet, so `streamable-http` should still be
+treated as a local inspection path rather than the final hosted product shape.
+
+## Runtime Configuration
+
+The runtime settings are now split deliberately:
+
+- `FollowUpBossServerSettings` owns bootstrap-only fields such as `transport`, `host`, `port`, `streamable_http_path`, and `log_level`.
+- `FollowUpBossTenantSettings` owns single-tenant credential and HTTP-client fields such as `auth_mode`, `api_key`, `access_token`, `system_name`, `system_key`, `base_url`, `timeout_seconds`, and `max_retries`.
+- `FollowUpBossSettings` remains as the backward-compatible composite model used by the current local CLI and examples.
+
+The server-only environment variables are:
+
+- `FOLLOWUPBOSS_TRANSPORT`
+- `FOLLOWUPBOSS_HOST`
+- `FOLLOWUPBOSS_PORT`
+- `FOLLOWUPBOSS_STREAMABLE_HTTP_PATH`
+- `FOLLOWUPBOSS_LOG_LEVEL`
+
+The current local single-tenant runtime variables remain:
+
+- `FOLLOWUPBOSS_AUTH_MODE`
+- `FOLLOWUPBOSS_API_KEY`
+- `FOLLOWUPBOSS_ACCESS_TOKEN`
+- `FOLLOWUPBOSS_SYSTEM_NAME`
+- `FOLLOWUPBOSS_SYSTEM_KEY`
+- `FOLLOWUPBOSS_BASE_URL`
+- `FOLLOWUPBOSS_TIMEOUT_SECONDS`
+- `FOLLOWUPBOSS_MAX_RETRIES`
 
 ## Tool Namespace
 

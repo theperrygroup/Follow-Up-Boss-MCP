@@ -69,3 +69,23 @@ class FollowUpBossRetryableServerError(FollowUpBossHTTPError):
 
 class FollowUpBossWebhookSignatureError(FollowUpBossError):
     """Raised when webhook signature verification fails."""
+
+
+class TenantStoreError(FollowUpBossError):
+    """Base class for tenant-store related failures."""
+
+
+class TenantNotFoundError(TenantStoreError):
+    """Raised when a tenant record cannot be resolved."""
+
+
+class TenantDisabledError(TenantStoreError):
+    """Raised when a tenant exists but is disabled."""
+
+
+class TenantCredentialNotFoundError(TenantStoreError):
+    """Raised when a tenant credential record cannot be resolved."""
+
+
+class TenantCredentialRevokedError(TenantStoreError):
+    """Raised when a tenant credential exists but is revoked."""

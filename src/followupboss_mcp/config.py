@@ -24,6 +24,7 @@ from followupboss_mcp.constants import (
 )
 
 type LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+type TransportMode = Literal["stdio", "streamable-http"]
 
 
 def _default_base_url() -> AnyHttpUrl:
@@ -44,8 +45,92 @@ def _settings_env_aliases(canonical_name: str, *legacy_names: str) -> AliasChoic
     return AliasChoices(canonical_name, *legacy_names)
 
 
-class FollowUpBossSettings(BaseSettings):
-    """Environment-backed application settings."""
+class FollowUpBossServerSettings(BaseSettings):
+    """Environment-backed server-only runtime settings."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="FOLLOWUPBOSS_",
+        case_sensitive=False,
+        extra="ignore",
+        populate_by_name=True,
+    )
+
+    transport: TransportMode = Field(
+        default="stdio",
+        validation_alias=_settings_env_aliases(
+            "FOLLOWUPBOSS_TRANSPORT",
+            "FOLLOW_UP_BOSS_TRANSPORT",
+        ),
+    )
+    host: str = Field(
+        default="127.0.0.1",
+        validation_alias=_settings_env_aliases(
+            "FOLLOWUPBOSS_HOST",
+            "FOLLOW_UP_BOSS_HOST",
+        ),
+    )
+    port: int = Field(
+        default=8000,
+        validation_alias=_settings_env_aliases(
+            "FOLLOWUPBOSS_PORT",
+            "FOLLOW_UP_BOSS_PORT",
+        ),
+    )
+    streamable_http_path: str = Field(
+        default="/mcp",
+        validation_alias=_settings_env_aliases(
+            "FOLLOWUPBOSS_STREAMABLE_HTTP_PATH",
+            "FOLLOW_UP_BOSS_STREAMABLE_HTTP_PATH",
+            "FOLLOWUPBOSS_MCP_PATH",
+            "FOLLOW_UP_BOSS_MCP_PATH",
+        ),
+    )
+    log_level: LogLevel = Field(
+        default=cast(LogLevel, DEFAULT_LOG_LEVEL),
+        validation_alias=_settings_env_aliases(
+            "FOLLOWUPBOSS_LOG_LEVEL",
+            "FOLLOW_UP_BOSS_LOG_LEVEL",
+        ),
+    )
+
+    @field_validator("host")
+    @classmethod
+    def _validate_host(cls, value: str) -> str:
+        """Require a non-empty host value."""
+        if not value.strip():
+            raise ValueError("host must not be empty.")
+        return value
+
+    @field_validator("port")
+    @classmethod
+    def _validate_port(cls, value: int) -> int:
+        """Require a valid TCP port."""
+        if value <= 0 or value > 65535:
+            raise ValueError("port must be between 1 and 65535.")
+        return value
+
+    @field_validator("streamable_http_path")
+    @classmethod
+    def _validate_streamable_http_path(cls, value: str) -> str:
+        """Require an absolute HTTP mount path."""
+        if not value.startswith("/"):
+            raise ValueError("streamable_http_path must start with '/'.")
+        return value.rstrip("/") or "/"
+
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def _normalize_log_level(cls, value: object) -> LogLevel:
+        """Normalize log levels to uppercase and validate them."""
+        if not isinstance(value, str):
+            raise TypeError("log_level must be a string.")
+        normalized = value.upper()
+        if normalized not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
+            raise ValueError("log_level must be one of DEBUG, INFO, WARNING, ERROR, CRITICAL.")
+        return cast(LogLevel, normalized)
+
+
+class FollowUpBossTenantSettings(BaseSettings):
+    """Environment-backed single-tenant runtime settings."""
 
     model_config = SettingsConfigDict(
         env_prefix="FOLLOWUPBOSS_",
@@ -114,13 +199,6 @@ class FollowUpBossSettings(BaseSettings):
             "FOLLOW_UP_BOSS_MAX_RETRIES",
         ),
     )
-    log_level: LogLevel = Field(
-        default=cast(LogLevel, DEFAULT_LOG_LEVEL),
-        validation_alias=_settings_env_aliases(
-            "FOLLOWUPBOSS_LOG_LEVEL",
-            "FOLLOW_UP_BOSS_LOG_LEVEL",
-        ),
-    )
 
     @field_validator("base_url", mode="before")
     @classmethod
@@ -146,6 +224,105 @@ class FollowUpBossSettings(BaseSettings):
             raise ValueError("max_retries must be greater than or equal to zero.")
         return value
 
+    @model_validator(mode="after")
+    def _validate_auth_mode(self) -> FollowUpBossTenantSettings:
+        """Ensure credentials match the chosen auth mode."""
+        if self.auth_mode is AuthMode.API_KEY and self.api_key is None:
+            raise ValueError("FOLLOWUPBOSS_API_KEY must be provided for api_key auth.")
+        if self.auth_mode is AuthMode.OAUTH and self.access_token is None:
+            raise ValueError("FOLLOWUPBOSS_ACCESS_TOKEN must be provided for oauth auth.")
+        return self
+
+    def auth_strategy(self) -> AuthStrategy:
+        """Return the configured authentication strategy.
+
+        Returns:
+            The auth strategy derived from the configured tenant credentials.
+        """
+        return build_auth_strategy(
+            auth_mode=self.auth_mode,
+            api_key=self.api_key.get_secret_value() if self.api_key is not None else None,
+            access_token=self.access_token.get_secret_value()
+            if self.access_token is not None
+            else None,
+        )
+
+    def system_key_value(self) -> str | None:
+        """Return the raw system key, if configured.
+
+        Returns:
+            The unwrapped system key when one is configured, otherwise `None`.
+        """
+        if self.system_key is None:
+            return None
+        return self.system_key.get_secret_value()
+
+
+class FollowUpBossSettings(FollowUpBossTenantSettings):
+    """Backward-compatible composite settings for single-tenant local development."""
+
+    transport: TransportMode = Field(
+        default="stdio",
+        validation_alias=_settings_env_aliases(
+            "FOLLOWUPBOSS_TRANSPORT",
+            "FOLLOW_UP_BOSS_TRANSPORT",
+        ),
+    )
+    host: str = Field(
+        default="127.0.0.1",
+        validation_alias=_settings_env_aliases(
+            "FOLLOWUPBOSS_HOST",
+            "FOLLOW_UP_BOSS_HOST",
+        ),
+    )
+    port: int = Field(
+        default=8000,
+        validation_alias=_settings_env_aliases(
+            "FOLLOWUPBOSS_PORT",
+            "FOLLOW_UP_BOSS_PORT",
+        ),
+    )
+    streamable_http_path: str = Field(
+        default="/mcp",
+        validation_alias=_settings_env_aliases(
+            "FOLLOWUPBOSS_STREAMABLE_HTTP_PATH",
+            "FOLLOW_UP_BOSS_STREAMABLE_HTTP_PATH",
+            "FOLLOWUPBOSS_MCP_PATH",
+            "FOLLOW_UP_BOSS_MCP_PATH",
+        ),
+    )
+    log_level: LogLevel = Field(
+        default=cast(LogLevel, DEFAULT_LOG_LEVEL),
+        validation_alias=_settings_env_aliases(
+            "FOLLOWUPBOSS_LOG_LEVEL",
+            "FOLLOW_UP_BOSS_LOG_LEVEL",
+        ),
+    )
+
+    @field_validator("host")
+    @classmethod
+    def _validate_host(cls, value: str) -> str:
+        """Require a non-empty host value."""
+        if not value.strip():
+            raise ValueError("host must not be empty.")
+        return value
+
+    @field_validator("port")
+    @classmethod
+    def _validate_port(cls, value: int) -> int:
+        """Require a valid TCP port."""
+        if value <= 0 or value > 65535:
+            raise ValueError("port must be between 1 and 65535.")
+        return value
+
+    @field_validator("streamable_http_path")
+    @classmethod
+    def _validate_streamable_http_path(cls, value: str) -> str:
+        """Require an absolute HTTP mount path."""
+        if not value.startswith("/"):
+            raise ValueError("streamable_http_path must start with '/'.")
+        return value.rstrip("/") or "/"
+
     @field_validator("log_level", mode="before")
     @classmethod
     def _normalize_log_level(cls, value: object) -> LogLevel:
@@ -157,27 +334,37 @@ class FollowUpBossSettings(BaseSettings):
             raise ValueError("log_level must be one of DEBUG, INFO, WARNING, ERROR, CRITICAL.")
         return cast(LogLevel, normalized)
 
-    @model_validator(mode="after")
-    def _validate_auth_mode(self) -> FollowUpBossSettings:
-        """Ensure credentials match the chosen auth mode."""
-        if self.auth_mode is AuthMode.API_KEY and self.api_key is None:
-            raise ValueError("FOLLOWUPBOSS_API_KEY must be provided for api_key auth.")
-        if self.auth_mode is AuthMode.OAUTH and self.access_token is None:
-            raise ValueError("FOLLOWUPBOSS_ACCESS_TOKEN must be provided for oauth auth.")
-        return self
+    def server_settings(self) -> FollowUpBossServerSettings:
+        """Project the composite settings into server-only settings.
 
-    def auth_strategy(self) -> AuthStrategy:
-        """Return the configured authentication strategy."""
-        return build_auth_strategy(
-            auth_mode=self.auth_mode,
-            api_key=self.api_key.get_secret_value() if self.api_key is not None else None,
-            access_token=self.access_token.get_secret_value()
-            if self.access_token is not None
-            else None,
+        Returns:
+            A server-only settings object that excludes tenant credentials.
+        """
+        return FollowUpBossServerSettings.model_validate(
+            {
+                "transport": self.transport,
+                "host": self.host,
+                "port": self.port,
+                "streamable_http_path": self.streamable_http_path,
+                "log_level": self.log_level,
+            }
         )
 
-    def system_key_value(self) -> str | None:
-        """Return the raw system key, if configured."""
-        if self.system_key is None:
-            return None
-        return self.system_key.get_secret_value()
+    def tenant_settings(self) -> FollowUpBossTenantSettings:
+        """Project the composite settings into tenant-only settings.
+
+        Returns:
+            A tenant runtime settings object without server bootstrap fields.
+        """
+        return FollowUpBossTenantSettings.model_validate(
+            {
+                "auth_mode": self.auth_mode,
+                "api_key": self.api_key,
+                "access_token": self.access_token,
+                "system_name": self.system_name,
+                "system_key": self.system_key,
+                "base_url": self.base_url,
+                "timeout_seconds": self.timeout_seconds,
+                "max_retries": self.max_retries,
+            }
+        )

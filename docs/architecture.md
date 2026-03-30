@@ -13,7 +13,7 @@ The repository is structured so that:
 
 ### Core configuration and transport
 
-- `src/followupboss_mcp/config.py`: environment-backed settings, auth validation, log-level normalization
+- `src/followupboss_mcp/config.py`: split server bootstrap settings from tenant runtime settings, plus a backward-compatible local-dev wrapper
 - `src/followupboss_mcp/constants.py`: protocol and package constants
 - `src/followupboss_mcp/auth.py`: Basic and Bearer auth strategies
 - `src/followupboss_mcp/logging.py`: logger configuration plus sensitive-header redaction
@@ -35,6 +35,18 @@ The repository is structured so that:
 - `src/followupboss_mcp/mcp_registration.py`: grouped FastMCP registration helpers for tools, the resource, and the prompt
 - `src/followupboss_mcp/mcp_server.py`: FastMCP construction, lifespan wiring, and service-bundle assembly
 - `src/followupboss_mcp/cli.py`: stdio and streamable HTTP entrypoint
+
+## Runtime Config Split
+
+The runtime configuration is now separated intentionally:
+
+- `FollowUpBossServerSettings` owns server-only bootstrap fields such as transport, host, port, mount path, and log level.
+- `FollowUpBossTenantSettings` owns one tenant's Follow Up Boss credentials plus client defaults such as `base_url`, `timeout_seconds`, and `max_retries`.
+- `FollowUpBossSettings` remains as a backward-compatible composite model for current single-tenant local development and tests.
+
+That split keeps local inspection working while removing the assumption that one process-wide environment-backed credential object should also own hosted server bootstrap forever.
+
+For the first hosted refactor slice, `base_url`, `timeout_seconds`, and `max_retries` remain global defaults on the tenant runtime model so they can continue to work for local development today and become per-tenant overrides later.
 
 ## Layering
 

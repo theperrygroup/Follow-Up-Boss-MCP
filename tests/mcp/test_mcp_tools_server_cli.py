@@ -4903,27 +4903,55 @@ def test_cli_parser_and_main(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = build_parser()
     assert parser.prog == "followupboss-mcp"
 
-    runs: list[tuple[str, dict[str, Any]]] = []
+    runs: list[tuple[str, Any]] = []
+
+    @dataclass
+    class FakeServerSettings:
+        """Tiny server-settings stand-in for CLI tests."""
+
+        transport: str = "stdio"
+        host: str = "127.0.0.1"
+        port: int = 8000
+        streamable_http_path: str = "/mcp"
+
+        def model_copy(self, *, update: dict[str, Any]) -> FakeServerSettings:
+            """Return a copied settings object with updates applied."""
+            return FakeServerSettings(
+                transport=update.get("transport", self.transport),
+                host=update.get("host", self.host),
+                port=update.get("port", self.port),
+                streamable_http_path=update.get(
+                    "streamable_http_path",
+                    self.streamable_http_path,
+                ),
+            )
 
     class FakeServer:
         def run(self, transport: str) -> None:
             runs.append((transport, {}))
 
     def fake_create_server(settings: object, **kwargs: object) -> FakeServer:
-        runs.append(("create", kwargs))
+        runs.append(("create", {"settings": settings, "kwargs": kwargs}))
         return FakeServer()
 
     monkeypatch.setattr(
         "followupboss_mcp.cli.FollowUpBossSettings",
         lambda: _service_stub(),
     )
+    monkeypatch.setattr(
+        "followupboss_mcp.cli.FollowUpBossServerSettings",
+        lambda: FakeServerSettings(),
+    )
     monkeypatch.setattr("followupboss_mcp.cli.create_server", fake_create_server)
 
     assert main(["stdio"]) == 0
     assert main(["streamable-http", "--host", "0.0.0.0", "--port", "9000", "--path", "/alt"]) == 0
-    assert runs == [
-        ("create", {}),
-        ("stdio", {}),
-        ("create", {"host": "0.0.0.0", "port": 9000, "streamable_http_path": "/alt"}),
-        ("streamable-http", {}),
-    ]
+    assert runs[0][0] == "create"
+    assert runs[0][1]["kwargs"]["server_settings"].transport == "stdio"
+    assert runs[1] == ("stdio", {})
+    assert runs[2][0] == "create"
+    assert runs[2][1]["kwargs"]["server_settings"].transport == "streamable-http"
+    assert runs[2][1]["kwargs"]["server_settings"].host == "0.0.0.0"
+    assert runs[2][1]["kwargs"]["server_settings"].port == 9000
+    assert runs[2][1]["kwargs"]["server_settings"].streamable_http_path == "/alt"
+    assert runs[3] == ("streamable-http", {})
