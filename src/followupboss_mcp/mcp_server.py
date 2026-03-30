@@ -20,13 +20,14 @@ from followupboss_mcp.http_client import FollowUpBossAsyncClient, FollowUpBossCl
 from followupboss_mcp.logging import configure_logging
 from followupboss_mcp.mcp_registration import register_server_surface
 from followupboss_mcp.mcp_tools import FollowUpBossToolAdapter
-from followupboss_mcp.tenant_store import TenantStore
 from followupboss_mcp.tenant_runtime import (
     RequestScopedTenantServiceBundleResolver,
+    ServiceBundleResolver,
     StaticServiceBundleResolver,
     TenantRuntimeFactory,
     build_service_bundle,
 )
+from followupboss_mcp.tenant_store import TenantStore
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import FastMCP
 
@@ -137,6 +138,7 @@ def create_server(
         )
 
     shared_client: FollowUpBossClientProtocol | None = None
+    service_bundle_resolver: ServiceBundleResolver
     if client is not None:
         shared_client = client
         service_bundle_resolver = StaticServiceBundleResolver(build_service_bundle(shared_client))

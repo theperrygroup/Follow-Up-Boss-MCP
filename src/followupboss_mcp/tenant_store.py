@@ -24,6 +24,9 @@ from followupboss_mcp.errors import (
     TenantCredentialRevokedError,
     TenantDisabledError,
     TenantNotFoundError,
+    TenantSecretStoreUnavailableError,
+    TenantStoreError,
+    TenantStoreUnavailableError,
 )
 
 _DEFAULT_LOCAL_DEV_CREDENTIAL_ID = "local-dev-credential"
@@ -346,6 +349,10 @@ class TenantStore(ABC):
             The resolved tenant metadata and credential record.
 
         Raises:
+            TenantStoreUnavailableError: If the tenant metadata store cannot be
+                queried safely.
+            TenantSecretStoreUnavailableError: If the tenant credential or
+                secret store cannot be queried safely.
             TenantNotFoundError: If the tenant ID does not exist.
             TenantDisabledError: If the tenant exists but is disabled.
             TenantCredentialNotFoundError: If the tenant's credential record is
@@ -353,13 +360,23 @@ class TenantStore(ABC):
             TenantCredentialRevokedError: If the tenant's credential exists but
                 is revoked.
         """
-        tenant = await self.get_tenant(tenant_id)
+        try:
+            tenant = await self.get_tenant(tenant_id)
+        except TenantStoreError:
+            raise
+        except Exception as exc:
+            raise TenantStoreUnavailableError("Tenant store is unavailable.") from exc
         if tenant is None:
             raise TenantNotFoundError("Tenant could not be resolved.")
         if tenant.status is TenantStatus.DISABLED:
             raise TenantDisabledError("Tenant is disabled.")
 
-        credential = await self.get_credential(tenant.credential_id)
+        try:
+            credential = await self.get_credential(tenant.credential_id)
+        except TenantStoreError:
+            raise
+        except Exception as exc:
+            raise TenantSecretStoreUnavailableError("Tenant secret store is unavailable.") from exc
         if credential is None or credential.tenant_id != tenant.tenant_id:
             raise TenantCredentialNotFoundError("Tenant credentials could not be resolved.")
         if credential.status is TenantCredentialStatus.REVOKED:

@@ -24,7 +24,7 @@ of a single process-wide credential.
       variables.
 - [ ] `FollowUpBossAsyncClient` instances are created per request or per session instead of once
       at process startup.
-- [ ] MCP tools, resources, and prompts use the authenticated tenant context safely.
+- [x] MCP tools, resources, and prompts use the authenticated tenant context safely.
 - [ ] Invalid, expired, or unauthorized tokens fail closed with safe error messages.
 - [ ] Cross-tenant access is prevented and covered by tests.
 - [ ] Local development remains possible and documented.
@@ -127,37 +127,37 @@ of a single process-wide credential.
 
 ## Phase 5: MCP Context Plumbing
 
-- [ ] Update the server wiring so MCP handlers can access the authenticated tenant context.
-- [ ] Decide whether tools, resources, and prompts all require tenant auth or whether any remain
+- [x] Update the server wiring so MCP handlers can access the authenticated tenant context.
+- [x] Decide whether tools, resources, and prompts all require tenant auth or whether any remain
       intentionally public.
-- [ ] Refactor the registration helpers as needed so tenant-aware operations can resolve the
+- [x] Refactor the registration helpers as needed so tenant-aware operations can resolve the
       correct runtime adapter from context instead of using a single startup-time adapter.
-- [ ] Keep the public MCP tool names stable unless a breaking change is explicitly required.
-- [ ] Ensure resource and prompt handlers do not accidentally bypass tenant resolution.
-- [ ] Confirm error handling remains JSON-safe and MCP-friendly after the tenant-aware refactor.
+- [x] Keep the public MCP tool names stable unless a breaking change is explicitly required.
+- [x] Ensure resource and prompt handlers do not accidentally bypass tenant resolution.
+- [x] Confirm error handling remains JSON-safe and MCP-friendly after the tenant-aware refactor.
 
 ## Phase 6: Security Hardening
 
-- [ ] Ensure secret-like fields remain redacted in logs and object representations.
-- [ ] Ensure inbound auth tokens are never logged in plaintext.
-- [ ] Add per-tenant audit events for authentication, tenant resolution, and upstream credential
+- [x] Ensure secret-like fields remain redacted in logs and object representations.
+- [x] Ensure inbound auth tokens are never logged in plaintext.
+- [x] Add per-tenant audit events for authentication, tenant resolution, and upstream credential
       usage where appropriate.
 - [ ] Add per-tenant rate limiting or abuse controls for the hosted endpoint.
 - [ ] Document token revocation and emergency credential rotation procedures.
-- [ ] Confirm the hosted design fails closed when the tenant store or secret store is unavailable.
+- [x] Confirm the hosted design fails closed when the tenant store or secret store is unavailable.
 - [ ] Re-review webhook and attachment flows for tenant-isolation assumptions.
 
 ## Phase 7: Test Coverage
 
 - [ ] Add unit tests for the new server-only settings model.
-- [ ] Add unit tests for the tenant store abstraction and its error cases.
+- [x] Add unit tests for the tenant store abstraction and its error cases.
 - [ ] Add unit tests for inbound token verification and tenant resolution.
 - [ ] Add unit tests for client-factory construction from tenant credentials.
-- [ ] Add MCP HTTP tests that prove different bearer tokens route to different tenant runtimes.
-- [ ] Add MCP HTTP tests that prove invalid or missing auth is rejected.
-- [ ] Add MCP tests that confirm tools, resources, and prompts still work after the refactor.
+- [x] Add MCP HTTP tests that prove different bearer tokens route to different tenant runtimes.
+- [x] Add MCP HTTP tests that prove invalid or missing auth is rejected.
+- [x] Add MCP tests that confirm tools, resources, and prompts still work after the refactor.
 - [ ] Add regression coverage for `stdio` so its supported behavior is explicit and documented.
-- [ ] Re-run focused MCP, auth, and HTTP client suites during the refactor.
+- [x] Re-run focused MCP, auth, and HTTP client suites during the refactor.
 - [ ] Re-run the full quality gate before closing the workstream.
 
 ## Phase 8: Documentation And Operations
@@ -191,8 +191,10 @@ of a single process-wide credential.
 - [ ] Is the first hosted release API-key-only, OAuth-only, or dual-mode?
 - [ ] Which secret-store and database backend should be treated as the production reference
       implementation?
-- [ ] Do resources and prompts require the same inbound auth guarantees as tools, or can any stay
+- [x] Do resources and prompts require the same inbound auth guarantees as tools, or can any stay
       unauthenticated?
+      Decision: hosted mode keeps no intentionally public resources or prompts; all registered MCP
+      surfaces follow the same tenant-auth boundary.
 
 ## Evidence Log
 
@@ -235,3 +237,18 @@ of a single process-wide credential.
       `base_url`/`timeout_seconds`/`max_retries` from shared defaults, close clients after each
       call, and prove with focused MCP/auth tests that different bearer tokens do not share client
       instances or credential material.
+- [x] Routed hosted resources and prompts through the same `TenantRuntimeFactory` auth-context path
+      as tools, decided that hosted mode exposes no intentionally public MCP surfaces, and proved
+      with `uv run pytest tests/unit/test_tenant_runtime.py tests/mcp/test_hosted_auth_streamable_http.py tests/integration/test_hosted_auth_integration.py tests/mcp/test_mcp_tools_server_cli.py tests/integration/test_runtime_integration.py`
+      that tools, resources, and prompts preserve tenant isolation while local server-surface
+      behavior remains intact.
+- [x] Hardened hosted resource/prompt runtime-resolution failures so MCP responses stay JSON-safe
+      and token-safe, expanded logging/object redaction to include bearer-token-style fields and
+      `HostedAccessToken` representations, wrapped tenant/secret store backend outages into
+      fail-closed tenant-store errors, and revalidated with
+      `uv run pytest tests/unit/test_auth_config_logging.py tests/unit/test_hosted_auth.py tests/unit/test_tenant_store.py tests/unit/test_tenant_runtime.py tests/integration/test_hosted_auth_integration.py tests/mcp/test_hosted_auth_streamable_http.py tests/unit/test_http_client.py`.
+- [x] Added machine-readable audit-log helpers plus per-tenant hosted audit events for bearer-token
+      authentication success/failure, tenant-resolution success/failure, and request-scoped
+      upstream credential usage without logging raw bearer tokens, API keys, access tokens, or
+      system keys, and revalidated with
+      `uv run pytest tests/unit/test_auth_config_logging.py tests/unit/test_hosted_auth.py tests/unit/test_tenant_runtime.py`.

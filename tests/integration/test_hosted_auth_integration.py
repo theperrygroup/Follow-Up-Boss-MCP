@@ -19,6 +19,7 @@ from followupboss_mcp.tenant_store import (
     TenantCredentialStatus,
     TenantRecord,
     TenantStatus,
+    TenantStore,
 )
 
 _INITIALIZE_REQUEST = {
@@ -179,6 +180,33 @@ def _tenant_store() -> DevelopmentTenantStore:
     )
 
 
+class UnavailableHostedTenantStore(TenantStore):
+    """Tenant store stub whose backend becomes unavailable during auth."""
+
+    def __init__(self, *, failure_point: str) -> None:
+        """Initialize the unavailable store stub.
+
+        Args:
+            failure_point: Either `tenant` for metadata lookup failures or
+                `secret` for credential lookup failures.
+        """
+        self._failure_point = failure_point
+
+    async def get_tenant(self, tenant_id: str) -> TenantRecord | None:
+        """Return one tenant or raise when the tenant store is unavailable."""
+        del tenant_id
+        if self._failure_point == "tenant":
+            raise RuntimeError("tenant database unavailable")
+        return _tenant_record()
+
+    async def get_credential(self, credential_id: str) -> TenantCredentialRecord | None:
+        """Return one credential or raise when the secret store is unavailable."""
+        del credential_id
+        if self._failure_point == "secret":
+            raise RuntimeError("secret backend unavailable")
+        return _credential_record()
+
+
 @pytest.mark.parametrize(
     "token",
     [
@@ -230,4 +258,52 @@ def test_hosted_streamable_http_auth_failures_fail_closed_before_client_creation
         "error": "invalid_token",
         "error_description": "Authentication required",
     }
+    assert created_clients == []
+
+
+@pytest.mark.parametrize("failure_point", ["tenant", "secret"])
+def test_hosted_streamable_http_unavailable_store_fails_closed_before_client_creation(
+    monkeypatch: pytest.MonkeyPatch,
+    failure_point: str,
+) -> None:
+    """Unavailable tenant or secret stores should fail closed during hosted auth."""
+    created_clients: list[object] = []
+
+    class CountingClient:
+        """Minimal client stub that records whether it was instantiated."""
+
+        def __init__(self, *_: object, **__: object) -> None:
+            created_clients.append(object())
+
+        async def aclose(self) -> None:
+            """Close the client stub."""
+            return None
+
+        async def request_json(self, *_: object, **__: object) -> dict[str, object]:
+            """Return a placeholder payload if the client is ever used."""
+            return {"id": 1}
+
+    monkeypatch.setattr("followupboss_mcp.mcp_server.FollowUpBossAsyncClient", CountingClient)
+
+    server = create_server(
+        FollowUpBossSettings.model_validate({"api_key": "local-dev-key"}),
+        hosted_auth=_hosted_auth_settings(),
+        hosted_token_verifier=_hosted_token_verifier(),
+        tenant_store=UnavailableHostedTenantStore(failure_point=failure_point),
+    )
+
+    with TestClient(server.streamable_http_app()) as client:
+        response = client.post(
+            "/mcp",
+            json=_INITIALIZE_REQUEST,
+            headers={"Authorization": "Bearer valid-token"},
+        )
+
+    assert response.status_code == 401
+    assert response.json() == {
+        "error": "invalid_token",
+        "error_description": "Authentication required",
+    }
+    assert "tenant database unavailable" not in response.text
+    assert "secret backend unavailable" not in response.text
     assert created_clients == []

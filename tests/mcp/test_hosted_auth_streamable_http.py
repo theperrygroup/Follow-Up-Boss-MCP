@@ -15,6 +15,7 @@ import pytest
 
 from mcp.client.session import ClientSession
 from mcp.client.streamable_http import streamable_http_client
+from mcp.shared.exceptions import McpError
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -476,3 +477,148 @@ async def test_streamable_http_hosted_auth_isolates_tools_resources_and_prompts_
             "instance_id": 2,
         },
     ]
+
+
+@pytest.mark.asyncio
+async def test_streamable_http_hosted_auth_resource_and_prompt_runtime_errors_remain_mcp_safe(
+) -> None:
+    """Hosted resource and prompt runtime failures should stay MCP-safe."""
+    port = _reserve_port()
+    server_script = textwrap.dedent(
+        f"""
+        import followupboss_mcp.tenant_runtime as tenant_runtime
+        from followupboss_mcp.auth import AuthMode
+        from followupboss_mcp.config import FollowUpBossSettings
+        from followupboss_mcp.hosted_auth import (
+            DevelopmentHostedTokenVerifier,
+            HostedAuthSettings,
+            HostedVerifiedIdentity,
+        )
+        from followupboss_mcp.mcp_server import create_server
+        from followupboss_mcp.tenant_store import (
+            DevelopmentTenantStore,
+            TenantCredentialRecord,
+            TenantCredentialStatus,
+            TenantRecord,
+            TenantStatus,
+        )
+
+
+        async def unsafe_runtime_error(self) -> object:
+            del self
+            raise RuntimeError(
+                "Hosted tenant runtime is unavailable. token=super-secret-token"
+            )
+
+
+        tenant_runtime.TenantRuntimeFactory.runtime_for_current_tenant = unsafe_runtime_error
+
+        tenant_store = DevelopmentTenantStore(
+            tenants=[
+                TenantRecord.model_validate(
+                    {{
+                        "tenant_id": "tenant-1",
+                        "tenant_slug": "tenant-one",
+                        "display_name": "Tenant One",
+                        "credential_id": "credential-1",
+                        "status": TenantStatus.ACTIVE,
+                    }}
+                )
+            ],
+            credentials=[
+                TenantCredentialRecord.model_validate(
+                    {{
+                        "credential_id": "credential-1",
+                        "tenant_id": "tenant-1",
+                        "auth_mode": AuthMode.API_KEY,
+                        "api_key": "secret-key",
+                        "status": TenantCredentialStatus.ACTIVE,
+                    }}
+                )
+            ],
+        )
+
+        hosted_token_verifier = DevelopmentHostedTokenVerifier.from_mapping(
+            {{
+                "dev-token": HostedVerifiedIdentity.model_validate(
+                    {{
+                        "tenant_id": "tenant-1",
+                        "subject": "user-123",
+                        "client_id": "portal-app",
+                        "credential_id": "credential-1",
+                    }}
+                )
+            }}
+        )
+
+        hosted_auth = HostedAuthSettings.model_validate(
+            {{
+                "issuer_url": "https://issuer.example.com",
+                "resource_server_url": "http://127.0.0.1:{port}/mcp",
+            }}
+        )
+
+        create_server(
+            FollowUpBossSettings.model_validate({{"api_key": "bootstrap-key"}}),
+            hosted_auth=hosted_auth,
+            hosted_token_verifier=hosted_token_verifier,
+            tenant_store=tenant_store,
+            host="127.0.0.1",
+            port={port},
+            streamable_http_path="/mcp",
+        ).run(transport="streamable-http")
+        """
+    )
+    process = await asyncio.create_subprocess_exec(
+        sys.executable,
+        "-c",
+        server_script,
+        cwd=str(PROJECT_ROOT),
+        env=_server_python_env(),
+    )
+    try:
+        await _wait_for_port("127.0.0.1", port)
+        async with httpx.AsyncClient(
+            headers={"Authorization": "Bearer dev-token"},
+        ) as http_client:
+            async with streamable_http_client(
+                f"http://127.0.0.1:{port}/mcp",
+                http_client=http_client,
+            ) as (
+                read_stream,
+                write_stream,
+                _,
+            ):
+                async with ClientSession(read_stream, write_stream) as session:
+                    await session.initialize()
+
+                    resources = await session.list_resources()
+                    with pytest.raises(McpError) as resource_exc_info:
+                        await session.read_resource(resources.resources[0].uri)
+
+                    assert resource_exc_info.value.error.message == (
+                        "Error reading resource followupboss://api-coverage-matrix: "
+                        "Hosted tenant runtime is unavailable."
+                    )
+                    assert "super-secret-token" not in resource_exc_info.value.error.message
+
+                    prompts = await session.list_prompts()
+                    with pytest.raises(McpError) as prompt_exc_info:
+                        await session.get_prompt(
+                            prompts.prompts[0].name,
+                            {
+                                "source": "Portal",
+                                "type": "Inquiry",
+                                "message": "Hi",
+                                "email": "a@example.com",
+                            },
+                        )
+
+                    assert prompt_exc_info.value.error.message == (
+                        "Error rendering prompt followupboss_compose_lead_event: "
+                        "Hosted tenant runtime is unavailable."
+                    )
+                    assert "super-secret-token" not in prompt_exc_info.value.error.message
+    finally:
+        process.terminate()
+        await process.wait()

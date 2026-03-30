@@ -15,6 +15,8 @@ from followupboss_mcp.errors import (
     TenantCredentialRevokedError,
     TenantDisabledError,
     TenantNotFoundError,
+    TenantSecretStoreUnavailableError,
+    TenantStoreUnavailableError,
 )
 from followupboss_mcp.tenant_store import (
     DevelopmentTenantStore,
@@ -22,6 +24,7 @@ from followupboss_mcp.tenant_store import (
     TenantCredentialStatus,
     TenantRecord,
     TenantStatus,
+    TenantStore,
 )
 
 
@@ -65,6 +68,34 @@ def _credential_record(**overrides: object) -> TenantCredentialRecord:
     }
     payload.update(overrides)
     return TenantCredentialRecord.model_validate(payload)
+
+
+class UnavailableTenantMetadataStore(TenantStore):
+    """Tenant store stub whose metadata backend is unavailable."""
+
+    async def get_tenant(self, tenant_id: str) -> TenantRecord | None:
+        """Fail while loading tenant metadata."""
+        del tenant_id
+        raise RuntimeError("tenant database unavailable")
+
+    async def get_credential(self, credential_id: str) -> TenantCredentialRecord | None:
+        """Return no credential because metadata lookup should fail first."""
+        del credential_id
+        return None
+
+
+class UnavailableTenantSecretStore(TenantStore):
+    """Tenant store stub whose credential backend is unavailable."""
+
+    async def get_tenant(self, tenant_id: str) -> TenantRecord | None:
+        """Return one tenant so credential resolution is attempted."""
+        del tenant_id
+        return _tenant_record()
+
+    async def get_credential(self, credential_id: str) -> TenantCredentialRecord | None:
+        """Fail while loading tenant credential material."""
+        del credential_id
+        raise RuntimeError("secret backend unavailable")
 
 
 def test_tenant_record_and_credential_record_validation() -> None:
@@ -245,3 +276,20 @@ async def test_development_tenant_store_raises_for_revoked_credential() -> None:
 
     with pytest.raises(TenantCredentialRevokedError):
         await store.resolve_tenant("tenant-1")
+
+
+@pytest.mark.asyncio
+async def test_tenant_store_wraps_unavailable_metadata_backend() -> None:
+    """Unexpected tenant-store metadata failures should map to a safe store error."""
+    with pytest.raises(TenantStoreUnavailableError, match="Tenant store is unavailable."):
+        await UnavailableTenantMetadataStore().resolve_tenant("tenant-1")
+
+
+@pytest.mark.asyncio
+async def test_tenant_store_wraps_unavailable_secret_backend() -> None:
+    """Unexpected secret-store failures should map to a safe secret-store error."""
+    with pytest.raises(
+        TenantSecretStoreUnavailableError,
+        match="Tenant secret store is unavailable.",
+    ):
+        await UnavailableTenantSecretStore().resolve_tenant("tenant-1")

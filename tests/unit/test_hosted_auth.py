@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import io
+import logging
+
 import pytest
 from pydantic import ValidationError
 
@@ -9,6 +12,8 @@ from followupboss_mcp.auth import AuthMode
 from followupboss_mcp.hosted_auth import (
     DevelopmentHostedTokenRecord,
     DevelopmentHostedTokenVerifier,
+    HostedAccessToken,
+    HostedAuthenticatedTenant,
     HostedAuthSettings,
     HostedTenantTokenVerifier,
     HostedVerifiedIdentity,
@@ -140,7 +145,7 @@ async def test_development_hosted_token_verifier_snapshot_and_lookup() -> None:
     assert await verifier.verify_token("missing-token") is None
     assert verifier.snapshot().tokens[0].token_value() == "dev-token"
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError) as exc_info:
         DevelopmentHostedTokenVerifier(
             tokens=[
                 DevelopmentHostedTokenRecord.model_validate(
@@ -157,11 +162,50 @@ async def test_development_hosted_token_verifier_snapshot_and_lookup() -> None:
                 ),
             ]
         )
+    assert "Duplicate hosted bearer tokens are not allowed." in str(exc_info.value)
+    assert "duplicate-token" not in str(exc_info.value)
+
+
+def test_hosted_access_token_repr_redacts_bearer_token() -> None:
+    """Hosted access-token representations should never leak the bearer token."""
+    access_token = HostedAccessToken.from_verified_identity(
+        token="super-secret-token",
+        identity=HostedVerifiedIdentity.model_validate(
+            {
+                "tenant_id": "tenant-1",
+                "subject": "user-123",
+                "client_id": "portal-app",
+                "scopes": ["tools:read"],
+                "credential_id": "credential-1",
+            }
+        ),
+        tenant=HostedAuthenticatedTenant.model_validate(
+            {
+                "tenant_id": "tenant-1",
+                "tenant_slug": "tenant-one",
+                "display_name": "Tenant One",
+                "credential_id": "credential-1",
+            }
+        ),
+    )
+
+    representation = repr(access_token)
+
+    assert access_token.token == "super-secret-token"
+    assert "super-secret-token" not in representation
+    assert "***redacted***" in representation
+    assert str(access_token) == representation
 
 
 @pytest.mark.asyncio
 async def test_hosted_tenant_token_verifier_resolves_active_tenant_context() -> None:
     """Tenant resolution should succeed for an active tenant and credential."""
+    stream = io.StringIO()
+    logger = logging.getLogger("followupboss_mcp_test_hosted_auth_success_audit")
+    logger.handlers.clear()
+    logger.setLevel("INFO")
+    logger.propagate = False
+    logger.addHandler(logging.StreamHandler(stream))
     identity = HostedVerifiedIdentity.model_validate(
         {
             "tenant_id": "tenant-1",
@@ -169,6 +213,7 @@ async def test_hosted_tenant_token_verifier_resolves_active_tenant_context() -> 
             "client_id": "portal-app",
             "scopes": ["tools:read"],
             "credential_id": "credential-1",
+            "token_id": "token-123",
         }
     )
     verifier = HostedTenantTokenVerifier(
@@ -177,6 +222,7 @@ async def test_hosted_tenant_token_verifier_resolves_active_tenant_context() -> 
             tenants=[_tenant_record()],
             credentials=[_credential_record()],
         ),
+        logger=logger,
     )
 
     access_token = await verifier.verify_token("dev-token")
@@ -188,11 +234,25 @@ async def test_hosted_tenant_token_verifier_resolves_active_tenant_context() -> 
     assert access_token.tenant.credential_id == "credential-1"
     assert access_token.client_id == "portal-app"
     assert access_token.scopes == ["tools:read"]
+    log_output = stream.getvalue()
+    assert '"event": "hosted_auth_succeeded"' in log_output
+    assert '"event": "tenant_resolution_succeeded"' in log_output
+    assert '"tenant_id": "tenant-1"' in log_output
+    assert '"tenant_slug": "tenant-one"' in log_output
+    assert '"credential_id": "credential-1"' in log_output
+    assert '"token_id": "token-123"' in log_output
+    assert "dev-token" not in log_output
 
 
 @pytest.mark.asyncio
 async def test_hosted_tenant_token_verifier_returns_none_for_wrong_tenant_binding() -> None:
     """Credential bindings on the token should fail closed when they mismatch."""
+    stream = io.StringIO()
+    logger = logging.getLogger("followupboss_mcp_test_hosted_auth_failure_audit")
+    logger.handlers.clear()
+    logger.setLevel("INFO")
+    logger.propagate = False
+    logger.addHandler(logging.StreamHandler(stream))
     verifier = HostedTenantTokenVerifier(
         identity_verifier=DevelopmentHostedTokenVerifier.from_mapping(
             {
@@ -210,6 +270,37 @@ async def test_hosted_tenant_token_verifier_returns_none_for_wrong_tenant_bindin
             tenants=[_tenant_record()],
             credentials=[_credential_record()],
         ),
+        logger=logger,
     )
 
     assert await verifier.verify_token("wrong-tenant-token") is None
+    log_output = stream.getvalue()
+    assert '"event": "hosted_auth_succeeded"' in log_output
+    assert '"event": "tenant_resolution_failed"' in log_output
+    assert '"reason": "credential_binding_mismatch"' in log_output
+    assert "wrong-tenant-token" not in log_output
+
+
+@pytest.mark.asyncio
+async def test_hosted_tenant_token_verifier_emits_audit_event_for_failed_verification() -> None:
+    """Unknown bearer tokens should emit a safe auth-failure audit event."""
+    stream = io.StringIO()
+    logger = logging.getLogger("followupboss_mcp_test_hosted_auth_invalid_token_audit")
+    logger.handlers.clear()
+    logger.setLevel("INFO")
+    logger.propagate = False
+    logger.addHandler(logging.StreamHandler(stream))
+    verifier = HostedTenantTokenVerifier(
+        identity_verifier=DevelopmentHostedTokenVerifier.from_mapping({}),
+        tenant_store=DevelopmentTenantStore(
+            tenants=[_tenant_record()],
+            credentials=[_credential_record()],
+        ),
+        logger=logger,
+    )
+
+    assert await verifier.verify_token("missing-token") is None
+    log_output = stream.getvalue()
+    assert '"event": "hosted_auth_failed"' in log_output
+    assert '"reason": "token_verification_failed"' in log_output
+    assert "missing-token" not in log_output

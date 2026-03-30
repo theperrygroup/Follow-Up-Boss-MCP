@@ -12,8 +12,12 @@ from pydantic import BaseModel, ConfigDict
 
 from followupboss_mcp.config import FollowUpBossSettings, FollowUpBossTenantSettings
 from followupboss_mcp.errors import TenantCredentialNotFoundError, TenantStoreError
-from followupboss_mcp.hosted_auth import HostedAuthenticatedTenant, get_hosted_authenticated_tenant
+from followupboss_mcp.hosted_auth import (
+    HostedAuthenticatedTenant,
+    get_hosted_authenticated_tenant,
+)
 from followupboss_mcp.http_client import FollowUpBossAsyncClient, FollowUpBossClientProtocol
+from followupboss_mcp.logging import emit_audit_event
 from followupboss_mcp.services.action_plans import ActionPlansService
 from followupboss_mcp.services.appointment_metadata import (
     AppointmentOutcomesService,
@@ -49,14 +53,18 @@ from followupboss_mcp.services.team_inboxes import TeamInboxesService
 from followupboss_mcp.services.teams import TeamsService
 from followupboss_mcp.services.templates import TemplatesService
 from followupboss_mcp.services.text_messages import (
-    TextMessageTemplatesService,
     TextMessagesService,
+    TextMessageTemplatesService,
 )
 from followupboss_mcp.services.threaded_replies import ThreadedRepliesService
 from followupboss_mcp.services.timeframes import TimeframesService
 from followupboss_mcp.services.users import UsersService
 from followupboss_mcp.services.webhooks import WebhooksService
-from followupboss_mcp.tenant_store import ResolvedTenantCredentials, TenantCredentialRecord, TenantStore
+from followupboss_mcp.tenant_store import (
+    ResolvedTenantCredentials,
+    TenantCredentialRecord,
+    TenantStore,
+)
 
 type TenantClientFactory = Callable[
     [FollowUpBossTenantSettings, logging.Logger | None],
@@ -111,6 +119,27 @@ class TenantRuntime(BaseModel):
 
     tenant: HostedAuthenticatedTenant
     settings: FollowUpBossTenantSettings
+
+
+def _upstream_usage_audit_fields(runtime: TenantRuntime) -> dict[str, object]:
+    """Return non-secret audit fields for upstream credential usage.
+
+    Args:
+        runtime: The request-scoped tenant runtime being used to build an
+            upstream client.
+
+    Returns:
+        A dictionary of stable, non-secret audit fields describing which tenant
+        credential is being used to access Follow Up Boss.
+    """
+    return {
+        "tenant_id": runtime.tenant.tenant_id,
+        "tenant_slug": runtime.tenant.tenant_slug,
+        "credential_id": runtime.tenant.credential_id,
+        "auth_mode": runtime.settings.auth_mode,
+        "system_name": runtime.settings.system_name,
+        "has_system_key": runtime.settings.system_key is not None,
+    }
 
 
 def build_service_bundle(client: FollowUpBossClientProtocol) -> ServiceBundle:
@@ -269,7 +298,10 @@ class TenantRuntimeFactory:
         """
         return TenantRuntime.model_validate(
             {
-                "tenant": authenticated_tenant or HostedAuthenticatedTenant.from_resolved_tenant(resolved),
+                "tenant": (
+                    authenticated_tenant
+                    or HostedAuthenticatedTenant.from_resolved_tenant(resolved)
+                ),
                 "settings": self.settings_from_credential(resolved.credential),
             }
         )
@@ -326,6 +358,11 @@ class TenantRuntimeFactory:
         Returns:
             A Follow Up Boss client configured for the tenant.
         """
+        emit_audit_event(
+            self._logger,
+            event="upstream_credential_usage",
+            fields=_upstream_usage_audit_fields(runtime),
+        )
         return self._client_factory(runtime.settings, self._logger)
 
     @asynccontextmanager

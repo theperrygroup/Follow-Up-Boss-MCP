@@ -75,6 +75,14 @@ class TenantStoreError(FollowUpBossError):
     """Base class for tenant-store related failures."""
 
 
+class TenantStoreUnavailableError(TenantStoreError):
+    """Raised when the tenant metadata store is unavailable."""
+
+
+class TenantSecretStoreUnavailableError(TenantStoreError):
+    """Raised when the tenant credential or secret store is unavailable."""
+
+
 class TenantNotFoundError(TenantStoreError):
     """Raised when a tenant record cannot be resolved."""
 

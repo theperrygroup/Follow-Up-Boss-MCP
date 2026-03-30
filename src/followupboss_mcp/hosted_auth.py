@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+import logging
 from typing import Protocol, Self
 
 from pydantic import (
@@ -16,6 +17,7 @@ from pydantic import (
 )
 
 from followupboss_mcp.errors import TenantStoreError
+from followupboss_mcp.logging import emit_audit_event, tenant_store_error_reason
 from followupboss_mcp.tenant_store import ResolvedTenantCredentials, TenantStore
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.provider import AccessToken, TokenVerifier
@@ -105,6 +107,45 @@ def _duplicate_values(values: Sequence[str]) -> tuple[str, ...]:
             duplicates.append(value)
         seen.add(value)
     return tuple(duplicates)
+
+
+def _identity_audit_fields(identity: HostedVerifiedIdentity) -> dict[str, object]:
+    """Return non-secret audit fields for one verified hosted identity.
+
+    Args:
+        identity: The verified hosted identity extracted from the bearer token.
+
+    Returns:
+        A dictionary of stable, non-secret audit fields derived from the
+        verified identity.
+    """
+    fields: dict[str, object] = {
+        "tenant_id": identity.tenant_id,
+        "subject": identity.subject,
+        "client_id": identity.client_id,
+        "token_id": identity.token_id,
+        "credential_id": identity.credential_id,
+    }
+    if identity.scopes:
+        fields["scopes"] = identity.scopes
+    return fields
+
+
+def _tenant_audit_fields(tenant: HostedAuthenticatedTenant) -> dict[str, object]:
+    """Return non-secret audit fields for one resolved hosted tenant.
+
+    Args:
+        tenant: The authenticated tenant context resolved from the tenant store.
+
+    Returns:
+        A dictionary of stable, non-secret audit fields derived from the
+        resolved tenant context.
+    """
+    return {
+        "tenant_id": tenant.tenant_id,
+        "tenant_slug": tenant.tenant_slug,
+        "credential_id": tenant.credential_id,
+    }
 
 
 class HostedVerifiedIdentity(BaseModel):
@@ -271,6 +312,32 @@ class HostedAccessToken(AccessToken):
             }
         )
 
+    def __repr__(self) -> str:
+        """Return a redacted representation safe for logs.
+
+        Returns:
+            A stable representation that preserves useful identity and tenant
+            context without exposing the raw bearer token.
+        """
+        return (
+            "HostedAccessToken("
+            "token='***redacted***', "
+            f"client_id={self.client_id!r}, "
+            f"scopes={self.scopes!r}, "
+            f"expires_at={self.expires_at!r}, "
+            f"resource={self.resource!r}, "
+            f"identity={self.identity!r}, "
+            f"tenant={self.tenant!r})"
+        )
+
+    def __str__(self) -> str:
+        """Return the redacted string representation used by `repr()`.
+
+        Returns:
+            The redacted string representation for the hosted access token.
+        """
+        return repr(self)
+
 
 class HostedIdentityVerifier(Protocol):
     """Protocol for verifying hosted bearer tokens into tenant identity."""
@@ -375,11 +442,7 @@ class DevelopmentHostedTokenDocument(BaseModel):
         """
         duplicate_tokens = _duplicate_values([record.token_value() for record in self.tokens])
         if duplicate_tokens:
-            raise ValueError(
-                "Duplicate hosted bearer tokens are not allowed: "
-                + ", ".join(duplicate_tokens)
-                + "."
-            )
+            raise ValueError("Duplicate hosted bearer tokens are not allowed.")
         return self
 
 
@@ -448,6 +511,7 @@ class HostedTenantTokenVerifier(TokenVerifier):
         *,
         identity_verifier: HostedIdentityVerifier,
         tenant_store: TenantStore,
+        logger: logging.Logger | None = None,
     ) -> None:
         """Initialize the tenant-resolving FastMCP token verifier.
 
@@ -456,9 +520,11 @@ class HostedTenantTokenVerifier(TokenVerifier):
                 bearer tokens and returns verified identity claims.
             tenant_store: The tenant store used to resolve the canonical
                 `tenant_id` claim into one active tenant.
+            logger: Optional logger used for structured audit events.
         """
         self._identity_verifier = identity_verifier
         self._tenant_store = tenant_store
+        self._logger = logger
 
     async def verify_token(self, token: str) -> HostedAccessToken | None:
         """Verify a hosted token and resolve active tenant context.
@@ -472,20 +538,54 @@ class HostedTenantTokenVerifier(TokenVerifier):
         """
         identity = await self._identity_verifier.verify_token(token)
         if identity is None:
+            emit_audit_event(
+                self._logger,
+                event="hosted_auth_failed",
+                fields={"reason": "token_verification_failed"},
+            )
             return None
 
+        emit_audit_event(
+            self._logger,
+            event="hosted_auth_succeeded",
+            fields=_identity_audit_fields(identity),
+        )
         try:
             resolved = await self._tenant_store.resolve_tenant(identity.tenant_id)
-        except TenantStoreError:
+        except TenantStoreError as exc:
+            emit_audit_event(
+                self._logger,
+                event="tenant_resolution_failed",
+                fields={
+                    **_identity_audit_fields(identity),
+                    "reason": tenant_store_error_reason(exc),
+                },
+            )
             return None
 
         if (
             identity.credential_id is not None
             and identity.credential_id != resolved.credential.credential_id
         ):
+            emit_audit_event(
+                self._logger,
+                event="tenant_resolution_failed",
+                fields={
+                    **_identity_audit_fields(identity),
+                    "reason": "credential_binding_mismatch",
+                },
+            )
             return None
 
         tenant = HostedAuthenticatedTenant.from_resolved_tenant(resolved)
+        emit_audit_event(
+            self._logger,
+            event="tenant_resolution_succeeded",
+            fields={
+                **_identity_audit_fields(identity),
+                **_tenant_audit_fields(tenant),
+            },
+        )
         return HostedAccessToken.from_verified_identity(
             token=token,
             identity=identity,

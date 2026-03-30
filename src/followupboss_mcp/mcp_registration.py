@@ -291,6 +291,16 @@ def _format_hosted_surface_context(runtime: TenantRuntime) -> str:
     )
 
 
+def _surface_runtime_resolution_error() -> RuntimeError:
+    """Return a stable MCP-safe runtime-resolution error.
+
+    Returns:
+        A runtime error with a non-secret message suitable for MCP transport
+        surfaces.
+    """
+    return RuntimeError("Hosted tenant runtime is unavailable.")
+
+
 async def _resolve_surface_runtime(
     *,
     surface_name: str,
@@ -311,7 +321,10 @@ async def _resolve_surface_runtime(
     """
     if tenant_runtime_factory is None or surface_name in public_surface_names:
         return None
-    return await tenant_runtime_factory.runtime_for_current_tenant()
+    try:
+        return await tenant_runtime_factory.runtime_for_current_tenant()
+    except Exception as exc:
+        raise _surface_runtime_resolution_error() from exc
 
 
 def _render_api_coverage_matrix_resource(

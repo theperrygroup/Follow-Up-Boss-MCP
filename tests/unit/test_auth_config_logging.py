@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import io
 import logging
 
 import pytest
@@ -21,8 +22,14 @@ from followupboss_mcp.config import (
     FollowUpBossSettings,
     FollowUpBossTenantSettings,
 )
-from followupboss_mcp.errors import FollowUpBossConfigError
-from followupboss_mcp.logging import configure_logging, redact_headers, redact_value
+from followupboss_mcp.errors import FollowUpBossConfigError, TenantCredentialRevokedError
+from followupboss_mcp.logging import (
+    configure_logging,
+    emit_audit_event,
+    redact_headers,
+    redact_value,
+    tenant_store_error_reason,
+)
 
 
 def test_package_exports() -> None:
@@ -275,9 +282,55 @@ def test_redaction_helpers_and_logger_configuration() -> None:
         "X-System-Key": "***redacted***",
         "Accept": "application/json",
     }
-    assert redact_value({"Authorization": "a", "items": [{"X-System-Key": "b"}], "ok": 1}) == {
+    assert redact_value(
+        {
+            "Authorization": "a",
+            "items": [{"X-System-Key": "b"}, {"token": "secret-token"}],
+            "currentUser": {
+                "apiKey": "secret-api-key",
+                "algoliaKey": "secret-algolia-key",
+                "callingCapabilityToken": "secret-calling-token",
+                "user_hash": "secret-hash",
+            },
+            "next_token": "page-token",
+            "ok": 1,
+        }
+    ) == {
         "Authorization": "***redacted***",
-        "items": [{"X-System-Key": "***redacted***"}],
+        "items": [
+            {"X-System-Key": "***redacted***"},
+            {"token": "***redacted***"},
+        ],
+        "currentUser": {
+            "apiKey": "***redacted***",
+            "algoliaKey": "***redacted***",
+            "callingCapabilityToken": "***redacted***",
+            "user_hash": "***redacted***",
+        },
+        "next_token": "page-token",
         "ok": 1,
     }
     assert redact_value(["x", {"y": "z"}]) == ["x", {"y": "z"}]
+
+    audit_stream = io.StringIO()
+    audit_logger = logging.getLogger("followupboss_mcp_test_logging")
+    audit_logger.handlers.clear()
+    audit_logger.setLevel("INFO")
+    audit_logger.propagate = False
+    audit_logger.addHandler(logging.StreamHandler(audit_stream))
+    emit_audit_event(
+        audit_logger,
+        event="tenant_resolution_failed",
+        fields={
+            "tenant_id": "tenant-1",
+            "token": "super-secret-token",
+        },
+    )
+    audit_output = audit_stream.getvalue()
+    assert "AUDIT " in audit_output
+    assert '"event": "tenant_resolution_failed"' in audit_output
+    assert '"tenant_id": "tenant-1"' in audit_output
+    assert "super-secret-token" not in audit_output
+    assert "***redacted***" in audit_output
+
+    assert tenant_store_error_reason(TenantCredentialRevokedError()) == "credential_revoked"
