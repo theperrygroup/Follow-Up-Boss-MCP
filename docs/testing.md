@@ -102,5 +102,5 @@ FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check
 real auth and transport behavior without turning the default suite into a live dependency.
 
 `live-contract-check` keeps the same opt-in behavior while broadening upstream verification
-across identity, users, people, timeframes, MCP-layer current-user redaction, and
-disposable person-plus-note-plus-task write-and-rollback flows.
+across identity, users, people, timeframes, MCP-layer current-user redaction, note
+reactions, and disposable person-centered note, task, and appointment write-and-rollback flows.

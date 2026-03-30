@@ -90,7 +90,7 @@ Build a production-grade Python 3.12+ repository that ingests official Follow Up
 - `DONE` Re-run `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check` and `make release-validate` after the broader live-suite slice.
 - `DONE` Reduce private FastMCP-manager coupling in the server-surface test by moving exact registration assertions onto public FastMCP and official stdio client surfaces.
 - `DONE` Re-run focused MCP tests and `make release-validate` after the MCP-coupling slice.
-- `DONE` Extend the optional live suite with disposable person, note, and task write-and-rollback flows that exercise real create, update, lookup, and cleanup behavior.
+- `DONE` Extend the optional live suite with disposable person, note reaction, note, task, and appointment write-and-rollback flows that exercise real create, update, lookup, and cleanup behavior.
 - `DONE` Re-run `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check` and `make release-validate` after the live write-and-rollback slice.
 
 ## Blockers
@@ -158,7 +158,7 @@ Build a production-grade Python 3.12+ repository that ingests official Follow Up
 - Moved the broad MCP server-surface registration assertions off private FastMCP manager maps and onto public FastMCP list/read APIs plus the official stdio client session, while keeping the broad tool smoke coverage intact.
 - Re-ran `uv run pytest tests/mcp/test_mcp_tools_server_cli.py` with successful output: `5 passed`.
 - Re-ran `make release-validate` with successful output: `Success: no issues found in 85 source files`, `110 passed, 3 skipped`, `TOTAL 4423 0 410 0 100.00%`, and `Validated build artifacts: followupboss_mcp-0.1.0.tar.gz followupboss_mcp-0.1.0-py3-none-any.whl`.
-- Extended `tests/live/test_contract_suite.py` with disposable person, note, and task create/update/get/delete rollback flows, refreshed the README, contributing guide, testing guide, validation runbook, final validation report, harsh review checklist, and task tracker, and verified cleanup reaches real `404` reads after person and task deletion.
+- Extended `tests/live/test_contract_suite.py` with disposable person, note reaction, note, task, and appointment rollback flows, refreshed the README, contributing guide, testing guide, validation runbook, final validation report, harsh review checklist, and task tracker, and verified cleanup reaches real `404` reads after person, task, and appointment deletion.
 - Re-ran `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check` with successful output: `4 passed`.
 - Re-ran `make release-validate` with successful output: `Success: no issues found in 85 source files`, `110 passed, 3 skipped`, `TOTAL 4423 0 410 0 100.00%`, and `Validated build artifacts: followupboss_mcp-0.1.0.tar.gz followupboss_mcp-0.1.0-py3-none-any.whl`.
 

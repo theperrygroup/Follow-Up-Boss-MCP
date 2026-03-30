@@ -156,21 +156,27 @@ class FollowUpBossAsyncClient:
     ) -> httpx.Response:
         """Send a request with rate-limit and retry handling."""
         attempt = 0
+        method_name = method.upper()
         while True:
             request_headers = self._build_headers(
                 headers=headers, has_json_body=json_body is not None
             )
             request_started_at = self._clock()
             self._logger.debug(
-                "Sending Follow Up Boss request %s %s headers=%s params=%s",
-                method.upper(),
+                (
+                    "Sending Follow Up Boss request %s %s attempt=%s "
+                    "headers=%s params_keys=%s json_keys=%s"
+                ),
+                method_name,
                 path,
+                attempt + 1,
                 redact_headers(request_headers),
-                params,
+                sorted(params) if params is not None else None,
+                sorted(json_body) if json_body is not None else None,
             )
             try:
                 response = await self._client.request(
-                    method=method.upper(),
+                    method=method_name,
                     url=path,
                     headers=request_headers,
                     json=json_body,
@@ -182,17 +188,26 @@ class FollowUpBossAsyncClient:
                         attempt=attempt,
                         jitter_source=self._jitter_source,
                     )
+                    self._log_retry_attempt(
+                        method=method_name,
+                        path=path,
+                        attempt=attempt + 1,
+                        delay_seconds=delay,
+                        reason="transport_error",
+                        error_type=type(exc).__name__,
+                    )
                     attempt += 1
                     await self._sleep(delay)
                     continue
                 raise FollowUpBossError("Transport error while calling Follow Up Boss.") from exc
             elapsed_ms = int((self._clock() - request_started_at) * 1000)
             self._logger.info(
-                "Follow Up Boss response %s %s status=%s elapsed_ms=%s",
-                method.upper(),
+                "Follow Up Boss response %s %s status=%s elapsed_ms=%s attempts=%s",
+                method_name,
                 path,
                 response.status_code,
                 elapsed_ms,
+                attempt + 1,
             )
 
             if response.status_code == RATE_LIMIT_STATUS_CODE:
@@ -201,6 +216,15 @@ class FollowUpBossAsyncClient:
                     delay = self._retry_policy.backoff_seconds(
                         attempt=attempt,
                         jitter_source=self._jitter_source,
+                        retry_after_seconds=retry_after,
+                    )
+                    self._log_retry_attempt(
+                        method=method_name,
+                        path=path,
+                        attempt=attempt + 1,
+                        delay_seconds=delay,
+                        reason="rate_limit",
+                        status_code=response.status_code,
                         retry_after_seconds=retry_after,
                     )
                     attempt += 1
@@ -220,6 +244,14 @@ class FollowUpBossAsyncClient:
                         attempt=attempt,
                         jitter_source=self._jitter_source,
                     )
+                    self._log_retry_attempt(
+                        method=method_name,
+                        path=path,
+                        attempt=attempt + 1,
+                        delay_seconds=delay,
+                        reason="retryable_status",
+                        status_code=response.status_code,
+                    )
                     attempt += 1
                     await self._sleep(delay)
                     continue
@@ -233,6 +265,45 @@ class FollowUpBossAsyncClient:
             if response.status_code >= 400:
                 raise self._map_http_error(response)
             return response
+
+    def _log_retry_attempt(
+        self,
+        *,
+        method: str,
+        path: str,
+        attempt: int,
+        delay_seconds: float,
+        reason: str,
+        status_code: int | None = None,
+        retry_after_seconds: float | None = None,
+        error_type: str | None = None,
+    ) -> None:
+        """Log one retry decision for operational troubleshooting.
+
+        Args:
+            method: The uppercased HTTP method being retried.
+            path: The Follow Up Boss API path being retried.
+            attempt: The 1-indexed attempt number that just failed.
+            delay_seconds: The delay before the next retry.
+            reason: A short machine-readable retry reason.
+            status_code: The optional HTTP status that triggered the retry.
+            retry_after_seconds: The parsed `Retry-After` value, when available.
+            error_type: The optional transport exception type that triggered the retry.
+        """
+        self._logger.warning(
+            (
+                "Retrying Follow Up Boss request %s %s attempt=%s "
+                "delay_s=%.3f reason=%s status=%s retry_after_s=%s error_type=%s"
+            ),
+            method,
+            path,
+            attempt,
+            delay_seconds,
+            reason,
+            status_code,
+            retry_after_seconds,
+            error_type,
+        )
 
     def _build_headers(
         self,

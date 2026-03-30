@@ -122,7 +122,7 @@ FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check
 
 `live-identity-check` is the quick auth and transport smoke path. `live-contract-check`
 adds a broader suite across identity, users, people, timeframes, MCP-layer `/me`
-redaction, and disposable person-plus-note-plus-task write-and-rollback flows.
+redaction, note reactions, and disposable person-centered note, task, and appointment write-and-rollback flows.
 
 Both targets auto-load a repository-local `.env` when present, so manual export is optional for the common local workflow.
 

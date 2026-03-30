@@ -21,7 +21,7 @@ The repository supports the two authentication modes documented by Follow Up Bos
 
 - stdout is reserved for MCP transport traffic in stdio mode
 - operational logging uses Python logging instead of mixing diagnostics into the protocol stream
-- debug logging is safe for transport inspection because sensitive headers are redacted before they are emitted
+- debug logging is safe for transport inspection because sensitive headers are redacted and request/query payloads are summarized by key instead of emitting raw values
 
 ## Request Hardening
 

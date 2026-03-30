@@ -35,7 +35,8 @@ The repository now contains:
 - typed webhook event lookup coverage across the SDK, MCP surface, tests, and docs
 - a repository-local docs validation script integrated into `make validate` and CI
 - a `.env`-aware live identity wrapper so the documented smoke-check command works directly in the common local workflow
-- a broader optional live contract suite across identity, users, people, timeframes, MCP-layer current-user redaction, and disposable person-plus-note-plus-task write-and-rollback flows
+- a broader optional live contract suite across identity, users, people, timeframes, MCP-layer current-user redaction, note reactions, and disposable person-centered note, task, and appointment write-and-rollback flows
+- richer HTTP-client telemetry with safe request-shape debug logs plus retry, rate-limit, and attempt-count logging
 - widened `/me` parsing so `notifyBy` accepts both string and list payloads observed in live data
 - typed team inbox collection coverage across the SDK, MCP surface, tests, and docs
 - typed team collection and CRUD coverage with optional member-migration semantics on delete across the SDK, MCP surface, tests, and docs
@@ -468,7 +469,7 @@ FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check
 - note: the `make live-identity-check` target now auto-loads a repository-local `.env` when present.
 - `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check`: passed
 - result: `4 passed`
-- note: the broader suite now covers identity, users, people search/get plus negative duplicate checks, timeframes, MCP `/me` redaction, and disposable person-plus-note-plus-task write-and-rollback flows.
+- note: the broader suite now covers identity, users, people search/get plus negative duplicate checks, timeframes, MCP `/me` redaction, note reactions, and disposable person-centered note, task, and appointment write-and-rollback flows.
 - note: the broader suite exposed a live `/me` contract mismatch where `notifyBy` arrived as a list, and the model now accepts both string and list payloads.
 - note: the current `.env` now works directly with either the documented `FOLLOWUPBOSS_*` names or the legacy `FOLLOW_UP_BOSS_*` aliases.
 - `docs/mcp-validation-checklist.md`: updated with credential-backed MCP validation results across stdio, streamable HTTP, pagination, safe error paths, and live domain checks.

@@ -102,7 +102,7 @@ The domain sections below follow the registration order from `register_server_su
 - [ ] Run `make validate` and confirm the full local quality gate passes before any live validation.
 - [ ] Run `make build-smoke` and confirm the packaged server still builds and validates.
 - [ ] Run `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check` and confirm the live credential smoke test passes with the current `.env`.
-- [ ] Run `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check` and confirm the broader live suite passes across identity, users, people, timeframes, MCP `/me` redaction, and disposable person-plus-note-plus-task write-and-rollback flows.
+- [ ] Run `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check` and confirm the broader live suite passes across identity, users, people, timeframes, MCP `/me` redaction, note reactions, and disposable person-centered note, task, and appointment write-and-rollback flows.
 - [ ] If this run is release-facing, run `make release-validate` or the equivalent ingestion and coverage regeneration flow before closing the run.
 - [ ] Record any failures, contract drift, or credential limitations in `Known Issues And Account Limitations` before continuing.
 

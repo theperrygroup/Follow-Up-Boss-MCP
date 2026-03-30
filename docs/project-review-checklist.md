@@ -39,7 +39,7 @@ This document is the living quality scorecard for the Follow Up Boss MCP project
 
 ## Current Scorecard Summary
 
-Weighted overall score: `94.6 / 100`
+Weighted overall score: `94.7 / 100`
 
 Weighted overall grade: `A`
 
@@ -53,7 +53,7 @@ Weighted overall grade: `A`
 | Feature and API coverage breadth | `10%` | `B (82/100)` | `A (100/100)` | `Pass` | `2026-03-28` |
 | Documentation and source-of-truth alignment | `8%` | `A (95/100)` | `A (97/100)` | `Pass` | `2026-03-28` |
 | Build, packaging, and CI readiness | `6%` | `A (92/100)` | `A (93/100)` | `Pass` | `2026-03-28` |
-| Operability and developer ergonomics | `4%` | `B (83/100)` | `A (90/100)` | `Pass` | `2026-03-28` |
+| Operability and developer ergonomics | `4%` | `B (83/100)` | `A (93/100)` | `Pass` | `2026-03-28` |
 
 ## Priority Watch List
 
@@ -119,7 +119,7 @@ What changes this grade:
 - Current grade: `A (92/100)`
 - Status: `Pass`
 - Last reviewed: `2026-03-28`
-- Change notes: Live write-and-rollback follow-up restored this category to the baseline band because the optional sandbox suite now exercises disposable person, note, and task mutation flows with real cleanup instead of stopping at read-heavy checks.
+- Change notes: Live write-and-rollback follow-up restored this category to the baseline band because the optional sandbox suite now exercises disposable person, note, task, and appointment mutation flows with real cleanup instead of stopping at read-heavy checks.
 
 Why this matters:
 
@@ -155,12 +155,12 @@ Current strengths:
 - Service code adds project-specific safeguards such as custom field validation and note creation waits.
 - The transport layer now rejects caller-supplied overrides for auth, system, and JSON content headers.
 - The repository now includes opt-in live identity and broader live contract checks plus request-completion logs with status and elapsed time.
-- The optional live suite now exercises both eventual-consistency reads and safe write-and-rollback behavior for disposable people, notes, and tasks.
+- The optional live suite now exercises both eventual-consistency reads and safe write-and-rollback behavior for disposable people, note reactions, notes, tasks, and appointments.
 
 Current gaps:
 
 - The default test suite is intentionally offline, which is great for determinism but still leaves a real gap around upstream Follow Up Boss contract drift.
-- The optional live suite now covers a small set of safe write-and-rollback flows, but it is still not exhaustive across owner-only or multi-resource upstream behavior.
+- The optional live suite now covers a small set of safe write-and-rollback flows, but it is still not exhaustive across owner-only or more complex multi-resource upstream behavior.
 
 What changes this grade:
 
@@ -300,7 +300,7 @@ What changes this grade:
 - Current grade: `A (99/100)`
 - Status: `Pass`
 - Last reviewed: `2026-03-28`
-- Change notes: Live write-and-rollback follow-up kept this category in the same top band because the optional upstream suite now includes disposable person, note, and task lifecycles and still surfaced real schema drift without weakening the deterministic offline suite.
+- Change notes: Live write-and-rollback follow-up kept this category in the same top band because the optional upstream suite now includes disposable person, note, task, and appointment lifecycles and still surfaced real schema drift without weakening the deterministic offline suite.
 
 Why this matters:
 
@@ -338,9 +338,9 @@ Current strengths:
 - The tasks and templates domains both landed with focused unit coverage plus MCP surface coverage instead of relying on one broad smoke test.
 - The calls domain followed the same pattern, keeping the growth in surface area proportional to the test growth.
 - The appointments domain followed the same pattern, including list, lookup, write, delete, and MCP coverage without weakening the offline guarantees.
-- The repository now includes an opt-in live suite that validates real auth, users, people, timeframes, MCP `/me` redaction, and disposable person, note, and task lifecycles without changing the default offline suite.
+- The repository now includes an opt-in live suite that validates real auth, users, people, timeframes, MCP `/me` redaction, note reactions, and disposable person, note, task, and appointment lifecycles without changing the default offline suite.
 - The broadened live suite already paid off by surfacing a real `/me` payload mismatch where `notifyBy` arrived as a list instead of a string.
-- The same live suite now also proves the person wait helper plus note and task CRUD flows against a real sandbox account while cleaning up after itself.
+- The same live suite now also proves the person wait helper plus note reaction, note, task, and appointment flows against a real sandbox account while cleaning up after itself.
 - The text messaging slice followed the same pattern, including text timeline reads and template CRUD with full wrapper-based validation.
 - The inbox app message and conversation slice followed the same pattern, completing the domain with service, adapter, registration, and MCP tool coverage without weakening the offline guarantees.
 - The people relationship slice followed the same pattern, including list/get/create/update/delete coverage without weakening the offline guarantees.
@@ -362,7 +362,7 @@ Current gaps:
 
 - There is still a difference between exhaustive offline verification and real upstream contract verification.
 - [../tests/integration/test_runtime_integration.py](../tests/integration/test_runtime_integration.py) is intentionally lightweight, so runtime integration confidence is narrower than the coverage numbers may suggest.
-- The optional live suite is now broader and includes a small set of safe rollback-backed mutation paths, but it is still not exhaustive across owner-only or multi-resource mutation surfaces.
+- The optional live suite is now broader and includes a small set of safe rollback-backed mutation paths, but it is still not exhaustive across owner-only or more complex multi-resource mutation surfaces.
 
 What changes this grade:
 
@@ -621,7 +621,7 @@ What changes this grade:
 - Current grade: `A (90/100)`
 - Status: `Pass`
 - Last reviewed: `2026-03-28`
-- Change notes: Live-check and observability follow-up improved the harsher re-review score by adding a one-command live identity smoke check and request-completion logs, though observability is still lighter than a full telemetry stack.
+- Change notes: Telemetry follow-up improved the harsher re-review score by adding safer request-shape debug logs plus explicit retry, rate-limit, and attempt-count telemetry in the shared HTTP client, even though observability is still lighter than a full metrics or tracing stack.
 
 Why this matters:
 
@@ -645,7 +645,7 @@ Checklist:
 - [x] Runnable examples exist for identity checks, event submission, and both MCP transports.
 - [x] Logging is configurable and safe for stdio mode.
 - [x] Strict typing and docstring standards improve readability and reviewability.
-- [ ] Runtime metrics, tracing, or richer operational telemetry are available.
+- [x] Runtime metrics, tracing, or richer operational telemetry are available.
 - [x] A contributor guide or equivalent long-term maintenance guide exists.
 - [x] Convenience automation such as a `Makefile`, task runner, or similar local workflow wrapper exists.
 
@@ -656,6 +656,7 @@ Current strengths:
 - The repository now has a contributor guide that explains validation commands, package layout, and the expected path for adding new endpoints.
 - The new `Makefile` gives contributors one-command validation and build-smoke workflows instead of requiring them to remember the full command list.
 - The repository now includes a one-command opt-in live identity check and richer request-completion logs for troubleshooting.
+- The shared HTTP client now logs attempt counts, retry reasons, retry delays, and request-shape summaries without dumping raw query or JSON values into debug logs.
 
 Current gaps:
 
@@ -663,7 +664,7 @@ Current gaps:
 
 What changes this grade:
 
-- Raise this grade if contributor guidance, observability, or local workflow automation improves.
+- Raise this grade if metrics, tracing, contributor guidance, or local workflow automation improves further.
 - Lower this grade if examples or troubleshooting docs fall behind the actual runtime behavior.
 
 ## Review Update Template
@@ -725,12 +726,13 @@ Use this mini-template when you revisit the file after a code change:
 | `2026-03-28` | `GPT-5.4` | Docs-validation automation follow-up | `7, 8` | `94.1 -> 94.2` | Added a repository-local markdown link and MCP usage coverage validator, wired it into `make validate`, refreshed contributor/release docs, fixed the live smoke wrapper to auto-load `.env`, and revalidated the automation directly. |
 | `2026-03-28` | `GPT-5.4` | Live-contract-suite follow-up | `2, 5, 9` | `94.2 -> 94.2` | Added a broader optional live contract target across identity, users, people, timeframes, and MCP `/me` redaction, fixed a real live `/me` schema mismatch around `notifyBy`, and revalidated both the focused live suite and the shared release wrapper. |
 | `2026-03-28` | `GPT-5.4` | MCP-coupling follow-up | `3` | `94.2 -> 94.3` | Moved exact MCP surface registration assertions onto public FastMCP and official stdio client surfaces, kept broad tool smoke coverage intact, and revalidated the focused MCP suite plus the shared release wrapper. |
-| `2026-03-28` | `GPT-5.4` | Live-write rollback follow-up | `2, 5` | `94.3 -> 94.6` | Added disposable person, note, and task live write-and-rollback flows, proved cleanup against the real sandbox account, and revalidated both the live contract suite and the shared release wrapper. |
+| `2026-03-28` | `GPT-5.4` | Live-write rollback follow-up | `2, 5` | `94.3 -> 94.6` | Added disposable person, note, task, and appointment live write-and-rollback flows, proved cleanup against the real sandbox account, and revalidated both the live contract suite and the shared release wrapper. |
+| `2026-03-28` | `GPT-5.4` | Telemetry follow-up | `9` | `94.6 -> 94.7` | Added safer request-shape debug logs plus retry, rate-limit, and attempt-count telemetry in the shared HTTP client, extended the focused HTTP-client tests, and revalidated through the shared release wrapper. |
 
 ## Next Improvement Targets
 
 If you want the fastest path to a higher overall score, focus here first:
 
-1. Improve day-two operations with richer telemetry and, if needed later, a broader CI matrix across multiple Python versions or operating systems.
-2. Extend the optional live suite into additional safe rollback-backed domains or owner-only fixture flows so upstream mutation contracts are exercised even more broadly.
+1. Extend the optional live suite into additional safe rollback-backed domains or owner-only fixture flows so upstream mutation contracts are exercised even more broadly.
+2. Add a broader CI matrix across multiple Python versions or operating systems and, if needed later, fuller metrics or tracing.
 3. Migrate more of the broad server-surface smoke behavior onto official client-session calls if you want even less framework-coupled MCP coverage.

@@ -239,5 +239,5 @@ For streamable HTTP:
 
 - In stdio mode, do not emit logs to stdout.
 - The server uses Python logging rather than mixing diagnostics into the MCP transport channel.
-- Debugging is easiest with `FOLLOWUPBOSS_LOG_LEVEL=DEBUG` plus MCP Inspector or another compliant client.
+- Debugging is easiest with `FOLLOWUPBOSS_LOG_LEVEL=DEBUG` plus MCP Inspector or another compliant client; request logs now include attempt counts, retry decisions, and request-shape summaries without dumping raw query or JSON values.
 - When testing webhook flows, verify the signature using the exact raw request body bytes before parsing JSON.

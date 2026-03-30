@@ -94,7 +94,41 @@ async def test_request_json_logs_status_and_elapsed_time() -> None:
             assert await client.request_json("GET", "/identity") == {"id": 1}
 
     log_output = stream.getvalue()
-    assert "Follow Up Boss response GET /identity status=200 elapsed_ms=250" in log_output
+    assert "Follow Up Boss response GET /identity status=200 elapsed_ms=250 attempts=1" in log_output
+
+
+@pytest.mark.asyncio
+async def test_request_json_debug_logs_request_shape_without_values() -> None:
+    """Debug logs should capture request shape without dumping parameter or JSON values."""
+    settings = _settings(max_retries=0)
+    stream = io.StringIO()
+    logger = logging.getLogger("followupboss_mcp_test_http_debug")
+    logger.handlers.clear()
+    logger.setLevel("DEBUG")
+    logger.propagate = False
+    logger.addHandler(logging.StreamHandler(stream))
+
+    with respx.mock(assert_all_called=True) as router:
+        router.post("https://api.followupboss.com/v1/people").mock(
+            return_value=httpx.Response(200, json={"id": 1})
+        )
+        async with FollowUpBossAsyncClient(settings, logger=logger) as client:
+            assert await client.request_json(
+                "POST",
+                "/people",
+                headers={"X-Request-Id": "request-123"},
+                json_body={"firstName": "Tom"},
+                params={"source": "Portal"},
+            ) == {"id": 1}
+
+    log_output = stream.getvalue()
+    assert "Sending Follow Up Boss request POST /people attempt=1" in log_output
+    assert "params_keys=['source']" in log_output
+    assert "json_keys=['firstName']" in log_output
+    assert "Authorization': '***redacted***" in log_output
+    assert "X-System-Key': '***redacted***" in log_output
+    assert "Portal" not in log_output
+    assert "Tom" not in log_output
 
 
 @pytest.mark.asyncio
@@ -185,6 +219,12 @@ async def test_request_json_status_mapping() -> None:
 async def test_request_json_rate_limit_retry_and_exhaustion() -> None:
     """429 responses should respect Retry-After and surface exhaustion details."""
     sleep_calls: list[float] = []
+    stream = io.StringIO()
+    logger = logging.getLogger("followupboss_mcp_test_http_rate_limit")
+    logger.handlers.clear()
+    logger.setLevel("INFO")
+    logger.propagate = False
+    logger.addHandler(logging.StreamHandler(stream))
     with respx.mock(assert_all_called=True) as router:
         router.get("https://api.followupboss.com/v1/identity").mock(
             side_effect=[
@@ -197,10 +237,15 @@ async def test_request_json_rate_limit_retry_and_exhaustion() -> None:
         async with FollowUpBossAsyncClient(
             _settings(max_retries=1),
             jitter_source=lambda: 0.0,
+            logger=logger,
             sleep=lambda delay: _record_sleep(sleep_calls, delay),
         ) as client:
             assert await client.request_json("GET", "/identity") == {"id": 1}
     assert sleep_calls == [3.0]
+    log_output = stream.getvalue()
+    assert "reason=rate_limit status=429 retry_after_s=3.0 error_type=None" in log_output
+    assert "Follow Up Boss response GET /identity status=200" in log_output
+    assert "attempts=2" in log_output
 
     with respx.mock(assert_all_called=True) as router:
         router.get("https://api.followupboss.com/v1/identity").mock(
@@ -218,6 +263,12 @@ async def test_request_json_rate_limit_retry_and_exhaustion() -> None:
 async def test_request_json_server_retry_and_transport_errors() -> None:
     """Retryable 5xx and transport errors should retry before failing."""
     sleep_calls: list[float] = []
+    retry_stream = io.StringIO()
+    retry_logger = logging.getLogger("followupboss_mcp_test_http_retryable_status")
+    retry_logger.handlers.clear()
+    retry_logger.setLevel("INFO")
+    retry_logger.propagate = False
+    retry_logger.addHandler(logging.StreamHandler(retry_stream))
     with respx.mock(assert_all_called=True) as router:
         router.get("https://api.followupboss.com/v1/identity").mock(
             side_effect=[
@@ -228,10 +279,14 @@ async def test_request_json_server_retry_and_transport_errors() -> None:
         async with FollowUpBossAsyncClient(
             _settings(max_retries=1),
             jitter_source=lambda: 0.0,
+            logger=retry_logger,
             sleep=lambda delay: _record_sleep(sleep_calls, delay),
         ) as client:
             assert await client.request_json("GET", "/identity") == {"id": 1}
     assert sleep_calls == [1.0]
+    retry_log_output = retry_stream.getvalue()
+    assert "reason=retryable_status status=500" in retry_log_output
+    assert "attempts=2" in retry_log_output
 
     with respx.mock(assert_all_called=True) as router:
         router.get("https://api.followupboss.com/v1/identity").mock(
@@ -241,6 +296,12 @@ async def test_request_json_server_retry_and_transport_errors() -> None:
             with pytest.raises(FollowUpBossRetryableServerError, match="boom"):
                 await client.request_json("GET", "/identity")
 
+    transport_stream = io.StringIO()
+    transport_logger = logging.getLogger("followupboss_mcp_test_http_transport_retry")
+    transport_logger.handlers.clear()
+    transport_logger.setLevel("INFO")
+    transport_logger.propagate = False
+    transport_logger.addHandler(logging.StreamHandler(transport_stream))
     with respx.mock(assert_all_called=True) as router:
         router.get("https://api.followupboss.com/v1/identity").mock(
             side_effect=[httpx.ConnectError("down"), httpx.Response(200, json={"id": 1})]
@@ -248,9 +309,15 @@ async def test_request_json_server_retry_and_transport_errors() -> None:
         async with FollowUpBossAsyncClient(
             _settings(max_retries=1),
             jitter_source=lambda: 0.0,
+            logger=transport_logger,
             sleep=lambda delay: _record_sleep([], delay),
         ) as client:
             assert await client.request_json("GET", "/identity") == {"id": 1}
+    transport_log_output = transport_stream.getvalue()
+    assert "reason=transport_error status=None retry_after_s=None error_type=ConnectError" in (
+        transport_log_output
+    )
+    assert "attempts=2" in transport_log_output
 
     with respx.mock(assert_all_called=True) as router:
         router.get("https://api.followupboss.com/v1/identity").mock(

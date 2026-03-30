@@ -6,7 +6,7 @@ import asyncio
 import os
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -31,6 +31,7 @@ from followupboss_mcp.models.people import (
     PersonRecord,
     UpdatePersonRequest,
 )
+from followupboss_mcp.models.reactions import CreateReactionRequest, DeleteReactionRequest
 from followupboss_mcp.models.tasks import CreateTaskRequest, TaskRecord, UpdateTaskRequest
 from followupboss_mcp.models.timeframes import TimeframeListRequest
 from followupboss_mcp.models.users import CurrentUserRecord, UserListRequest
@@ -175,6 +176,31 @@ def _disposable_person_email() -> str:
         A unique email address safe to use for disposable sandbox records.
     """
     return f"mcp-live-person-{uuid4().hex[:12]}@example.com"
+
+
+async def _delete_note_reaction_if_present(
+    services: ServiceBundle,
+    note_id: int | None,
+    *,
+    reaction_emoji: str | None,
+) -> None:
+    """Delete a note reaction during live cleanup when it may still exist.
+
+    Args:
+        services: The live service bundle.
+        note_id: The optional note identifier hosting the reaction.
+        reaction_emoji: The optional reaction body used for targeted deletion.
+    """
+    if note_id is None or reaction_emoji is None:
+        return
+    try:
+        await services.reactions.delete_reaction(
+            "Note",
+            note_id,
+            DeleteReactionRequest(emoji=reaction_emoji),
+        )
+    except FollowUpBossNotFoundError:
+        return
 
 
 async def _delete_note_if_present(services: ServiceBundle, note_id: int | None) -> None:
@@ -463,6 +489,7 @@ async def test_live_person_and_note_write_contracts() -> None:
     note_id: int | None = None
     task_id: int | None = None
     appointment_id: int | None = None
+    note_reaction_emoji: str | None = None
     disposable_email = _disposable_person_email()
 
     async with _live_bundle() as (services, _adapter):
@@ -525,6 +552,21 @@ async def test_live_person_and_note_write_contracts() -> None:
             assert updated_note.id == created_note.id
             assert updated_note.body == "Updated by the optional live write-and-rollback suite."
 
+            note_reaction_emoji = "👏"
+            reaction_ack = await services.reactions.add_reaction(
+                "Note",
+                created_note.id,
+                CreateReactionRequest(body=note_reaction_emoji),
+            )
+            assert reaction_ack.model_dump(mode="json", exclude_none=True) == {}
+
+            await services.reactions.delete_reaction(
+                "Note",
+                created_note.id,
+                DeleteReactionRequest(emoji=note_reaction_emoji),
+            )
+            note_reaction_emoji = None
+
             created_task = await services.tasks.create_task(
                 CreateTaskRequest(
                     person_id=created_person.id,
@@ -552,7 +594,7 @@ async def test_live_person_and_note_write_contracts() -> None:
             assert updated_task.name == "MCP Live Task Updated"
             assert updated_task.is_completed is True
 
-            start_time = datetime.now(timezone.utc).replace(microsecond=0) + timedelta(days=1)
+            start_time = datetime.now(UTC).replace(microsecond=0) + timedelta(days=1)
             end_time = start_time + timedelta(hours=1)
             created_appointment = await services.appointments.create_appointment(
                 CreateAppointmentRequest(
@@ -594,6 +636,11 @@ async def test_live_person_and_note_write_contracts() -> None:
             assert updated_appointment.title == "MCP Live Appointment Updated"
 
         finally:
+            await _delete_note_reaction_if_present(
+                services,
+                note_id,
+                reaction_emoji=note_reaction_emoji,
+            )
             await _delete_appointment_if_present(services, appointment_id)
             await _delete_task_if_present(services, task_id)
             await _delete_note_if_present(services, note_id)
