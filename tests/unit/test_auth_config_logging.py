@@ -200,8 +200,26 @@ def test_tenant_runtime_defaults_validation_and_normalization() -> None:
         FollowUpBossTenantRuntimeDefaults.model_validate({"max_retries": -1})
 
 
-def test_composite_settings_project_split_models() -> None:
+def test_composite_settings_project_split_models(monkeypatch: pytest.MonkeyPatch) -> None:
     """The legacy composite settings should project into split server and tenant models."""
+    for key in (
+        "FOLLOWUPBOSS_AUTH_MODE",
+        "FOLLOWUPBOSS_API_KEY",
+        "FOLLOWUPBOSS_ACCESS_TOKEN",
+        "FOLLOWUPBOSS_SYSTEM_NAME",
+        "FOLLOWUPBOSS_SYSTEM_KEY",
+        "FOLLOWUPBOSS_X_SYSTEM",
+        "FOLLOWUPBOSS_X_SYSTEM_KEY",
+        "FOLLOW_UP_BOSS_AUTH_MODE",
+        "FOLLOW_UP_BOSS_API_KEY",
+        "FOLLOW_UP_BOSS_ACCESS_TOKEN",
+        "FOLLOW_UP_BOSS_SYSTEM_NAME",
+        "FOLLOW_UP_BOSS_SYSTEM_KEY",
+        "FOLLOW_UP_BOSS_X_SYSTEM",
+        "FOLLOW_UP_BOSS_X_SYSTEM_KEY",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
     settings = FollowUpBossSettings.model_validate(
         {
             "api_key": "key",
