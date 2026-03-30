@@ -38,7 +38,7 @@ More detail is in [docs/architecture.md](docs/architecture.md).
 - 429 handling with `Retry-After`
 - truncated exponential backoff with jitter for retryable 5xx failures and transport errors
 - reusable pagination helpers supporting both `next` token flow and `offset` fallback
-- typed services for Identity, People, People Relationships, Person Attachments, Events, Users, Custom Fields, Deals, Deal Custom Fields, Deal Attachments, Email Marketing, Groups, Inbox Apps, Pipelines, Ponds, Reactions, Smart Lists, Stages, Action Plans, Appointments, Appointment Outcomes, Appointment Types, Automations, Calls, Tasks, Team Inboxes, Teams, Templates, Text Messages, Notes, and Webhooks
+- typed services for Identity, People, People Relationships, Person Attachments, Events, Users, Custom Fields, Deals, Deal Custom Fields, Deal Attachments, Email Marketing, Groups, Inbox Apps, Pipelines, Ponds, Reactions, Smart Lists, Stages, Action Plans, Appointments, Appointment Outcomes, Appointment Types, Automations, Calls, Tasks, Team Inboxes, Teams, Templates, Text Messages, Timeframes, Notes, and Webhooks
 - people duplicate checks plus unclaimed-lead list, claim, and ignore helpers
 - explicit webhook signature verification using the exact raw request body
 - MCP tools, one resource, and one lead-event composition prompt
@@ -66,15 +66,15 @@ This installs the package plus the default development group defined in `pyproje
 
 | Variable | Required | Default | Notes |
 | --- | --- | --- | --- |
-| `FOLLOWUPBOSS_API_KEY` | For `api_key` auth | None | API key used as the HTTP Basic username. |
-| `FOLLOWUPBOSS_ACCESS_TOKEN` | For `oauth` auth | None | OAuth access token used as a Bearer token. |
-| `FOLLOWUPBOSS_AUTH_MODE` | No | `api_key` | Valid values: `api_key`, `oauth`. |
-| `FOLLOWUPBOSS_SYSTEM_NAME` | No | None | Sent as `X-System` when configured. Recommended for external integrations. |
-| `FOLLOWUPBOSS_SYSTEM_KEY` | No | None | Sent as `X-System-Key` when configured. Required for Follow Up Boss webhook verification and webhook admin scenarios. |
-| `FOLLOWUPBOSS_BASE_URL` | No | `https://api.followupboss.com/v1` | Override for alternate environments or proxies. |
-| `FOLLOWUPBOSS_TIMEOUT_SECONDS` | No | `10.0` | Per-request timeout. Must be greater than zero. |
-| `FOLLOWUPBOSS_MAX_RETRIES` | No | `3` | Retry budget for retryable failures. Must be zero or greater. |
-| `FOLLOWUPBOSS_LOG_LEVEL` | No | `INFO` | One of `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. |
+| `FOLLOWUPBOSS_API_KEY` | For `api_key` auth | None | API key used as the HTTP Basic username. The legacy alias `FOLLOW_UP_BOSS_API_KEY` is also accepted. |
+| `FOLLOWUPBOSS_ACCESS_TOKEN` | For `oauth` auth | None | OAuth access token used as a Bearer token. The legacy alias `FOLLOW_UP_BOSS_ACCESS_TOKEN` is also accepted. |
+| `FOLLOWUPBOSS_AUTH_MODE` | No | `api_key` | Valid values: `api_key`, `oauth`. The legacy alias `FOLLOW_UP_BOSS_AUTH_MODE` is also accepted. |
+| `FOLLOWUPBOSS_SYSTEM_NAME` | No | None | Sent as `X-System` when configured. Recommended for external integrations. Legacy aliases `FOLLOW_UP_BOSS_SYSTEM_NAME` and `FOLLOW_UP_BOSS_X_SYSTEM` are also accepted. |
+| `FOLLOWUPBOSS_SYSTEM_KEY` | No | None | Sent as `X-System-Key` when configured. Required for Follow Up Boss webhook verification and webhook admin scenarios. Legacy aliases `FOLLOW_UP_BOSS_SYSTEM_KEY` and `FOLLOW_UP_BOSS_X_SYSTEM_KEY` are also accepted. |
+| `FOLLOWUPBOSS_BASE_URL` | No | `https://api.followupboss.com/v1` | Override for alternate environments or proxies. The legacy alias `FOLLOW_UP_BOSS_BASE_URL` is also accepted. |
+| `FOLLOWUPBOSS_TIMEOUT_SECONDS` | No | `10.0` | Per-request timeout. Must be greater than zero. The legacy alias `FOLLOW_UP_BOSS_TIMEOUT_SECONDS` is also accepted. |
+| `FOLLOWUPBOSS_MAX_RETRIES` | No | `3` | Retry budget for retryable failures. Must be zero or greater. The legacy alias `FOLLOW_UP_BOSS_MAX_RETRIES` is also accepted. |
+| `FOLLOWUPBOSS_LOG_LEVEL` | No | `INFO` | One of `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. The legacy alias `FOLLOW_UP_BOSS_LOG_LEVEL` is also accepted. |
 
 ## Development Commands
 

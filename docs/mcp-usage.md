@@ -129,6 +129,7 @@ All tools are namespaced with the `followupboss_` prefix.
 | `followupboss_update_team` | Update one team by ID. |
 | `followupboss_delete_team` | Delete one team by ID, optionally move members first, and return a structured confirmation. |
 | `followupboss_list_team_inboxes` | List team inboxes with pagination metadata. |
+| `followupboss_list_timeframes` | List valid Follow Up Boss timeframes with pagination metadata. |
 | `followupboss_list_appointments` | List appointments with documented filters and pagination metadata. |
 | `followupboss_get_appointment` | Retrieve one appointment by ID. |
 | `followupboss_create_appointment` | Create an appointment. |

@@ -1994,6 +1994,7 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         "groupId": 13,
     }
     assert (await adapter.list_team_inboxes(TeamInboxListRequest()))["teamInboxes"][0]["id"] == 121
+    assert (await adapter.list_timeframes(TimeframeListRequest()))["timeframes"][0]["id"] == 1
     assert (await adapter.list_custom_fields(CustomFieldListRequest()))["customfields"][0][
         "id"
     ] == 7
@@ -2989,6 +2990,13 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                 {"id": 32, "title": "Listing appointment"},
                 {"id": 33, "title": "Updated appointment"},
                 {},
+                {
+                    "_metadata": {"collection": "timeframes", "offset": 0, "limit": 10, "total": 5},
+                    "timeframes": [
+                        {"id": 1, "timeframe": "0-3 Months"},
+                        {"id": 2, "timeframe": "3-6 Months"},
+                    ],
+                },
             ]
         ),
     )
@@ -3104,6 +3112,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_list_templates",
         "followupboss_list_text_message_templates",
         "followupboss_list_text_messages",
+        "followupboss_list_timeframes",
         "followupboss_list_unclaimed_people",
         "followupboss_list_users",
         "followupboss_list_webhooks",
@@ -3573,6 +3582,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "deleted": True,
         "appointmentId": 34,
     }
+    assert (await tools["followupboss_list_timeframes"].fn())["timeframes"][0]["id"] == 1
 
     resource = server._resource_manager._resources["followupboss://api-coverage-matrix"]
     resource_text = await resource.read()

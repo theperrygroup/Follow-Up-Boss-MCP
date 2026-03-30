@@ -25,6 +25,7 @@ The repository now contains:
 - typed people duplicate-check, unclaimed lead list, claim, and ignore coverage across the SDK, MCP surface, tests, and docs
 - typed people relationship list/get/create/update/delete coverage across the SDK, MCP surface, tests, and docs
 - typed reaction get/create/delete coverage across the SDK, MCP surface, tests, and docs
+- typed timeframe list coverage across the SDK, MCP surface, tests, and docs
 - typed team inbox collection coverage across the SDK, MCP surface, tests, and docs
 - typed team collection and CRUD coverage with optional member-migration semantics on delete across the SDK, MCP surface, tests, and docs
 - typed text message read support, external log creation, and text message template CRUD plus merge coverage across the SDK, MCP surface, tests, and docs
@@ -192,6 +193,7 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `PUT /tasks/:id`
 - `DELETE /tasks/:id`
 - `GET /teamInboxes`
+- `GET /timeframes`
 - `GET /teams`
 - `GET /teams/:id`
 - `POST /teams`
@@ -214,7 +216,7 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `POST /webhooks`
 - `DELETE /webhooks/:id`
 
-Total implemented official endpoints in this repository scope: `146`
+Total implemented official endpoints in this repository scope: `147`
 
 All additional discovered official endpoints are marked explicitly as deferred in `docs/api-coverage-matrix.md`.
 
@@ -222,7 +224,7 @@ All additional discovered official endpoints are marked explicitly as deferred i
 
 Registered MCP surface:
 
-- tools: `146`
+- tools: `147`
 - resources: `1`
 - prompts: `1`
 
@@ -361,6 +363,7 @@ Registered tools:
 - `followupboss_update_template`
 - `followupboss_delete_template`
 - `followupboss_list_team_inboxes`
+- `followupboss_list_timeframes`
 - `followupboss_list_teams`
 - `followupboss_get_team`
 - `followupboss_create_team`
@@ -403,19 +406,19 @@ FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check
 ## Final Mypy Status
 
 - `uv run mypy src tests`: passed
-- result: `Success: no issues found in 80 source files`
+- result: `Success: no issues found in 82 source files`
 
 ## Final Test Status
 
 - `uv run pytest`: passed
-- result: `108 passed, 1 skipped`
+- result: `109 passed, 1 skipped`
 
 ## Final Coverage Numbers
 
 - `uv run coverage run --branch -m pytest`: passed
 - `uv run coverage report --fail-under=100`: passed
-- total statements: `4244`
-- total branches: `398`
+- total statements: `4282`
+- total branches: `402`
 - line coverage: `100.00%`
 - branch coverage: `100.00%`
 

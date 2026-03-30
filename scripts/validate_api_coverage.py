@@ -975,6 +975,13 @@ COVERAGE_MAP: dict[str, dict[str, str]] = {
         "notes": "Lists team inboxes with pagination metadata.",
         "tests": "Yes",
     },
+    "GET /timeframes": {
+        "implementation": "Implemented",
+        "mcp": "Yes",
+        "models": "Yes",
+        "notes": "Lists valid Follow Up Boss timeframes for people timeframeId values.",
+        "tests": "Yes",
+    },
     "GET /textMessages": {
         "implementation": "Implemented",
         "mcp": "Yes",

@@ -15,7 +15,7 @@ The domain sections below follow the registration order from `register_server_su
 | Account or environment | Live `.env` account with `X-System` headers configured |
 | Auth mode (`api_key` or `oauth`) | `api_key` |
 | Transport(s) exercised | `stdio`, `streamable-http` |
-| Notes | Mapped `FOLLOW_UP_BOSS_*` values from `.env` into the repository's expected `FOLLOWUPBOSS_*` variables before running live checks. Inspector-specific connection steps remain unchecked because this run used the official Python MCP clients directly. After the follow-up fixes in this session, both `make validate` and `make live-identity-check` passed. |
+| Notes | The current `.env` loaded successfully using the legacy `FOLLOW_UP_BOSS_*` names because the settings layer now accepts both the documented `FOLLOWUPBOSS_*` variables and the underscored aliases. Inspector-specific connection steps remain unchecked because this run used the official Python MCP clients directly. After the follow-up fixes in this session, both `make validate` and `make live-identity-check` passed. |
 
 ## How To Use This File
 
@@ -376,6 +376,12 @@ Current run note: the live API validated `outcome` against the documented enum; 
 ### Team Inboxes
 
 - [x] `followupboss_list_team_inboxes`: confirm list output and `_metadata`.
+
+### Timeframes
+
+- [x] `followupboss_list_timeframes`: confirm list output and `_metadata`.
+
+Current run note: the live API returned the expected five timeframe values, including `0-3 Months`, `3-6 Months`, `6-12 Months`, `12+ Months`, and `No Plans`.
 
 ### Teams
 
