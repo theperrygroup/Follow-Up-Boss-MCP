@@ -96,7 +96,7 @@ For the explicit underlying commands:
 ```bash
 uv sync
 uv export --format requirements.txt --all-groups --locked --no-editable --no-emit-project --output-file /tmp/followupboss-mcp-requirements.txt
-uvx --from pip-audit pip-audit -r /tmp/followupboss-mcp-requirements.txt --strict --disable-pip --no-deps --ignore-vuln CVE-2026-4539
+uvx --from pip-audit pip-audit -r /tmp/followupboss-mcp-requirements.txt --strict --disable-pip --no-deps
 uv run python scripts/validate_docs_links.py
 uv run ruff format --check .
 uv run ruff check .
@@ -122,7 +122,8 @@ FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check
 
 `live-identity-check` is the quick auth and transport smoke path. `live-contract-check`
 adds a broader suite across identity, users, people, timeframes, MCP-layer `/me`
-redaction, note reactions, and disposable person-centered note, task, and appointment write-and-rollback flows.
+redaction, note reactions, registered-system person attachments when configured,
+and disposable person-centered note, task, and appointment write-and-rollback flows.
 
 Both targets auto-load a repository-local `.env` when present, so manual export is optional for the common local workflow.
 
@@ -201,7 +202,7 @@ For a streamable HTTP server, start the server first and then connect Inspector 
 - Caller-supplied overrides for `Authorization`, `X-System`, `X-System-Key`, and `Content-Type` are rejected at the HTTP client boundary.
 - Webhook verification uses HMAC-SHA256 over the base64-encoded raw request body with `X-System-Key`.
 - Webhook receivers should acknowledge with a fast `2xx` response and move longer processing off the request thread.
-- CI now includes dependency audit and secret-scanning automation, with a temporary audit ignore for `CVE-2026-4539` until an upstream `pygments` fix is published.
+- CI now includes dependency audit and secret-scanning automation without a temporary vulnerability exception in the current lockfile state.
 - Successful HTTP responses now emit method, path, status, and elapsed-time logs through the existing stderr-safe logger.
 
 More detail is in [docs/security.md](docs/security.md).

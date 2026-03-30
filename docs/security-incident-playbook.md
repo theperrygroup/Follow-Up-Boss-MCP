@@ -66,7 +66,7 @@ Run the standard repository checks after containment:
 
 ```bash
 uv export --format requirements.txt --all-groups --locked --no-editable --no-emit-project --output-file /tmp/followupboss-mcp-requirements.txt
-uvx --from pip-audit pip-audit -r /tmp/followupboss-mcp-requirements.txt --strict --disable-pip --no-deps --ignore-vuln CVE-2026-4539
+uvx --from pip-audit pip-audit -r /tmp/followupboss-mcp-requirements.txt --strict --disable-pip --no-deps
 uv run ruff format --check .
 uv run ruff check .
 uv run mypy src tests

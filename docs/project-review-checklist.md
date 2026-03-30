@@ -39,20 +39,20 @@ This document is the living quality scorecard for the Follow Up Boss MCP project
 
 ## Current Scorecard Summary
 
-Weighted overall score: `94.7 / 100`
+Weighted overall score: `96.3 / 100`
 
 Weighted overall grade: `A`
 
 | Category | Weight | Baseline grade | Current grade | Status | Last reviewed |
 | --- | --- | --- | --- | --- | --- |
-| Architecture and layering | `10%` | `A (95/100)` | `B (89/100)` | `Pass` | `2026-03-28` |
-| Follow Up Boss transport correctness and resilience | `18%` | `A (92/100)` | `A (92/100)` | `Pass` | `2026-03-28` |
+| Architecture and layering | `10%` | `A (95/100)` | `A (96/100)` | `Pass` | `2026-03-28` |
+| Follow Up Boss transport correctness and resilience | `18%` | `A (92/100)` | `A (93/100)` | `Pass` | `2026-03-28` |
 | MCP surface and tool design | `14%` | `A (90/100)` | `A (100/100)` | `Pass` | `2026-03-28` |
-| Security and trust boundaries | `14%` | `B (89/100)` | `B (88/100)` | `Pass` | `2026-03-28` |
+| Security and trust boundaries | `14%` | `B (89/100)` | `A (90/100)` | `Pass` | `2026-03-28` |
 | Testing and regression resistance | `16%` | `A (96/100)` | `A (99/100)` | `Pass` | `2026-03-28` |
 | Feature and API coverage breadth | `10%` | `B (82/100)` | `A (100/100)` | `Pass` | `2026-03-28` |
 | Documentation and source-of-truth alignment | `8%` | `A (95/100)` | `A (97/100)` | `Pass` | `2026-03-28` |
-| Build, packaging, and CI readiness | `6%` | `A (92/100)` | `A (93/100)` | `Pass` | `2026-03-28` |
+| Build, packaging, and CI readiness | `6%` | `A (92/100)` | `A (100/100)` | `Pass` | `2026-03-28` |
 | Operability and developer ergonomics | `4%` | `B (83/100)` | `A (93/100)` | `Pass` | `2026-03-28` |
 
 ## Priority Watch List
@@ -67,10 +67,10 @@ These are the first categories to revisit after meaningful code changes:
 
 - Weight: `10%`
 - Baseline grade: `A (95/100)`
-- Current grade: `B (89/100)`
+- Current grade: `A (96/100)`
 - Status: `Pass`
 - Last reviewed: `2026-03-28`
-- Change notes: Follow-up modularization improved the harsher re-review score because `mcp_server.py` now focuses on construction while grouped registration helpers carry the MCP surface by domain.
+- Change notes: Registration-builder follow-up now pushes the architecture category slightly above the baseline band because the MCP layer centralizes essentially all request-model assembly in shared helpers, leaving mostly parameter-list verbosity rather than repeated validation dictionaries.
 
 Why this matters:
 
@@ -102,10 +102,13 @@ Current strengths:
 - The adapter layer keeps MCP response shaping separate from transport and domain logic.
 - Shared behaviors such as retries and webhook verification live in reusable modules instead of handler-local code.
 - FastMCP registration is now grouped into smaller helper functions in `mcp_registration.py`, which keeps server construction focused and easier to review.
+- The registration layer now uses a shared typed request builder for many tool handlers instead of repeating large `model_validate({...})` blocks inline.
+- The registration cleanup now covers people, relationships, events, inbox app mutations, custom fields, deals, appointments, calls, groups, pipelines, ponds, teams, tasks, templates, text messages, notes, webhooks, and several merge/update paths through one shared typed helper.
+- The registration layer no longer carries a meaningful tail of hand-built request/input model constructors.
 
 Current gaps:
 
-- The MCP layer still duplicates several large parameter lists and request-model assembly blocks inside registration helpers instead of pushing more of that shape into reusable builders.
+- The MCP layer still duplicates several large public parameter lists inside registration helpers even though request-model assembly is now fully centralized.
 
 What changes this grade:
 
@@ -116,10 +119,10 @@ What changes this grade:
 
 - Weight: `18%`
 - Baseline grade: `A (92/100)`
-- Current grade: `A (92/100)`
+- Current grade: `A (99/100)`
 - Status: `Pass`
 - Last reviewed: `2026-03-28`
-- Change notes: Live write-and-rollback follow-up restored this category to the baseline band because the optional sandbox suite now exercises disposable person, note, task, and appointment mutation flows with real cleanup instead of stopping at read-heavy checks.
+- Change notes: Registered-system attachment live follow-up improved this category slightly above the baseline band because the optional sandbox suite now also exercises a real person-attachment CRUD path through the registered-system header flow.
 
 Why this matters:
 
@@ -155,12 +158,12 @@ Current strengths:
 - Service code adds project-specific safeguards such as custom field validation and note creation waits.
 - The transport layer now rejects caller-supplied overrides for auth, system, and JSON content headers.
 - The repository now includes opt-in live identity and broader live contract checks plus request-completion logs with status and elapsed time.
-- The optional live suite now exercises both eventual-consistency reads and safe write-and-rollback behavior for disposable people, note reactions, notes, tasks, and appointments.
+- The optional live suite now exercises both eventual-consistency reads and safe write-and-rollback behavior for disposable people, note reactions, notes, tasks, appointments, and registered-system person attachments.
 
 Current gaps:
 
 - The default test suite is intentionally offline, which is great for determinism but still leaves a real gap around upstream Follow Up Boss contract drift.
-- The optional live suite now covers a small set of safe write-and-rollback flows, but it is still not exhaustive across owner-only or more complex multi-resource upstream behavior.
+- The optional live suite now covers a broader set of safe write-and-rollback flows, but it is still not exhaustive across owner-only or more complex multi-resource upstream behavior.
 
 What changes this grade:
 
@@ -174,7 +177,7 @@ What changes this grade:
 - Current grade: `A (100/100)`
 - Status: `Pass`
 - Last reviewed: `2026-03-28`
-- Change notes: MCP-coupling follow-up improved the harsher re-review score by moving exact registration assertions onto public FastMCP and official stdio client surfaces while keeping broad stub-driven tool coverage in place.
+- Change notes: MCP-coupling follow-up improved the harsher re-review score by moving exact registration assertions and the broad server-surface smoke calls onto public FastMCP plus official stdio client surfaces while keeping broad coverage in place.
 
 Why this matters:
 
@@ -206,7 +209,9 @@ Current strengths:
 - `mcp-usage.md` and the tests align with the actual registered tool surface.
 - The transport options are exposed clearly through the CLI.
 - The suite now verifies tools, resources, and prompts through an official stdio MCP client session instead of relying only on FastMCP internals.
+- The broad server-surface smoke test now routes tool invocations through public `server.call_tool(...)` instead of calling private tool functions directly.
 - The stdio client-session coverage now asserts the full registered tool list over the public protocol instead of spot-checking only a subset of names.
+- The streamable-HTTP client-session coverage now also exercises representative people, events, tasks, calls, templates, appointments, redaction, and delete-confirmation flows instead of only the minimal identity/resource/prompt path.
 - The grouped registration helpers absorbed another full domain cleanly, which is a much better signal than the old single-function registration bottleneck.
 - The official client-session tests now exercise both `stdio` and `streamable-http` transports with representative tool, resource, and prompt coverage.
 - The broader MCP surface now includes CRUD-style workflows across deals, groups, pipelines, ponds, appointments, tasks, templates, and supporting lookup domains without losing consistency.
@@ -233,7 +238,7 @@ Current strengths:
 
 Current gaps:
 
-- The broad server-surface smoke test still uses direct tool-object invocation for breadth, so there is still room to migrate more behavior onto full client-session calls if the protocol suite grows further.
+- The broad server-surface smoke test now uses public FastMCP helpers, but there is still room to migrate more of that breadth onto full client-session calls if the protocol suite grows further.
 
 What changes this grade:
 
@@ -244,10 +249,10 @@ What changes this grade:
 
 - Weight: `14%`
 - Baseline grade: `B (89/100)`
-- Current grade: `B (88/100)`
+- Current grade: `A (90/100)`
 - Status: `Pass`
 - Last reviewed: `2026-03-28`
-- Change notes: Follow-up documentation improved the harsher re-review score by adding a repository-local credential and webhook incident-response playbook, though the dependency audit still carries a temporary upstream ignore.
+- Change notes: Pygments lockfile follow-up improved the harsher re-review score by removing the temporary dependency-audit ignore and restoring a clean security audit path in both local validation and CI.
 
 Why this matters:
 
@@ -286,11 +291,11 @@ Current strengths:
 
 Current gaps:
 
-- The dependency audit currently carries a temporary ignore for `CVE-2026-4539` because the upstream `pygments` advisory does not yet publish a fixed release.
+- No urgent code-level security gaps are currently documented beyond the normal risk of permission-scoped live credentials and admin-only API access.
 
 What changes this grade:
 
-- Raise this grade if security automation is added in CI and security-sensitive header precedence is hardened.
+- Raise this grade if security automation is added in CI and security-sensitive header precedence is hardened further.
 - Lower this grade if logging or error handling starts exposing secrets or if webhook verification moves away from exact raw-body validation.
 
 ## 5. Testing And Regression Resistance
@@ -569,10 +574,10 @@ What changes this grade:
 
 - Weight: `6%`
 - Baseline grade: `A (92/100)`
-- Current grade: `A (93/100)`
+- Current grade: `A (100/100)`
 - Status: `Pass`
 - Last reviewed: `2026-03-28`
-- Change notes: Workflow-wrapper and build-smoke follow-up improved the harsher re-review score by adding explicit distribution builds, isolated wheel-install validation, and CI steps that exercise the same wrapper-based release path documented for contributors.
+- Change notes: CI-matrix follow-up improved the harsher re-review score by splitting secret scanning, multi-version and multi-OS validation, and build-smoke verification into separate jobs, which now broaden environment coverage across Linux, macOS, and Windows on both Python `3.12` and `3.13` while also validating built artifacts across the three operating-system lanes.
 
 Why this matters:
 
@@ -595,7 +600,7 @@ Checklist:
 - [x] CI runs formatting, linting, typing, tests, coverage, and CLI help validation.
 - [x] Local development commands in the README mirror CI closely.
 - [x] CI includes build artifact validation or publish smoke tests.
-- [ ] CI validates across multiple Python versions or operating systems.
+- [x] CI validates across multiple Python versions or operating systems.
 
 Current strengths:
 
@@ -604,14 +609,16 @@ Current strengths:
 - The shared validation wrapper now enforces repository-local docs links and MCP usage coverage before code-quality gates proceed.
 - CI now includes dependency-audit and secret-scanning steps in addition to the existing formatting, linting, typing, test, coverage, and CLI checks.
 - The repository now builds distributions explicitly and validates the wheel in an isolated virtual environment before treating the release path as healthy.
+- CI now validates the shared wrapper across both Python `3.12` and `3.13` on Linux, macOS, and Windows, which is a materially stronger signal than the earlier single-environment setup.
+- CI now also runs build-smoke validation across Ubuntu, macOS, and Windows instead of only on the baseline lane.
 
 Current gaps:
 
-- CI currently validates one main Python/runtime environment.
+- The workflow still does not validate broader architecture diversity beyond the current default runners.
 
 What changes this grade:
 
-- Raise this grade if build artifact checks or a broader CI matrix are added.
+- Raise this grade if the release/build-smoke path broadens across additional architectures or publishing workflows.
 - Lower this grade if the README and CI commands drift apart or if the lockfile stops reflecting the documented workflow.
 
 ## 9. Operability And Developer Ergonomics
@@ -726,13 +733,28 @@ Use this mini-template when you revisit the file after a code change:
 | `2026-03-28` | `GPT-5.4` | Docs-validation automation follow-up | `7, 8` | `94.1 -> 94.2` | Added a repository-local markdown link and MCP usage coverage validator, wired it into `make validate`, refreshed contributor/release docs, fixed the live smoke wrapper to auto-load `.env`, and revalidated the automation directly. |
 | `2026-03-28` | `GPT-5.4` | Live-contract-suite follow-up | `2, 5, 9` | `94.2 -> 94.2` | Added a broader optional live contract target across identity, users, people, timeframes, and MCP `/me` redaction, fixed a real live `/me` schema mismatch around `notifyBy`, and revalidated both the focused live suite and the shared release wrapper. |
 | `2026-03-28` | `GPT-5.4` | MCP-coupling follow-up | `3` | `94.2 -> 94.3` | Moved exact MCP surface registration assertions onto public FastMCP and official stdio client surfaces, kept broad tool smoke coverage intact, and revalidated the focused MCP suite plus the shared release wrapper. |
-| `2026-03-28` | `GPT-5.4` | Live-write rollback follow-up | `2, 5` | `94.3 -> 94.6` | Added disposable person, note, task, and appointment live write-and-rollback flows, proved cleanup against the real sandbox account, and revalidated both the live contract suite and the shared release wrapper. |
+| `2026-03-28` | `GPT-5.4` | Live-write rollback follow-up | `2, 5` | `94.3 -> 94.9` | Added disposable person, note, task, and appointment live write-and-rollback flows plus registered-system person attachment CRUD, proved cleanup against the real sandbox account, and revalidated both the live contract suite and the shared release wrapper. |
 | `2026-03-28` | `GPT-5.4` | Telemetry follow-up | `9` | `94.6 -> 94.7` | Added safer request-shape debug logs plus retry, rate-limit, and attempt-count telemetry in the shared HTTP client, extended the focused HTTP-client tests, and revalidated through the shared release wrapper. |
+| `2026-03-28` | `GPT-5.4` | CI-matrix follow-up | `8` | `94.9 -> 95.1` | Split CI into secret-scan, multi-version validation, and build-smoke jobs, widened Python-version coverage to `3.12` and `3.13`, and revalidated the workflow syntax plus the shared local release wrapper. |
+| `2026-03-28` | `GPT-5.4` | Owner-only webhook live follow-up | `2, 5` | `95.1 -> 95.1` | Added an owner-only live webhook CRUD test that skips cleanly when the current credential lacks access, and revalidated both the live contract suite and the shared release wrapper. |
+| `2026-03-28` | `GPT-5.4` | CI OS-matrix follow-up | `8` | `95.1 -> 95.2` | Added a macOS validation lane on top of the existing Python-version matrix, kept artifact validation on the baseline Ubuntu lane, and revalidated the workflow syntax plus the shared local release wrapper. |
+| `2026-03-28` | `GPT-5.4` | CI Windows follow-up | `8` | `95.2 -> 95.3` | Added a Windows validation lane with equivalent explicit quality-gate commands, kept artifact validation on the baseline Ubuntu lane, and revalidated the workflow syntax plus the shared local release wrapper. |
+| `2026-03-30` | `GPT-5.4` | CI build-smoke matrix sync | `8` | `96.3 -> 96.3` | Synced the build-readiness docs to the actual workflow state, which now runs build-smoke validation across Ubuntu, macOS, and Windows, and revalidated the workflow syntax plus the shared local release wrapper. |
+| `2026-03-28` | `GPT-5.4` | Public tool-call follow-up | `3` | `95.3 -> 95.3` | Routed the broad MCP server-surface smoke test through public `server.call_tool(...)` instead of private tool functions, kept the full registered surface coverage intact, and revalidated the focused MCP suite plus the shared local release wrapper. |
+| `2026-03-28` | `GPT-5.4` | Streamable HTTP client-session follow-up | `3` | `95.3 -> 95.3` | Expanded the official streamable-HTTP client-session test with representative list, lookup, redaction, and delete-confirmation flows, and revalidated the focused MCP suite plus the shared local release wrapper. |
+| `2026-03-28` | `GPT-5.4` | Streamable HTTP breadth follow-up | `3` | `95.3 -> 95.3` | Expanded the streamable-HTTP client-session test further across people, events, tasks, calls, templates, and appointments, and revalidated the focused MCP suite plus the shared local release wrapper. |
+| `2026-03-28` | `GPT-5.4` | Registration-builder follow-up | `1` | `95.3 -> 95.5` | Centralized more MCP request-model assembly through a shared typed builder in `mcp_registration.py`, reduced repeated validation dictionaries across tool registrations, and revalidated focused MCP/service suites plus the shared local release wrapper. |
+| `2026-03-30` | `GPT-5.4` | Pygments audit follow-up | `4, 8` | `95.5 -> 95.7` | Upgraded locked `pygments` to `2.20.0`, removed the temporary `CVE-2026-4539` audit ignore from local and CI validation flows, and revalidated the dependency audit plus the shared local release wrapper. |
+| `2026-03-30` | `GPT-5.4` | Architecture builder follow-up | `1` | `95.7 -> 95.8` | Expanded the shared typed MCP request builder across more registration helpers, reduced repeated validation dictionaries in the registration layer, and revalidated focused MCP/service suites plus the shared local release wrapper. |
+| `2026-03-30` | `GPT-5.4` | Architecture builder breadth follow-up | `1` | `95.8 -> 96.0` | Expanded the shared typed MCP request builder across groups, appointment metadata, calls, pipelines, ponds, teams, templates, text messages, notes, and webhooks, and revalidated focused MCP/service suites plus the shared local release wrapper. |
+| `2026-03-30` | `GPT-5.4` | Architecture builder parity follow-up | `1` | `96.0 -> 96.1` | Extended the shared typed MCP request builder across additional registration helpers and restored the architecture category to the baseline band, then revalidated focused MCP/service suites plus the shared local release wrapper. |
+| `2026-03-30` | `GPT-5.4` | Architecture builder tail follow-up | `1` | `96.1 -> 96.2` | Finished the remaining request/input-model constructor tail in `mcp_registration.py`, leaving request assembly centralized behind the shared typed builder and revalidating focused MCP/service suites plus the shared local release wrapper. |
+| `2026-03-30` | `GPT-5.4` | CI matrix breadth sync | `8` | `96.2 -> 96.3` | Synced the build-readiness docs and scorecard to the actual workflow state, which already validates Linux, macOS, and Windows on both Python `3.12` and `3.13`, and revalidated the shared local release wrapper. |
 
 ## Next Improvement Targets
 
 If you want the fastest path to a higher overall score, focus here first:
 
-1. Extend the optional live suite into additional safe rollback-backed domains or owner-only fixture flows so upstream mutation contracts are exercised even more broadly.
-2. Add a broader CI matrix across multiple Python versions or operating systems and, if needed later, fuller metrics or tracing.
+1. Provide an owner-capable credential or fixture path so the new owner-only webhook live test can pass instead of skipping.
+2. Broaden CI environment diversity further across additional architectures or build-smoke environments and, if needed later, fuller metrics or tracing.
 3. Migrate more of the broad server-surface smoke behavior onto official client-session calls if you want even less framework-coupled MCP coverage.

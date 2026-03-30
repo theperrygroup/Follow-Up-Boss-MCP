@@ -79,6 +79,7 @@ The domain sections below follow the registration order from `register_server_su
 
 - [ ] Confirm the shell exports the repository-expected `FOLLOWUPBOSS_*` variables from `.env`.
 - [ ] Confirm `.env` provides either `FOLLOWUPBOSS_API_KEY` or `FOLLOWUPBOSS_ACCESS_TOKEN`, plus `FOLLOWUPBOSS_AUTH_MODE` if the default API-key mode is not being used.
+- [ ] If you want the owner-only webhook CRUD path to pass instead of skip, provide `FOLLOWUPBOSS_OWNER_API_KEY` or `FOLLOWUPBOSS_OWNER_ACCESS_TOKEN`, plus optional `FOLLOWUPBOSS_OWNER_AUTH_MODE`, `FOLLOWUPBOSS_OWNER_SYSTEM_NAME`, and `FOLLOWUPBOSS_OWNER_SYSTEM_KEY` overrides when needed.
 - [ ] Confirm optional `FOLLOWUPBOSS_SYSTEM_NAME` and `FOLLOWUPBOSS_SYSTEM_KEY` are present if you plan to validate webhook signing or any integration-header-dependent flow.
 - [ ] Confirm `uv`, `make`, and `npx` are available locally.
 - [ ] Confirm the validation target is a sandbox or clearly disposable account with a temporary-data naming convention such as `MCP Validation <date>`.
@@ -102,7 +103,7 @@ The domain sections below follow the registration order from `register_server_su
 - [ ] Run `make validate` and confirm the full local quality gate passes before any live validation.
 - [ ] Run `make build-smoke` and confirm the packaged server still builds and validates.
 - [ ] Run `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check` and confirm the live credential smoke test passes with the current `.env`.
-- [ ] Run `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check` and confirm the broader live suite passes across identity, users, people, timeframes, MCP `/me` redaction, note reactions, and disposable person-centered note, task, and appointment write-and-rollback flows.
+- [ ] Run `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check` and confirm the broader live suite passes across identity, users, people, timeframes, MCP `/me` redaction, note reactions, registered-system person attachments when configured, disposable person-centered note, task, and appointment write-and-rollback flows, and an owner-only webhook CRUD path that skips cleanly when access is unavailable.
 - [ ] If this run is release-facing, run `make release-validate` or the equivalent ingestion and coverage regeneration flow before closing the run.
 - [ ] Record any failures, contract drift, or credential limitations in `Known Issues And Account Limitations` before continuing.
 

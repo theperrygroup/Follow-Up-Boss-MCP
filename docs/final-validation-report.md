@@ -8,6 +8,13 @@ The repository now contains:
 - a production-grade FastMCP server with stdio and streamable HTTP transports
 - grouped MCP registration helpers plus official stdio and streamable HTTP MCP interoperability tests
 - full registered-tool-list verification over the official stdio MCP client session plus public FastMCP resource and prompt checks
+- broad registered-tool smoke coverage routed through public FastMCP `call_tool()` instead of private tool-function invocation
+- expanded streamable HTTP MCP client-session coverage with representative get/list/delete flows across people, events, tasks, calls, templates, and appointments in addition to resource and prompt checks
+- shared typed request-model builders in `mcp_registration.py` to reduce repeated MCP request assembly blocks
+- broader shared typed request-model builder adoption across custom fields, calls, pipelines, ponds, teams, templates, text messages, notes, and webhooks
+- additional shared typed request-model builder adoption across user, appointment-metadata, deal, and other registration helpers, leaving mostly signature verbosity rather than repeated validation dictionaries
+- completion of the remaining request/input-model constructor tail in `mcp_registration.py`, leaving request assembly centralized behind the shared typed builder
+- a refreshed lockfile with `pygments 2.20.0`, allowing the dependency audit to pass without a temporary CVE ignore
 - a contributor guide and a repository-local security incident playbook
 - typed appointment collection and CRUD coverage across the SDK, MCP surface, tests, and docs
 - typed deals collection and CRUD coverage plus deal custom field discovery and admin CRUD across the SDK, MCP surface, tests, and docs
@@ -35,7 +42,7 @@ The repository now contains:
 - typed webhook event lookup coverage across the SDK, MCP surface, tests, and docs
 - a repository-local docs validation script integrated into `make validate` and CI
 - a `.env`-aware live identity wrapper so the documented smoke-check command works directly in the common local workflow
-- a broader optional live contract suite across identity, users, people, timeframes, MCP-layer current-user redaction, note reactions, and disposable person-centered note, task, and appointment write-and-rollback flows
+- a broader optional live contract suite across identity, users, people, timeframes, MCP-layer current-user redaction, note reactions, registered-system person attachments, and disposable person-centered note, task, and appointment write-and-rollback flows
 - richer HTTP-client telemetry with safe request-shape debug logs plus retry, rate-limit, and attempt-count logging
 - widened `/me` parsing so `notifyBy` accepts both string and list payloads observed in live data
 - typed team inbox collection coverage across the SDK, MCP surface, tests, and docs
@@ -428,9 +435,8 @@ FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check
 ## Final Dependency Audit Status
 
 - `uv export --format requirements.txt --all-groups --locked --no-editable --no-emit-project --output-file /tmp/followupboss-mcp-requirements.txt`: passed
-- `uvx --from pip-audit pip-audit -r /tmp/followupboss-mcp-requirements.txt --strict --disable-pip --no-deps --ignore-vuln CVE-2026-4539`: passed
-- result: `No known vulnerabilities found, 1 ignored`
-- note: `CVE-2026-4539` remains temporarily ignored because the current `pygments` advisory does not yet publish a fixed release.
+- `uvx --from pip-audit pip-audit -r /tmp/followupboss-mcp-requirements.txt --strict --disable-pip --no-deps`: passed
+- result: `No known vulnerabilities found`
 
 ## Final Mypy Status
 
@@ -440,14 +446,14 @@ FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check
 ## Final Test Status
 
 - `uv run pytest`: passed
-- result: `110 passed, 4 skipped`
+- result: `111 passed, 6 skipped`
 - note: the MCP-focused suite now verifies the full registered tool list over the official stdio client session instead of spot-checking only a subset of names.
 
 ## Final Coverage Numbers
 
 - `uv run coverage run --branch -m pytest`: passed
 - `uv run coverage report --fail-under=100`: passed
-- total statements: `4423`
+- total statements: `4433`
 - total branches: `410`
 - line coverage: `100.00%`
 - branch coverage: `100.00%`
@@ -468,21 +474,27 @@ FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check
 - result: `1 passed`
 - note: the `make live-identity-check` target now auto-loads a repository-local `.env` when present.
 - `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check`: passed
-- result: `4 passed`
-- note: the broader suite now covers identity, users, people search/get plus negative duplicate checks, timeframes, MCP `/me` redaction, note reactions, and disposable person-centered note, task, and appointment write-and-rollback flows.
+- result: `5 passed, 1 skipped`
+- note: the broader suite now covers identity, users, people search/get plus negative duplicate checks, timeframes, MCP `/me` redaction, note reactions, registered-system person attachment CRUD, and disposable person-centered note, task, and appointment write-and-rollback flows.
+- note: the owner-only webhook CRUD path is now exercised opportunistically and skips cleanly when the current credential lacks owner access; optional `FOLLOWUPBOSS_OWNER_*` overrides can exercise that path with a stronger credential.
 - note: the broader suite exposed a live `/me` contract mismatch where `notifyBy` arrived as a list, and the model now accepts both string and list payloads.
 - note: the current `.env` now works directly with either the documented `FOLLOWUPBOSS_*` names or the legacy `FOLLOW_UP_BOSS_*` aliases.
 - `docs/mcp-validation-checklist.md`: updated with credential-backed MCP validation results across stdio, streamable HTTP, pagination, safe error paths, and live domain checks.
 - confirmed live MCP flows: identity, people, people relationships list/get/create/update/delete, person attachments CRUD, reactions add/delete, events search/get/send, action plans list/apply/pause, automations get/trigger/get-person/pause, calls create/list/get/update, text messages create/list/get, appointments create/get/update/delete, deals list/get/create/update/delete, deal attachments CRUD, timeframes list, templates CRUD plus merge, text message templates CRUD plus merge, and notes CRUD.
-- remaining live blockers: owner-only webhook access on the current credential, inbox app fixture setup, email marketing write fixtures, and reaction lookup by ID because the live create endpoint returned an acknowledgement rather than a reaction record.
+- remaining live blockers: owner-only webhook access on the current credential still downgrades the automated webhook CRUD path to a skip, inbox app fixture setup, email marketing write fixtures, and reaction lookup by ID because the live create endpoint returned an acknowledgement rather than a reaction record.
 
 ## CI Status
 
 The repository includes `.github/workflows/ci.yml` that runs:
 
 - `gitleaks/gitleaks-action@v2`
-- `make validate`
-- `make build`
-- `make build-smoke`
+- `make validate` on Ubuntu with Python `3.12` and `3.13`
+- `make validate` on macOS with Python `3.12` and `3.13`
+- equivalent validation steps on Windows with Python `3.12` and `3.13`
+- `make build-smoke` on Ubuntu with Python `3.12`
+- `make build-smoke` on macOS with Python `3.12`
+- equivalent build-smoke steps on Windows with Python `3.12`
+
+The workflow now splits secret scanning, multi-version and multi-OS validation, and build-smoke verification into separate jobs. Windows uses explicit validation and build-smoke commands instead of `make` because GNU make is not assumed on that runner.
 
 The shared `make validate` wrapper now includes repository-local markdown link validation plus MCP usage coverage checks.

@@ -33,7 +33,7 @@ Run the same checks locally that CI enforces:
 
 ```bash
 uv export --format requirements.txt --all-groups --locked --no-editable --no-emit-project --output-file /tmp/followupboss-mcp-requirements.txt
-uvx --from pip-audit pip-audit -r /tmp/followupboss-mcp-requirements.txt --strict --disable-pip --no-deps --ignore-vuln CVE-2026-4539
+uvx --from pip-audit pip-audit -r /tmp/followupboss-mcp-requirements.txt --strict --disable-pip --no-deps
 uv run python scripts/validate_docs_links.py
 uv run ruff format --check .
 uv run ruff check .
@@ -60,8 +60,8 @@ FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check
 
 `live-identity-check` is the smallest auth and transport smoke path. `live-contract-check`
 adds a broader representative suite across identity, users, people, timeframes,
-MCP-layer `/me` redaction, note reactions, and disposable person-centered note, task,
-and appointment write-and-rollback flows.
+MCP-layer `/me` redaction, note reactions, registered-system person attachments when
+configured, and disposable person-centered note, task, and appointment write-and-rollback flows.
 
 Both targets auto-load a repository-local `.env` when present, so manual export is optional for the common local workflow.
 

@@ -12,7 +12,7 @@ from uuid import uuid4
 import pytest
 
 from followupboss_mcp.config import FollowUpBossSettings
-from followupboss_mcp.errors import FollowUpBossNotFoundError
+from followupboss_mcp.errors import FollowUpBossForbiddenError, FollowUpBossNotFoundError
 from followupboss_mcp.http_client import FollowUpBossAsyncClient
 from followupboss_mcp.mcp_server import build_service_bundle
 from followupboss_mcp.mcp_tools import FollowUpBossToolAdapter, ServiceBundle
@@ -21,6 +21,11 @@ from followupboss_mcp.models.appointments import (
     AppointmentRecord,
     CreateAppointmentRequest,
     UpdateAppointmentRequest,
+)
+from followupboss_mcp.models.attachments import (
+    CreatePersonAttachmentRequest,
+    PersonAttachmentRecord,
+    UpdatePersonAttachmentRequest,
 )
 from followupboss_mcp.models.common import EmailAddress
 from followupboss_mcp.models.notes import CreateNoteRequest, UpdateNoteRequest
@@ -35,6 +40,11 @@ from followupboss_mcp.models.reactions import CreateReactionRequest, DeleteReact
 from followupboss_mcp.models.tasks import CreateTaskRequest, TaskRecord, UpdateTaskRequest
 from followupboss_mcp.models.timeframes import TimeframeListRequest
 from followupboss_mcp.models.users import CurrentUserRecord, UserListRequest
+from followupboss_mcp.models.webhooks import (
+    CreateWebhookRequest,
+    UpdateWebhookRequest,
+    WebhookRecord,
+)
 
 pytestmark = [pytest.mark.live]
 
@@ -48,17 +58,122 @@ def _require_live_validation_enabled() -> None:
 
 
 @asynccontextmanager
-async def _live_bundle() -> AsyncIterator[tuple[ServiceBundle, FollowUpBossToolAdapter]]:
+async def _live_bundle(
+    settings: FollowUpBossSettings | None = None,
+) -> AsyncIterator[tuple[ServiceBundle, FollowUpBossToolAdapter]]:
     """Yield a live service bundle plus the MCP-safe adapter.
+
+    Args:
+        settings: Optional explicit settings for the live bundle. When omitted,
+            the default environment-backed settings are used.
 
     Yields:
         The typed service bundle and MCP adapter that share one live HTTP client.
     """
     _require_live_validation_enabled()
-    settings = FollowUpBossSettings()
-    async with FollowUpBossAsyncClient(settings) as client:
+    resolved_settings = settings or FollowUpBossSettings()
+    async with FollowUpBossAsyncClient(resolved_settings) as client:
         services = build_service_bundle(client)
         yield services, FollowUpBossToolAdapter(services)
+
+
+def _env_override_value(*names: str) -> str | None:
+    """Return the first non-empty environment override value.
+
+    Args:
+        *names: Environment variable names to inspect in precedence order.
+
+    Returns:
+        The first non-empty value found, otherwise `None`.
+    """
+    for name in names:
+        value = os.getenv(name)
+        if value:
+            return value
+    return None
+
+
+def _settings_as_init_values(settings: FollowUpBossSettings) -> dict[str, object]:
+    """Convert runtime settings into model-validate input values.
+
+    Args:
+        settings: The resolved application settings.
+
+    Returns:
+        A plain dictionary suitable for `FollowUpBossSettings.model_validate()`.
+    """
+    return {
+        "auth_mode": settings.auth_mode,
+        "api_key": settings.api_key.get_secret_value() if settings.api_key is not None else None,
+        "access_token": (
+            settings.access_token.get_secret_value() if settings.access_token is not None else None
+        ),
+        "system_name": settings.system_name,
+        "system_key": settings.system_key_value(),
+        "base_url": str(settings.base_url),
+        "timeout_seconds": settings.timeout_seconds,
+        "max_retries": settings.max_retries,
+        "log_level": settings.log_level,
+    }
+
+
+def _owner_live_settings() -> tuple[FollowUpBossSettings, bool]:
+    """Resolve owner-capable live settings when optional overrides are configured.
+
+    Returns:
+        The resolved owner-capable settings plus a flag indicating whether
+        owner-specific authentication overrides were supplied.
+    """
+    base_settings = FollowUpBossSettings()
+    settings_data = _settings_as_init_values(base_settings)
+
+    owner_auth_mode = _env_override_value(
+        "FOLLOWUPBOSS_OWNER_AUTH_MODE",
+        "FOLLOW_UP_BOSS_OWNER_AUTH_MODE",
+    )
+    owner_api_key = _env_override_value(
+        "FOLLOWUPBOSS_OWNER_API_KEY",
+        "FOLLOW_UP_BOSS_OWNER_API_KEY",
+    )
+    owner_access_token = _env_override_value(
+        "FOLLOWUPBOSS_OWNER_ACCESS_TOKEN",
+        "FOLLOW_UP_BOSS_OWNER_ACCESS_TOKEN",
+    )
+    owner_system_name = _env_override_value(
+        "FOLLOWUPBOSS_OWNER_SYSTEM_NAME",
+        "FOLLOW_UP_BOSS_OWNER_SYSTEM_NAME",
+        "FOLLOWUPBOSS_OWNER_X_SYSTEM",
+        "FOLLOW_UP_BOSS_OWNER_X_SYSTEM",
+    )
+    owner_system_key = _env_override_value(
+        "FOLLOWUPBOSS_OWNER_SYSTEM_KEY",
+        "FOLLOW_UP_BOSS_OWNER_SYSTEM_KEY",
+        "FOLLOWUPBOSS_OWNER_X_SYSTEM_KEY",
+        "FOLLOW_UP_BOSS_OWNER_X_SYSTEM_KEY",
+    )
+
+    using_owner_auth_override = any(
+        value is not None for value in (owner_auth_mode, owner_api_key, owner_access_token)
+    )
+
+    if owner_api_key is not None:
+        settings_data["api_key"] = owner_api_key
+        settings_data["access_token"] = None
+    if owner_access_token is not None:
+        settings_data["access_token"] = owner_access_token
+        settings_data["api_key"] = None
+    if owner_auth_mode is not None:
+        settings_data["auth_mode"] = owner_auth_mode
+    elif owner_access_token is not None and owner_api_key is None:
+        settings_data["auth_mode"] = "oauth"
+    elif owner_api_key is not None:
+        settings_data["auth_mode"] = "api_key"
+    if owner_system_name is not None:
+        settings_data["system_name"] = owner_system_name
+    if owner_system_key is not None:
+        settings_data["system_key"] = owner_system_key
+
+    return FollowUpBossSettings.model_validate(settings_data), using_owner_auth_override
 
 
 def _assert_redacted_field(
@@ -178,6 +293,15 @@ def _disposable_person_email() -> str:
     return f"mcp-live-person-{uuid4().hex[:12]}@example.com"
 
 
+def _disposable_webhook_url() -> str:
+    """Return a unique disposable webhook URL for live owner-only tests.
+
+    Returns:
+        A unique HTTPS URL safe to use as a disposable webhook target.
+    """
+    return f"https://example.com/followupboss-live-webhook/{uuid4().hex}"
+
+
 async def _delete_note_reaction_if_present(
     services: ServiceBundle,
     note_id: int | None,
@@ -229,6 +353,23 @@ async def _delete_person_if_present(services: ServiceBundle, person_id: int | No
         return
     try:
         await services.people.delete_person(person_id)
+    except FollowUpBossNotFoundError:
+        return
+
+
+async def _delete_person_attachment_if_present(
+    services: ServiceBundle, person_attachment_id: int | None
+) -> None:
+    """Delete a person attachment during live cleanup when it still exists.
+
+    Args:
+        services: The live service bundle.
+        person_attachment_id: The optional person attachment identifier to delete.
+    """
+    if person_attachment_id is None:
+        return
+    try:
+        await services.person_attachments.delete_person_attachment(person_attachment_id)
     except FollowUpBossNotFoundError:
         return
 
@@ -293,6 +434,21 @@ async def _delete_appointment_if_present(
         return
 
 
+async def _delete_webhook_if_present(services: ServiceBundle, webhook_id: int | None) -> None:
+    """Delete a webhook during live cleanup when it still exists.
+
+    Args:
+        services: The live service bundle.
+        webhook_id: The optional webhook identifier to delete.
+    """
+    if webhook_id is None:
+        return
+    try:
+        await services.webhooks.delete_webhook(webhook_id)
+    except FollowUpBossNotFoundError:
+        return
+
+
 async def _wait_for_task(
     services: ServiceBundle,
     task_id: int,
@@ -317,6 +473,37 @@ async def _wait_for_task(
     for attempt in range(attempts):
         try:
             return await services.tasks.get_task(task_id)
+        except FollowUpBossNotFoundError:
+            if attempt == attempts - 1:
+                raise
+            await asyncio.sleep(delay_seconds)
+    raise AssertionError("Unreachable")
+
+
+async def _wait_for_person_attachment(
+    services: ServiceBundle,
+    person_attachment_id: int,
+    *,
+    attempts: int = 5,
+    delay_seconds: float = 1.0,
+) -> PersonAttachmentRecord:
+    """Poll until a created person attachment is visible.
+
+    Args:
+        services: The live service bundle.
+        person_attachment_id: The person attachment identifier to retrieve.
+        attempts: The maximum number of read attempts.
+        delay_seconds: The sleep duration between attempts.
+
+    Returns:
+        The visible person attachment record.
+
+    Raises:
+        FollowUpBossNotFoundError: If the attachment never becomes visible.
+    """
+    for attempt in range(attempts):
+        try:
+            return await services.person_attachments.get_person_attachment(person_attachment_id)
         except FollowUpBossNotFoundError:
             if attempt == attempts - 1:
                 raise
@@ -355,6 +542,37 @@ async def _wait_for_appointment(
     raise AssertionError("Unreachable")
 
 
+async def _wait_for_webhook(
+    services: ServiceBundle,
+    webhook_id: int,
+    *,
+    attempts: int = 5,
+    delay_seconds: float = 1.0,
+) -> WebhookRecord:
+    """Poll until a created webhook is visible.
+
+    Args:
+        services: The live service bundle.
+        webhook_id: The webhook identifier to retrieve.
+        attempts: The maximum number of read attempts.
+        delay_seconds: The sleep duration between attempts.
+
+    Returns:
+        The visible webhook record.
+
+    Raises:
+        FollowUpBossNotFoundError: If the webhook never becomes visible.
+    """
+    for attempt in range(attempts):
+        try:
+            return await services.webhooks.get_webhook(webhook_id)
+        except FollowUpBossNotFoundError:
+            if attempt == attempts - 1:
+                raise
+            await asyncio.sleep(delay_seconds)
+    raise AssertionError("Unreachable")
+
+
 async def _wait_for_task_deletion(
     services: ServiceBundle,
     task_id: int,
@@ -383,6 +601,36 @@ async def _wait_for_task_deletion(
         await asyncio.sleep(delay_seconds)
 
 
+async def _wait_for_person_attachment_deletion(
+    services: ServiceBundle,
+    person_attachment_id: int,
+    *,
+    attempts: int = 5,
+    delay_seconds: float = 1.0,
+) -> None:
+    """Poll until a deleted person attachment is no longer retrievable.
+
+    Args:
+        services: The live service bundle.
+        person_attachment_id: The person attachment identifier expected to disappear.
+        attempts: The maximum number of read attempts.
+        delay_seconds: The sleep duration between attempts.
+
+    Raises:
+        AssertionError: If the attachment still exists after the final poll.
+    """
+    for attempt in range(attempts):
+        try:
+            await services.person_attachments.get_person_attachment(person_attachment_id)
+        except FollowUpBossNotFoundError:
+            return
+        if attempt == attempts - 1:
+            raise AssertionError(
+                f"Expected person attachment {person_attachment_id} to be deleted."
+            )
+        await asyncio.sleep(delay_seconds)
+
+
 async def _wait_for_appointment_deletion(
     services: ServiceBundle,
     appointment_id: int,
@@ -408,6 +656,34 @@ async def _wait_for_appointment_deletion(
             return
         if attempt == attempts - 1:
             raise AssertionError(f"Expected appointment {appointment_id} to be deleted.")
+        await asyncio.sleep(delay_seconds)
+
+
+async def _wait_for_webhook_deletion(
+    services: ServiceBundle,
+    webhook_id: int,
+    *,
+    attempts: int = 5,
+    delay_seconds: float = 1.0,
+) -> None:
+    """Poll until a deleted webhook is no longer retrievable.
+
+    Args:
+        services: The live service bundle.
+        webhook_id: The webhook identifier expected to disappear.
+        attempts: The maximum number of read attempts.
+        delay_seconds: The sleep duration between attempts.
+
+    Raises:
+        AssertionError: If the webhook still exists after the final poll.
+    """
+    for attempt in range(attempts):
+        try:
+            await services.webhooks.get_webhook(webhook_id)
+        except FollowUpBossNotFoundError:
+            return
+        if attempt == attempts - 1:
+            raise AssertionError(f"Expected webhook {webhook_id} to be deleted.")
         await asyncio.sleep(delay_seconds)
 
 
@@ -652,3 +928,127 @@ async def test_live_person_and_note_write_contracts() -> None:
                 await _wait_for_task_deletion(services, task_id)
             if person_id is not None:
                 await _wait_for_person_deletion(services, person_id)
+
+
+@pytest.mark.asyncio
+async def test_live_person_attachment_write_contracts() -> None:
+    """Validate disposable person attachment CRUD with registered-system headers."""
+    settings = FollowUpBossSettings()
+    if settings.system_name is None or settings.system_key_value() is None:
+        pytest.skip("Registered system headers are required for live attachment CRUD.")
+
+    person_id: int | None = None
+    person_attachment_id: int | None = None
+    disposable_email = _disposable_person_email()
+
+    async with _live_bundle() as (services, _adapter):
+        try:
+            created_person = await services.people.create_person(
+                CreatePersonRequest(
+                    first_name="MCP Attachment",
+                    last_name="Validation Person",
+                    emails=[EmailAddress(value=disposable_email, type="work")],
+                    source="MCP Live Attachment Contract",
+                    deduplicate=True,
+                )
+            )
+            person_id = created_person.id
+            assert created_person.id > 0
+
+            await services.people.wait_for_person(created_person.id)
+
+            created_attachment = await services.person_attachments.create_person_attachment(
+                CreatePersonAttachmentRequest(
+                    person_id=created_person.id,
+                    uri="https://example.com/",
+                    file_name="mcp-live-attachment.txt",
+                    file_size=128,
+                )
+            )
+            person_attachment_id = created_attachment.id
+            assert created_attachment.id > 0
+            assert created_attachment.person_id == created_person.id
+
+            loaded_attachment = await _wait_for_person_attachment(services, created_attachment.id)
+            assert loaded_attachment.id == created_attachment.id
+            assert loaded_attachment.person_id == created_person.id
+
+            updated_attachment = await services.person_attachments.update_person_attachment(
+                created_attachment.id,
+                UpdatePersonAttachmentRequest(
+                    person_id=created_person.id,
+                    uri="https://example.com/?mcp-live-attachment=updated",
+                    file_name="mcp-live-attachment-updated.txt",
+                    file_size=256,
+                ),
+            )
+            assert updated_attachment.id == created_attachment.id
+            assert updated_attachment.file_name == "mcp-live-attachment-updated.txt"
+
+        finally:
+            await _delete_person_attachment_if_present(services, person_attachment_id)
+            await _delete_person_if_present(services, person_id)
+
+            if person_attachment_id is not None:
+                await _wait_for_person_attachment_deletion(services, person_attachment_id)
+            if person_id is not None:
+                await _wait_for_person_deletion(services, person_id)
+
+
+@pytest.mark.asyncio
+async def test_live_webhook_write_contracts() -> None:
+    """Validate owner-only live webhook CRUD when credentials allow it."""
+    owner_settings, using_owner_auth_override = _owner_live_settings()
+    if owner_settings.system_name is None or owner_settings.system_key_value() is None:
+        pytest.skip("Registered system headers are required for live webhook CRUD.")
+
+    webhook_id: int | None = None
+    webhook_url = _disposable_webhook_url()
+
+    async with _live_bundle(owner_settings) as (services, _adapter):
+        try:
+            try:
+                webhooks_page = await services.webhooks.list_webhooks()
+            except FollowUpBossForbiddenError:
+                if not using_owner_auth_override:
+                    pytest.skip(
+                        "Owner-level webhook access is unavailable for the current credential. "
+                        "Set FOLLOWUPBOSS_OWNER_API_KEY or FOLLOWUPBOSS_OWNER_ACCESS_TOKEN "
+                        "to exercise this path."
+                    )
+                raise
+
+            assert webhooks_page.metadata.count >= 0
+
+            try:
+                created_webhook = await services.webhooks.create_webhook(
+                    CreateWebhookRequest(event="peopleCreated", url=webhook_url)
+                )
+                webhook_id = created_webhook.id
+                assert created_webhook.id > 0
+                assert created_webhook.event == "peopleCreated"
+                assert created_webhook.url == webhook_url
+
+                loaded_webhook = await _wait_for_webhook(services, created_webhook.id)
+                assert loaded_webhook.id == created_webhook.id
+                assert loaded_webhook.url == webhook_url
+
+                updated_webhook = await services.webhooks.update_webhook(
+                    created_webhook.id,
+                    UpdateWebhookRequest(status="Disabled"),
+                )
+                assert updated_webhook.id == created_webhook.id
+                assert updated_webhook.status == "Disabled"
+            except FollowUpBossForbiddenError:
+                if not using_owner_auth_override:
+                    pytest.skip(
+                        "Owner-level webhook mutations are unavailable for the current credential. "
+                        "Set FOLLOWUPBOSS_OWNER_API_KEY or FOLLOWUPBOSS_OWNER_ACCESS_TOKEN "
+                        "to exercise this path."
+                    )
+                raise
+
+        finally:
+            await _delete_webhook_if_present(services, webhook_id)
+            if webhook_id is not None:
+                await _wait_for_webhook_deletion(services, webhook_id)

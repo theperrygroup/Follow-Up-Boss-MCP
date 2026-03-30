@@ -10,8 +10,38 @@ permissions:
   contents: read
 
 jobs:
-  quality:
+  secrets:
     runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "false"
+
+  quality:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python-version: "3.12"
+          - os: ubuntu-latest
+            python-version: "3.13"
+          - os: macos-latest
+            python-version: "3.12"
+          - os: macos-latest
+            python-version: "3.13"
+          - os: windows-latest
+            python-version: "3.12"
+          - os: windows-latest
+            python-version: "3.13"
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -21,20 +51,63 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
           enable-cache: true
 
-      - name: Scan for secrets
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_ENABLE_COMMENTS: "false"
-
       - name: Run validation wrapper
+        if: runner.os != 'Windows'
         run: make validate
 
-      - name: Build distributions
-        run: make build
+      - name: Run validation steps on Windows
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          uv sync --frozen
+          uv export --format requirements.txt --all-groups --locked --no-editable --no-emit-project --output-file "$RUNNER_TEMP/followupboss-mcp-requirements.txt"
+          uvx --from pip-audit pip-audit -r "$RUNNER_TEMP/followupboss-mcp-requirements.txt" --strict --disable-pip --no-deps
+          uv run python scripts/validate_docs_links.py
+          uv run ruff format --check .
+          uv run ruff check .
+          uv run mypy src tests
+          uv run pytest
+          uv run coverage run --branch -m pytest
+          uv run coverage report --fail-under=100
+          uv run python -m followupboss_mcp.cli --help
 
-      - name: Validate built artifacts
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python-version: "3.12"
+          - os: macos-latest
+            python-version: "3.12"
+          - os: windows-latest
+            python-version: "3.12"
+    needs:
+      - secrets
+      - quality
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+
+      - name: Build and validate artifacts
+        if: runner.os != 'Windows'
         run: make build-smoke
+
+      - name: Build and validate artifacts on Windows
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          uv build --clear
+          uv run python scripts/validate_build_artifacts.py

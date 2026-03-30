@@ -73,7 +73,7 @@ The test suite is part of a larger quality gate:
 
 ```bash
 uv export --format requirements.txt --all-groups --locked --no-editable --no-emit-project --output-file /tmp/followupboss-mcp-requirements.txt
-uvx --from pip-audit pip-audit -r /tmp/followupboss-mcp-requirements.txt --strict --disable-pip --no-deps --ignore-vuln CVE-2026-4539
+uvx --from pip-audit pip-audit -r /tmp/followupboss-mcp-requirements.txt --strict --disable-pip --no-deps
 uv run ruff format --check .
 uv run ruff check .
 uv run mypy src tests
@@ -103,4 +103,8 @@ real auth and transport behavior without turning the default suite into a live d
 
 `live-contract-check` keeps the same opt-in behavior while broadening upstream verification
 across identity, users, people, timeframes, MCP-layer current-user redaction, note
-reactions, and disposable person-centered note, task, and appointment write-and-rollback flows.
+reactions, registered-system person attachments when configured, and disposable
+person-centered note, task, and appointment write-and-rollback flows. Owner-only
+webhook CRUD is attempted too and skips cleanly when the current credential lacks access.
+Set `FOLLOWUPBOSS_OWNER_API_KEY` or `FOLLOWUPBOSS_OWNER_ACCESS_TOKEN` to exercise that
+path with a stronger credential while leaving the default live credential unchanged.

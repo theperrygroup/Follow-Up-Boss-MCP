@@ -469,6 +469,42 @@ def _server_python_env() -> dict[str, str]:
     return server_env
 
 
+async def _call_public_tool(
+    server: Any,
+    tools: Mapping[str, Any],
+    name: str,
+    /,
+    *args: object,
+    **kwargs: object,
+) -> dict[str, Any]:
+    """Call one registered tool through the public FastMCP surface.
+
+    Args:
+        server: The FastMCP server under test.
+        tools: Public tool metadata keyed by tool name from `await server.list_tools()`.
+        name: The registered MCP tool name.
+        *args: Positional arguments in the same order as the registered tool schema.
+        **kwargs: Keyword arguments for the registered tool.
+
+    Returns:
+        The structured JSON payload returned by the public `server.call_tool()` helper.
+    """
+    properties = tools[name].inputSchema.get("properties", {})
+    assert isinstance(properties, dict)
+    arg_names = list(properties)
+    assert len(args) <= len(arg_names)
+    call_arguments = {arg_names[index]: value for index, value in enumerate(args)}
+    assert not set(call_arguments).intersection(kwargs)
+    call_arguments.update(kwargs)
+
+    result = await server.call_tool(name, call_arguments)
+    if isinstance(result, dict):
+        return result
+    if isinstance(result, tuple) and len(result) == 2 and isinstance(result[1], dict):
+        return result[1]
+    raise AssertionError(f"Unexpected public tool result for {name}: {result!r}")
+
+
 def _service_stub(**methods: object) -> Any:
     """Return a tiny typed-as-Any service stub."""
     return SimpleNamespace(**methods)
@@ -3395,8 +3431,9 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
             ]
         ),
     )
-    tool_names = sorted(tool.name for tool in await server.list_tools())
-    tools = server._tool_manager._tools
+    listed_tools = await server.list_tools()
+    tool_names = sorted(tool.name for tool in listed_tools)
+    tools = {tool.name: tool for tool in listed_tools}
     assert tool_names == [
         "followupboss_add_inbox_app_message",
         "followupboss_add_inbox_app_note",
@@ -3553,174 +3590,311 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_update_webhook",
     ]
 
-    assert await tools["followupboss_get_identity"].fn() == {"id": 1}
-    assert (await tools["followupboss_get_me"].fn())["apiKey"] == "***redacted***"
-    assert (await tools["followupboss_search_people"].fn(email="a@example.com"))["people"][0][
+    assert await _call_public_tool(
+        server,
+        tools,
+        "followupboss_get_identity",
+    ) == {"id": 1}
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_get_me",
+        )
+    )["apiKey"] == "***redacted***"
+    assert (
+        await _call_public_tool(server, tools, "followupboss_search_people", email="a@example.com")
+    )["people"][0]["id"] == 2
+    assert await _call_public_tool(server, tools, "followupboss_get_person", 3) == {"id": 3}
+    assert (await _call_public_tool(server, tools, "followupboss_create_person", first_name="Tom"))[
         "id"
-    ] == 2
-    assert await tools["followupboss_get_person"].fn(3) == {"id": 3}
-    assert (await tools["followupboss_create_person"].fn(first_name="Tom"))["id"] == 4
-    assert (await tools["followupboss_update_person"].fn(5, first_name="Will"))["id"] == 5
-    assert await tools["followupboss_check_duplicate_person"].fn(email="agent@example.com") == {
+    ] == 4
+    assert (
+        await _call_public_tool(server, tools, "followupboss_update_person", 5, first_name="Will")
+    )["id"] == 5
+    assert await _call_public_tool(
+        server, tools, "followupboss_check_duplicate_person", email="agent@example.com"
+    ) == {
         "found": True,
         "matchedBy": "email",
         "assignedTo": "Agent Smith",
     }
-    assert (await tools["followupboss_list_unclaimed_people"].fn())["people"][0]["id"] == 6
-    assert (await tools["followupboss_claim_person"].fn(7))["id"] == 7
-    assert await tools["followupboss_ignore_unclaimed_person"].fn(7) == {
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_unclaimed_people",
+        )
+    )["people"][0]["id"] == 6
+    assert (await _call_public_tool(server, tools, "followupboss_claim_person", 7))["id"] == 7
+    assert await _call_public_tool(server, tools, "followupboss_ignore_unclaimed_person", 7) == {
         "deleted": True,
         "personId": 7,
     }
-    assert await tools["followupboss_delete_person"].fn(8) == {
+    assert await _call_public_tool(server, tools, "followupboss_delete_person", 8) == {
         "deleted": True,
         "personId": 8,
     }
-    assert (await tools["followupboss_get_person_attachment"].fn(2))["id"] == 2
+    assert (await _call_public_tool(server, tools, "followupboss_get_person_attachment", 2))[
+        "id"
+    ] == 2
     assert (
-        await tools["followupboss_create_person_attachment"].fn(
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_create_person_attachment",
             1,
             "https://test.com/myfile",
             "test.jpg",
         )
     )["id"] == 3
     assert (
-        await tools["followupboss_update_person_attachment"].fn(
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_update_person_attachment",
             4,
             1,
             "https://test.com/updated",
             "updated.jpg",
         )
     )["id"] == 4
-    assert await tools["followupboss_delete_person_attachment"].fn(5) == {
+    assert await _call_public_tool(server, tools, "followupboss_delete_person_attachment", 5) == {
         "deleted": True,
         "personAttachmentId": 5,
     }
-    assert (await tools["followupboss_list_people_relationships"].fn(person_id=46977))[
-        "peopleRelationships"
-    ][0]["id"] == 423
-    assert (await tools["followupboss_get_people_relationship"].fn(423))["id"] == 423
-    assert await tools["followupboss_create_people_relationship"].fn(46977) == {}
-    assert await tools["followupboss_update_people_relationship"].fn(423, type="Spouse") == {}
-    assert await tools["followupboss_delete_people_relationship"].fn(423) == {
+    assert (
+        await _call_public_tool(
+            server, tools, "followupboss_list_people_relationships", person_id=46977
+        )
+    )["peopleRelationships"][0]["id"] == 423
+    assert (await _call_public_tool(server, tools, "followupboss_get_people_relationship", 423))[
+        "id"
+    ] == 423
+    assert (
+        await _call_public_tool(server, tools, "followupboss_create_people_relationship", 46977)
+        == {}
+    )
+    assert (
+        await _call_public_tool(
+            server, tools, "followupboss_update_people_relationship", 423, type="Spouse"
+        )
+        == {}
+    )
+    assert await _call_public_tool(
+        server, tools, "followupboss_delete_people_relationship", 423
+    ) == {
         "deleted": True,
         "peopleRelationshipId": 423,
     }
-    assert (await tools["followupboss_get_reaction"].fn(1363))["id"] == 1363
-    assert await tools["followupboss_add_reaction"].fn("Note", 2144705, "🤣") == {}
-    assert await tools["followupboss_delete_reaction"].fn("Note", 2144705, emoji="👏") == {
+    assert (await _call_public_tool(server, tools, "followupboss_get_reaction", 1363))["id"] == 1363
+    assert (
+        await _call_public_tool(server, tools, "followupboss_add_reaction", "Note", 2144705, "🤣")
+        == {}
+    )
+    assert await _call_public_tool(
+        server, tools, "followupboss_delete_reaction", "Note", 2144705, emoji="👏"
+    ) == {
         "deleted": True,
         "refId": 2144705,
     }
-    assert (await tools["followupboss_get_threaded_reply"].fn(1))["id"] == 1
-    assert (await tools["followupboss_search_events"].fn(person_id=1))["events"][0]["id"] == 6
-    assert (await tools["followupboss_get_event"].fn(7))["id"] == 7
+    assert (await _call_public_tool(server, tools, "followupboss_get_threaded_reply", 1))["id"] == 1
+    assert (await _call_public_tool(server, tools, "followupboss_search_events", person_id=1))[
+        "events"
+    ][0]["id"] == 6
+    assert (await _call_public_tool(server, tools, "followupboss_get_event", 7))["id"] == 7
     assert (
-        await tools["followupboss_send_event"].fn(
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_send_event",
             source="Portal",
             system="Portal",
             type="Inquiry",
             person={},
         )
     )["id"] == 8
-    assert (await tools["followupboss_list_users"].fn())["users"][0]["id"] == 9
-    assert (await tools["followupboss_get_user"].fn(10))["id"] == 10
-    assert await tools["followupboss_delete_user"].fn(10, 5) == {
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_users",
+        )
+    )["users"][0]["id"] == 9
+    assert (await _call_public_tool(server, tools, "followupboss_get_user", 10))["id"] == 10
+    assert await _call_public_tool(server, tools, "followupboss_delete_user", 10, 5) == {
         "deleted": True,
         "userId": 10,
     }
-    assert (await tools["followupboss_list_action_plans"].fn())["actionPlans"][0]["id"] == 11
-    assert (await tools["followupboss_list_action_plan_people"].fn())["actionPlansPeople"][0][
-        "id"
-    ] == 12
-    assert await tools["followupboss_apply_action_plan"].fn(11, 10810) == {}
-    assert (await tools["followupboss_update_action_plan_person"].fn(13, status="Paused"))[
-        "id"
-    ] == 13
-    assert (await tools["followupboss_list_automations"].fn())["automations"][0]["id"] == 87
-    assert (await tools["followupboss_get_automation"].fn(88))["id"] == 88
-    assert (await tools["followupboss_list_automation_people"].fn())["automationsPeople"][0][
-        "id"
-    ] == 89
-    assert (await tools["followupboss_get_automation_person"].fn(90))["id"] == 90
-    assert (await tools["followupboss_trigger_automation"].fn(87, 3))["id"] == 91
-    assert (await tools["followupboss_update_automation_person"].fn(92, status="Paused"))[
-        "id"
-    ] == 92
-    assert (await tools["followupboss_list_appointment_outcomes"].fn())["appointmentoutcomes"][0][
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_action_plans",
+        )
+    )["actionPlans"][0]["id"] == 11
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_action_plan_people",
+        )
+    )["actionPlansPeople"][0]["id"] == 12
+    assert await _call_public_tool(server, tools, "followupboss_apply_action_plan", 11, 10810) == {}
+    assert (
+        await _call_public_tool(
+            server, tools, "followupboss_update_action_plan_person", 13, status="Paused"
+        )
+    )["id"] == 13
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_automations",
+        )
+    )["automations"][0]["id"] == 87
+    assert (await _call_public_tool(server, tools, "followupboss_get_automation", 88))["id"] == 88
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_automation_people",
+        )
+    )["automationsPeople"][0]["id"] == 89
+    assert (await _call_public_tool(server, tools, "followupboss_get_automation_person", 90))[
         "id"
     ] == 90
-    assert (await tools["followupboss_get_appointment_outcome"].fn(91))["id"] == 91
-    assert (await tools["followupboss_create_appointment_outcome"].fn(name="No Show"))["id"] == 92
+    assert (await _call_public_tool(server, tools, "followupboss_trigger_automation", 87, 3))[
+        "id"
+    ] == 91
     assert (
-        await tools["followupboss_update_appointment_outcome"].fn(
+        await _call_public_tool(
+            server, tools, "followupboss_update_automation_person", 92, status="Paused"
+        )
+    )["id"] == 92
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_appointment_outcomes",
+        )
+    )["appointmentoutcomes"][0]["id"] == 90
+    assert (await _call_public_tool(server, tools, "followupboss_get_appointment_outcome", 91))[
+        "id"
+    ] == 91
+    assert (
+        await _call_public_tool(
+            server, tools, "followupboss_create_appointment_outcome", name="No Show"
+        )
+    )["id"] == 92
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_update_appointment_outcome",
             93,
             name="Rescheduled",
         )
     )["id"] == 93
-    assert await tools["followupboss_delete_appointment_outcome"].fn(94, 91) == {
+    assert await _call_public_tool(
+        server, tools, "followupboss_delete_appointment_outcome", 94, 91
+    ) == {
         "deleted": True,
         "appointmentOutcomeId": 94,
     }
-    assert (await tools["followupboss_list_appointment_types"].fn())["appointmenttypes"][0][
-        "id"
-    ] == 94
-    assert (await tools["followupboss_get_appointment_type"].fn(95))["id"] == 95
-    assert (await tools["followupboss_create_appointment_type"].fn(name="Listing Consult"))[
-        "id"
-    ] == 96
     assert (
-        await tools["followupboss_update_appointment_type"].fn(
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_appointment_types",
+        )
+    )["appointmenttypes"][0]["id"] == 94
+    assert (await _call_public_tool(server, tools, "followupboss_get_appointment_type", 95))[
+        "id"
+    ] == 95
+    assert (
+        await _call_public_tool(
+            server, tools, "followupboss_create_appointment_type", name="Listing Consult"
+        )
+    )["id"] == 96
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_update_appointment_type",
             97,
             name="Showing",
         )
     )["id"] == 97
-    assert await tools["followupboss_delete_appointment_type"].fn(98, 95) == {
+    assert await _call_public_tool(
+        server, tools, "followupboss_delete_appointment_type", 98, 95
+    ) == {
         "deleted": True,
         "appointmentTypeId": 98,
     }
-    assert (await tools["followupboss_list_groups"].fn(type="Agent"))["groups"][0]["id"] == 99
-    assert (await tools["followupboss_list_round_robin_groups"].fn(type="Agent"))["groups"][0][
-        "id"
-    ] == 100
-    assert (await tools["followupboss_get_group"].fn(101))["id"] == 101
-    assert (await tools["followupboss_create_group"].fn("Westside", [200, 201]))["id"] == 102
-    assert (await tools["followupboss_update_group"].fn(103, name="Westside Plus"))["id"] == 103
-    assert await tools["followupboss_delete_group"].fn(104) == {
+    assert (await _call_public_tool(server, tools, "followupboss_list_groups", type="Agent"))[
+        "groups"
+    ][0]["id"] == 99
+    assert (
+        await _call_public_tool(server, tools, "followupboss_list_round_robin_groups", type="Agent")
+    )["groups"][0]["id"] == 100
+    assert (await _call_public_tool(server, tools, "followupboss_get_group", 101))["id"] == 101
+    assert (
+        await _call_public_tool(server, tools, "followupboss_create_group", "Westside", [200, 201])
+    )["id"] == 102
+    assert (
+        await _call_public_tool(
+            server, tools, "followupboss_update_group", 103, name="Westside Plus"
+        )
+    )["id"] == 103
+    assert await _call_public_tool(server, tools, "followupboss_delete_group", 104) == {
         "deleted": True,
         "groupId": 104,
     }
-    assert (await tools["followupboss_list_inbox_app_installations"].fn(9))["inboxApps"][0][
-        "inboxAppId"
-    ] == 130
+    assert (await _call_public_tool(server, tools, "followupboss_list_inbox_app_installations", 9))[
+        "inboxApps"
+    ][0]["inboxAppId"] == 130
     assert (
-        await tools["followupboss_install_inbox_app"].fn(
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_install_inbox_app",
             9,
             0,
             "https://example.com/webhook",
         )
     )["id"] == 131
-    assert await tools["followupboss_deactivate_inbox_app"].fn(131) == {
+    assert await _call_public_tool(server, tools, "followupboss_deactivate_inbox_app", 131) == {
         "deleted": True,
         "inboxAppId": 131,
     }
-    assert (await tools["followupboss_list_inbox_app_participants"].fn(131, "conv-123"))[
-        "participants"
-    ][0]["id"] == 132
     assert (
-        await tools["followupboss_add_inbox_app_participant"].fn(
+        await _call_public_tool(
+            server, tools, "followupboss_list_inbox_app_participants", 131, "conv-123"
+        )
+    )["participants"][0]["id"] == 132
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_add_inbox_app_participant",
             131,
             "conv-123",
             name="John Doe",
             email="john@example.com",
         )
     )["id"] == 133
-    assert await tools["followupboss_remove_inbox_app_participant"].fn(131, "conv-123", 133) == {
+    assert await _call_public_tool(
+        server, tools, "followupboss_remove_inbox_app_participant", 131, "conv-123", 133
+    ) == {
         "deleted": True,
         "participantId": 133,
     }
     assert (
-        await tools["followupboss_add_inbox_app_message"].fn(
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_add_inbox_app_message",
             131,
             "conv-123",
             "msg-123",
@@ -3730,7 +3904,10 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         )
     )["id"] == 134
     assert (
-        await tools["followupboss_add_inbox_app_note"].fn(
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_add_inbox_app_note",
             131,
             "conv-123",
             "An example note.",
@@ -3738,7 +3915,10 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         )
     )["id"] == 135
     assert (
-        await tools["followupboss_update_inbox_app_conversation"].fn(
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_update_inbox_app_conversation",
             131,
             "conv-123",
             subject="A Conversation Subject",
@@ -3746,30 +3926,53 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         )
     )["externalConversationId"] == "conv-123"
     assert (
-        await tools["followupboss_update_inbox_app_message"].fn(
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_update_inbox_app_message",
             131,
             id=134,
             external_message_id="msg-124",
             delivery_status="Delivered",
         )
     )["id"] == 136
-    assert (await tools["followupboss_list_custom_fields"].fn())["customfields"][0]["id"] == 11
-    assert (await tools["followupboss_get_custom_field"].fn(12))["id"] == 12
     assert (
-        await tools["followupboss_create_custom_field"].fn(
-            "Looking for", "dropdown", choices=["Apartment"]
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_custom_fields",
+        )
+    )["customfields"][0]["id"] == 11
+    assert (await _call_public_tool(server, tools, "followupboss_get_custom_field", 12))["id"] == 12
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_create_custom_field",
+            "Looking for",
+            "dropdown",
+            choices=["Apartment"],
         )
     )["id"] == 13
-    assert (await tools["followupboss_update_custom_field"].fn(14, label="Looking for"))["id"] == 14
-    assert await tools["followupboss_delete_custom_field"].fn(15) == {
+    assert (
+        await _call_public_tool(
+            server, tools, "followupboss_update_custom_field", 14, label="Looking for"
+        )
+    )["id"] == 14
+    assert await _call_public_tool(server, tools, "followupboss_delete_custom_field", 15) == {
         "deleted": True,
         "customFieldId": 15,
     }
-    assert (await tools["followupboss_list_email_campaigns"].fn(origin="Curaytor"))["emCampaigns"][
-        0
-    ]["id"] == 201
     assert (
-        await tools["followupboss_create_email_campaign"].fn(
+        await _call_public_tool(
+            server, tools, "followupboss_list_email_campaigns", origin="Curaytor"
+        )
+    )["emCampaigns"][0]["id"] == 201
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_create_email_campaign",
             "Curaytor",
             "913",
             name="New Campaign",
@@ -3778,18 +3981,24 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         )
     )["id"] == 202
     assert (
-        await tools["followupboss_update_email_campaign"].fn(
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_update_email_campaign",
             203,
             name="Updated Campaign",
             subject="Updated",
             body_html="<p>Updated</p>",
         )
     )["id"] == 203
-    assert (await tools["followupboss_list_email_events"].fn(type="open"))["emEvents"][0][
-        "campaignId"
-    ] == 102
+    assert (await _call_public_tool(server, tools, "followupboss_list_email_events", type="open"))[
+        "emEvents"
+    ][0]["campaignId"] == 102
     assert (
-        await tools["followupboss_send_email_events"].fn(
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_send_email_events",
             [
                 {
                     "type": "delivered",
@@ -3797,134 +4006,268 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                     "recipient": "john.smith@gmail.com",
                     "campaign_id": 141,
                 }
-            ]
+            ],
         )
     )["emEventIds"] == [193928, 193929]
-    assert (await tools["followupboss_list_deals"].fn())["deals"][0]["id"] == 40
-    assert (await tools["followupboss_get_deal"].fn(41))["id"] == 41
-    assert (await tools["followupboss_create_deal"].fn(name="New deal", stage_id=7))["id"] == 42
-    assert (await tools["followupboss_update_deal"].fn(43, stage_id=8))["id"] == 43
-    assert await tools["followupboss_delete_deal"].fn(44) == {"deleted": True, "dealId": 44}
-    assert (await tools["followupboss_get_deal_attachment"].fn(10))["id"] == 10
     assert (
-        await tools["followupboss_create_deal_attachment"].fn(
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_deals",
+        )
+    )["deals"][0]["id"] == 40
+    assert (await _call_public_tool(server, tools, "followupboss_get_deal", 41))["id"] == 41
+    assert (
+        await _call_public_tool(
+            server, tools, "followupboss_create_deal", name="New deal", stage_id=7
+        )
+    )["id"] == 42
+    assert (await _call_public_tool(server, tools, "followupboss_update_deal", 43, stage_id=8))[
+        "id"
+    ] == 43
+    assert await _call_public_tool(server, tools, "followupboss_delete_deal", 44) == {
+        "deleted": True,
+        "dealId": 44,
+    }
+    assert (await _call_public_tool(server, tools, "followupboss_get_deal_attachment", 10))[
+        "id"
+    ] == 10
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_create_deal_attachment",
             8,
             "https://test.com/deal",
             "deal.jpg",
         )
     )["id"] == 11
     assert (
-        await tools["followupboss_update_deal_attachment"].fn(
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_update_deal_attachment",
             12,
             9,
             "https://test.com/deal-updated",
             "deal-updated.jpg",
         )
     )["id"] == 12
-    assert await tools["followupboss_delete_deal_attachment"].fn(13) == {
+    assert await _call_public_tool(server, tools, "followupboss_delete_deal_attachment", 13) == {
         "deleted": True,
         "dealAttachmentId": 13,
     }
-    assert (await tools["followupboss_list_deal_custom_fields"].fn())["dealCustomfields"][0][
-        "id"
-    ] == 44
-    assert (await tools["followupboss_get_deal_custom_field"].fn(45))["id"] == 45
     assert (
-        await tools["followupboss_create_deal_custom_field"].fn(
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_deal_custom_fields",
+        )
+    )["dealCustomfields"][0]["id"] == 44
+    assert (await _call_public_tool(server, tools, "followupboss_get_deal_custom_field", 45))[
+        "id"
+    ] == 45
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_create_deal_custom_field",
             "Priority",
             "dropdown",
             choices=["High", "Medium", "Low"],
         )
     )["id"] == 46
     assert (
-        await tools["followupboss_update_deal_custom_field"].fn(
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_update_deal_custom_field",
             47,
             label="Priority",
             choices=["Critical", "High", "Medium"],
             read_only=True,
         )
     )["id"] == 47
-    assert await tools["followupboss_delete_deal_custom_field"].fn(47) == {
+    assert await _call_public_tool(server, tools, "followupboss_delete_deal_custom_field", 47) == {
         "deleted": True,
         "dealCustomFieldId": 47,
     }
-    assert (await tools["followupboss_list_pipelines"].fn())["pipelines"][0]["id"] == 60
-    assert (await tools["followupboss_get_pipeline"].fn(61))["id"] == 61
-    assert (await tools["followupboss_create_pipeline"].fn(name="New pipeline"))["id"] == 62
-    assert (await tools["followupboss_update_pipeline"].fn(63, name="Updated pipeline"))["id"] == 63
-    assert await tools["followupboss_delete_pipeline"].fn(64) == {
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_pipelines",
+        )
+    )["pipelines"][0]["id"] == 60
+    assert (await _call_public_tool(server, tools, "followupboss_get_pipeline", 61))["id"] == 61
+    assert (
+        await _call_public_tool(server, tools, "followupboss_create_pipeline", name="New pipeline")
+    )["id"] == 62
+    assert (
+        await _call_public_tool(
+            server, tools, "followupboss_update_pipeline", 63, name="Updated pipeline"
+        )
+    )["id"] == 63
+    assert await _call_public_tool(server, tools, "followupboss_delete_pipeline", 64) == {
         "deleted": True,
         "pipelineId": 64,
     }
-    assert (await tools["followupboss_list_ponds"].fn())["ponds"][0]["id"] == 65
-    assert (await tools["followupboss_get_pond"].fn(66))["id"] == 66
-    assert (await tools["followupboss_create_pond"].fn("Sphere Builders", 8, [8, 9]))["id"] == 67
-    assert (await tools["followupboss_update_pond"].fn(68, name="Updated Pond"))["id"] == 68
-    assert await tools["followupboss_delete_pond"].fn(69, 9) == {
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_ponds",
+        )
+    )["ponds"][0]["id"] == 65
+    assert (await _call_public_tool(server, tools, "followupboss_get_pond", 66))["id"] == 66
+    assert (
+        await _call_public_tool(
+            server, tools, "followupboss_create_pond", "Sphere Builders", 8, [8, 9]
+        )
+    )["id"] == 67
+    assert (
+        await _call_public_tool(server, tools, "followupboss_update_pond", 68, name="Updated Pond")
+    )["id"] == 68
+    assert await _call_public_tool(server, tools, "followupboss_delete_pond", 69, 9) == {
         "deleted": True,
         "pondId": 69,
     }
-    assert (await tools["followupboss_list_smart_lists"].fn())["smartlists"][0]["id"] == 76
-    assert (await tools["followupboss_get_smart_list"].fn(77))["id"] == 77
-    assert (await tools["followupboss_list_stages"].fn())["stages"][0]["id"] == 78
-    assert (await tools["followupboss_get_stage"].fn(79))["id"] == 79
-    assert (await tools["followupboss_create_stage"].fn("Qualified"))["id"] == 80
-    assert (await tools["followupboss_update_stage"].fn(81, name="Updated Stage"))["id"] == 81
-    assert await tools["followupboss_delete_stage"].fn(82, 11) == {
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_smart_lists",
+        )
+    )["smartlists"][0]["id"] == 76
+    assert (await _call_public_tool(server, tools, "followupboss_get_smart_list", 77))["id"] == 77
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_stages",
+        )
+    )["stages"][0]["id"] == 78
+    assert (await _call_public_tool(server, tools, "followupboss_get_stage", 79))["id"] == 79
+    assert (await _call_public_tool(server, tools, "followupboss_create_stage", "Qualified"))[
+        "id"
+    ] == 80
+    assert (
+        await _call_public_tool(
+            server, tools, "followupboss_update_stage", 81, name="Updated Stage"
+        )
+    )["id"] == 81
+    assert await _call_public_tool(server, tools, "followupboss_delete_stage", 82, 11) == {
         "deleted": True,
         "stageId": 82,
     }
-    assert (await tools["followupboss_list_teams"].fn())["teams"][0]["id"] == 83
-    assert (await tools["followupboss_get_team"].fn(84))["id"] == 84
-    assert (await tools["followupboss_create_team"].fn("Buyer Team", [7, 8]))["id"] == 85
-    assert (await tools["followupboss_update_team"].fn(86, name="Updated Team"))["id"] == 86
-    assert await tools["followupboss_delete_team"].fn(87) == {
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_teams",
+        )
+    )["teams"][0]["id"] == 83
+    assert (await _call_public_tool(server, tools, "followupboss_get_team", 84))["id"] == 84
+    assert (
+        await _call_public_tool(server, tools, "followupboss_create_team", "Buyer Team", [7, 8])
+    )["id"] == 85
+    assert (
+        await _call_public_tool(server, tools, "followupboss_update_team", 86, name="Updated Team")
+    )["id"] == 86
+    assert await _call_public_tool(server, tools, "followupboss_delete_team", 87) == {
         "deleted": True,
         "teamId": 87,
     }
-    assert (await tools["followupboss_list_calls"].fn())["calls"][0]["id"] == 12
-    assert (await tools["followupboss_get_call"].fn(13))["id"] == 13
-    assert (await tools["followupboss_create_call"].fn(1, "555-0000", True))["id"] == 14
-    assert (await tools["followupboss_update_call"].fn(15, note="Updated note"))["id"] == 15
-    assert (await tools["followupboss_list_tasks"].fn())["tasks"][0]["id"] == 16
-    assert (await tools["followupboss_get_task"].fn(17))["id"] == 17
-    assert (await tools["followupboss_create_task"].fn(1, assigned_to="Data", type="Email"))[
-        "id"
-    ] == 18
-    assert (await tools["followupboss_update_task"].fn(19, type="Text"))["id"] == 19
-    assert await tools["followupboss_delete_task"].fn(20) == {"deleted": True, "taskId": 20}
-    assert (await tools["followupboss_list_templates"].fn())["templates"][0]["id"] == 20
-    assert (await tools["followupboss_get_template"].fn(21))["id"] == 21
     assert (
-        await tools["followupboss_merge_template"].fn(
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_calls",
+        )
+    )["calls"][0]["id"] == 12
+    assert (await _call_public_tool(server, tools, "followupboss_get_call", 13))["id"] == 13
+    assert (
+        await _call_public_tool(server, tools, "followupboss_create_call", 1, "555-0000", True)
+    )["id"] == 14
+    assert (
+        await _call_public_tool(server, tools, "followupboss_update_call", 15, note="Updated note")
+    )["id"] == 15
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_tasks",
+        )
+    )["tasks"][0]["id"] == 16
+    assert (await _call_public_tool(server, tools, "followupboss_get_task", 17))["id"] == 17
+    assert (
+        await _call_public_tool(
+            server, tools, "followupboss_create_task", 1, assigned_to="Data", type="Email"
+        )
+    )["id"] == 18
+    assert (await _call_public_tool(server, tools, "followupboss_update_task", 19, type="Text"))[
+        "id"
+    ] == 19
+    assert await _call_public_tool(server, tools, "followupboss_delete_task", 20) == {
+        "deleted": True,
+        "taskId": 20,
+    }
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_templates",
+        )
+    )["templates"][0]["id"] == 20
+    assert (await _call_public_tool(server, tools, "followupboss_get_template", 21))["id"] == 21
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_merge_template",
             31,
             merge_person_id=1213,
             recipients={"to": [{"name": "Bob Alvarez", "email": "bob@example.com"}]},
         )
     )["id"] == 57
     assert (
-        await tools["followupboss_create_template"].fn(
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_create_template",
             name="New template",
             subject="Hello",
             body="<p>Hello</p>",
         )
     )["id"] == 22
     assert (
-        await tools["followupboss_update_template"].fn(
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_update_template",
             23,
             name="Updated template",
             subject="Updated",
             body="<p>Updated</p>",
         )
     )["id"] == 23
-    assert await tools["followupboss_delete_template"].fn(24) == {
+    assert await _call_public_tool(server, tools, "followupboss_delete_template", 24) == {
         "deleted": True,
         "templateId": 24,
     }
-    assert (await tools["followupboss_list_text_messages"].fn())["textmessages"][0]["id"] == 50
-    assert (await tools["followupboss_get_text_message"].fn(51))["id"] == 51
     assert (
-        await tools["followupboss_create_text_message"].fn(
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_text_messages",
+        )
+    )["textmessages"][0]["id"] == 50
+    assert (await _call_public_tool(server, tools, "followupboss_get_text_message", 51))["id"] == 51
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_create_text_message",
             2,
             "Logged externally",
             "555-0002",
@@ -3934,73 +4277,134 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
             external_url="https://example.com/sms/3",
         )
     )["id"] == 58
-    assert (await tools["followupboss_list_text_message_templates"].fn())["textmessagetemplates"][
-        0
-    ]["id"] == 52
-    assert (await tools["followupboss_get_text_message_template"].fn(53))["id"] == 53
     assert (
-        await tools["followupboss_merge_text_message_template"].fn(
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_text_message_templates",
+        )
+    )["textmessagetemplates"][0]["id"] == 52
+    assert (await _call_public_tool(server, tools, "followupboss_get_text_message_template", 53))[
+        "id"
+    ] == 53
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_merge_text_message_template",
             31,
             person_id=1213,
             recipients={"to": [{"name": "Bob Alvarez", "phone": "+14075558075"}]},
         )
     )["mergedTemplate"] == "Hey Bob, Alice and Carol..."
     assert (
-        await tools["followupboss_create_text_message_template"].fn(
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_create_text_message_template",
             name="New text template",
             message="Hello there",
         )
     )["id"] == 54
     assert (
-        await tools["followupboss_update_text_message_template"].fn(
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_update_text_message_template",
             55,
             name="Updated text template",
             message="Updated text",
         )
     )["id"] == 55
-    assert await tools["followupboss_delete_text_message_template"].fn(56) == {
+    assert await _call_public_tool(
+        server, tools, "followupboss_delete_text_message_template", 56
+    ) == {
         "deleted": True,
         "textMessageTemplateId": 56,
     }
-    assert (await tools["followupboss_list_team_inboxes"].fn())["teamInboxes"][0]["id"] == 120
-    assert (await tools["followupboss_add_note"].fn(1, body="hi"))["id"] == 24
-    assert (await tools["followupboss_get_note"].fn(25))["id"] == 25
-    assert (await tools["followupboss_update_note"].fn(26, body="updated"))["id"] == 26
-    assert await tools["followupboss_delete_note"].fn(27) == {"deleted": True, "noteId": 27}
-    assert (await tools["followupboss_list_webhooks"].fn())["webhooks"][0]["id"] == 27
-    assert (await tools["followupboss_get_webhook"].fn(28))["id"] == 28
-    assert (await tools["followupboss_get_webhook_event"].fn("db36048a6b06d80e7f9d3440233ae915"))[
-        "id"
-    ] == "db36048a6b06d80e7f9d3440233ae915"
-    assert (await tools["followupboss_create_webhook"].fn("peopleCreated", "https://example.com"))[
-        "id"
-    ] == 29
-    assert (await tools["followupboss_update_webhook"].fn(29, status="Disabled"))[
-        "status"
-    ] == "Disabled"
-    assert await tools["followupboss_delete_webhook"].fn(30) == {"deleted": True, "webhookId": 30}
-    assert (await tools["followupboss_list_appointments"].fn())["appointments"][0]["id"] == 30
-    assert (await tools["followupboss_get_appointment"].fn(31))["id"] == 31
     assert (
-        await tools["followupboss_create_appointment"].fn(
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_team_inboxes",
+        )
+    )["teamInboxes"][0]["id"] == 120
+    assert (await _call_public_tool(server, tools, "followupboss_add_note", 1, body="hi"))[
+        "id"
+    ] == 24
+    assert (await _call_public_tool(server, tools, "followupboss_get_note", 25))["id"] == 25
+    assert (await _call_public_tool(server, tools, "followupboss_update_note", 26, body="updated"))[
+        "id"
+    ] == 26
+    assert await _call_public_tool(server, tools, "followupboss_delete_note", 27) == {
+        "deleted": True,
+        "noteId": 27,
+    }
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_webhooks",
+        )
+    )["webhooks"][0]["id"] == 27
+    assert (await _call_public_tool(server, tools, "followupboss_get_webhook", 28))["id"] == 28
+    assert (
+        await _call_public_tool(
+            server, tools, "followupboss_get_webhook_event", "db36048a6b06d80e7f9d3440233ae915"
+        )
+    )["id"] == "db36048a6b06d80e7f9d3440233ae915"
+    assert (
+        await _call_public_tool(
+            server, tools, "followupboss_create_webhook", "peopleCreated", "https://example.com"
+        )
+    )["id"] == 29
+    assert (
+        await _call_public_tool(server, tools, "followupboss_update_webhook", 29, status="Disabled")
+    )["status"] == "Disabled"
+    assert await _call_public_tool(server, tools, "followupboss_delete_webhook", 30) == {
+        "deleted": True,
+        "webhookId": 30,
+    }
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_appointments",
+        )
+    )["appointments"][0]["id"] == 30
+    assert (await _call_public_tool(server, tools, "followupboss_get_appointment", 31))["id"] == 31
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_create_appointment",
             title="Listing appointment",
             start="2026-03-28T10:00:00Z",
             end="2026-03-28T11:00:00Z",
         )
     )["id"] == 32
     assert (
-        await tools["followupboss_update_appointment"].fn(
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_update_appointment",
             33,
             title="Updated appointment",
             start="2026-03-29T10:00:00Z",
             end="2026-03-29T11:00:00Z",
         )
     )["id"] == 33
-    assert await tools["followupboss_delete_appointment"].fn(34) == {
+    assert await _call_public_tool(server, tools, "followupboss_delete_appointment", 34) == {
         "deleted": True,
         "appointmentId": 34,
     }
-    assert (await tools["followupboss_list_timeframes"].fn())["timeframes"][0]["id"] == 1
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_timeframes",
+        )
+    )["timeframes"][0]["id"] == 1
 
     resources = await server.list_resources()
     assert [str(resource.uri) for resource in resources] == EXPECTED_RESOURCE_URIS
@@ -4264,6 +4668,45 @@ async def test_streamable_http_client_interoperates_with_server_surface() -> Non
             def __init__(self) -> None:
                 self.responses = [
                     {{"id": 1, "name": "Picard"}},
+                    {{
+                        "id": 1,
+                        "name": "Gerald Leenerts",
+                        "apiKey": "secret-api-key",
+                        "algoliaKey": "secret-algolia-key",
+                        "callingCapabilityToken": "secret-calling-token",
+                        "notifyBy": ["email", "sms"],
+                        "intercomSettings": {{"user_hash": "secret-hash"}},
+                    }},
+                    {{
+                        "_metadata": {{"limit": 10, "offset": 0, "total": 1}},
+                        "people": [{{"id": 2}}],
+                    }},
+                    {{}},
+                    {{
+                        "_metadata": {{"limit": 10, "offset": 0, "total": 2}},
+                        "timeframes": [{{"id": 10, "timeframe": "0-3 Months"}}],
+                    }},
+                    {{"id": 3, "personId": 2, "type": "Inquiry"}},
+                    {{
+                        "_metadata": {{"limit": 10, "offset": 0, "total": 1}},
+                        "tasks": [{{"id": 4}}],
+                    }},
+                    {{"id": 5, "personId": 2, "assignedTo": "Data", "type": "Call"}},
+                    {{
+                        "_metadata": {{"limit": 10, "offset": 0, "total": 1}},
+                        "calls": [{{"id": 6}}],
+                    }},
+                    {{"id": 7, "personId": 2, "phone": "555-0000", "userName": "Data"}},
+                    {{
+                        "_metadata": {{"limit": 10, "offset": 0, "total": 1}},
+                        "templates": [{{"id": 8}}],
+                    }},
+                    {{"id": 9, "name": "Buyer intro", "subject": "Hello"}},
+                    {{
+                        "_metadata": {{"limit": 10, "offset": 0, "total": 1}},
+                        "appointments": [{{"id": 10}}],
+                    }},
+                    {{"id": 11, "title": "Buyer consult"}},
                 ]
 
             async def aclose(self) -> None:
@@ -4311,11 +4754,121 @@ async def test_streamable_http_client_interoperates_with_server_surface() -> Non
 
                 tools = await session.list_tools()
                 tool_names = sorted(tool.name for tool in tools.tools)
-                assert "followupboss_get_identity" in tool_names
+                assert tool_names == EXPECTED_REGISTERED_TOOL_NAMES
 
                 identity_result = await session.call_tool("followupboss_get_identity")
                 assert identity_result.isError is False
                 assert identity_result.structuredContent == {"id": 1, "name": "Picard"}
+
+                me_result = await session.call_tool("followupboss_get_me")
+                assert me_result.isError is False
+                assert me_result.structuredContent is not None
+                assert me_result.structuredContent["id"] == 1
+                assert me_result.structuredContent["apiKey"] == "***redacted***"
+                assert me_result.structuredContent["algoliaKey"] == "***redacted***"
+                assert me_result.structuredContent["callingCapabilityToken"] == "***redacted***"
+                assert me_result.structuredContent["notifyBy"] == ["email", "sms"]
+                assert (
+                    me_result.structuredContent["intercomSettings"]["user_hash"] == "***redacted***"
+                )
+
+                people_result = await session.call_tool(
+                    "followupboss_search_people",
+                    {"email": "a@example.com"},
+                )
+                assert people_result.isError is False
+                assert people_result.structuredContent is not None
+                assert people_result.structuredContent["_metadata"] == {
+                    "count": 1,
+                    "limit": 10,
+                    "next_token": None,
+                    "next_link": None,
+                    "offset": 0,
+                    "total": 1,
+                }
+                people = people_result.structuredContent["people"]
+                assert isinstance(people, list)
+                assert people[0]["id"] == 2
+
+                delete_person_result = await session.call_tool(
+                    "followupboss_delete_person",
+                    {"person_id": 4},
+                )
+                assert delete_person_result.isError is False
+                assert delete_person_result.structuredContent == {"deleted": True, "personId": 4}
+
+                timeframes_result = await session.call_tool("followupboss_list_timeframes")
+                assert timeframes_result.isError is False
+                assert timeframes_result.structuredContent is not None
+                assert timeframes_result.structuredContent["_metadata"] == {
+                    "count": 1,
+                    "limit": 10,
+                    "next_token": None,
+                    "next_link": None,
+                    "offset": 0,
+                    "total": 2,
+                }
+                timeframes = timeframes_result.structuredContent["timeframes"]
+                assert isinstance(timeframes, list)
+                assert timeframes[0]["id"] == 10
+
+                event_result = await session.call_tool("followupboss_get_event", {"event_id": 3})
+                assert event_result.isError is False
+                assert event_result.structuredContent is not None
+                assert event_result.structuredContent["id"] == 3
+
+                tasks_result = await session.call_tool("followupboss_list_tasks", {"person_id": 2})
+                assert tasks_result.isError is False
+                assert tasks_result.structuredContent is not None
+                tasks = tasks_result.structuredContent["tasks"]
+                assert isinstance(tasks, list)
+                assert tasks[0]["id"] == 4
+
+                task_result = await session.call_tool("followupboss_get_task", {"task_id": 5})
+                assert task_result.isError is False
+                assert task_result.structuredContent is not None
+                assert task_result.structuredContent["id"] == 5
+
+                calls_result = await session.call_tool("followupboss_list_calls", {"person_id": 2})
+                assert calls_result.isError is False
+                assert calls_result.structuredContent is not None
+                calls = calls_result.structuredContent["calls"]
+                assert isinstance(calls, list)
+                assert calls[0]["id"] == 6
+
+                call_result = await session.call_tool("followupboss_get_call", {"call_id": 7})
+                assert call_result.isError is False
+                assert call_result.structuredContent is not None
+                assert call_result.structuredContent["id"] == 7
+
+                templates_result = await session.call_tool("followupboss_list_templates")
+                assert templates_result.isError is False
+                assert templates_result.structuredContent is not None
+                templates = templates_result.structuredContent["templates"]
+                assert isinstance(templates, list)
+                assert templates[0]["id"] == 8
+
+                template_result = await session.call_tool(
+                    "followupboss_get_template", {"template_id": 9}
+                )
+                assert template_result.isError is False
+                assert template_result.structuredContent is not None
+                assert template_result.structuredContent["id"] == 9
+
+                appointments_result = await session.call_tool("followupboss_list_appointments")
+                assert appointments_result.isError is False
+                assert appointments_result.structuredContent is not None
+                appointments = appointments_result.structuredContent["appointments"]
+                assert isinstance(appointments, list)
+                assert appointments[0]["id"] == 10
+
+                appointment_result = await session.call_tool(
+                    "followupboss_get_appointment",
+                    {"appointment_id": 11},
+                )
+                assert appointment_result.isError is False
+                assert appointment_result.structuredContent is not None
+                assert appointment_result.structuredContent["id"] == 11
 
                 resources = await session.list_resources()
                 assert [

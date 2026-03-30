@@ -90,8 +90,21 @@ Build a production-grade Python 3.12+ repository that ingests official Follow Up
 - `DONE` Re-run `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check` and `make release-validate` after the broader live-suite slice.
 - `DONE` Reduce private FastMCP-manager coupling in the server-surface test by moving exact registration assertions onto public FastMCP and official stdio client surfaces.
 - `DONE` Re-run focused MCP tests and `make release-validate` after the MCP-coupling slice.
-- `DONE` Extend the optional live suite with disposable person, note reaction, note, task, and appointment write-and-rollback flows that exercise real create, update, lookup, and cleanup behavior.
+- `DONE` Extend the optional live suite with disposable person, note reaction, note, task, appointment, and registered-system person-attachment flows that exercise real create, update, lookup, and cleanup behavior.
 - `DONE` Re-run `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check` and `make release-validate` after the live write-and-rollback slice.
+- `DONE` Add safer request-shape debug logs plus retry, rate-limit, and attempt-count telemetry in the shared HTTP client.
+- `DONE` Re-run focused HTTP-client tests and `make release-validate` after the telemetry slice.
+- `DONE` Add an owner-only live webhook CRUD path that skips cleanly when the current credential lacks access.
+- `DONE` Add broader CI environment diversity across operating systems while keeping artifact work on the baseline lane.
+- `DONE` Validate the updated workflow syntax and re-run `make release-validate` after the OS-matrix slice.
+- `DONE` Route the broad MCP server-surface smoke test through public `server.call_tool(...)` instead of private tool-function invocation.
+- `DONE` Broaden CI validation across more than one Python/runtime environment.
+- `DONE` Validate the workflow syntax and re-run `make release-validate` after the CI-matrix slice.
+- `DONE` Centralize more MCP request-model assembly through a shared typed builder in `mcp_registration.py`.
+- `DONE` Upgrade locked `pygments` to a fixed release and remove the temporary `CVE-2026-4539` audit ignore from local and CI validation flows.
+- `DONE` Extend the shared typed request-builder adoption across additional MCP registration helpers and restore the architecture category to its baseline band.
+- `DONE` Expand shared typed request-builder adoption across additional MCP registration helpers such as groups, appointment metadata, calls, pipelines, ponds, teams, templates, text messages, notes, and webhooks.
+- `DONE` Finish the remaining request/input-model constructor tail in `mcp_registration.py` so request assembly is effectively centralized behind the shared typed builder.
 
 ## Blockers
 
@@ -160,7 +173,43 @@ Build a production-grade Python 3.12+ repository that ingests official Follow Up
 - Re-ran `make release-validate` with successful output: `Success: no issues found in 85 source files`, `110 passed, 3 skipped`, `TOTAL 4423 0 410 0 100.00%`, and `Validated build artifacts: followupboss_mcp-0.1.0.tar.gz followupboss_mcp-0.1.0-py3-none-any.whl`.
 - Extended `tests/live/test_contract_suite.py` with disposable person, note reaction, note, task, and appointment rollback flows, refreshed the README, contributing guide, testing guide, validation runbook, final validation report, harsh review checklist, and task tracker, and verified cleanup reaches real `404` reads after person, task, and appointment deletion.
 - Re-ran `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check` with successful output: `4 passed`.
-- Re-ran `make release-validate` with successful output: `Success: no issues found in 85 source files`, `110 passed, 3 skipped`, `TOTAL 4423 0 410 0 100.00%`, and `Validated build artifacts: followupboss_mcp-0.1.0.tar.gz followupboss_mcp-0.1.0-py3-none-any.whl`.
+- Re-ran `make release-validate` with successful output: `Success: no issues found in 85 source files`, `110 passed, 4 skipped`, `TOTAL 4423 0 410 0 100.00%`, and `Validated build artifacts: followupboss_mcp-0.1.0.tar.gz followupboss_mcp-0.1.0-py3-none-any.whl`.
+- Added safer request-shape debug logs plus explicit retry, rate-limit, and attempt-count telemetry in `src/followupboss_mcp/http_client.py`, refreshed the security, MCP usage, final validation, harsh review, and task-tracker docs, and kept request logging free of raw query and JSON values.
+- Re-ran `uv run pytest tests/unit/test_http_client.py` with successful output: `10 passed`.
+- Re-ran `make release-validate` with successful output: `Success: no issues found in 85 source files`, `111 passed, 4 skipped`, `TOTAL 4429 0 410 0 100.00%`, and `Validated build artifacts: followupboss_mcp-0.1.0.tar.gz followupboss_mcp-0.1.0-py3-none-any.whl`.
+- Extended `tests/live/test_contract_suite.py` with registered-system person attachment create/get/update/delete coverage, refreshed the README, contributing guide, testing guide, validation runbook, final validation report, harsh review checklist, and task tracker, and proved the registered-system attachment path works under the current credential.
+- Re-ran `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check` with successful output: `5 passed`.
+- Re-ran `make release-validate` with successful output: `Success: no issues found in 85 source files`, `111 passed, 5 skipped`, `TOTAL 4429 0 410 0 100.00%`, and `Validated build artifacts: followupboss_mcp-0.1.0.tar.gz followupboss_mcp-0.1.0-py3-none-any.whl`.
+- Split `.github/workflows/ci.yml` into dedicated secret-scan, multi-version quality, and build-smoke jobs, widened validation to Python `3.12` and `3.13`, refreshed the final validation report and harsh review checklist, and kept artifact validation on the baseline lane.
+- Synced the build-readiness docs to the current workflow state, which now runs build-smoke validation across Ubuntu, macOS, and Windows in addition to the broader validation matrix.
+- Added an owner-only webhook CRUD test to `tests/live/test_contract_suite.py`, refreshed the testing, validation, and task-tracker docs, and verified the current credential records the webhook path as an automated clean skip rather than a manual blocker.
+- Re-ran `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check` with successful output: `5 passed, 1 skipped`.
+- Re-ran `make release-validate` with successful output: `Success: no issues found in 85 source files`, `111 passed, 6 skipped`, `TOTAL 4433 0 410 0 100.00%`, and `Validated build artifacts: followupboss_mcp-0.1.0.tar.gz followupboss_mcp-0.1.0-py3-none-any.whl`.
+- Extended `.github/workflows/ci.yml` with a macOS Python `3.12` validation lane on top of the existing Ubuntu Python `3.12` and `3.13` matrix, refreshed the final validation report and harsh review checklist, and kept build-smoke validation on the baseline Ubuntu lane.
+- Re-ran workflow YAML parsing with successful output: `workflow yaml ok`.
+- Synced the build-readiness docs and harsh scorecard to the current workflow state, which already validates Linux, macOS, and Windows on both Python `3.12` and `3.13`, then revalidated through the shared local release wrapper.
+- Routed the broad MCP server-surface smoke test in `tests/mcp/test_mcp_tools_server_cli.py` through public FastMCP `list_tools()` metadata plus `server.call_tool(...)`, keeping the full registered tool surface coverage intact while removing direct private tool-function invocation.
+- Re-ran `uv run pytest tests/mcp/test_mcp_tools_server_cli.py` with successful output: `5 passed`.
+- Re-ran `make release-validate` with successful output: `Success: no issues found in 85 source files`, `111 passed, 6 skipped`, `TOTAL 4433 0 410 0 100.00%`, and `Validated build artifacts: followupboss_mcp-0.1.0.tar.gz followupboss_mcp-0.1.0-py3-none-any.whl`.
+- Expanded the official streamable-HTTP client-session test with representative event, task, call, template, and appointment flows in addition to the existing identity, `/me`, people, timeframes, resource, and prompt coverage.
+- Re-ran `uv run pytest tests/mcp/test_mcp_tools_server_cli.py` with successful output: `5 passed`.
+- Centralized more MCP request-model assembly in `src/followupboss_mcp/mcp_registration.py` through a shared typed builder, which removed a large set of repeated `model_validate({...})` blocks without changing the public MCP signatures.
+- Re-ran `uv run pytest tests/mcp/test_mcp_tools_server_cli.py tests/unit/test_services.py` with successful output: `83 passed`.
+- Expanded the shared typed builder adoption across groups, appointment metadata, calls, pipelines, ponds, teams, templates, text messages, notes, and webhooks, further reducing direct inline request-model construction inside `mcp_registration.py`.
+- Re-ran `uv run pytest tests/mcp/test_mcp_tools_server_cli.py tests/unit/test_services.py` with successful output: `83 passed`.
+- Extended the shared typed builder adoption across additional registration helpers such as users and appointment metadata, leaving mostly public parameter-list verbosity rather than repeated validation dictionaries.
+- Re-ran `uv run pytest tests/mcp/test_mcp_tools_server_cli.py tests/unit/test_services.py` with successful output: `83 passed`.
+- Expanded the shared typed builder adoption across custom fields, calls, pipelines, ponds, teams, templates, text messages, notes, and webhooks, further reducing direct inline request-model construction inside `mcp_registration.py`.
+- Re-ran `uv run pytest tests/mcp/test_mcp_tools_server_cli.py tests/unit/test_services.py` with successful output: `83 passed`.
+- Finished the remaining request/input-model constructor tail in `src/followupboss_mcp/mcp_registration.py`, leaving request assembly effectively centralized behind the shared typed builder rather than split across ad hoc direct constructors.
+- Re-ran `uv run pytest tests/mcp/test_mcp_tools_server_cli.py tests/unit/test_services.py` with successful output: `83 passed`.
+- Expanded the streamable-HTTP official client-session test with representative `get_me`, people search, delete-confirmation, and timeframe-list flows while keeping the full registered tool list assertion in place.
+- Re-ran `uv run pytest tests/mcp/test_mcp_tools_server_cli.py` with successful output: `5 passed`.
+- Added an owner-only webhook CRUD test to `tests/live/test_contract_suite.py`, refreshed the live-validation docs, and verified the current credential now records the webhook path as an automated clean skip instead of a manual blocker.
+- Re-ran `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check` with successful output: `5 passed, 1 skipped`.
+- Added optional `FOLLOWUPBOSS_OWNER_*` override support to the live webhook path so a stronger owner credential can exercise webhook CRUD without replacing the default live credential.
+- Upgraded the locked `pygments` dependency from `2.19.2` to `2.20.0`, removed the temporary `CVE-2026-4539` ignore from the Makefile, CI, README, contributing, testing, security, and incident-response docs, and restored a clean dependency-audit path without exceptions.
+- Re-ran `uvx --from pip-audit pip-audit -r /tmp/followupboss-mcp-requirements.txt --strict --disable-pip --no-deps` with successful output: `No known vulnerabilities found`.
 
 ## Final Acceptance Checklist
 

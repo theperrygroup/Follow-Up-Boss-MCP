@@ -121,6 +121,7 @@ from followupboss_mcp.models.automations import (
     CreateAutomationPersonRequest,
 )
 from followupboss_mcp.models.calls import CallListRequest, CreateCallRequest
+from followupboss_mcp.models.common import RequestModel
 from followupboss_mcp.models.custom_fields import (
     CreateCustomFieldRequest,
     CustomFieldListRequest,
@@ -186,6 +187,31 @@ from followupboss_mcp.models.webhooks import (
     WebhookListRequest,
 )
 from mcp.server.fastmcp import FastMCP
+
+
+def _validated_request[ModelT: RequestModel](
+    model_type: type[ModelT],
+    values: dict[str, object],
+    /,
+    *,
+    exclude: set[str] | None = None,
+) -> ModelT:
+    """Build a typed request model from function-local values.
+
+    Args:
+        model_type: The strict request model type to validate.
+        values: The raw function-local values to validate.
+        exclude: Optional local variable names to skip.
+
+    Returns:
+        The validated request-model instance.
+    """
+    payload = {
+        key: value
+        for key, value in values.items()
+        if key in model_type.model_fields and (exclude is None or key not in exclude)
+    }
+    return model_type.model_validate(payload)
 
 
 def register_server_surface(
@@ -288,27 +314,7 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
         stage: str | None = None,
         custom_field_filters: dict[str, str] | None = None,
     ) -> dict[str, object]:
-        tool_input = PeopleSearchRequest(
-            fields=fields,
-            id=id,
-            ids=ids,
-            id_greater_than=id_greater_than,
-            id_less_than=id_less_than,
-            limit=limit,
-            next_token=next_token,
-            offset=offset,
-            sort=sort,
-            assigned_user_id=assigned_user_id,
-            email=email,
-            first_name=first_name,
-            include_trash=include_trash,
-            last_name=last_name,
-            name=name,
-            phone=phone,
-            source=source,
-            stage=stage,
-            custom_field_filters=custom_field_filters,
-        )
+        tool_input = _validated_request(PeopleSearchRequest, locals())
         return await adapter.search_people(tool_input)
 
     @mcp.tool(
@@ -320,7 +326,7 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
         *,
         fields: list[str] | None = None,
     ) -> dict[str, object]:
-        return await adapter.get_person(GetPersonToolInput(person_id=person_id, fields=fields))
+        return await adapter.get_person(_validated_request(GetPersonToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_create_person",
@@ -354,32 +360,7 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
         tags: list[str] | None = None,
         timeframe_id: int | None = None,
     ) -> dict[str, object]:
-        tool_input = CreatePersonRequest.model_validate(
-            {
-                "addresses": addresses,
-                "assigned_lender_id": assigned_lender_id,
-                "assigned_lender_name": assigned_lender_name,
-                "assigned_pond_id": assigned_pond_id,
-                "assigned_to": assigned_to,
-                "assigned_user_id": assigned_user_id,
-                "background": background,
-                "collaborators": collaborators,
-                "contacted": contacted,
-                "created_at": created_at,
-                "custom_fields": custom_fields,
-                "deduplicate": deduplicate,
-                "emails": emails,
-                "first_name": first_name,
-                "last_name": last_name,
-                "phones": phones,
-                "price": price,
-                "source": source,
-                "source_url": source_url,
-                "stage": stage,
-                "tags": tags,
-                "timeframe_id": timeframe_id,
-            }
-        )
+        tool_input = _validated_request(CreatePersonRequest, locals())
         return await adapter.create_person(tool_input)
 
     @mcp.tool(
@@ -408,29 +389,7 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
         tags: list[str] | None = None,
         timeframe_id: int | None = None,
     ) -> dict[str, object]:
-        tool_input = UpdatePersonToolInput.model_validate(
-            {
-                "person_id": person_id,
-                "addresses": addresses,
-                "assigned_lender_id": assigned_lender_id,
-                "assigned_lender_name": assigned_lender_name,
-                "assigned_pond_id": assigned_pond_id,
-                "assigned_to": assigned_to,
-                "assigned_user_id": assigned_user_id,
-                "background": background,
-                "contacted": contacted,
-                "custom_fields": custom_fields,
-                "emails": emails,
-                "first_name": first_name,
-                "last_name": last_name,
-                "merge_tags": merge_tags,
-                "phones": phones,
-                "price": price,
-                "stage": stage,
-                "tags": tags,
-                "timeframe_id": timeframe_id,
-            }
-        )
+        tool_input = _validated_request(UpdatePersonToolInput, locals())
         return await adapter.update_person(tool_input)
 
     @mcp.tool(
@@ -443,12 +402,7 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
         phone: str | None = None,
     ) -> dict[str, object]:
         return await adapter.check_duplicate_person(
-            CheckDuplicatePersonToolInput.model_validate(
-                {
-                    "email": email,
-                    "phone": phone,
-                }
-            )
+            _validated_request(CheckDuplicatePersonToolInput, locals())
         )
 
     @mcp.tool(
@@ -461,7 +415,7 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
         offset: int | None = None,
     ) -> dict[str, object]:
         return await adapter.list_unclaimed_people(
-            UnclaimedPeopleListRequest(limit=limit, offset=offset)
+            _validated_request(UnclaimedPeopleListRequest, locals())
         )
 
     @mcp.tool(
@@ -469,7 +423,7 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
         description="Claim an unclaimed Follow Up Boss lead by person ID.",
     )
     async def followupboss_claim_person(person_id: int) -> dict[str, object]:
-        return await adapter.claim_person(ClaimPersonToolInput(person_id=person_id))
+        return await adapter.claim_person(_validated_request(ClaimPersonToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_ignore_unclaimed_person",
@@ -477,7 +431,7 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
     )
     async def followupboss_ignore_unclaimed_person(person_id: int) -> dict[str, object]:
         return await adapter.ignore_unclaimed_person(
-            IgnoreUnclaimedPersonToolInput(person_id=person_id)
+            _validated_request(IgnoreUnclaimedPersonToolInput, locals())
         )
 
     @mcp.tool(
@@ -485,7 +439,7 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
         description="Delete a Follow Up Boss person by ID.",
     )
     async def followupboss_delete_person(person_id: int) -> dict[str, object]:
-        return await adapter.delete_person(DeletePersonToolInput(person_id=person_id))
+        return await adapter.delete_person(_validated_request(DeletePersonToolInput, locals()))
 
 
 def _register_people_relationship_tools(
@@ -512,13 +466,7 @@ def _register_people_relationship_tools(
         sort: str | None = None,
     ) -> dict[str, object]:
         return await adapter.list_people_relationships(
-            PeopleRelationshipListRequest(
-                first_name=first_name,
-                last_name=last_name,
-                name=name,
-                person_id=person_id,
-                sort=sort,
-            )
+            _validated_request(PeopleRelationshipListRequest, locals())
         )
 
     @mcp.tool(
@@ -529,7 +477,7 @@ def _register_people_relationship_tools(
         people_relationship_id: int,
     ) -> dict[str, object]:
         return await adapter.get_people_relationship(
-            GetPeopleRelationshipToolInput(people_relationship_id=people_relationship_id)
+            _validated_request(GetPeopleRelationshipToolInput, locals())
         )
 
     @mcp.tool(
@@ -547,17 +495,7 @@ def _register_people_relationship_tools(
         type: str | None = None,
     ) -> dict[str, object]:
         return await adapter.create_people_relationship(
-            CreatePeopleRelationshipRequest.model_validate(
-                {
-                    "person_id": person_id,
-                    "addresses": addresses,
-                    "emails": emails,
-                    "first_name": first_name,
-                    "last_name": last_name,
-                    "phones": phones,
-                    "type": type,
-                }
-            )
+            _validated_request(CreatePeopleRelationshipRequest, locals())
         )
 
     @mcp.tool(
@@ -575,17 +513,7 @@ def _register_people_relationship_tools(
         type: str | None = None,
     ) -> dict[str, object]:
         return await adapter.update_people_relationship(
-            UpdatePeopleRelationshipToolInput.model_validate(
-                {
-                    "people_relationship_id": people_relationship_id,
-                    "addresses": addresses,
-                    "emails": emails,
-                    "first_name": first_name,
-                    "last_name": last_name,
-                    "phones": phones,
-                    "type": type,
-                }
-            )
+            _validated_request(UpdatePeopleRelationshipToolInput, locals())
         )
 
     @mcp.tool(
@@ -596,7 +524,7 @@ def _register_people_relationship_tools(
         people_relationship_id: int,
     ) -> dict[str, object]:
         return await adapter.delete_people_relationship(
-            DeletePeopleRelationshipToolInput(people_relationship_id=people_relationship_id)
+            _validated_request(DeletePeopleRelationshipToolInput, locals())
         )
 
 
@@ -613,7 +541,7 @@ def _register_timeframe_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) ->
         description="List Follow Up Boss timeframes with pagination metadata.",
     )
     async def followupboss_list_timeframes() -> dict[str, object]:
-        return await adapter.list_timeframes(TimeframeListRequest())
+        return await adapter.list_timeframes(_validated_request(TimeframeListRequest, locals()))
 
 
 def _register_attachment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
@@ -630,7 +558,7 @@ def _register_attachment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -
     )
     async def followupboss_get_person_attachment(person_attachment_id: int) -> dict[str, object]:
         return await adapter.get_person_attachment(
-            GetPersonAttachmentToolInput(person_attachment_id=person_attachment_id)
+            _validated_request(GetPersonAttachmentToolInput, locals())
         )
 
     @mcp.tool(
@@ -645,12 +573,7 @@ def _register_attachment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -
         file_size: int | None = None,
     ) -> dict[str, object]:
         return await adapter.create_person_attachment(
-            CreatePersonAttachmentRequest(
-                person_id=person_id,
-                uri=uri,
-                file_name=file_name,
-                file_size=file_size,
-            )
+            _validated_request(CreatePersonAttachmentRequest, locals())
         )
 
     @mcp.tool(
@@ -666,13 +589,7 @@ def _register_attachment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -
         file_size: int | None = None,
     ) -> dict[str, object]:
         return await adapter.update_person_attachment(
-            UpdatePersonAttachmentToolInput(
-                person_attachment_id=person_attachment_id,
-                person_id=person_id,
-                uri=uri,
-                file_name=file_name,
-                file_size=file_size,
-            )
+            _validated_request(UpdatePersonAttachmentToolInput, locals())
         )
 
     @mcp.tool(
@@ -681,7 +598,7 @@ def _register_attachment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -
     )
     async def followupboss_delete_person_attachment(person_attachment_id: int) -> dict[str, object]:
         return await adapter.delete_person_attachment(
-            DeletePersonAttachmentToolInput(person_attachment_id=person_attachment_id)
+            _validated_request(DeletePersonAttachmentToolInput, locals())
         )
 
     @mcp.tool(
@@ -690,7 +607,7 @@ def _register_attachment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -
     )
     async def followupboss_get_deal_attachment(deal_attachment_id: int) -> dict[str, object]:
         return await adapter.get_deal_attachment(
-            GetDealAttachmentToolInput(deal_attachment_id=deal_attachment_id)
+            _validated_request(GetDealAttachmentToolInput, locals())
         )
 
     @mcp.tool(
@@ -705,12 +622,7 @@ def _register_attachment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -
         file_size: int | None = None,
     ) -> dict[str, object]:
         return await adapter.create_deal_attachment(
-            CreateDealAttachmentRequest(
-                deal_id=deal_id,
-                uri=uri,
-                file_name=file_name,
-                file_size=file_size,
-            )
+            _validated_request(CreateDealAttachmentRequest, locals())
         )
 
     @mcp.tool(
@@ -726,13 +638,7 @@ def _register_attachment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -
         file_size: int | None = None,
     ) -> dict[str, object]:
         return await adapter.update_deal_attachment(
-            UpdateDealAttachmentToolInput(
-                deal_attachment_id=deal_attachment_id,
-                deal_id=deal_id,
-                uri=uri,
-                file_name=file_name,
-                file_size=file_size,
-            )
+            _validated_request(UpdateDealAttachmentToolInput, locals())
         )
 
     @mcp.tool(
@@ -741,7 +647,7 @@ def _register_attachment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -
     )
     async def followupboss_delete_deal_attachment(deal_attachment_id: int) -> dict[str, object]:
         return await adapter.delete_deal_attachment(
-            DeleteDealAttachmentToolInput(deal_attachment_id=deal_attachment_id)
+            _validated_request(DeleteDealAttachmentToolInput, locals())
         )
 
 
@@ -758,7 +664,7 @@ def _register_reaction_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> 
         description="Fetch a single Follow Up Boss reaction by ID.",
     )
     async def followupboss_get_reaction(reaction_id: int) -> dict[str, object]:
-        return await adapter.get_reaction(GetReactionToolInput(reaction_id=reaction_id))
+        return await adapter.get_reaction(_validated_request(GetReactionToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_add_reaction",
@@ -769,9 +675,7 @@ def _register_reaction_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> 
         ref_id: int,
         body: str,
     ) -> dict[str, object]:
-        return await adapter.add_reaction(
-            AddReactionToolInput(ref_type=ref_type, ref_id=ref_id, body=body)
-        )
+        return await adapter.add_reaction(_validated_request(AddReactionToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_delete_reaction",
@@ -783,9 +687,7 @@ def _register_reaction_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> 
         *,
         emoji: str | None = None,
     ) -> dict[str, object]:
-        return await adapter.delete_reaction(
-            DeleteReactionToolInput(ref_type=ref_type, ref_id=ref_id, emoji=emoji)
-        )
+        return await adapter.delete_reaction(_validated_request(DeleteReactionToolInput, locals()))
 
 
 def _register_threaded_reply_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
@@ -802,7 +704,7 @@ def _register_threaded_reply_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapte
     )
     async def followupboss_get_threaded_reply(threaded_reply_id: int) -> dict[str, object]:
         return await adapter.get_threaded_reply(
-            GetThreadedReplyToolInput(threaded_reply_id=threaded_reply_id)
+            _validated_request(GetThreadedReplyToolInput, locals())
         )
 
 
@@ -828,24 +730,14 @@ def _register_event_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> Non
         has_property: bool | None = None,
         property_address: str | None = None,
     ) -> dict[str, object]:
-        return await adapter.search_events(
-            EventSearchRequest(
-                limit=limit,
-                next_token=next_token,
-                offset=offset,
-                person_id=person_id,
-                type=type,
-                has_property=has_property,
-                property_address=property_address,
-            )
-        )
+        return await adapter.search_events(_validated_request(EventSearchRequest, locals()))
 
     @mcp.tool(
         name="followupboss_get_event",
         description="Fetch a single Follow Up Boss event by ID.",
     )
     async def followupboss_get_event(event_id: int) -> dict[str, object]:
-        return await adapter.get_event(GetEventToolInput(event_id=event_id))
+        return await adapter.get_event(_validated_request(GetEventToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_send_event",
@@ -870,24 +762,7 @@ def _register_event_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> Non
         property: dict[str, object] | None = None,
         property_search: dict[str, object] | None = None,
     ) -> dict[str, object]:
-        tool_input = CreateEventRequest.model_validate(
-            {
-                "source": source,
-                "system": system,
-                "type": type,
-                "person": person,
-                "campaign": campaign,
-                "description": description,
-                "message": message,
-                "occurred_at": occurred_at,
-                "page_duration": page_duration,
-                "page_referrer": page_referrer,
-                "page_title": page_title,
-                "page_url": page_url,
-                "property": property,
-                "property_search": property_search,
-            }
-        )
+        tool_input = _validated_request(CreateEventRequest, locals())
         return await adapter.send_event(tool_input)
 
 
@@ -912,7 +787,7 @@ def _register_email_marketing_tools(
         origin_id: str | None = None,
     ) -> dict[str, object]:
         return await adapter.list_email_campaigns(
-            EmailCampaignListRequest(origin=origin, origin_id=origin_id)
+            _validated_request(EmailCampaignListRequest, locals())
         )
 
     @mcp.tool(
@@ -928,13 +803,7 @@ def _register_email_marketing_tools(
         body_html: str | None = None,
     ) -> dict[str, object]:
         return await adapter.create_email_campaign(
-            CreateEmailCampaignRequest(
-                origin=origin,
-                origin_id=origin_id,
-                name=name,
-                subject=subject,
-                body_html=body_html,
-            )
+            _validated_request(CreateEmailCampaignRequest, locals())
         )
 
     @mcp.tool(
@@ -949,12 +818,7 @@ def _register_email_marketing_tools(
         body_html: str | None = None,
     ) -> dict[str, object]:
         return await adapter.update_email_campaign(
-            UpdateEmailCampaignToolInput(
-                email_campaign_id=email_campaign_id,
-                name=name,
-                subject=subject,
-                body_html=body_html,
-            )
+            _validated_request(UpdateEmailCampaignToolInput, locals())
         )
 
     @mcp.tool(
@@ -969,17 +833,7 @@ def _register_email_marketing_tools(
         limit: int | None = None,
         offset: int | None = None,
     ) -> dict[str, object]:
-        return await adapter.list_email_events(
-            EmailEventListRequest.model_validate(
-                {
-                    "type": type,
-                    "person_id": person_id,
-                    "updated_after": updated_after,
-                    "limit": limit,
-                    "offset": offset,
-                }
-            )
-        )
+        return await adapter.list_email_events(_validated_request(EmailEventListRequest, locals()))
 
     @mcp.tool(
         name="followupboss_send_email_events",
@@ -989,7 +843,7 @@ def _register_email_marketing_tools(
         em_events: list[dict[str, object]],
     ) -> dict[str, object]:
         return await adapter.send_email_events(
-            CreateEmailEventsBatchRequest.model_validate({"em_events": em_events})
+            _validated_request(CreateEmailEventsBatchRequest, locals())
         )
 
 
@@ -1016,16 +870,7 @@ def _register_action_plan_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) 
         sort: str | None = None,
         status: str | None = None,
     ) -> dict[str, object]:
-        return await adapter.list_action_plans(
-            ActionPlanListRequest(
-                ids=ids,
-                limit=limit,
-                names=names,
-                offset=offset,
-                sort=sort,
-                status=status,
-            )
-        )
+        return await adapter.list_action_plans(_validated_request(ActionPlanListRequest, locals()))
 
     @mcp.tool(
         name="followupboss_list_action_plan_people",
@@ -1039,12 +884,7 @@ def _register_action_plan_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) 
         person_id: int | None = None,
     ) -> dict[str, object]:
         return await adapter.list_action_plan_people(
-            ActionPlanPersonListRequest(
-                action_plan_id=action_plan_id,
-                limit=limit,
-                offset=offset,
-                person_id=person_id,
-            )
+            _validated_request(ActionPlanPersonListRequest, locals())
         )
 
     @mcp.tool(
@@ -1056,10 +896,7 @@ def _register_action_plan_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) 
         person_id: int,
     ) -> dict[str, object]:
         return await adapter.apply_action_plan(
-            CreateActionPlanPersonRequest(
-                action_plan_id=action_plan_id,
-                person_id=person_id,
-            )
+            _validated_request(CreateActionPlanPersonRequest, locals())
         )
 
     @mcp.tool(
@@ -1072,10 +909,7 @@ def _register_action_plan_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) 
         status: ActionPlanPersonStatus,
     ) -> dict[str, object]:
         return await adapter.update_action_plan_person(
-            UpdateActionPlanPersonToolInput(
-                action_plan_person_id=action_plan_person_id,
-                status=status,
-            )
+            _validated_request(UpdateActionPlanPersonToolInput, locals())
         )
 
 
@@ -1102,23 +936,14 @@ def _register_automation_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -
         offset: int | None = None,
         status: str | None = None,
     ) -> dict[str, object]:
-        return await adapter.list_automations(
-            AutomationListRequest(
-                enabled_only=enabled_only,
-                limit=limit,
-                manual_only=manual_only,
-                next_token=next_token,
-                offset=offset,
-                status=status,
-            )
-        )
+        return await adapter.list_automations(_validated_request(AutomationListRequest, locals()))
 
     @mcp.tool(
         name="followupboss_get_automation",
         description="Fetch a single Follow Up Boss automation by ID.",
     )
     async def followupboss_get_automation(automation_id: int) -> dict[str, object]:
-        return await adapter.get_automation(GetAutomationToolInput(automation_id=automation_id))
+        return await adapter.get_automation(_validated_request(GetAutomationToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_list_automation_people",
@@ -1131,11 +956,7 @@ def _register_automation_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -
         status: AutomationRunStatus | None = None,
     ) -> dict[str, object]:
         return await adapter.list_automation_people(
-            AutomationPeopleListRequest(
-                automation_id=automation_id,
-                person_id=person_id,
-                status=status,
-            )
+            _validated_request(AutomationPeopleListRequest, locals())
         )
 
     @mcp.tool(
@@ -1144,7 +965,7 @@ def _register_automation_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -
     )
     async def followupboss_get_automation_person(automation_person_id: int) -> dict[str, object]:
         return await adapter.get_automation_person(
-            GetAutomationPersonToolInput(automation_person_id=automation_person_id)
+            _validated_request(GetAutomationPersonToolInput, locals())
         )
 
     @mcp.tool(
@@ -1156,10 +977,7 @@ def _register_automation_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -
         person_id: int,
     ) -> dict[str, object]:
         return await adapter.trigger_automation(
-            CreateAutomationPersonRequest(
-                automation_id=automation_id,
-                person_id=person_id,
-            )
+            _validated_request(CreateAutomationPersonRequest, locals())
         )
 
     @mcp.tool(
@@ -1172,10 +990,7 @@ def _register_automation_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -
         status: AutomationPauseStatus,
     ) -> dict[str, object]:
         return await adapter.update_automation_person(
-            UpdateAutomationPersonToolInput(
-                automation_person_id=automation_person_id,
-                status=status,
-            )
+            _validated_request(UpdateAutomationPersonToolInput, locals())
         )
 
 
@@ -1196,7 +1011,7 @@ def _register_group_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> Non
         sort: str | None = None,
         type: str | None = None,
     ) -> dict[str, object]:
-        return await adapter.list_groups(GroupListRequest(sort=sort, type=type))
+        return await adapter.list_groups(_validated_request(GroupListRequest, locals()))
 
     @mcp.tool(
         name="followupboss_list_round_robin_groups",
@@ -1207,14 +1022,14 @@ def _register_group_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> Non
         sort: str | None = None,
         type: str | None = None,
     ) -> dict[str, object]:
-        return await adapter.list_round_robin_groups(GroupListRequest(sort=sort, type=type))
+        return await adapter.list_round_robin_groups(_validated_request(GroupListRequest, locals()))
 
     @mcp.tool(
         name="followupboss_get_group",
         description="Fetch a single Follow Up Boss group by ID.",
     )
     async def followupboss_get_group(group_id: int) -> dict[str, object]:
-        return await adapter.get_group(GetGroupToolInput(group_id=group_id))
+        return await adapter.get_group(_validated_request(GetGroupToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_create_group",
@@ -1231,18 +1046,7 @@ def _register_group_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> Non
         distribution: str | None = None,
         type: str | None = None,
     ) -> dict[str, object]:
-        return await adapter.create_group(
-            CreateGroupRequest(
-                name=name,
-                users=users,
-                claim_window=claim_window,
-                default_group_id=default_group_id,
-                default_pond_id=default_pond_id,
-                default_user_id=default_user_id,
-                distribution=distribution,
-                type=type,
-            )
-        )
+        return await adapter.create_group(_validated_request(CreateGroupRequest, locals()))
 
     @mcp.tool(
         name="followupboss_update_group",
@@ -1260,26 +1064,14 @@ def _register_group_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> Non
         type: str | None = None,
         users: list[int] | None = None,
     ) -> dict[str, object]:
-        return await adapter.update_group(
-            UpdateGroupToolInput(
-                group_id=group_id,
-                claim_window=claim_window,
-                default_group_id=default_group_id,
-                default_pond_id=default_pond_id,
-                default_user_id=default_user_id,
-                distribution=distribution,
-                name=name,
-                type=type,
-                users=users,
-            )
-        )
+        return await adapter.update_group(_validated_request(UpdateGroupToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_delete_group",
         description="Delete a Follow Up Boss group by ID.",
     )
     async def followupboss_delete_group(group_id: int) -> dict[str, object]:
-        return await adapter.delete_group(DeleteGroupToolInput(group_id=group_id))
+        return await adapter.delete_group(_validated_request(DeleteGroupToolInput, locals()))
 
 
 def _register_inbox_app_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
@@ -1300,7 +1092,7 @@ def _register_inbox_app_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) ->
         published_inbox_app_id: int,
     ) -> dict[str, object]:
         return await adapter.list_inbox_app_installations(
-            ListInboxAppInstallationsToolInput(published_inbox_app_id=published_inbox_app_id)
+            _validated_request(ListInboxAppInstallationsToolInput, locals())
         )
 
     @mcp.tool(
@@ -1312,13 +1104,7 @@ def _register_inbox_app_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) ->
         user_id: int,
         subscription_url: str,
     ) -> dict[str, object]:
-        return await adapter.install_inbox_app(
-            InstallInboxAppRequest(
-                published_inbox_app_id=published_inbox_app_id,
-                user_id=user_id,
-                subscription_url=subscription_url,
-            )
-        )
+        return await adapter.install_inbox_app(_validated_request(InstallInboxAppRequest, locals()))
 
     @mcp.tool(
         name="followupboss_deactivate_inbox_app",
@@ -1326,7 +1112,7 @@ def _register_inbox_app_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) ->
     )
     async def followupboss_deactivate_inbox_app(inbox_app_id: int) -> dict[str, object]:
         return await adapter.deactivate_inbox_app(
-            DeactivateInboxAppToolInput(inbox_app_id=inbox_app_id)
+            _validated_request(DeactivateInboxAppToolInput, locals())
         )
 
     @mcp.tool(
@@ -1352,25 +1138,7 @@ def _register_inbox_app_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) ->
         subject: str | None = None,
     ) -> dict[str, object]:
         return await adapter.add_inbox_app_message(
-            AddInboxAppMessageToolInput.model_validate(
-                {
-                    "inbox_app_id": inbox_app_id,
-                    "external_conversation_id": external_conversation_id,
-                    "external_message_id": external_message_id,
-                    "message": message,
-                    "is_incoming": is_incoming,
-                    "sender": sender,
-                    "attachments": attachments,
-                    "delivery_status": delivery_status,
-                    "delivery_status_error_message": delivery_status_error_message,
-                    "is_automation": is_automation,
-                    "owner": owner,
-                    "person": person,
-                    "rich_objects": rich_objects,
-                    "sent_at": sent_at,
-                    "subject": subject,
-                }
-            )
+            _validated_request(AddInboxAppMessageToolInput, locals())
         )
 
     @mcp.tool(
@@ -1384,14 +1152,7 @@ def _register_inbox_app_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) ->
         user: dict[str, object],
     ) -> dict[str, object]:
         return await adapter.add_inbox_app_note(
-            AddInboxAppNoteToolInput.model_validate(
-                {
-                    "inbox_app_id": inbox_app_id,
-                    "external_conversation_id": external_conversation_id,
-                    "body": body,
-                    "user": user,
-                }
-            )
+            _validated_request(AddInboxAppNoteToolInput, locals())
         )
 
     @mcp.tool(
@@ -1403,10 +1164,7 @@ def _register_inbox_app_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) ->
         ext_conversation_id: str,
     ) -> dict[str, object]:
         return await adapter.list_inbox_app_participants(
-            ListInboxAppParticipantsToolInput(
-                inbox_app_id=inbox_app_id,
-                ext_conversation_id=ext_conversation_id,
-            )
+            _validated_request(ListInboxAppParticipantsToolInput, locals())
         )
 
     @mcp.tool(
@@ -1426,17 +1184,7 @@ def _register_inbox_app_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) ->
         is_automation: bool | None = None,
     ) -> dict[str, object]:
         return await adapter.add_inbox_app_participant(
-            AddInboxAppParticipantToolInput(
-                inbox_app_id=inbox_app_id,
-                ext_conversation_id=ext_conversation_id,
-                person_id=person_id,
-                user_id=user_id,
-                relationship_id=relationship_id,
-                name=name,
-                email=email,
-                phone=phone,
-                is_automation=is_automation,
-            )
+            _validated_request(AddInboxAppParticipantToolInput, locals())
         )
 
     @mcp.tool(
@@ -1455,18 +1203,7 @@ def _register_inbox_app_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) ->
         subject: str | None = None,
     ) -> dict[str, object]:
         return await adapter.update_inbox_app_conversation(
-            UpdateInboxAppConversationToolInput.model_validate(
-                {
-                    "inbox_app_id": inbox_app_id,
-                    "ext_conversation_id": ext_conversation_id,
-                    "archived": archived,
-                    "assigned_inbox_id": assigned_inbox_id,
-                    "assigned_user_id": assigned_user_id,
-                    "permanently_archived": permanently_archived,
-                    "person": person,
-                    "subject": subject,
-                }
-            )
+            _validated_request(UpdateInboxAppConversationToolInput, locals())
         )
 
     @mcp.tool(
@@ -1482,15 +1219,7 @@ def _register_inbox_app_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) ->
         delivery_status_error_message: str | None = None,
     ) -> dict[str, object]:
         return await adapter.update_inbox_app_message(
-            UpdateInboxAppMessageToolInput.model_validate(
-                {
-                    "inbox_app_id": inbox_app_id,
-                    "id": id,
-                    "external_message_id": external_message_id,
-                    "delivery_status": delivery_status,
-                    "delivery_status_error_message": delivery_status_error_message,
-                }
-            )
+            _validated_request(UpdateInboxAppMessageToolInput, locals())
         )
 
     @mcp.tool(
@@ -1503,11 +1232,7 @@ def _register_inbox_app_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) ->
         participant_id: int,
     ) -> dict[str, object]:
         return await adapter.remove_inbox_app_participant(
-            DeleteInboxAppParticipantToolInput(
-                inbox_app_id=inbox_app_id,
-                ext_conversation_id=ext_conversation_id,
-                participant_id=participant_id,
-            )
+            _validated_request(DeleteInboxAppParticipantToolInput, locals())
         )
 
 
@@ -1548,37 +1273,21 @@ def _register_user_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         name: str | None = None,
         role: str | None = None,
     ) -> dict[str, object]:
-        return await adapter.list_users(
-            UserListRequest(
-                fields=fields,
-                id=id,
-                ids=ids,
-                id_greater_than=id_greater_than,
-                id_less_than=id_less_than,
-                limit=limit,
-                next_token=next_token,
-                offset=offset,
-                sort=sort,
-                email=email,
-                include_deleted=include_deleted,
-                name=name,
-                role=role,
-            )
-        )
+        return await adapter.list_users(_validated_request(UserListRequest, locals()))
 
     @mcp.tool(
         name="followupboss_get_user",
         description="Fetch a single Follow Up Boss user by ID.",
     )
     async def followupboss_get_user(user_id: int) -> dict[str, object]:
-        return await adapter.get_user(GetUserToolInput(user_id=user_id))
+        return await adapter.get_user(_validated_request(GetUserToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_delete_user",
         description="Delete a Follow Up Boss user by ID and reassign their leads.",
     )
     async def followupboss_delete_user(user_id: int, assign_to: int) -> dict[str, object]:
-        return await adapter.delete_user(DeleteUserToolInput(user_id=user_id, assign_to=assign_to))
+        return await adapter.delete_user(_validated_request(DeleteUserToolInput, locals()))
 
 
 def _register_appointment_metadata_tools(
@@ -1603,7 +1312,7 @@ def _register_appointment_metadata_tools(
         sort: str | None = None,
     ) -> dict[str, object]:
         return await adapter.list_appointment_outcomes(
-            AppointmentOutcomeListRequest(limit=limit, offset=offset, sort=sort)
+            _validated_request(AppointmentOutcomeListRequest, locals())
         )
 
     @mcp.tool(
@@ -1614,7 +1323,7 @@ def _register_appointment_metadata_tools(
         appointment_outcome_id: int,
     ) -> dict[str, object]:
         return await adapter.get_appointment_outcome(
-            GetAppointmentOutcomeToolInput(appointment_outcome_id=appointment_outcome_id)
+            _validated_request(GetAppointmentOutcomeToolInput, locals())
         )
 
     @mcp.tool(
@@ -1627,7 +1336,7 @@ def _register_appointment_metadata_tools(
         order_weight: int | None = None,
     ) -> dict[str, object]:
         return await adapter.create_appointment_outcome(
-            CreateAppointmentOutcomeRequest(name=name, order_weight=order_weight)
+            _validated_request(CreateAppointmentOutcomeRequest, locals())
         )
 
     @mcp.tool(
@@ -1641,11 +1350,7 @@ def _register_appointment_metadata_tools(
         order_weight: int | None = None,
     ) -> dict[str, object]:
         return await adapter.update_appointment_outcome(
-            UpdateAppointmentOutcomeToolInput(
-                appointment_outcome_id=appointment_outcome_id,
-                name=name,
-                order_weight=order_weight,
-            )
+            _validated_request(UpdateAppointmentOutcomeToolInput, locals())
         )
 
     @mcp.tool(
@@ -1657,10 +1362,7 @@ def _register_appointment_metadata_tools(
         assign_outcome_id: int,
     ) -> dict[str, object]:
         return await adapter.delete_appointment_outcome(
-            DeleteAppointmentOutcomeToolInput(
-                appointment_outcome_id=appointment_outcome_id,
-                assign_outcome_id=assign_outcome_id,
-            )
+            _validated_request(DeleteAppointmentOutcomeToolInput, locals())
         )
 
     @mcp.tool(
@@ -1674,7 +1376,7 @@ def _register_appointment_metadata_tools(
         sort: str | None = None,
     ) -> dict[str, object]:
         return await adapter.list_appointment_types(
-            AppointmentTypeListRequest(limit=limit, offset=offset, sort=sort)
+            _validated_request(AppointmentTypeListRequest, locals())
         )
 
     @mcp.tool(
@@ -1685,7 +1387,7 @@ def _register_appointment_metadata_tools(
         appointment_type_id: int,
     ) -> dict[str, object]:
         return await adapter.get_appointment_type(
-            GetAppointmentTypeToolInput(appointment_type_id=appointment_type_id)
+            _validated_request(GetAppointmentTypeToolInput, locals())
         )
 
     @mcp.tool(
@@ -1698,7 +1400,7 @@ def _register_appointment_metadata_tools(
         order_weight: int | None = None,
     ) -> dict[str, object]:
         return await adapter.create_appointment_type(
-            CreateAppointmentTypeRequest(name=name, order_weight=order_weight)
+            _validated_request(CreateAppointmentTypeRequest, locals())
         )
 
     @mcp.tool(
@@ -1712,11 +1414,7 @@ def _register_appointment_metadata_tools(
         order_weight: int | None = None,
     ) -> dict[str, object]:
         return await adapter.update_appointment_type(
-            UpdateAppointmentTypeToolInput(
-                appointment_type_id=appointment_type_id,
-                name=name,
-                order_weight=order_weight,
-            )
+            _validated_request(UpdateAppointmentTypeToolInput, locals())
         )
 
     @mcp.tool(
@@ -1728,10 +1426,7 @@ def _register_appointment_metadata_tools(
         assign_type_id: int,
     ) -> dict[str, object]:
         return await adapter.delete_appointment_type(
-            DeleteAppointmentTypeToolInput(
-                appointment_type_id=appointment_type_id,
-                assign_type_id=assign_type_id,
-            )
+            _validated_request(DeleteAppointmentTypeToolInput, locals())
         )
 
 
@@ -1761,18 +1456,7 @@ def _register_custom_field_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter)
         sort: str | None = None,
     ) -> dict[str, object]:
         return await adapter.list_custom_fields(
-            CustomFieldListRequest(
-                fields=fields,
-                id=id,
-                ids=ids,
-                id_greater_than=id_greater_than,
-                id_less_than=id_less_than,
-                label=label,
-                limit=limit,
-                next_token=next_token,
-                offset=offset,
-                sort=sort,
-            )
+            _validated_request(CustomFieldListRequest, locals())
         )
 
     @mcp.tool(
@@ -1780,9 +1464,7 @@ def _register_custom_field_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter)
         description="Fetch a single Follow Up Boss custom field by ID.",
     )
     async def followupboss_get_custom_field(custom_field_id: int) -> dict[str, object]:
-        return await adapter.get_custom_field(
-            GetCustomFieldToolInput(custom_field_id=custom_field_id)
-        )
+        return await adapter.get_custom_field(_validated_request(GetCustomFieldToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_create_custom_field",
@@ -1798,14 +1480,7 @@ def _register_custom_field_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter)
         order_weight: int | None = None,
     ) -> dict[str, object]:
         return await adapter.create_custom_field(
-            CreateCustomFieldRequest(
-                label=label,
-                type=type,
-                choices=choices,
-                hide_if_empty=hide_if_empty,
-                is_recurring=is_recurring,
-                order_weight=order_weight,
-            )
+            _validated_request(CreateCustomFieldRequest, locals())
         )
 
     @mcp.tool(
@@ -1823,17 +1498,7 @@ def _register_custom_field_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter)
         order_weight: int | None = None,
     ) -> dict[str, object]:
         return await adapter.update_custom_field(
-            UpdateCustomFieldToolInput.model_validate(
-                {
-                    "custom_field_id": custom_field_id,
-                    "choices": choices,
-                    "dropdown_choice_map": dropdown_choice_map,
-                    "hide_if_empty": hide_if_empty,
-                    "is_recurring": is_recurring,
-                    "label": label,
-                    "order_weight": order_weight,
-                }
-            )
+            _validated_request(UpdateCustomFieldToolInput, locals())
         )
 
     @mcp.tool(
@@ -1842,7 +1507,7 @@ def _register_custom_field_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter)
     )
     async def followupboss_delete_custom_field(custom_field_id: int) -> dict[str, object]:
         return await adapter.delete_custom_field(
-            DeleteCustomFieldToolInput(custom_field_id=custom_field_id)
+            _validated_request(DeleteCustomFieldToolInput, locals())
         )
 
 
@@ -1867,23 +1532,14 @@ def _register_deal_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         status: str | None = None,
         user_id: int | None = None,
     ) -> dict[str, object]:
-        return await adapter.list_deals(
-            DealListRequest(
-                include_archived=include_archived,
-                include_deleted=include_deleted,
-                person_id=person_id,
-                pipeline_id=pipeline_id,
-                status=status,
-                user_id=user_id,
-            )
-        )
+        return await adapter.list_deals(_validated_request(DealListRequest, locals()))
 
     @mcp.tool(
         name="followupboss_get_deal",
         description="Fetch a single Follow Up Boss deal by ID.",
     )
     async def followupboss_get_deal(deal_id: int) -> dict[str, object]:
-        return await adapter.get_deal(GetDealToolInput(deal_id=deal_id))
+        return await adapter.get_deal(_validated_request(GetDealToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_create_deal",
@@ -1909,29 +1565,7 @@ def _register_deal_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         team_commission: int | None = None,
         user_ids: list[int] | None = None,
     ) -> dict[str, object]:
-        return await adapter.create_deal(
-            CreateDealRequest.model_validate(
-                {
-                    "name": name,
-                    "stage_id": stage_id,
-                    "agent_commission": agent_commission,
-                    "commission_value": commission_value,
-                    "custom_fields": custom_fields,
-                    "description": description,
-                    "due_diligence_date": due_diligence_date,
-                    "earnest_money_due_date": earnest_money_due_date,
-                    "final_walk_through_date": final_walk_through_date,
-                    "mutual_acceptance_date": mutual_acceptance_date,
-                    "order_weight": order_weight,
-                    "people_ids": people_ids,
-                    "possession_date": possession_date,
-                    "price": price,
-                    "projected_close_date": projected_close_date,
-                    "team_commission": team_commission,
-                    "user_ids": user_ids,
-                }
-            )
-        )
+        return await adapter.create_deal(_validated_request(CreateDealRequest, locals()))
 
     @mcp.tool(
         name="followupboss_update_deal",
@@ -1957,36 +1591,14 @@ def _register_deal_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         team_commission: int | None = None,
         user_ids: list[int] | None = None,
     ) -> dict[str, object]:
-        return await adapter.update_deal(
-            UpdateDealToolInput.model_validate(
-                {
-                    "deal_id": deal_id,
-                    "agent_commission": agent_commission,
-                    "commission_value": commission_value,
-                    "custom_fields": custom_fields,
-                    "description": description,
-                    "due_diligence_date": due_diligence_date,
-                    "earnest_money_due_date": earnest_money_due_date,
-                    "final_walk_through_date": final_walk_through_date,
-                    "mutual_acceptance_date": mutual_acceptance_date,
-                    "name": name,
-                    "people_ids": people_ids,
-                    "possession_date": possession_date,
-                    "price": price,
-                    "projected_close_date": projected_close_date,
-                    "stage_id": stage_id,
-                    "team_commission": team_commission,
-                    "user_ids": user_ids,
-                }
-            )
-        )
+        return await adapter.update_deal(_validated_request(UpdateDealToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_delete_deal",
         description="Delete a Follow Up Boss deal by ID.",
     )
     async def followupboss_delete_deal(deal_id: int) -> dict[str, object]:
-        return await adapter.delete_deal(DeleteDealToolInput(deal_id=deal_id))
+        return await adapter.delete_deal(_validated_request(DeleteDealToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_list_deal_custom_fields",
@@ -2000,12 +1612,7 @@ def _register_deal_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         sort: str | None = None,
     ) -> dict[str, object]:
         return await adapter.list_deal_custom_fields(
-            DealCustomFieldListRequest(
-                label=label,
-                limit=limit,
-                offset=offset,
-                sort=sort,
-            )
+            _validated_request(DealCustomFieldListRequest, locals())
         )
 
     @mcp.tool(
@@ -2014,7 +1621,7 @@ def _register_deal_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
     )
     async def followupboss_get_deal_custom_field(deal_custom_field_id: int) -> dict[str, object]:
         return await adapter.get_deal_custom_field(
-            GetDealCustomFieldToolInput(deal_custom_field_id=deal_custom_field_id)
+            _validated_request(GetDealCustomFieldToolInput, locals())
         )
 
     @mcp.tool(
@@ -2032,17 +1639,7 @@ def _register_deal_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         read_only: bool | None = None,
     ) -> dict[str, object]:
         return await adapter.create_deal_custom_field(
-            CreateDealCustomFieldRequest.model_validate(
-                {
-                    "label": label,
-                    "type": type,
-                    "choices": choices,
-                    "hide_if_empty": hide_if_empty,
-                    "is_recurring": is_recurring,
-                    "order_weight": order_weight,
-                    "read_only": read_only,
-                }
-            )
+            _validated_request(CreateDealCustomFieldRequest, locals())
         )
 
     @mcp.tool(
@@ -2062,19 +1659,7 @@ def _register_deal_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         type: CustomFieldType | None = None,
     ) -> dict[str, object]:
         return await adapter.update_deal_custom_field(
-            UpdateDealCustomFieldToolInput.model_validate(
-                {
-                    "deal_custom_field_id": deal_custom_field_id,
-                    "choices": choices,
-                    "dropdown_choice_map": dropdown_choice_map,
-                    "hide_if_empty": hide_if_empty,
-                    "is_recurring": is_recurring,
-                    "label": label,
-                    "order_weight": order_weight,
-                    "read_only": read_only,
-                    "type": type,
-                }
-            )
+            _validated_request(UpdateDealCustomFieldToolInput, locals())
         )
 
     @mcp.tool(
@@ -2083,7 +1668,7 @@ def _register_deal_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
     )
     async def followupboss_delete_deal_custom_field(deal_custom_field_id: int) -> dict[str, object]:
         return await adapter.delete_deal_custom_field(
-            DeleteDealCustomFieldToolInput(deal_custom_field_id=deal_custom_field_id)
+            _validated_request(DeleteDealCustomFieldToolInput, locals())
         )
 
 
@@ -2110,25 +1695,14 @@ def _register_appointment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) 
         start: str | None = None,
         user_id: int | None = None,
     ) -> dict[str, object]:
-        return await adapter.list_appointments(
-            AppointmentListRequest.model_validate(
-                {
-                    "end": end,
-                    "limit": limit,
-                    "offset": offset,
-                    "person_id": person_id,
-                    "start": start,
-                    "user_id": user_id,
-                }
-            )
-        )
+        return await adapter.list_appointments(_validated_request(AppointmentListRequest, locals()))
 
     @mcp.tool(
         name="followupboss_get_appointment",
         description="Fetch a single Follow Up Boss appointment by ID.",
     )
     async def followupboss_get_appointment(appointment_id: int) -> dict[str, object]:
-        return await adapter.get_appointment(GetAppointmentToolInput(appointment_id=appointment_id))
+        return await adapter.get_appointment(_validated_request(GetAppointmentToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_create_appointment",
@@ -2149,21 +1723,7 @@ def _register_appointment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) 
         type_id: int | None = None,
     ) -> dict[str, object]:
         return await adapter.create_appointment(
-            CreateAppointmentRequest.model_validate(
-                {
-                    "title": title,
-                    "start": start,
-                    "end": end,
-                    "all_day": all_day,
-                    "created_by_id": created_by_id,
-                    "description": description,
-                    "invitees": invitees,
-                    "location": location,
-                    "outcome_id": outcome_id,
-                    "send_invitation": send_invitation,
-                    "type_id": type_id,
-                }
-            )
+            _validated_request(CreateAppointmentRequest, locals())
         )
 
     @mcp.tool(
@@ -2185,21 +1745,7 @@ def _register_appointment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) 
         type_id: int | None = None,
     ) -> dict[str, object]:
         return await adapter.update_appointment(
-            UpdateAppointmentToolInput.model_validate(
-                {
-                    "appointment_id": appointment_id,
-                    "title": title,
-                    "start": start,
-                    "end": end,
-                    "all_day": all_day,
-                    "description": description,
-                    "invitees": invitees,
-                    "location": location,
-                    "outcome_id": outcome_id,
-                    "send_invitation": send_invitation,
-                    "type_id": type_id,
-                }
-            )
+            _validated_request(UpdateAppointmentToolInput, locals())
         )
 
     @mcp.tool(
@@ -2208,7 +1754,7 @@ def _register_appointment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) 
     )
     async def followupboss_delete_appointment(appointment_id: int) -> dict[str, object]:
         return await adapter.delete_appointment(
-            DeleteAppointmentToolInput(appointment_id=appointment_id)
+            _validated_request(DeleteAppointmentToolInput, locals())
         )
 
 
@@ -2233,23 +1779,14 @@ def _register_call_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         phone: str | None = None,
         to_number: str | None = None,
     ) -> dict[str, object]:
-        return await adapter.list_calls(
-            CallListRequest(
-                from_number=from_number,
-                limit=limit,
-                offset=offset,
-                person_id=person_id,
-                phone=phone,
-                to_number=to_number,
-            )
-        )
+        return await adapter.list_calls(_validated_request(CallListRequest, locals()))
 
     @mcp.tool(
         name="followupboss_get_call",
         description="Fetch a single Follow Up Boss call by ID.",
     )
     async def followupboss_get_call(call_id: int) -> dict[str, object]:
-        return await adapter.get_call(GetCallToolInput(call_id=call_id))
+        return await adapter.get_call(_validated_request(GetCallToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_create_call",
@@ -2268,20 +1805,7 @@ def _register_call_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         to_number: str | None = None,
         user_id: int | None = None,
     ) -> dict[str, object]:
-        return await adapter.create_call(
-            CreateCallRequest(
-                person_id=person_id,
-                phone=phone,
-                is_incoming=is_incoming,
-                duration=duration,
-                from_number=from_number,
-                note=note,
-                outcome=outcome,
-                recording_url=recording_url,
-                to_number=to_number,
-                user_id=user_id,
-            )
-        )
+        return await adapter.create_call(_validated_request(CreateCallRequest, locals()))
 
     @mcp.tool(
         name="followupboss_update_call",
@@ -2301,21 +1825,7 @@ def _register_call_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         to_number: str | None = None,
         user_id: int | None = None,
     ) -> dict[str, object]:
-        return await adapter.update_call(
-            UpdateCallToolInput(
-                call_id=call_id,
-                duration=duration,
-                from_number=from_number,
-                is_incoming=is_incoming,
-                note=note,
-                outcome=outcome,
-                person_id=person_id,
-                phone=phone,
-                recording_url=recording_url,
-                to_number=to_number,
-                user_id=user_id,
-            )
-        )
+        return await adapter.update_call(_validated_request(UpdateCallToolInput, locals()))
 
 
 def _register_pipeline_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
@@ -2333,14 +1843,14 @@ def _register_pipeline_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> 
         ),
     )
     async def followupboss_list_pipelines(*, name: str | None = None) -> dict[str, object]:
-        return await adapter.list_pipelines(PipelineListRequest(name=name))
+        return await adapter.list_pipelines(_validated_request(PipelineListRequest, locals()))
 
     @mcp.tool(
         name="followupboss_get_pipeline",
         description="Fetch a single Follow Up Boss pipeline by ID.",
     )
     async def followupboss_get_pipeline(pipeline_id: int) -> dict[str, object]:
-        return await adapter.get_pipeline(GetPipelineToolInput(pipeline_id=pipeline_id))
+        return await adapter.get_pipeline(_validated_request(GetPipelineToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_create_pipeline",
@@ -2359,11 +1869,9 @@ def _register_pipeline_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> 
             else None
         )
         return await adapter.create_pipeline(
-            CreatePipelineRequest(
-                name=name,
-                description=description,
-                order_weight=order_weight,
-                stages=stage_inputs,
+            _validated_request(
+                CreatePipelineRequest,
+                {**locals(), "stages": stage_inputs},
             )
         )
 
@@ -2387,12 +1895,9 @@ def _register_pipeline_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> 
             else None
         )
         return await adapter.update_pipeline(
-            UpdatePipelineToolInput(
-                pipeline_id=pipeline_id,
-                name=name,
-                description=description,
-                order_weight=order_weight,
-                stages=stage_inputs,
+            _validated_request(
+                UpdatePipelineToolInput,
+                {**locals(), "stages": stage_inputs},
             )
         )
 
@@ -2403,7 +1908,7 @@ def _register_pipeline_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> 
         ),
     )
     async def followupboss_delete_pipeline(pipeline_id: int) -> dict[str, object]:
-        return await adapter.delete_pipeline(DeletePipelineToolInput(pipeline_id=pipeline_id))
+        return await adapter.delete_pipeline(_validated_request(DeletePipelineToolInput, locals()))
 
 
 def _register_pond_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
@@ -2423,14 +1928,14 @@ def _register_pond_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         limit: int | None = None,
         offset: int | None = None,
     ) -> dict[str, object]:
-        return await adapter.list_ponds(PondListRequest(limit=limit, offset=offset))
+        return await adapter.list_ponds(_validated_request(PondListRequest, locals()))
 
     @mcp.tool(
         name="followupboss_get_pond",
         description="Fetch a single Follow Up Boss pond by ID.",
     )
     async def followupboss_get_pond(pond_id: int) -> dict[str, object]:
-        return await adapter.get_pond(GetPondToolInput(pond_id=pond_id))
+        return await adapter.get_pond(_validated_request(GetPondToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_create_pond",
@@ -2441,13 +1946,7 @@ def _register_pond_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         user_id: int,
         user_ids: list[int],
     ) -> dict[str, object]:
-        return await adapter.create_pond(
-            CreatePondRequest(
-                name=name,
-                user_id=user_id,
-                user_ids=user_ids,
-            )
-        )
+        return await adapter.create_pond(_validated_request(CreatePondRequest, locals()))
 
     @mcp.tool(
         name="followupboss_update_pond",
@@ -2460,26 +1959,14 @@ def _register_pond_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         user_id: int | None = None,
         user_ids: list[int] | None = None,
     ) -> dict[str, object]:
-        return await adapter.update_pond(
-            UpdatePondToolInput(
-                pond_id=pond_id,
-                name=name,
-                user_id=user_id,
-                user_ids=user_ids,
-            )
-        )
+        return await adapter.update_pond(_validated_request(UpdatePondToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_delete_pond",
         description="Delete a Follow Up Boss pond by ID and reassign its contacts.",
     )
     async def followupboss_delete_pond(pond_id: int, assign_to: int) -> dict[str, object]:
-        return await adapter.delete_pond(
-            DeletePondToolInput(
-                pond_id=pond_id,
-                assign_to=assign_to,
-            )
-        )
+        return await adapter.delete_pond(_validated_request(DeletePondToolInput, locals()))
 
 
 def _register_smart_list_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
@@ -2503,21 +1990,14 @@ def _register_smart_list_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -
         limit: int | None = None,
         offset: int | None = None,
     ) -> dict[str, object]:
-        return await adapter.list_smart_lists(
-            SmartListListRequest(
-                fub2=fub2,
-                include_all=include_all,
-                limit=limit,
-                offset=offset,
-            )
-        )
+        return await adapter.list_smart_lists(_validated_request(SmartListListRequest, locals()))
 
     @mcp.tool(
         name="followupboss_get_smart_list",
         description="Fetch a single Follow Up Boss smart list by ID.",
     )
     async def followupboss_get_smart_list(smart_list_id: int) -> dict[str, object]:
-        return await adapter.get_smart_list(GetSmartListToolInput(smart_list_id=smart_list_id))
+        return await adapter.get_smart_list(_validated_request(GetSmartListToolInput, locals()))
 
 
 def _register_stage_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
@@ -2538,14 +2018,14 @@ def _register_stage_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> Non
         offset: int | None = None,
         sort: str | None = None,
     ) -> dict[str, object]:
-        return await adapter.list_stages(StageListRequest(limit=limit, offset=offset, sort=sort))
+        return await adapter.list_stages(_validated_request(StageListRequest, locals()))
 
     @mcp.tool(
         name="followupboss_get_stage",
         description="Fetch a single Follow Up Boss stage by ID.",
     )
     async def followupboss_get_stage(stage_id: int) -> dict[str, object]:
-        return await adapter.get_stage(GetStageToolInput(stage_id=stage_id))
+        return await adapter.get_stage(_validated_request(GetStageToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_create_stage",
@@ -2556,7 +2036,7 @@ def _register_stage_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> Non
         *,
         order_weight: int | None = None,
     ) -> dict[str, object]:
-        return await adapter.create_stage(CreateStageRequest(name=name, order_weight=order_weight))
+        return await adapter.create_stage(_validated_request(CreateStageRequest, locals()))
 
     @mcp.tool(
         name="followupboss_update_stage",
@@ -2568,13 +2048,7 @@ def _register_stage_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> Non
         name: str | None = None,
         order_weight: int | None = None,
     ) -> dict[str, object]:
-        return await adapter.update_stage(
-            UpdateStageToolInput(
-                stage_id=stage_id,
-                name=name,
-                order_weight=order_weight,
-            )
-        )
+        return await adapter.update_stage(_validated_request(UpdateStageToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_delete_stage",
@@ -2584,12 +2058,7 @@ def _register_stage_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> Non
         stage_id: int,
         assign_stage_id: int,
     ) -> dict[str, object]:
-        return await adapter.delete_stage(
-            DeleteStageToolInput(
-                stage_id=stage_id,
-                assign_stage_id=assign_stage_id,
-            )
-        )
+        return await adapter.delete_stage(_validated_request(DeleteStageToolInput, locals()))
 
 
 def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
@@ -2625,37 +2094,14 @@ def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         person_id: int | None = None,
         type: list[str] | None = None,
     ) -> dict[str, object]:
-        return await adapter.list_tasks(
-            TaskListRequest.model_validate(
-                {
-                    "fields": fields,
-                    "id": id,
-                    "ids": ids,
-                    "id_greater_than": id_greater_than,
-                    "id_less_than": id_less_than,
-                    "limit": limit,
-                    "next_token": next_token,
-                    "offset": offset,
-                    "sort": sort,
-                    "assigned_to": assigned_to,
-                    "assigned_user_id": assigned_user_id,
-                    "due": due,
-                    "due_end": due_end,
-                    "due_start": due_start,
-                    "is_completed": is_completed,
-                    "name": name,
-                    "person_id": person_id,
-                    "type": type,
-                }
-            )
-        )
+        return await adapter.list_tasks(_validated_request(TaskListRequest, locals()))
 
     @mcp.tool(
         name="followupboss_get_task",
         description="Fetch a single Follow Up Boss task by ID.",
     )
     async def followupboss_get_task(task_id: int) -> dict[str, object]:
-        return await adapter.get_task(GetTaskToolInput(task_id=task_id))
+        return await adapter.get_task(_validated_request(GetTaskToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_create_task",
@@ -2673,19 +2119,7 @@ def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         remind_seconds_before: int | None = None,
         type: str | None = None,
     ) -> dict[str, object]:
-        tool_input = CreateTaskRequest.model_validate(
-            {
-                "person_id": person_id,
-                "assigned_to": assigned_to,
-                "assigned_user_id": assigned_user_id,
-                "due_date": due_date,
-                "due_date_time": due_date_time,
-                "is_completed": is_completed,
-                "name": name,
-                "remind_seconds_before": remind_seconds_before,
-                "type": type,
-            }
-        )
+        tool_input = _validated_request(CreateTaskRequest, locals())
         return await adapter.create_task(tool_input)
 
     @mcp.tool(
@@ -2704,28 +2138,14 @@ def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         person_id: int | None = None,
         type: str | None = None,
     ) -> dict[str, object]:
-        return await adapter.update_task(
-            UpdateTaskToolInput.model_validate(
-                {
-                    "task_id": task_id,
-                    "assigned_to": assigned_to,
-                    "assigned_user_id": assigned_user_id,
-                    "due_date": due_date,
-                    "due_date_time": due_date_time,
-                    "is_completed": is_completed,
-                    "name": name,
-                    "person_id": person_id,
-                    "type": type,
-                }
-            )
-        )
+        return await adapter.update_task(_validated_request(UpdateTaskToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_delete_task",
         description="Delete a Follow Up Boss task by ID.",
     )
     async def followupboss_delete_task(task_id: int) -> dict[str, object]:
-        return await adapter.delete_task(DeleteTaskToolInput(task_id=task_id))
+        return await adapter.delete_task(_validated_request(DeleteTaskToolInput, locals()))
 
 
 def _register_team_inbox_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
@@ -2741,7 +2161,7 @@ def _register_team_inbox_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -
         description="List Follow Up Boss team inboxes with pagination metadata.",
     )
     async def followupboss_list_team_inboxes() -> dict[str, object]:
-        return await adapter.list_team_inboxes(TeamInboxListRequest())
+        return await adapter.list_team_inboxes(_validated_request(TeamInboxListRequest, locals()))
 
 
 def _register_team_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
@@ -2761,14 +2181,14 @@ def _register_team_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         limit: int | None = None,
         offset: int | None = None,
     ) -> dict[str, object]:
-        return await adapter.list_teams(TeamListRequest(limit=limit, offset=offset))
+        return await adapter.list_teams(_validated_request(TeamListRequest, locals()))
 
     @mcp.tool(
         name="followupboss_get_team",
         description="Fetch a single Follow Up Boss team by ID.",
     )
     async def followupboss_get_team(team_id: int) -> dict[str, object]:
-        return await adapter.get_team(GetTeamToolInput(team_id=team_id))
+        return await adapter.get_team(_validated_request(GetTeamToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_create_team",
@@ -2780,13 +2200,7 @@ def _register_team_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         *,
         leader_ids: list[int] | None = None,
     ) -> dict[str, object]:
-        return await adapter.create_team(
-            CreateTeamRequest(
-                name=name,
-                user_ids=user_ids,
-                leader_ids=leader_ids,
-            )
-        )
+        return await adapter.create_team(_validated_request(CreateTeamRequest, locals()))
 
     @mcp.tool(
         name="followupboss_update_team",
@@ -2799,14 +2213,7 @@ def _register_team_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         name: str | None = None,
         user_ids: list[int] | None = None,
     ) -> dict[str, object]:
-        return await adapter.update_team(
-            UpdateTeamToolInput(
-                team_id=team_id,
-                leader_ids=leader_ids,
-                name=name,
-                user_ids=user_ids,
-            )
-        )
+        return await adapter.update_team(_validated_request(UpdateTeamToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_delete_team",
@@ -2816,12 +2223,7 @@ def _register_team_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         team_id: int,
         move_to_team_id: int | None = None,
     ) -> dict[str, object]:
-        return await adapter.delete_team(
-            DeleteTeamToolInput(
-                team_id=team_id,
-                move_to_team_id=move_to_team_id,
-            )
-        )
+        return await adapter.delete_team(_validated_request(DeleteTeamToolInput, locals()))
 
 
 def _register_template_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
@@ -2841,12 +2243,7 @@ def _register_template_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> 
         limit: int | None = None,
         offset: int | None = None,
     ) -> dict[str, object]:
-        return await adapter.list_templates(
-            TemplateListRequest(
-                limit=limit,
-                offset=offset,
-            )
-        )
+        return await adapter.list_templates(_validated_request(TemplateListRequest, locals()))
 
     @mcp.tool(
         name="followupboss_get_template",
@@ -2857,9 +2254,7 @@ def _register_template_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> 
         *,
         merge_person_id: int | None = None,
     ) -> dict[str, object]:
-        return await adapter.get_template(
-            GetTemplateToolInput(template_id=template_id, merge_person_id=merge_person_id)
-        )
+        return await adapter.get_template(_validated_request(GetTemplateToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_merge_template",
@@ -2871,15 +2266,7 @@ def _register_template_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> 
         merge_person_id: int | None = None,
         recipients: dict[str, object] | None = None,
     ) -> dict[str, object]:
-        return await adapter.merge_template(
-            MergeTemplateRequest.model_validate(
-                {
-                    "template_id": template_id,
-                    "merge_person_id": merge_person_id,
-                    "recipients": recipients,
-                }
-            )
-        )
+        return await adapter.merge_template(_validated_request(MergeTemplateRequest, locals()))
 
     @mcp.tool(
         name="followupboss_create_template",
@@ -2892,14 +2279,7 @@ def _register_template_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> 
         *,
         is_shared: bool | None = None,
     ) -> dict[str, object]:
-        return await adapter.create_template(
-            CreateTemplateRequest(
-                name=name,
-                subject=subject,
-                body=body,
-                is_shared=is_shared,
-            )
-        )
+        return await adapter.create_template(_validated_request(CreateTemplateRequest, locals()))
 
     @mcp.tool(
         name="followupboss_update_template",
@@ -2912,21 +2292,14 @@ def _register_template_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> 
         subject: str,
         body: str,
     ) -> dict[str, object]:
-        return await adapter.update_template(
-            UpdateTemplateToolInput(
-                template_id=template_id,
-                name=name,
-                subject=subject,
-                body=body,
-            )
-        )
+        return await adapter.update_template(_validated_request(UpdateTemplateToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_delete_template",
         description="Delete a Follow Up Boss email template by ID.",
     )
     async def followupboss_delete_template(template_id: int) -> dict[str, object]:
-        return await adapter.delete_template(DeleteTemplateToolInput(template_id=template_id))
+        return await adapter.delete_template(_validated_request(DeleteTemplateToolInput, locals()))
 
 
 def _register_text_message_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
@@ -2950,11 +2323,7 @@ def _register_text_message_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter)
         to_number: str | None = None,
     ) -> dict[str, object]:
         return await adapter.list_text_messages(
-            TextMessageListRequest(
-                from_number=from_number,
-                person_id=person_id,
-                to_number=to_number,
-            )
+            _validated_request(TextMessageListRequest, locals())
         )
 
     @mcp.tool(
@@ -2962,9 +2331,7 @@ def _register_text_message_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter)
         description="Fetch a single Follow Up Boss text message by ID.",
     )
     async def followupboss_get_text_message(text_message_id: int) -> dict[str, object]:
-        return await adapter.get_text_message(
-            GetTextMessageToolInput(text_message_id=text_message_id)
-        )
+        return await adapter.get_text_message(_validated_request(GetTextMessageToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_create_text_message",
@@ -2981,15 +2348,7 @@ def _register_text_message_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter)
         is_incoming: bool | None = None,
     ) -> dict[str, object]:
         return await adapter.create_text_message(
-            CreateTextMessageRequest(
-                person_id=person_id,
-                message=message,
-                to_number=to_number,
-                from_number=from_number,
-                external_label=external_label,
-                external_url=external_url,
-                is_incoming=is_incoming,
-            )
+            _validated_request(CreateTextMessageRequest, locals())
         )
 
     @mcp.tool(
@@ -3002,7 +2361,7 @@ def _register_text_message_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter)
         offset: int | None = None,
     ) -> dict[str, object]:
         return await adapter.list_text_message_templates(
-            TextMessageTemplateListRequest(limit=limit, offset=offset)
+            _validated_request(TextMessageTemplateListRequest, locals())
         )
 
     @mcp.tool(
@@ -3011,7 +2370,7 @@ def _register_text_message_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter)
     )
     async def followupboss_get_text_message_template(template_id: int) -> dict[str, object]:
         return await adapter.get_text_message_template(
-            GetTextMessageTemplateToolInput(template_id=template_id)
+            _validated_request(GetTextMessageTemplateToolInput, locals())
         )
 
     @mcp.tool(
@@ -3025,13 +2384,7 @@ def _register_text_message_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter)
         recipients: dict[str, object] | None = None,
     ) -> dict[str, object]:
         return await adapter.merge_text_message_template(
-            MergeTextMessageTemplateRequest.model_validate(
-                {
-                    "template_id": template_id,
-                    "person_id": person_id,
-                    "recipients": recipients,
-                }
-            )
+            _validated_request(MergeTextMessageTemplateRequest, locals())
         )
 
     @mcp.tool(
@@ -3045,11 +2398,7 @@ def _register_text_message_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter)
         is_shared: bool | None = None,
     ) -> dict[str, object]:
         return await adapter.create_text_message_template(
-            CreateTextMessageTemplateRequest(
-                name=name,
-                message=message,
-                is_shared=is_shared,
-            )
+            _validated_request(CreateTextMessageTemplateRequest, locals())
         )
 
     @mcp.tool(
@@ -3064,12 +2413,7 @@ def _register_text_message_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter)
         is_shared: bool | None = None,
     ) -> dict[str, object]:
         return await adapter.update_text_message_template(
-            UpdateTextMessageTemplateToolInput(
-                template_id=template_id,
-                name=name,
-                message=message,
-                is_shared=is_shared,
-            )
+            _validated_request(UpdateTextMessageTemplateToolInput, locals())
         )
 
     @mcp.tool(
@@ -3078,7 +2422,7 @@ def _register_text_message_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter)
     )
     async def followupboss_delete_text_message_template(template_id: int) -> dict[str, object]:
         return await adapter.delete_text_message_template(
-            DeleteTextMessageTemplateToolInput(template_id=template_id)
+            _validated_request(DeleteTextMessageTemplateToolInput, locals())
         )
 
 
@@ -3106,12 +2450,7 @@ def _register_note_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         wait_for_person: bool = False,
     ) -> dict[str, object]:
         return await adapter.add_note(
-            CreateNoteRequest(
-                body=body,
-                is_html=is_html,
-                person_id=person_id,
-                subject=subject,
-            ),
+            _validated_request(CreateNoteRequest, locals(), exclude={"wait_for_person"}),
             wait_for_person=wait_for_person,
         )
 
@@ -3120,7 +2459,7 @@ def _register_note_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         description="Fetch a Follow Up Boss note by ID.",
     )
     async def followupboss_get_note(note_id: int) -> dict[str, object]:
-        return await adapter.get_note(GetNoteToolInput(note_id=note_id))
+        return await adapter.get_note(_validated_request(GetNoteToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_update_note",
@@ -3133,21 +2472,14 @@ def _register_note_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         is_html: bool | None = None,
         subject: str | None = None,
     ) -> dict[str, object]:
-        return await adapter.update_note(
-            UpdateNoteToolInput(
-                note_id=note_id,
-                body=body,
-                is_html=is_html,
-                subject=subject,
-            )
-        )
+        return await adapter.update_note(_validated_request(UpdateNoteToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_delete_note",
         description="Delete a Follow Up Boss note by ID.",
     )
     async def followupboss_delete_note(note_id: int) -> dict[str, object]:
-        return await adapter.delete_note(DeleteNoteToolInput(note_id=note_id))
+        return await adapter.delete_note(_validated_request(DeleteNoteToolInput, locals()))
 
 
 def _register_webhook_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
@@ -3176,28 +2508,14 @@ def _register_webhook_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> N
         event: str | None = None,
         status: str | None = None,
     ) -> dict[str, object]:
-        return await adapter.list_webhooks(
-            WebhookListRequest(
-                fields=fields,
-                id=id,
-                ids=ids,
-                id_greater_than=id_greater_than,
-                id_less_than=id_less_than,
-                limit=limit,
-                next_token=next_token,
-                offset=offset,
-                sort=sort,
-                event=event,
-                status=status,
-            )
-        )
+        return await adapter.list_webhooks(_validated_request(WebhookListRequest, locals()))
 
     @mcp.tool(
         name="followupboss_get_webhook",
         description="Fetch a single Follow Up Boss webhook by ID.",
     )
     async def followupboss_get_webhook(webhook_id: int) -> dict[str, object]:
-        return await adapter.get_webhook(GetWebhookToolInput(webhook_id=webhook_id))
+        return await adapter.get_webhook(_validated_request(GetWebhookToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_get_webhook_event",
@@ -3205,7 +2523,7 @@ def _register_webhook_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> N
     )
     async def followupboss_get_webhook_event(webhook_event_id: str) -> dict[str, object]:
         return await adapter.get_webhook_event(
-            GetWebhookEventToolInput(webhook_event_id=webhook_event_id)
+            _validated_request(GetWebhookEventToolInput, locals())
         )
 
     @mcp.tool(
@@ -3213,7 +2531,7 @@ def _register_webhook_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> N
         description="Create a Follow Up Boss webhook for a documented event name.",
     )
     async def followupboss_create_webhook(event: str, url: str) -> dict[str, object]:
-        return await adapter.create_webhook(CreateWebhookRequest(event=event, url=url))
+        return await adapter.create_webhook(_validated_request(CreateWebhookRequest, locals()))
 
     @mcp.tool(
         name="followupboss_update_webhook",
@@ -3226,23 +2544,14 @@ def _register_webhook_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> N
         status: str | None = None,
         url: str | None = None,
     ) -> dict[str, object]:
-        return await adapter.update_webhook(
-            UpdateWebhookToolInput.model_validate(
-                {
-                    "webhook_id": webhook_id,
-                    "event": event,
-                    "status": status,
-                    "url": url,
-                }
-            )
-        )
+        return await adapter.update_webhook(_validated_request(UpdateWebhookToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_delete_webhook",
         description="Delete a Follow Up Boss webhook by ID.",
     )
     async def followupboss_delete_webhook(webhook_id: int) -> dict[str, object]:
-        return await adapter.delete_webhook(DeleteWebhookToolInput(webhook_id=webhook_id))
+        return await adapter.delete_webhook(_validated_request(DeleteWebhookToolInput, locals()))
 
 
 def _register_resources_and_prompts(mcp: FastMCP, *, project_root: Path) -> None:

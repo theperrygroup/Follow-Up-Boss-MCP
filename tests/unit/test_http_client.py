@@ -94,7 +94,9 @@ async def test_request_json_logs_status_and_elapsed_time() -> None:
             assert await client.request_json("GET", "/identity") == {"id": 1}
 
     log_output = stream.getvalue()
-    assert "Follow Up Boss response GET /identity status=200 elapsed_ms=250 attempts=1" in log_output
+    assert (
+        "Follow Up Boss response GET /identity status=200 elapsed_ms=250 attempts=1" in log_output
+    )
 
 
 @pytest.mark.asyncio

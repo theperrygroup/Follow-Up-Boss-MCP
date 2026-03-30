@@ -53,7 +53,7 @@ The repository exposes this logic in `src/followupboss_mcp/webhooks.py` so it ca
 
 - CI runs a dependency audit against exported locked third-party requirements
 - CI runs secret scanning to catch committed credentials before release
-- the dependency audit temporarily ignores `CVE-2026-4539` because the current `pygments` advisory does not yet list a fixed release
+- the current lockfile now passes the dependency audit without a temporary vulnerability exception
 
 ## Incident Response Guidance
 
