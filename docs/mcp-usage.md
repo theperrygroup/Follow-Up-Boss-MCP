@@ -25,10 +25,10 @@ All tools are namespaced with the `followupboss_` prefix.
 | `followupboss_get_person` | Retrieve one person by ID. |
 | `followupboss_create_person` | Create a person directly. |
 | `followupboss_update_person` | Update a person directly. |
-| `followupboss_search_events` | Search events with filters and pagination metadata. |
+| `followupboss_search_events` | Search events with pagination metadata and supported event filters. |
 | `followupboss_get_event` | Retrieve one event by ID. |
 | `followupboss_send_event` | Send a canonical `POST /events` lead or lead-activity payload. |
-| `followupboss_list_users` | List users with documented filters and pagination metadata. |
+| `followupboss_list_users` | List users with pagination metadata. |
 | `followupboss_get_user` | Retrieve one user by ID. |
 | `followupboss_list_custom_fields` | List available Follow Up Boss custom fields. |
 | `followupboss_get_custom_field` | Retrieve one custom field by ID. |
@@ -45,7 +45,7 @@ All tools are namespaced with the `followupboss_` prefix.
 | `followupboss_create_deal` | Create a deal. |
 | `followupboss_update_deal` | Update one deal by ID. |
 | `followupboss_delete_deal` | Delete one deal by ID and return a structured confirmation. |
-| `followupboss_list_deal_custom_fields` | List deal custom fields for valid write-time field names. |
+| `followupboss_list_deal_custom_fields` | List deal custom fields with pagination metadata for valid write-time field names. |
 | `followupboss_list_pipelines` | List pipelines with exact-name filtering and pagination metadata. |
 | `followupboss_get_pipeline` | Retrieve one pipeline by ID. |
 | `followupboss_create_pipeline` | Create a pipeline. |
@@ -75,7 +75,7 @@ All tools are namespaced with the `followupboss_` prefix.
 | `followupboss_delete_appointment_type` | Delete one appointment type by ID, require a reassignment target, and return a structured confirmation. |
 | `followupboss_list_automations` | List automations with documented filters and pagination metadata. |
 | `followupboss_get_automation` | Retrieve one automation by ID. |
-| `followupboss_list_automation_people` | List automation-person pairings with documented filters and pagination metadata. |
+| `followupboss_list_automation_people` | List automation-person pairings with documented filters. |
 | `followupboss_get_automation_person` | Retrieve one automation-person pairing by ID. |
 | `followupboss_trigger_automation` | Trigger an automation for a specific person. |
 | `followupboss_update_automation_person` | Pause or resume one automation-person pairing by ID. |
@@ -106,7 +106,7 @@ All tools are namespaced with the `followupboss_` prefix.
 | `followupboss_add_reaction` | Add a reaction to a note, call, or threaded reply. |
 | `followupboss_delete_reaction` | Delete a reaction from a note, call, or threaded reply. |
 | `followupboss_list_action_plans` | List action plans with documented filters and pagination metadata. |
-| `followupboss_list_action_plan_people` | List action-plan-person relationships with documented filters and pagination metadata. |
+| `followupboss_list_action_plan_people` | List action-plan-person relationships with documented filters. |
 | `followupboss_apply_action_plan` | Apply an action plan to a specific person. |
 | `followupboss_update_action_plan_person` | Pause or resume one action-plan-person relationship by ID. |
 | `followupboss_list_groups` | List groups with documented filters and pagination metadata. |
@@ -154,7 +154,7 @@ All tools are namespaced with the `followupboss_` prefix.
 | `followupboss_get_note` | Retrieve one note by ID. |
 | `followupboss_update_note` | Update one note by ID. |
 | `followupboss_delete_note` | Delete one note by ID and return a structured confirmation. |
-| `followupboss_list_webhooks` | List configured webhooks. |
+| `followupboss_list_webhooks` | List registered webhooks with pagination metadata. |
 | `followupboss_get_webhook` | Retrieve one webhook by ID. |
 | `followupboss_create_webhook` | Create a webhook subscription. |
 | `followupboss_delete_webhook` | Delete a webhook by ID and return a structured confirmation. |

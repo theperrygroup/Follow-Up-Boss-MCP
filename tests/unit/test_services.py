@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from pydantic import ValidationError
@@ -1575,6 +1575,31 @@ async def test_reactions_service() -> None:
         await invalid_reaction_service.get_reaction(1363)
     with pytest.raises(ValueError, match="Unexpected reactions response"):
         await invalid_reaction_service.add_reaction(
+            "Note",
+            2144705,
+            CreateReactionRequest(body="🤣"),
+        )
+
+    ack_reaction_service = ReactionsService(StubClient([{}]))
+    acknowledged = await ack_reaction_service.add_reaction(
+        "Note",
+        2144705,
+        CreateReactionRequest(body="🤣"),
+    )
+    assert acknowledged.model_dump(exclude_none=True) == {}
+
+    malformed_reaction_service = ReactionsService(
+        StubClient(
+            [
+                cast(
+                    dict[str, object] | list[object] | Exception,
+                    "unexpected",
+                )
+            ]
+        )
+    )
+    with pytest.raises(ValueError, match="Unexpected reactions response"):
+        await malformed_reaction_service.add_reaction(
             "Note",
             2144705,
             CreateReactionRequest(body="🤣"),

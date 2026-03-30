@@ -23,6 +23,7 @@ The repository now contains:
 - typed email marketing campaign list/create/update plus email event list/post coverage across the SDK, MCP surface, tests, and docs
 - typed inbox app installation, participant, message, note, and conversation-mutation coverage across the SDK, MCP surface, tests, and docs
 - typed people relationship list/get/create/update/delete coverage across the SDK, MCP surface, tests, and docs
+- typed reaction get/create/delete coverage across the SDK, MCP surface, tests, and docs
 - typed team inbox collection coverage across the SDK, MCP surface, tests, and docs
 - typed team collection and CRUD coverage with optional member-migration semantics on delete across the SDK, MCP surface, tests, and docs
 - typed text message read support, external log creation, and text message template CRUD plus merge coverage across the SDK, MCP surface, tests, and docs
@@ -115,6 +116,9 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `POST /peopleRelationships`
 - `PUT /peopleRelationships/:id`
 - `DELETE /peopleRelationships/:id`
+- `GET /reactions/{id}`
+- `POST /reactions/{refType}/{refId}`
+- `DELETE /reactions/{refType}/{refId}`
 - `GET /events`
 - `GET /events/:id`
 - `POST /events`
@@ -201,7 +205,7 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `POST /webhooks`
 - `DELETE /webhooks/:id`
 
-Total implemented official endpoints in this repository scope: `135`
+Total implemented official endpoints in this repository scope: `138`
 
 All additional discovered official endpoints are marked explicitly as deferred in `docs/api-coverage-matrix.md`.
 
@@ -209,7 +213,7 @@ All additional discovered official endpoints are marked explicitly as deferred i
 
 Registered MCP surface:
 
-- tools: `135`
+- tools: `138`
 - resources: `1`
 - prompts: `1`
 
@@ -229,6 +233,9 @@ Registered tools:
 - `followupboss_create_people_relationship`
 - `followupboss_update_people_relationship`
 - `followupboss_delete_people_relationship`
+- `followupboss_get_reaction`
+- `followupboss_add_reaction`
+- `followupboss_delete_reaction`
 - `followupboss_search_events`
 - `followupboss_get_event`
 - `followupboss_send_event`
