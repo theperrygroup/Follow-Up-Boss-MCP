@@ -25,6 +25,10 @@ All tools are namespaced with the `followupboss_` prefix.
 | `followupboss_get_person` | Retrieve one person by ID. |
 | `followupboss_create_person` | Create a person directly. |
 | `followupboss_update_person` | Update a person directly. |
+| `followupboss_check_duplicate_person` | Check whether a person already exists by email or phone. |
+| `followupboss_list_unclaimed_people` | List unclaimed leads available to the authenticated user. |
+| `followupboss_claim_person` | Claim an unclaimed lead by person ID. |
+| `followupboss_ignore_unclaimed_person` | Ignore an unclaimed lead offer by person ID and return a structured confirmation. |
 | `followupboss_search_events` | Search events with pagination metadata and supported event filters. |
 | `followupboss_get_event` | Retrieve one event by ID. |
 | `followupboss_send_event` | Send a canonical `POST /events` lead or lead-activity payload. |

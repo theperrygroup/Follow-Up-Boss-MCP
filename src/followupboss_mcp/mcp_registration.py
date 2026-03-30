@@ -9,6 +9,8 @@ from followupboss_mcp.mcp_tools import (
     AddInboxAppNoteToolInput,
     AddInboxAppParticipantToolInput,
     AddReactionToolInput,
+    CheckDuplicatePersonToolInput,
+    ClaimPersonToolInput,
     DeactivateInboxAppToolInput,
     DeleteAppointmentOutcomeToolInput,
     DeleteAppointmentToolInput,
@@ -60,6 +62,7 @@ from followupboss_mcp.mcp_tools import (
     GetTextMessageToolInput,
     GetUserToolInput,
     GetWebhookToolInput,
+    IgnoreUnclaimedPersonToolInput,
     ListInboxAppInstallationsToolInput,
     ListInboxAppParticipantsToolInput,
     UpdateActionPlanPersonToolInput,
@@ -138,7 +141,11 @@ from followupboss_mcp.models.inbox_apps import (
     InstallInboxAppRequest,
 )
 from followupboss_mcp.models.notes import CreateNoteRequest
-from followupboss_mcp.models.people import CreatePersonRequest, PeopleSearchRequest
+from followupboss_mcp.models.people import (
+    CreatePersonRequest,
+    PeopleSearchRequest,
+    UnclaimedPeopleListRequest,
+)
 from followupboss_mcp.models.people_relationships import (
     CreatePeopleRelationshipRequest,
     PeopleRelationshipListRequest,
@@ -167,6 +174,7 @@ from followupboss_mcp.models.text_messages import (
     TextMessageListRequest,
     TextMessageTemplateListRequest,
 )
+from followupboss_mcp.models.timeframes import TimeframeListRequest
 from followupboss_mcp.models.users import UserListRequest
 from followupboss_mcp.models.webhooks import CreateWebhookRequest, WebhookListRequest
 from mcp.server.fastmcp import FastMCP
@@ -188,6 +196,7 @@ def register_server_surface(
     _register_identity_tools(mcp, adapter)
     _register_people_tools(mcp, adapter)
     _register_people_relationship_tools(mcp, adapter)
+    _register_timeframe_tools(mcp, adapter)
     _register_attachment_tools(mcp, adapter)
     _register_reaction_tools(mcp, adapter)
     _register_event_tools(mcp, adapter)
@@ -415,6 +424,53 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
         )
         return await adapter.update_person(tool_input)
 
+    @mcp.tool(
+        name="followupboss_check_duplicate_person",
+        description="Check whether a person already exists in Follow Up Boss by email or phone.",
+    )
+    async def followupboss_check_duplicate_person(
+        *,
+        email: str | None = None,
+        phone: str | None = None,
+    ) -> dict[str, object]:
+        return await adapter.check_duplicate_person(
+            CheckDuplicatePersonToolInput.model_validate(
+                {
+                    "email": email,
+                    "phone": phone,
+                }
+            )
+        )
+
+    @mcp.tool(
+        name="followupboss_list_unclaimed_people",
+        description="List unclaimed Follow Up Boss leads available to the authenticated user.",
+    )
+    async def followupboss_list_unclaimed_people(
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> dict[str, object]:
+        return await adapter.list_unclaimed_people(
+            UnclaimedPeopleListRequest(limit=limit, offset=offset)
+        )
+
+    @mcp.tool(
+        name="followupboss_claim_person",
+        description="Claim an unclaimed Follow Up Boss lead by person ID.",
+    )
+    async def followupboss_claim_person(person_id: int) -> dict[str, object]:
+        return await adapter.claim_person(ClaimPersonToolInput(person_id=person_id))
+
+    @mcp.tool(
+        name="followupboss_ignore_unclaimed_person",
+        description="Ignore an unclaimed Follow Up Boss lead offer by person ID.",
+    )
+    async def followupboss_ignore_unclaimed_person(person_id: int) -> dict[str, object]:
+        return await adapter.ignore_unclaimed_person(
+            IgnoreUnclaimedPersonToolInput(person_id=person_id)
+        )
+
 
 def _register_people_relationship_tools(
     mcp: FastMCP,
@@ -526,6 +582,22 @@ def _register_people_relationship_tools(
         return await adapter.delete_people_relationship(
             DeletePeopleRelationshipToolInput(people_relationship_id=people_relationship_id)
         )
+
+
+def _register_timeframe_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+    """Register timeframe-related MCP tools.
+
+    Args:
+        mcp: The FastMCP server instance.
+        adapter: The typed Follow Up Boss tool adapter.
+    """
+
+    @mcp.tool(
+        name="followupboss_list_timeframes",
+        description="List Follow Up Boss timeframes with pagination metadata.",
+    )
+    async def followupboss_list_timeframes() -> dict[str, object]:
+        return await adapter.list_timeframes(TimeframeListRequest())
 
 
 def _register_attachment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:

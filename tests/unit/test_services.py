@@ -10,7 +10,11 @@ from typing import Any, cast
 import pytest
 from pydantic import ValidationError
 
-from followupboss_mcp.errors import FollowUpBossNotFoundError, FollowUpBossValidationError
+from followupboss_mcp.errors import (
+    FollowUpBossHTTPError,
+    FollowUpBossNotFoundError,
+    FollowUpBossValidationError,
+)
 from followupboss_mcp.http_client import JsonPayload
 from followupboss_mcp.models.action_plans import (
     ActionPlanListRequest,
@@ -90,10 +94,14 @@ from followupboss_mcp.models.inbox_apps import (
 )
 from followupboss_mcp.models.notes import CreateNoteRequest, UpdateNoteRequest
 from followupboss_mcp.models.people import (
+    ClaimPersonRequest,
     CreatePersonRequest,
+    IgnoreUnclaimedPersonRequest,
     PeopleSearchRequest,
+    PersonDuplicateCheckRequest,
     PersonLookupRequest,
     PersonRecord,
+    UnclaimedPeopleListRequest,
     UpdatePersonRequest,
 )
 from followupboss_mcp.models.people_relationships import (
@@ -148,6 +156,7 @@ from followupboss_mcp.models.text_messages import (
     TextMessageTemplateListRequest,
     UpdateTextMessageTemplateRequest,
 )
+from followupboss_mcp.models.timeframes import TimeframeListRequest
 from followupboss_mcp.models.users import UserListRequest
 from followupboss_mcp.models.webhooks import CreateWebhookRequest, WebhookListRequest
 from followupboss_mcp.services.action_plans import ActionPlansService
@@ -188,6 +197,7 @@ from followupboss_mcp.services.text_messages import (
     TextMessagesService,
     TextMessageTemplatesService,
 )
+from followupboss_mcp.services.timeframes import TimeframesService
 from followupboss_mcp.services.users import UsersService
 from followupboss_mcp.services.webhooks import WebhooksService
 
@@ -1234,6 +1244,127 @@ async def test_people_service_paginator_and_non_list_shape() -> None:
 
 
 @pytest.mark.asyncio
+async def test_people_service_admin_utility_endpoints() -> None:
+    """People service should cover duplicate checks and unclaimed-lead utilities."""
+    client = StubClient(
+        [
+            {
+                "found": True,
+                "matchedBy": "email",
+                "assignedTo": "Agent Smith",
+            },
+            {
+                "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                "people": [
+                    {
+                        "id": 13,
+                        "firstName": "Unclaimed",
+                        "source": "Zillow",
+                        "sourceId": 730,
+                        "claimed": False,
+                        "delayed": False,
+                        "picture": {"small": "https://example.com/avatar.jpg"},
+                    }
+                ],
+            },
+            {
+                "id": 14,
+                "firstName": "Claimed",
+                "assignedTo": "Agent Smith",
+                "claimed": False,
+            },
+            {},
+        ]
+    )
+    service = PeopleService(client)
+
+    duplicate = await service.check_duplicate_person(
+        PersonDuplicateCheckRequest(email="agent@example.com")
+    )
+    assert duplicate.found is True
+    assert duplicate.matched_by == "email"
+    assert client.calls[0].path == "/people/checkDuplicate"
+    assert client.calls[0].params == {"email": "agent@example.com"}
+
+    unclaimed = await service.list_unclaimed_people(UnclaimedPeopleListRequest(limit=10, offset=0))
+    assert unclaimed.items[0].source_id == 730
+    assert unclaimed.items[0].picture is not None
+    assert unclaimed.items[0].picture.small == "https://example.com/avatar.jpg"
+    assert client.calls[1].path == "/people/unclaimed"
+    assert client.calls[1].params == {"limit": "10", "offset": "0"}
+
+    claimed = await service.claim_person(ClaimPersonRequest(person_id=14))
+    assert claimed.id == 14
+    assert client.calls[2].path == "/people/claim"
+    assert client.calls[2].json_body == {"personId": 14}
+
+    await service.ignore_unclaimed_person(IgnoreUnclaimedPersonRequest(person_id=14))
+    assert client.calls[3].path == "/people/ignoreUnclaimed"
+    assert client.calls[3].json_body == {"personId": 14}
+
+    conflict_service = PeopleService(
+        StubClient(
+            [
+                FollowUpBossHTTPError(
+                    "Lead already claimed.",
+                    status_code=409,
+                    payload={
+                        "id": 15,
+                        "firstName": "Already",
+                        "claimed": True,
+                        "sourceId": 99,
+                    },
+                )
+            ]
+        )
+    )
+    conflict_result = await conflict_service.claim_person(ClaimPersonRequest(person_id=15))
+    assert conflict_result.claimed is True
+    assert conflict_result.source_id == 99
+
+    with pytest.raises(
+        ValidationError, match="Duplicate checks must include either email or phone"
+    ):
+        PersonDuplicateCheckRequest()
+
+    invalid_collection_service = PeopleService(StubClient([[], {"people": {}}]))
+    with pytest.raises(ValueError, match="Unexpected people duplicate-check response"):
+        await invalid_collection_service.check_duplicate_person(
+            PersonDuplicateCheckRequest(phone="5551112222")
+        )
+    with pytest.raises(ValueError, match="Unexpected unclaimed people response"):
+        await invalid_collection_service.list_unclaimed_people()
+
+    invalid_unclaimed_service = PeopleService(
+        StubClient([cast(dict[str, object] | list[object] | Exception, "unexpected")])
+    )
+    with pytest.raises(ValueError, match="Unexpected unclaimed people response"):
+        await invalid_unclaimed_service.list_unclaimed_people()
+
+    invalid_claim_service = PeopleService(
+        StubClient(
+            [
+                cast(dict[str, object] | list[object] | Exception, "unexpected"),
+            ]
+        )
+    )
+    with pytest.raises(ValueError, match="Unexpected people claim response"):
+        await invalid_claim_service.claim_person(ClaimPersonRequest(person_id=16))
+
+    invalid_conflict_service = PeopleService(
+        StubClient([FollowUpBossHTTPError("Conflict", status_code=409)])
+    )
+    with pytest.raises(FollowUpBossHTTPError):
+        await invalid_conflict_service.claim_person(ClaimPersonRequest(person_id=17))
+
+    invalid_error_service = PeopleService(
+        StubClient([FollowUpBossHTTPError("Internal", status_code=500)])
+    )
+    with pytest.raises(FollowUpBossHTTPError):
+        await invalid_error_service.claim_person(ClaimPersonRequest(person_id=18))
+
+
+@pytest.mark.asyncio
 async def test_people_relationships_service() -> None:
     """People relationships service should map list/get/create/update/delete correctly."""
     client = StubClient(
@@ -1870,6 +2001,18 @@ async def test_appointments_service() -> None:
         "end": "2026-03-28T11:00:00Z",
         "invitees": [{"personId": 99, "name": "Data"}],
     }
+
+    created_from_camel_case = CreateAppointmentRequest.model_validate(
+        {
+            "title": "Camel appointment",
+            "start": "2026-03-28T10:00:00Z",
+            "end": "2026-03-28T11:00:00Z",
+            "invitees": [{"personId": 99, "userId": 5, "name": "Data"}],
+        }
+    )
+    assert created_from_camel_case.model_dump(by_alias=True, exclude_none=True)["invitees"] == [
+        {"personId": 99, "userId": 5, "name": "Data"}
+    ]
 
     updated = await service.update_appointment(
         4,
@@ -2906,6 +3049,34 @@ async def test_team_inboxes_service() -> None:
     assert team_inboxes_page.items[0].name == "My Team Inbox"
     assert team_inboxes_page.items[0].users[0].first_name == "User"
     assert client.calls[0].path == "/teamInboxes"
+
+
+@pytest.mark.asyncio
+async def test_timeframes_service() -> None:
+    """Timeframes service should map payloads correctly."""
+    client = StubClient(
+        [
+            {
+                "_metadata": {"collection": "timeframes", "offset": 0, "limit": 10, "total": 5},
+                "timeframes": [
+                    {"id": 1, "timeframe": "0-3 Months"},
+                    {"id": 2, "timeframe": "3-6 Months"},
+                ],
+            }
+        ]
+    )
+    service = TimeframesService(client)
+
+    timeframes_page = await service.list_timeframes(TimeframeListRequest())
+    assert timeframes_page.items[0].timeframe == "0-3 Months"
+    assert timeframes_page.items[1].id == 2
+    assert client.calls[0].path == "/timeframes"
+
+    invalid_service = TimeframesService(StubClient([[], {"timeframes": {}}]))
+    with pytest.raises(ValueError, match="Unexpected timeframes response"):
+        await invalid_service.list_timeframes()
+    with pytest.raises(ValueError, match="Unexpected timeframes response"):
+        await invalid_service.list_timeframes()
 
 
 @pytest.mark.asyncio

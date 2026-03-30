@@ -39,9 +39,17 @@ class AppointmentInviteeInput(RequestModel):
 
     email: str | None = None
     name: str | None = None
-    person_id: int | None = Field(default=None, serialization_alias="personId")
+    person_id: int | None = Field(
+        default=None,
+        validation_alias="personId",
+        serialization_alias="personId",
+    )
     picture: str | None = None
-    user_id: int | None = Field(default=None, serialization_alias="userId")
+    user_id: int | None = Field(
+        default=None,
+        validation_alias="userId",
+        serialization_alias="userId",
+    )
 
 
 class AppointmentWriteRequest(RequestModel):

@@ -63,8 +63,8 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `GET /notes/:id` | Implemented | Yes | Yes | Yes | Single-note lookup. |
 | `GET /people` | Implemented | Yes | Yes | Yes | Supports next-token and offset pagination. |
 | `GET /people/:id` | Implemented | Yes | Yes | Yes | Supports fields selection. |
-| `GET /people/checkDuplicate` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `GET /people/unclaimed` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `GET /people/checkDuplicate` | Implemented | Yes | Yes | Yes | Checks whether a person already exists by email address or phone number. |
+| `GET /people/unclaimed` | Implemented | Yes | Yes | Yes | Lists unclaimed leads available to the authenticated user. |
 | `GET /peopleRelationships` | Implemented | Yes | Yes | Yes | Lists people relationships with synthetic pagination metadata. |
 | `GET /peopleRelationships/:id` | Implemented | Yes | Yes | Yes | Fetches a single people relationship by ID. |
 | `GET /personAttachments/{id}` | Implemented | Yes | Yes | Yes | Fetches a registered-system person attachment by ID. |
@@ -115,8 +115,8 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `POST /inboxApps/{inboxAppId}/note` | Implemented | Yes | Yes | Yes | Adds a note to an inbox app conversation with typed user attribution. |
 | `POST /notes` | Implemented | Yes | Yes | Yes | Supports optional person-availability wait flow. |
 | `POST /people` | Implemented | Yes | Yes | Yes | Documented as non-canonical for lead ingestion; prefer POST /events. |
-| `POST /people/claim` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
-| `POST /people/ignoreUnclaimed` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `POST /people/claim` | Implemented | Yes | Yes | Yes | Claims an offered lead and surfaces both success and already-claimed payloads. |
+| `POST /people/ignoreUnclaimed` | Implemented | Input only | Yes | Yes | Acknowledges and ignores an unclaimed lead offer. |
 | `POST /peopleRelationships` | Implemented | Yes | Yes | Yes | Creates a people relationship for a person. |
 | `POST /personAttachments` | Implemented | Yes | Yes | Yes | Creates a registered-system person attachment using an external URI. |
 | `POST /pipelines` | Implemented | Yes | Yes | Yes | Creates a pipeline with optional ordered stages. |

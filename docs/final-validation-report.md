@@ -22,6 +22,7 @@ The repository now contains:
 - typed group collection, round-robin reads, and CRUD coverage across the SDK, MCP surface, tests, and docs
 - typed email marketing campaign list/create/update plus email event list/post coverage across the SDK, MCP surface, tests, and docs
 - typed inbox app installation, participant, message, note, and conversation-mutation coverage across the SDK, MCP surface, tests, and docs
+- typed people duplicate-check, unclaimed lead list, claim, and ignore coverage across the SDK, MCP surface, tests, and docs
 - typed people relationship list/get/create/update/delete coverage across the SDK, MCP surface, tests, and docs
 - typed reaction get/create/delete coverage across the SDK, MCP surface, tests, and docs
 - typed team inbox collection coverage across the SDK, MCP surface, tests, and docs
@@ -107,6 +108,10 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `POST /people`
 - `GET /people/:id`
 - `PUT /people/:id`
+- `GET /people/checkDuplicate`
+- `GET /people/unclaimed`
+- `POST /people/claim`
+- `POST /people/ignoreUnclaimed`
 - `GET /personAttachments/{id}`
 - `POST /personAttachments`
 - `PUT /personAttachments/{id}`
@@ -209,7 +214,7 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `POST /webhooks`
 - `DELETE /webhooks/:id`
 
-Total implemented official endpoints in this repository scope: `142`
+Total implemented official endpoints in this repository scope: `146`
 
 All additional discovered official endpoints are marked explicitly as deferred in `docs/api-coverage-matrix.md`.
 
@@ -217,7 +222,7 @@ All additional discovered official endpoints are marked explicitly as deferred i
 
 Registered MCP surface:
 
-- tools: `142`
+- tools: `146`
 - resources: `1`
 - prompts: `1`
 
@@ -228,6 +233,10 @@ Registered tools:
 - `followupboss_get_person`
 - `followupboss_create_person`
 - `followupboss_update_person`
+- `followupboss_check_duplicate_person`
+- `followupboss_list_unclaimed_people`
+- `followupboss_claim_person`
+- `followupboss_ignore_unclaimed_person`
 - `followupboss_get_person_attachment`
 - `followupboss_create_person_attachment`
 - `followupboss_update_person_attachment`
@@ -374,8 +383,9 @@ Additional MCP assets:
 ## Commands Run
 
 ```bash
-make release-validate
-make live-identity-check
+make validate
+make build-smoke
+FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check
 ```
 
 ## Final Lint Status
@@ -398,14 +408,14 @@ make live-identity-check
 ## Final Test Status
 
 - `uv run pytest`: passed
-- result: `105 passed, 1 skipped`
+- result: `108 passed, 1 skipped`
 
 ## Final Coverage Numbers
 
 - `uv run coverage run --branch -m pytest`: passed
 - `uv run coverage report --fail-under=100`: passed
-- total statements: `4109`
-- total branches: `356`
+- total statements: `4244`
+- total branches: `398`
 - line coverage: `100.00%`
 - branch coverage: `100.00%`
 
@@ -421,9 +431,11 @@ make live-identity-check
 
 ## Final Live Validation Status
 
-- `make live-identity-check`: passed
-- result: `1 skipped`
-- note: the live identity check remains opt-in and skips unless `FOLLOWUPBOSS_RUN_LIVE_TESTS=1` is set with valid credentials.
+- `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check`: passed
+- result: `1 passed`
+- `docs/mcp-validation-checklist.md`: updated with credential-backed MCP validation results across stdio, streamable HTTP, pagination, safe error paths, and live domain checks.
+- confirmed live MCP flows: identity, people, people relationships list/get/create/update/delete, person attachments CRUD, reactions add/delete, events search/get/send, action plans list/apply/pause, automations get/trigger/get-person/pause, calls create/list/get/update, text messages create/list/get, appointments create/get/update/delete, deals list/get/create/update/delete, deal attachments CRUD, templates CRUD plus merge, text message templates CRUD plus merge, and notes CRUD.
+- remaining live blockers: owner-only webhook access on the current credential, inbox app fixture setup, email marketing write fixtures, and reaction lookup by ID because the live create endpoint returned an acknowledgement rather than a reaction record.
 
 ## CI Status
 

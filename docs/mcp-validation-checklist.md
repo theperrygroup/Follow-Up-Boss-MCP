@@ -15,7 +15,7 @@ The domain sections below follow the registration order from `register_server_su
 | Account or environment | Live `.env` account with `X-System` headers configured |
 | Auth mode (`api_key` or `oauth`) | `api_key` |
 | Transport(s) exercised | `stdio`, `streamable-http` |
-| Notes | Mapped `FOLLOW_UP_BOSS_*` values from `.env` into the repository's expected `FOLLOWUPBOSS_*` variables before running live checks. Inspector-specific connection steps remain unchecked because this run used the official Python MCP clients directly. |
+| Notes | Mapped `FOLLOW_UP_BOSS_*` values from `.env` into the repository's expected `FOLLOWUPBOSS_*` variables before running live checks. Inspector-specific connection steps remain unchecked because this run used the official Python MCP clients directly. After the follow-up fixes in this session, both `make validate` and `make live-identity-check` passed. |
 
 ## How To Use This File
 
@@ -41,43 +41,39 @@ set +a
 | Disposable person | `296999` | `followupboss_create_person` | Manual | Created and updated during live MCP validation. No MCP delete tool exists for people. |
 | People relationship | `24543` | `followupboss_create_people_relationship` | `followupboss_delete_people_relationship` | Created, fetched, updated, and deleted during live stdio validation. |
 | Person attachment | `47` | `followupboss_create_person_attachment` | `followupboss_delete_person_attachment` | Created, fetched, updated, and deleted during live stdio validation. |
-| Reaction target |  | Existing note, call, or threaded reply | Manual |  |
-| Reaction |  | `followupboss_add_reaction` | `followupboss_delete_reaction` |  |
+| Reaction target | `556452` | Existing note, call, or threaded reply | `followupboss_delete_note` | Temporary note used for live reaction validation; deleted after the run. |
+| Reaction | Acknowledged only | `followupboss_add_reaction` | `followupboss_delete_reaction` | The live create call returned `{}` rather than a reaction record, so no reaction ID was available for `followupboss_get_reaction`. |
 | Event | `1899982` | `followupboss_send_event` | Manual | Confirmed via `followupboss_search_events`; the immediate tool response returned the person record rather than an event record. |
 | Email campaign |  | `followupboss_create_email_campaign` | Manual |  |
 | Email event batch |  | `followupboss_send_email_events` | Manual |  |
 | Action-plan person | `4505` | `followupboss_apply_action_plan` | Manual | Applied action plan `256` to person `296999` and immediately paused it. |
-| Automation person |  | `followupboss_trigger_automation` | Manual |  |
+| Automation person | `525018` | `followupboss_trigger_automation` | Manual | Triggered automation `225` for person `296999` and immediately paused it. |
 | Group |  | `followupboss_create_group` | `followupboss_delete_group` |  |
 | Custom field |  | `followupboss_create_custom_field` | `followupboss_delete_custom_field` |  |
-| Deal |  | `followupboss_create_deal` | `followupboss_delete_deal` |  |
-| Deal attachment |  | `followupboss_create_deal_attachment` | `followupboss_delete_deal_attachment` |  |
+| Deal | `2174` | `followupboss_create_deal` | `followupboss_delete_deal` | Created, fetched, updated, and deleted during live stdio validation. |
+| Deal attachment | `1` | `followupboss_create_deal_attachment` | `followupboss_delete_deal_attachment` | Created, fetched, updated, and deleted during live stdio validation. |
 | Appointment outcome |  | `followupboss_create_appointment_outcome` | `followupboss_delete_appointment_outcome` |  |
 | Appointment type |  | `followupboss_create_appointment_type` | `followupboss_delete_appointment_type` |  |
-| Appointment |  | `followupboss_create_appointment` | `followupboss_delete_appointment` |  |
-| Call |  | `followupboss_create_call` | Manual |  |
+| Appointment | `601018` | `followupboss_create_appointment` | `followupboss_delete_appointment` | Created, fetched, updated, and deleted during live stdio validation. |
+| Call | `71432` | `followupboss_create_call` | Manual | Created, fetched, listed, and updated during live stdio validation. No MCP delete tool exists for calls. |
 | Pipeline |  | `followupboss_create_pipeline` | `followupboss_delete_pipeline` |  |
 | Pond |  | `followupboss_create_pond` | `followupboss_delete_pond` |  |
 | Stage |  | `followupboss_create_stage` | `followupboss_delete_stage` |  |
 | Task | `19822` | `followupboss_create_task` | `followupboss_delete_task` | Created, fetched, updated, listed, and deleted during live stdio validation. |
 | Team |  | `followupboss_create_team` | `followupboss_delete_team` |  |
 | Template | `2359` | `followupboss_create_template` | `followupboss_delete_template` | Created, fetched, updated, merged, listed, and deleted during live stdio validation. |
-| Text message |  | `followupboss_create_text_message` | Manual |  |
+| Text message | `165984` | `followupboss_create_text_message` | Manual | Logged as an externally sent text message, then fetched and confirmed via filtered listing. No MCP delete tool exists. |
 | Text message template | `460` | `followupboss_create_text_message_template` | `followupboss_delete_text_message_template` | Created, fetched, updated, merged, listed, and deleted during live stdio validation. |
-| Note | `556435`, `556436` | `followupboss_add_note` | `followupboss_delete_note` | One note was created over stdio and one over streamable HTTP; both were deleted. |
+| Note | `556435`, `556436`, `556452` | `followupboss_add_note` | `followupboss_delete_note` | One note was created over stdio, one over streamable HTTP, and one for reaction validation; all were deleted. |
 | Webhook |  | `followupboss_create_webhook` | `followupboss_delete_webhook` |  |
 
 ## Known Issues And Account Limitations
 
 | Domain | Issue Or Limitation | Impact | Follow-Up |
 | --- | --- | --- | --- |
-| Baseline validation | `make validate` fails because `tests/unit/test_auth_config_logging.py::test_settings_validation_and_normalization` still expects a `ValidationError` that no longer occurs. | The full local quality gate stays red even though linting, type-checking, and most tests pass. | Update the test expectation or restore the intended settings validation behavior. |
-| Live identity smoke | `make live-identity-check` reaches the live API successfully, but the live `/identity` payload no longer populates top-level `identity.id`. | The live smoke test fails on a stale assertion. | Relax or update the smoke assertion to match the current API response shape. |
-| People relationships list | `followupboss_list_people_relationships` returns `Unexpected people relationships response` against the live API. | The list path remains blocked even though create/get/update/delete all worked. | Update `PeopleRelationshipsService.list_people_relationships()` for the current response shape. |
-| Deals | `followupboss_list_deals` fails because `DealRecord.type` expects `str` while the live API returns `int`. | Deal list/get and any deal-dependent flows such as deal attachments are blocked. | Broaden the deal model to accept the live type shape. |
 | Webhooks | The current credential is not the account owner; `followupboss_list_webhooks` returns `Only the account owner may access webhooks.` | Webhook list/get/create/delete remain blocked in this environment. | Re-run with an owner credential or explicitly document webhook validation as owner-only. |
-| Automations | `followupboss_list_automations` returned an empty `automations` array while `_metadata.total` was nonzero, so no usable automation ID was obtained. | Automation get/trigger/update flows were not exercised. | Investigate live pagination/filtering behavior or re-run with a known automation ID. |
-| Event input ergonomics | `followupboss_send_event` only succeeded when the nested `person` object used snake_case field names such as `first_name`, not response-style aliases such as `firstName`. | The tool works, but MCP callers can easily hit validation errors. | Document the required nested input shape or relax model input aliases. |
+| Automations | `followupboss_list_automations` now accepts `next_token`, but the live account still returned empty pages across successive cursors even though `_metadata.total` was nonzero. | Automation discovery by paginated list is still unreliable in this account. | Investigate the live `/automations` pagination behavior; direct `get_automation(225)` and trigger/pause flows now work when a known ID is supplied. |
+| Reactions | `followupboss_add_reaction` succeeds live, but the API responds with an empty acknowledgement instead of a reaction record. | `followupboss_get_reaction` still requires a separately known reaction ID and was not exercised in this run. | Decide whether the checklist should treat add/delete as sufficient, or add another discovery path for reaction IDs. |
 | Inbox apps | No published inbox app ID, installation, or conversation fixtures were available in this run. | Inbox app tools were not exercised. | Re-run with disposable inbox app prerequisites. |
 | Email marketing writes | No safe `origin` / `origin_id` pair was available for mutation tests. | Email campaign create/update and email-event send remain unvalidated. | Re-run with disposable email-marketing fixtures. |
 
@@ -91,18 +87,18 @@ set +a
 - [x] Confirm you have a reusable disposable person data set for cross-domain testing.
 - [x] Confirm you have a safe hosted file URI and file metadata for person and deal attachment tests.
 - [x] Confirm you have a valid action plan ID for mutation tests.
-- [ ] Confirm you have a valid automation ID for mutation tests.
+- [x] Confirm you have a valid automation ID for mutation tests.
 - [ ] Confirm you have a valid inbox app setup for installation, conversation, message, and participant tests.
 - [ ] Confirm you have valid pipeline, stage, owner, type, and outcome references for deal, appointment, and stage lifecycle tests.
 - [ ] Confirm you have a valid reachable webhook receiver URL for webhook creation tests.
 - [ ] Confirm you have a valid email marketing `origin` and `origin_id` for campaign and email-event tests.
-- [ ] Confirm you have a valid reaction target. If needed, create a temporary note first and reuse it for reaction checks.
+- [x] Confirm you have a valid reaction target. If needed, create a temporary note first and reuse it for reaction checks.
 
 ## Baseline Automated Validation
 
-- [ ] Run `make validate` and confirm the full local quality gate passes.
+- [x] Run `make validate` and confirm the full local quality gate passes.
 - [x] Run `make build-smoke` and confirm distribution artifacts still build and validate.
-- [ ] Run `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check` and confirm the live identity smoke test passes with the current `.env` credentials.
+- [x] Run `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check` and confirm the live identity smoke test passes with the current `.env` credentials.
 - [x] Record any failures, permissions issues, or payload mismatches in `Known Issues And Account Limitations` before continuing.
 
 ## MCP Transport Verification
@@ -184,13 +180,13 @@ Work through the sections below in order. If a domain depends on an object creat
 
 ### People Relationships
 
-- [ ] `followupboss_list_people_relationships`: confirm list output and `_metadata`.
+- [x] `followupboss_list_people_relationships`: confirm list output and `_metadata`.
 - [x] `followupboss_get_people_relationship`: retrieve a relationship ID from the list response or from the created relationship below.
 - [x] `followupboss_create_people_relationship`: create a disposable relationship for the validation person.
 - [x] `followupboss_update_people_relationship`: update the relationship and confirm the mutated values.
 - [x] `followupboss_delete_people_relationship`: delete the disposable relationship and confirm the structured delete response.
 
-Current run note: the list path still fails live with `Unexpected people relationships response`, but create/get/update/delete worked for relationship `24543`.
+Current run note: the live list path now returns the expected paginated object shape and produced an empty `peopleRelationships` collection for person `296999`.
 
 ### Attachments
 
@@ -200,18 +196,20 @@ There are no list tools for attachments, so capture IDs directly from create res
 - [x] `followupboss_get_person_attachment`: fetch the created person attachment by ID.
 - [x] `followupboss_update_person_attachment`: update the person attachment and confirm the changed values.
 - [x] `followupboss_delete_person_attachment`: delete the person attachment and confirm the structured delete response uses `personAttachmentId`.
-- [ ] `followupboss_create_deal_attachment`: create a disposable deal attachment using a valid deal ID plus safe file metadata.
-- [ ] `followupboss_get_deal_attachment`: fetch the created deal attachment by ID.
-- [ ] `followupboss_update_deal_attachment`: update the deal attachment and confirm the changed values.
-- [ ] `followupboss_delete_deal_attachment`: delete the deal attachment and confirm the structured delete response uses `dealAttachmentId`.
+- [x] `followupboss_create_deal_attachment`: create a disposable deal attachment using a valid deal ID plus safe file metadata.
+- [x] `followupboss_get_deal_attachment`: fetch the created deal attachment by ID.
+- [x] `followupboss_update_deal_attachment`: update the deal attachment and confirm the changed values.
+- [x] `followupboss_delete_deal_attachment`: delete the deal attachment and confirm the structured delete response uses `dealAttachmentId`.
 
 ### Reactions
 
 There is no list tool for reactions. Capture the returned reaction ID from the create response and the target reference details needed for cleanup.
 
-- [ ] `followupboss_add_reaction`: add a disposable reaction to a note, call, or threaded reply using a safe `ref_type` and `ref_id`.
+- [x] `followupboss_add_reaction`: add a disposable reaction to a note, call, or threaded reply using a safe `ref_type` and `ref_id`.
 - [ ] `followupboss_get_reaction`: fetch the created reaction by ID.
-- [ ] `followupboss_delete_reaction`: delete the reaction using the matching `ref_type`, `ref_id`, and `emoji` if needed, and confirm the structured delete response uses `refId`.
+- [x] `followupboss_delete_reaction`: delete the reaction using the matching `ref_type`, `ref_id`, and `emoji` if needed, and confirm the structured delete response uses `refId`.
+
+Current run note: the live create endpoint returned `{}` rather than a reaction record, so add/delete were validated but no reaction ID was available for `followupboss_get_reaction`.
 
 ### Events
 
@@ -220,7 +218,7 @@ There is no list tool for reactions. Capture the returned reaction ID from the c
 - [x] `followupboss_send_event`: send a canonical lead or lead-activity event using safe test data.
 - [x] If the immediate send response does not include the created event ID directly, confirm the side effect via `followupboss_search_events` or `followupboss_get_event`.
 
-Current run note: the successful `followupboss_send_event` call required snake_case keys inside the nested `person` object, and the immediate response returned the person resource. `followupboss_search_events` confirmed event `1899982` for person `296999`.
+Current run note: `followupboss_send_event` now accepts both snake_case and response-style nested person keys such as `firstName`, and the immediate response still returns the person resource. `followupboss_search_events` confirmed event `1899982` for person `296999`.
 
 ### Email Marketing
 
@@ -242,14 +240,15 @@ Current run note: the successful `followupboss_send_event` call required snake_c
 ### Automations
 
 - [x] `followupboss_list_automations`: confirm list output and `_metadata`.
-- [ ] `followupboss_get_automation`: retrieve a known automation by ID.
+- [x] `followupboss_get_automation`: retrieve a known automation by ID.
 - [x] `followupboss_list_automation_people`: confirm list output and `_metadata`.
-- [ ] `followupboss_get_automation_person`: fetch a known automation-person relationship by ID.
-- [ ] `followupboss_trigger_automation`: trigger a known automation for the validation person.
-- [ ] `followupboss_update_automation_person`: pause or resume the automation-person relationship and confirm the updated state.
-- [ ] Record any manual rollback needed because automation runs are stateful.
+- [x] `followupboss_get_automation_person`: fetch a known automation-person relationship by ID.
+- [x] `followupboss_trigger_automation`: trigger a known automation for the validation person.
+- [x] `followupboss_update_automation_person`: pause or resume the automation-person relationship and confirm the updated state.
+- [x] Record any manual rollback needed because automation runs are stateful.
 
-Current run note: `followupboss_list_automations` returned an empty `automations` array while `_metadata.total` was nonzero, so no usable automation ID was available for the trigger path.
+Current run note: `followupboss_get_automation(225)`, `followupboss_trigger_automation`, `followupboss_get_automation_person`, `followupboss_update_automation_person`, and person-scoped `followupboss_list_automation_people` all succeeded live for automation-person `525018`.
+Current run note: after adding `next_token` support to the MCP tool, successive live pages still returned empty `automations` collections, so list-based automation discovery remains unreliable in this account.
 
 ### Groups
 
@@ -291,15 +290,15 @@ These checks require a real inbox app setup with valid installation, conversatio
 
 ### Deals
 
-- [ ] `followupboss_list_deals`: confirm list output and `_metadata`.
-- [ ] `followupboss_get_deal`: fetch one deal by ID.
+- [x] `followupboss_list_deals`: confirm list output and `_metadata`.
+- [x] `followupboss_get_deal`: fetch one deal by ID.
 - [x] `followupboss_list_deal_custom_fields`: confirm the custom-field lookup list works for deal writes.
-- [ ] `followupboss_create_deal`: create a disposable deal using valid sandbox references.
-- [ ] `followupboss_update_deal`: update the disposable deal and confirm the changed values.
-- [ ] `followupboss_delete_deal`: delete the disposable deal and confirm the structured delete response.
-- [ ] Record the prerequisite pipeline, stage, and custom-field references used for deal writes.
+- [x] `followupboss_create_deal`: create a disposable deal using valid sandbox references.
+- [x] `followupboss_update_deal`: update the disposable deal and confirm the changed values.
+- [x] `followupboss_delete_deal`: delete the disposable deal and confirm the structured delete response.
+- [x] Record the prerequisite pipeline, stage, and custom-field references used for deal writes.
 
-Current run note: `followupboss_list_deals` is blocked by live model validation because the API returned an integer `type`.
+Current run note: deal list and get now succeed against the live API even when `type` is numeric. The disposable deal flow used stage `27`, person `296999`, and user `259`.
 
 ### Appointment Outcomes
 
@@ -321,17 +320,21 @@ Current run note: `followupboss_list_deals` is blocked by live model validation 
 
 - [x] `followupboss_list_appointments`: confirm list output and `_metadata`.
 - [x] `followupboss_get_appointment`: fetch one appointment by ID.
-- [ ] `followupboss_create_appointment`: create a disposable appointment using valid person, owner, type, and outcome references.
-- [ ] `followupboss_update_appointment`: update the disposable appointment and confirm the changed values.
-- [ ] `followupboss_delete_appointment`: delete the disposable appointment and confirm the structured delete response.
+- [x] `followupboss_create_appointment`: create a disposable appointment using valid person, owner, type, and outcome references.
+- [x] `followupboss_update_appointment`: update the disposable appointment and confirm the changed values.
+- [x] `followupboss_delete_appointment`: delete the disposable appointment and confirm the structured delete response.
+
+Current run note: nested appointment invitees now accept response-style keys such as `personId`.
 
 ### Calls
 
 - [x] `followupboss_list_calls`: confirm list output and `_metadata`.
-- [ ] `followupboss_get_call`: fetch one call by ID.
-- [ ] `followupboss_create_call`: create a disposable call log entry.
-- [ ] `followupboss_update_call`: update the disposable call log and confirm the changed values.
-- [ ] Note that there is no MCP delete tool for calls and plan manual cleanup.
+- [x] `followupboss_get_call`: fetch one call by ID.
+- [x] `followupboss_create_call`: create a disposable call log entry.
+- [x] `followupboss_update_call`: update the disposable call log and confirm the changed values.
+- [x] Note that there is no MCP delete tool for calls and plan manual cleanup.
+
+Current run note: the live API validated `outcome` against the documented enum; `No Answer` and `Interested` both succeeded.
 
 ### Pipelines
 
@@ -394,9 +397,9 @@ Current run note: `followupboss_list_deals` is blocked by live model validation 
 ### Text Messages
 
 - [x] `followupboss_list_text_messages`: confirm list output and `_metadata`, preferably using safe filters such as `person_id`.
-- [ ] `followupboss_get_text_message`: fetch one text message by ID.
-- [ ] `followupboss_create_text_message`: record a disposable externally sent text message log entry using valid sandbox data and a valid phone-number format.
-- [ ] Note that there is no MCP delete tool for text messages and plan manual cleanup if your sandbox retains them.
+- [x] `followupboss_get_text_message`: fetch one text message by ID.
+- [x] `followupboss_create_text_message`: record a disposable externally sent text message log entry using valid sandbox data and a valid phone-number format.
+- [x] Note that there is no MCP delete tool for text messages and plan manual cleanup if your sandbox retains them.
 
 ### Text Message Templates
 
@@ -413,7 +416,7 @@ Current run note: `followupboss_list_deals` is blocked by live model validation 
 - [x] `followupboss_get_note`: fetch the created note by ID.
 - [x] `followupboss_update_note`: update the created note and confirm the changed values.
 - [x] `followupboss_delete_note`: delete the created note and confirm the structured delete response.
-- [ ] If needed, reuse the note ID for reaction testing.
+- [x] If needed, reuse the note ID for reaction testing.
 
 ### Webhooks
 
@@ -428,7 +431,7 @@ Current run note: `followupboss_list_webhooks` failed with `Only the account own
 ## Cleanup And Follow-Up
 
 - [x] Delete every temporary object that has an MCP delete tool.
-- [ ] Manually clean up every temporary object that does not currently have an MCP delete tool, including people, calls, text messages, email campaigns, email events, inbox app side effects, and any stateful automation or action-plan artifacts.
+- [ ] Manually clean up every temporary object that does not currently have an MCP delete tool, including people, calls, text messages, email campaigns, email events, inbox app side effects, and any stateful automation or action-plan artifacts such as automation-person `525018` and action-plan-person `4505`.
 - [x] Review the scratchpad and confirm no temporary IDs were left behind or orphaned.
 - [x] Confirm every domain above was either validated successfully or explicitly recorded as blocked in `Known Issues And Account Limitations`.
 - [ ] If any registered tool was missing from the broader docs, update `docs/mcp-usage.md`.

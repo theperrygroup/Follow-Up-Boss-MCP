@@ -69,6 +69,9 @@ def test_settings_validation_and_normalization(monkeypatch: pytest.MonkeyPatch) 
         "FOLLOWUPBOSS_API_KEY",
         "FOLLOWUPBOSS_ACCESS_TOKEN",
         "FOLLOWUPBOSS_AUTH_MODE",
+        "FOLLOW_UP_BOSS_API_KEY",
+        "FOLLOW_UP_BOSS_ACCESS_TOKEN",
+        "FOLLOW_UP_BOSS_AUTH_MODE",
     ):
         monkeypatch.delenv(key, raising=False)
 
@@ -101,6 +104,46 @@ def test_settings_validation_and_normalization(monkeypatch: pytest.MonkeyPatch) 
         FollowUpBossSettings.model_validate({"api_key": "key", "timeout_seconds": 0})
     with pytest.raises(ValidationError):
         FollowUpBossSettings.model_validate({"api_key": "key", "max_retries": -1})
+
+
+def test_settings_support_follow_up_boss_env_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Legacy `FOLLOW_UP_BOSS_*` environment variables should still load settings."""
+    for key in (
+        "FOLLOWUPBOSS_AUTH_MODE",
+        "FOLLOWUPBOSS_API_KEY",
+        "FOLLOWUPBOSS_ACCESS_TOKEN",
+        "FOLLOWUPBOSS_SYSTEM_NAME",
+        "FOLLOWUPBOSS_SYSTEM_KEY",
+        "FOLLOW_UP_BOSS_AUTH_MODE",
+        "FOLLOW_UP_BOSS_API_KEY",
+        "FOLLOW_UP_BOSS_ACCESS_TOKEN",
+        "FOLLOW_UP_BOSS_X_SYSTEM",
+        "FOLLOW_UP_BOSS_X_SYSTEM_KEY",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    monkeypatch.setenv("FOLLOW_UP_BOSS_AUTH_MODE", "api_key")
+    monkeypatch.setenv("FOLLOW_UP_BOSS_API_KEY", "legacy-key")
+    monkeypatch.setenv("FOLLOW_UP_BOSS_X_SYSTEM", "Legacy System")
+    monkeypatch.setenv("FOLLOW_UP_BOSS_X_SYSTEM_KEY", "legacy-system-secret")
+
+    settings = FollowUpBossSettings()
+    assert settings.auth_mode is AuthMode.API_KEY
+    assert settings.api_key is not None
+    assert settings.api_key.get_secret_value() == "legacy-key"
+    assert settings.system_name == "Legacy System"
+    assert settings.system_key_value() == "legacy-system-secret"
+
+    monkeypatch.setenv("FOLLOW_UP_BOSS_AUTH_MODE", "oauth")
+    monkeypatch.delenv("FOLLOW_UP_BOSS_API_KEY", raising=False)
+    monkeypatch.setenv("FOLLOW_UP_BOSS_ACCESS_TOKEN", "legacy-token")
+
+    oauth_settings = FollowUpBossSettings()
+    assert oauth_settings.auth_mode is AuthMode.OAUTH
+    assert oauth_settings.access_token is not None
+    assert oauth_settings.access_token.get_secret_value() == "legacy-token"
 
 
 def test_redaction_helpers_and_logger_configuration() -> None:

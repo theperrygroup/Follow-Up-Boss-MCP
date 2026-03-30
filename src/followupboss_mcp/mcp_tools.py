@@ -82,9 +82,13 @@ from followupboss_mcp.models.inbox_apps import (
 )
 from followupboss_mcp.models.notes import CreateNoteRequest, UpdateNoteRequest
 from followupboss_mcp.models.people import (
+    ClaimPersonRequest,
     CreatePersonRequest,
+    IgnoreUnclaimedPersonRequest,
     PeopleSearchRequest,
+    PersonDuplicateCheckRequest,
     PersonLookupRequest,
+    UnclaimedPeopleListRequest,
     UpdatePersonRequest,
 )
 from followupboss_mcp.models.people_relationships import (
@@ -138,6 +142,7 @@ from followupboss_mcp.models.text_messages import (
     TextMessageTemplateListRequest,
     UpdateTextMessageTemplateRequest,
 )
+from followupboss_mcp.models.timeframes import TimeframeListRequest
 from followupboss_mcp.models.users import UserListRequest
 from followupboss_mcp.models.webhooks import CreateWebhookRequest, WebhookListRequest
 from followupboss_mcp.services.action_plans import ActionPlansService
@@ -178,6 +183,7 @@ from followupboss_mcp.services.text_messages import (
     TextMessagesService,
     TextMessageTemplatesService,
 )
+from followupboss_mcp.services.timeframes import TimeframesService
 from followupboss_mcp.services.users import UsersService
 from followupboss_mcp.services.webhooks import WebhooksService
 
@@ -186,6 +192,10 @@ class GetPersonToolInput(PersonLookupRequest):
     """Tool input for fetching a person by ID."""
 
     person_id: int
+
+
+class CheckDuplicatePersonToolInput(PersonDuplicateCheckRequest):
+    """Tool input for checking whether a person already exists."""
 
 
 class GetPersonAttachmentToolInput(RequestModel):
@@ -367,6 +377,10 @@ class AddInboxAppMessageToolInput(CreateInboxAppMessageRequest):
     """Tool input for adding an inbox app message."""
 
     inbox_app_id: int
+
+
+class ClaimPersonToolInput(ClaimPersonRequest):
+    """Tool input for claiming an unclaimed person."""
 
 
 class AddReactionToolInput(CreateReactionRequest):
@@ -644,6 +658,10 @@ class DeletePersonAttachmentToolInput(RequestModel):
     person_attachment_id: int
 
 
+class IgnoreUnclaimedPersonToolInput(IgnoreUnclaimedPersonRequest):
+    """Tool input for ignoring an unclaimed person offer."""
+
+
 class DeleteReactionToolInput(DeleteReactionRequest):
     """Tool input for deleting a reaction."""
 
@@ -709,6 +727,7 @@ class ServiceBundle:
     text_message_templates: TextMessageTemplatesService
     text_messages: TextMessagesService
     templates: TemplatesService
+    timeframes: TimeframesService
     users: UsersService
     webhooks: WebhooksService
 
@@ -972,6 +991,40 @@ class FollowUpBossToolAdapter:
         request = UpdatePersonRequest.model_validate(tool_input.model_dump(exclude={"person_id"}))
         return await self._single_result(
             lambda: self._services.people.update_person(tool_input.person_id, request)
+        )
+
+    async def check_duplicate_person(
+        self,
+        tool_input: CheckDuplicatePersonToolInput,
+    ) -> dict[str, Any]:
+        """Check whether a person already exists."""
+        return await self._single_result(
+            lambda: self._services.people.check_duplicate_person(tool_input)
+        )
+
+    async def list_unclaimed_people(
+        self,
+        tool_input: UnclaimedPeopleListRequest,
+    ) -> dict[str, Any]:
+        """List unclaimed people."""
+        return await self._page_result(
+            lambda: self._services.people.list_unclaimed_people(tool_input),
+            key="people",
+        )
+
+    async def claim_person(self, tool_input: ClaimPersonToolInput) -> dict[str, Any]:
+        """Claim a person."""
+        return await self._single_result(lambda: self._services.people.claim_person(tool_input))
+
+    async def ignore_unclaimed_person(
+        self,
+        tool_input: IgnoreUnclaimedPersonToolInput,
+    ) -> dict[str, Any]:
+        """Ignore an unclaimed person offer."""
+        return await self._delete_result(
+            lambda: self._services.people.ignore_unclaimed_person(tool_input),
+            identifier_key="personId",
+            identifier_value=tool_input.person_id,
         )
 
     async def get_person_attachment(
@@ -1306,6 +1359,13 @@ class FollowUpBossToolAdapter:
         return await self._page_result(
             lambda: self._services.team_inboxes.list_team_inboxes(tool_input),
             key="teamInboxes",
+        )
+
+    async def list_timeframes(self, tool_input: TimeframeListRequest) -> dict[str, Any]:
+        """List timeframes."""
+        return await self._page_result(
+            lambda: self._services.timeframes.list_timeframes(tool_input),
+            key="timeframes",
         )
 
     async def list_users(self, tool_input: UserListRequest) -> dict[str, Any]:

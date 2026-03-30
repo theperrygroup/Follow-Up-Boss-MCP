@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from followupboss_mcp.models.common import (
     CommonListQuery,
@@ -41,6 +41,46 @@ class PersonLookupRequest(QueryModel):
     """Fields selection for a person lookup."""
 
     fields: list[str] | None = None
+
+
+class PersonDuplicateCheckRequest(QueryModel):
+    """Query parameters for the people duplicate-check endpoint."""
+
+    email: str | None = None
+    phone: str | None = None
+
+    @model_validator(mode="after")
+    def _require_email_or_phone(self) -> PersonDuplicateCheckRequest:
+        """Require at least one duplicate-check identifier.
+
+        Returns:
+            The validated request instance.
+
+        Raises:
+            ValueError: If neither an email address nor a phone number is supplied.
+        """
+        if self.email is None and self.phone is None:
+            raise ValueError("Duplicate checks must include either email or phone.")
+        return self
+
+
+class UnclaimedPeopleListRequest(QueryModel):
+    """Search filters for the unclaimed-people collection."""
+
+    limit: int | None = None
+    offset: int | None = None
+
+
+class ClaimPersonRequest(RequestModel):
+    """Strict request model for claiming an unclaimed person."""
+
+    person_id: int = Field(serialization_alias="personId")
+
+
+class IgnoreUnclaimedPersonRequest(RequestModel):
+    """Strict request model for ignoring an unclaimed person."""
+
+    person_id: int = Field(serialization_alias="personId")
 
 
 class CreatePersonRequest(RequestModel):
@@ -93,25 +133,46 @@ class UpdatePersonRequest(RequestModel):
     timeframe_id: int | None = Field(default=None, serialization_alias="timeframeId")
 
 
+class PersonPicture(ResponseModel):
+    """Minimal picture payload nested under people resources."""
+
+    small: str | None = None
+
+
+class PersonDuplicateCheckRecord(ResponseModel):
+    """Duplicate-check result for a person lookup."""
+
+    assigned_to: str | None = Field(default=None, alias="assignedTo")
+    found: bool
+    matched_by: str | None = Field(default=None, alias="matchedBy")
+
+
 class PersonRecord(ResponseModel):
     """Person resource returned by the API."""
 
     addresses: list[MailingAddress] = Field(default_factory=list)
     assigned_lender_id: int | None = Field(default=None, alias="assignedLenderId")
+    assigned_lender_name: str | None = Field(default=None, alias="assignedLenderName")
+    assigned_to: str | None = Field(default=None, alias="assignedTo")
     assigned_user_id: int | None = Field(default=None, alias="assignedUserId")
+    claimed: bool | None = None
     contacted: bool | None = None
     created: str | None = None
     created_via: str | None = Field(default=None, alias="createdVia")
+    delayed: bool | None = None
     emails: list[EmailAddress] = Field(default_factory=list)
     first_name: str | None = Field(default=None, alias="firstName")
     id: int
     last_activity: str | None = Field(default=None, alias="lastActivity")
     last_name: str | None = Field(default=None, alias="lastName")
     name: str | None = None
+    picture: PersonPicture | None = None
     phones: list[PhoneNumber] = Field(default_factory=list)
     price: int | None = None
     source: str | None = None
+    source_id: int | None = Field(default=None, alias="sourceId")
     source_url: str | None = Field(default=None, alias="sourceUrl")
     stage: str | None = None
     stage_id: int | None = Field(default=None, alias="stageId")
+    tags: list[str] = Field(default_factory=list)
     updated: str | None = None

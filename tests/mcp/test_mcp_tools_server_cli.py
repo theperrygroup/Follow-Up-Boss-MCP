@@ -25,6 +25,8 @@ from followupboss_mcp.mcp_tools import (
     AddInboxAppNoteToolInput,
     AddInboxAppParticipantToolInput,
     AddReactionToolInput,
+    CheckDuplicatePersonToolInput,
+    ClaimPersonToolInput,
     DeactivateInboxAppToolInput,
     DeleteAppointmentOutcomeToolInput,
     DeleteAppointmentToolInput,
@@ -76,6 +78,7 @@ from followupboss_mcp.mcp_tools import (
     GetTextMessageToolInput,
     GetUserToolInput,
     GetWebhookToolInput,
+    IgnoreUnclaimedPersonToolInput,
     ListInboxAppInstallationsToolInput,
     ListInboxAppParticipantsToolInput,
     ServiceBundle,
@@ -187,7 +190,16 @@ from followupboss_mcp.models.inbox_apps import (
     InstallInboxAppRequest,
 )
 from followupboss_mcp.models.notes import CreateNoteRequest, NoteRecord
-from followupboss_mcp.models.people import CreatePersonRequest, PeopleSearchRequest, PersonRecord
+from followupboss_mcp.models.people import (
+    ClaimPersonRequest,
+    CreatePersonRequest,
+    IgnoreUnclaimedPersonRequest,
+    PeopleSearchRequest,
+    PersonDuplicateCheckRecord,
+    PersonDuplicateCheckRequest,
+    PersonRecord,
+    UnclaimedPeopleListRequest,
+)
 from followupboss_mcp.models.people_relationships import (
     CreatePeopleRelationshipRequest,
     PeopleRelationshipListRequest,
@@ -230,6 +242,7 @@ from followupboss_mcp.models.text_messages import (
     TextMessageTemplateListRequest,
     TextMessageTemplateRecord,
 )
+from followupboss_mcp.models.timeframes import TimeframeListRequest, TimeframeRecord
 from followupboss_mcp.models.users import UserListRequest, UserRecord
 from followupboss_mcp.models.webhooks import CreateWebhookRequest, WebhookListRequest, WebhookRecord
 from followupboss_mcp.pagination import PageResult, PaginationMetadata
@@ -292,6 +305,37 @@ class StubBundle:
         async def people_update(person_id: int, request: object) -> PersonRecord:
             del request
             return PersonRecord(id=person_id)
+
+        async def people_check_duplicate(
+            _: PersonDuplicateCheckRequest,
+        ) -> PersonDuplicateCheckRecord:
+            return PersonDuplicateCheckRecord(
+                found=True,
+                matchedBy="email",
+                assignedTo="Agent Smith",
+            )
+
+        async def people_list_unclaimed(
+            _: UnclaimedPeopleListRequest,
+        ) -> PageResult[PersonRecord]:
+            return PageResult(
+                items=[
+                    PersonRecord(
+                        id=6,
+                        firstName="Unclaimed",
+                        sourceId=730,
+                        claimed=False,
+                        delayed=False,
+                    )
+                ],
+                metadata=_page_metadata(),
+            )
+
+        async def people_claim(_: ClaimPersonRequest) -> PersonRecord:
+            return PersonRecord(id=7, firstName="Claimed", assignedTo="Agent Smith", claimed=False)
+
+        async def people_ignore_unclaimed(_: IgnoreUnclaimedPersonRequest) -> None:
+            return None
 
         async def person_attachments_get(person_attachment_id: int) -> PersonAttachmentRecord:
             return PersonAttachmentRecord(
@@ -1209,6 +1253,15 @@ class StubBundle:
                 metadata=_page_metadata(),
             )
 
+        async def timeframes_list(_: TimeframeListRequest) -> PageResult[TimeframeRecord]:
+            return PageResult(
+                items=[
+                    TimeframeRecord(id=1, timeframe="0-3 Months"),
+                    TimeframeRecord(id=2, timeframe="3-6 Months"),
+                ],
+                metadata=_page_metadata(),
+            )
+
         async def appointments_list(_: AppointmentListRequest) -> PageResult[AppointmentRecord]:
             return PageResult(
                 items=[
@@ -1528,6 +1581,10 @@ class StubBundle:
                 get_person=people_get,
                 create_person=people_create,
                 update_person=people_update,
+                check_duplicate_person=people_check_duplicate,
+                list_unclaimed_people=people_list_unclaimed,
+                claim_person=people_claim,
+                ignore_unclaimed_person=people_ignore_unclaimed,
             ),
             person_attachments=_service_stub(
                 get_person_attachment=person_attachments_get,
@@ -1589,6 +1646,9 @@ class StubBundle:
                 update_team=teams_update,
                 delete_team=teams_delete,
             ),
+            timeframes=_service_stub(
+                list_timeframes=timeframes_list,
+            ),
             text_message_templates=_service_stub(
                 list_text_message_templates=text_message_templates_list,
                 get_text_message_template=text_message_templates_get,
@@ -1630,6 +1690,23 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert (await adapter.get_person(GetPersonToolInput(person_id=3)))["id"] == 3
     assert (await adapter.create_person(CreatePersonRequest(first_name="Tom")))["id"] == 3
     assert (await adapter.update_person(UpdatePersonToolInput(person_id=4)))["id"] == 4
+    assert (
+        await adapter.check_duplicate_person(
+            CheckDuplicatePersonToolInput(email="agent@example.com")
+        )
+    ) == {
+        "found": True,
+        "matchedBy": "email",
+        "assignedTo": "Agent Smith",
+    }
+    assert (await adapter.list_unclaimed_people(UnclaimedPeopleListRequest()))["people"][0][
+        "id"
+    ] == 6
+    assert (await adapter.claim_person(ClaimPersonToolInput(person_id=7)))["id"] == 7
+    assert (await adapter.ignore_unclaimed_person(IgnoreUnclaimedPersonToolInput(person_id=7))) == {
+        "deleted": True,
+        "personId": 7,
+    }
     assert (
         await adapter.get_person_attachment(GetPersonAttachmentToolInput(person_attachment_id=2))
     )["id"] == 2
@@ -2329,6 +2406,7 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         tasks=services.tasks,
         team_inboxes=services.team_inboxes,
         teams=services.teams,
+        timeframes=services.timeframes,
         text_message_templates=services.text_message_templates,
         text_messages=services.text_messages,
         templates=services.templates,
@@ -2378,6 +2456,30 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                 {"id": 3},
                 {"id": 4},
                 {"id": 5},
+                {
+                    "found": True,
+                    "matchedBy": "email",
+                    "assignedTo": "Agent Smith",
+                },
+                {
+                    "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                    "people": [
+                        {
+                            "id": 6,
+                            "firstName": "Unclaimed",
+                            "sourceId": 730,
+                            "claimed": False,
+                            "delayed": False,
+                        }
+                    ],
+                },
+                {
+                    "id": 7,
+                    "firstName": "Claimed",
+                    "assignedTo": "Agent Smith",
+                    "claimed": False,
+                },
+                {},
                 {
                     "personId": 1,
                     "fileName": "test.jpg",
@@ -2898,6 +3000,8 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_add_note",
         "followupboss_add_reaction",
         "followupboss_apply_action_plan",
+        "followupboss_check_duplicate_person",
+        "followupboss_claim_person",
         "followupboss_create_appointment",
         "followupboss_create_appointment_outcome",
         "followupboss_create_appointment_type",
@@ -2970,6 +3074,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_get_text_message_template",
         "followupboss_get_user",
         "followupboss_get_webhook",
+        "followupboss_ignore_unclaimed_person",
         "followupboss_install_inbox_app",
         "followupboss_list_action_plan_people",
         "followupboss_list_action_plans",
@@ -2999,6 +3104,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_list_templates",
         "followupboss_list_text_message_templates",
         "followupboss_list_text_messages",
+        "followupboss_list_unclaimed_people",
         "followupboss_list_users",
         "followupboss_list_webhooks",
         "followupboss_merge_template",
@@ -3043,6 +3149,17 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     assert await tools["followupboss_get_person"].fn(3) == {"id": 3}
     assert (await tools["followupboss_create_person"].fn(first_name="Tom"))["id"] == 4
     assert (await tools["followupboss_update_person"].fn(5, first_name="Will"))["id"] == 5
+    assert await tools["followupboss_check_duplicate_person"].fn(email="agent@example.com") == {
+        "found": True,
+        "matchedBy": "email",
+        "assignedTo": "Agent Smith",
+    }
+    assert (await tools["followupboss_list_unclaimed_people"].fn())["people"][0]["id"] == 6
+    assert (await tools["followupboss_claim_person"].fn(7))["id"] == 7
+    assert await tools["followupboss_ignore_unclaimed_person"].fn(7) == {
+        "deleted": True,
+        "personId": 7,
+    }
     assert (await tools["followupboss_get_person_attachment"].fn(2))["id"] == 2
     assert (
         await tools["followupboss_create_person_attachment"].fn(

@@ -48,6 +48,7 @@ from followupboss_mcp.services.text_messages import (
     TextMessagesService,
     TextMessageTemplatesService,
 )
+from followupboss_mcp.services.timeframes import TimeframesService
 from followupboss_mcp.services.users import UsersService
 from followupboss_mcp.services.webhooks import WebhooksService
 from mcp.server.fastmcp import FastMCP
@@ -96,6 +97,7 @@ def build_service_bundle(client: FollowUpBossClientProtocol) -> ServiceBundle:
         text_message_templates=TextMessageTemplatesService(client),
         text_messages=TextMessagesService(client),
         templates=TemplatesService(client),
+        timeframes=TimeframesService(client),
         users=UsersService(client),
         webhooks=WebhooksService(client),
     )
@@ -127,8 +129,8 @@ def create_server(
             "action plans, appointments, appointment types, appointment outcomes, attachments, "
             "automations, calls, custom fields, deals, email marketing, groups, inbox apps, "
             "people relationships, pipelines, ponds, reactions, smart lists, stages, tasks, "
-            "team inboxes, teams, templates, text messages, notes, users, and webhook "
-            "administration."
+            "team inboxes, teams, templates, text messages, timeframes, notes, users, and "
+            "webhook administration."
         ),
         host=host,
         port=port,

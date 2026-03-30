@@ -5,13 +5,18 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 
-from followupboss_mcp.errors import FollowUpBossNotFoundError
+from followupboss_mcp.errors import FollowUpBossHTTPError, FollowUpBossNotFoundError
 from followupboss_mcp.http_client import FollowUpBossClientProtocol
 from followupboss_mcp.models.people import (
+    ClaimPersonRequest,
     CreatePersonRequest,
+    IgnoreUnclaimedPersonRequest,
     PeopleSearchRequest,
+    PersonDuplicateCheckRecord,
+    PersonDuplicateCheckRequest,
     PersonLookupRequest,
     PersonRecord,
+    UnclaimedPeopleListRequest,
     UpdatePersonRequest,
 )
 from followupboss_mcp.pagination import (
@@ -86,6 +91,90 @@ class PeopleService:
         query = request.to_query_params() if request is not None else None
         payload = await self._client.request_json("GET", f"/people/{person_id}", params=query)
         return PersonRecord.model_validate(payload)
+
+    async def check_duplicate_person(
+        self,
+        request: PersonDuplicateCheckRequest,
+    ) -> PersonDuplicateCheckRecord:
+        """Check whether a person already exists in Follow Up Boss.
+
+        Args:
+            request: The typed duplicate-check query parameters.
+
+        Returns:
+            The duplicate-check result returned by Follow Up Boss.
+
+        Raises:
+            ValueError: If the API returns an unexpected payload shape.
+        """
+        payload = await self._client.request_json(
+            "GET",
+            "/people/checkDuplicate",
+            params=request.to_query_params(),
+        )
+        if not isinstance(payload, dict):
+            raise ValueError("Unexpected people duplicate-check response.")
+        return PersonDuplicateCheckRecord.model_validate(payload)
+
+    async def list_unclaimed_people(
+        self,
+        request: UnclaimedPeopleListRequest | None = None,
+    ) -> PageResult[PersonRecord]:
+        """List unclaimed leads available to the authenticated user.
+
+        Args:
+            request: Optional unclaimed-people collection filters.
+
+        Returns:
+            A paginated unclaimed-people result set.
+
+        Raises:
+            ValueError: If the API returns an unexpected payload shape.
+        """
+        query = request.to_query_params() if request is not None else None
+        payload = await self._client.request_json("GET", "/people/unclaimed", params=query)
+        if not isinstance(payload, dict):
+            raise ValueError("Unexpected unclaimed people response.")
+        items_raw = payload.get("people", [])
+        if not isinstance(items_raw, list):
+            raise ValueError("Unexpected unclaimed people response.")
+        items = [PersonRecord.model_validate(item) for item in items_raw if isinstance(item, dict)]
+        metadata = parse_pagination_metadata(payload, item_count=len(items))
+        return PageResult(items=items, metadata=metadata)
+
+    async def claim_person(self, request: ClaimPersonRequest) -> PersonRecord:
+        """Claim an offered lead.
+
+        Args:
+            request: The typed lead-claim request.
+
+        Returns:
+            The claimed person record, or the conflict payload returned by Follow Up Boss
+            when the lead was already claimed.
+
+        Raises:
+            FollowUpBossHTTPError: If the API returns an unexpected HTTP failure.
+            ValueError: If the API returns an unexpected success payload shape.
+        """
+        payload = request.model_dump(mode="json", by_alias=True, exclude_none=True)
+        try:
+            response = await self._client.request_json("POST", "/people/claim", json_body=payload)
+        except FollowUpBossHTTPError as exc:
+            if exc.status_code == 409 and isinstance(exc.payload, dict):
+                return PersonRecord.model_validate(exc.payload)
+            raise
+        if not isinstance(response, dict):
+            raise ValueError("Unexpected people claim response.")
+        return PersonRecord.model_validate(response)
+
+    async def ignore_unclaimed_person(self, request: IgnoreUnclaimedPersonRequest) -> None:
+        """Acknowledge and ignore an offered unclaimed lead.
+
+        Args:
+            request: The typed ignore-unclaimed request.
+        """
+        payload = request.model_dump(mode="json", by_alias=True, exclude_none=True)
+        await self._client.request_json("POST", "/people/ignoreUnclaimed", json_body=payload)
 
     async def create_person(self, request: CreatePersonRequest) -> PersonRecord:
         """Create a person."""
