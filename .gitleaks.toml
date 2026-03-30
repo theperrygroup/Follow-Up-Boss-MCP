@@ -3,7 +3,7 @@ title = "Follow Up Boss MCP gitleaks allowlist"
 [extend]
 useDefault = true
 
-[[allowlists]]
+[allowlist]
 description = "Hosted tenant secret-prefix examples in docs and tests are not secrets."
 paths = [
   '''^docs/hosted-deployment-guide\.md$''',

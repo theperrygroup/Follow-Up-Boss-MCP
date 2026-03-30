@@ -729,8 +729,7 @@ class PostgresAwsTenantStore(TenantStore):
 
         if raw_row is None:
             return None
-        row = cast(Mapping[str, object], raw_row)
-        return TenantRecord.model_validate(dict(row))
+        return TenantRecord.model_validate(dict(raw_row))
 
     async def get_credential(self, credential_id: str) -> TenantCredentialRecord | None:
         """Look up one credential row and resolve its raw secret payload.
@@ -760,9 +759,7 @@ class PostgresAwsTenantStore(TenantStore):
         if raw_row is None:
             return None
 
-        metadata = _TenantCredentialMetadataRow.model_validate(
-            dict(cast(Mapping[str, object], raw_row))
-        )
+        metadata = _TenantCredentialMetadataRow.model_validate(dict(raw_row))
         secret_payload = await self._secret_store.get_secret_payload(metadata.secret_ref)
         return TenantCredentialRecord.model_validate(
             {
