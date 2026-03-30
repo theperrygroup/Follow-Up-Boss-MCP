@@ -44,6 +44,7 @@ from followupboss_mcp.services.tasks import TasksService
 from followupboss_mcp.services.team_inboxes import TeamInboxesService
 from followupboss_mcp.services.teams import TeamsService
 from followupboss_mcp.services.templates import TemplatesService
+from followupboss_mcp.services.threaded_replies import ThreadedRepliesService
 from followupboss_mcp.services.text_messages import (
     TextMessagesService,
     TextMessageTemplatesService,
@@ -97,6 +98,7 @@ def build_service_bundle(client: FollowUpBossClientProtocol) -> ServiceBundle:
         text_message_templates=TextMessageTemplatesService(client),
         text_messages=TextMessagesService(client),
         templates=TemplatesService(client),
+        threaded_replies=ThreadedRepliesService(client),
         timeframes=TimeframesService(client),
         users=UsersService(client),
         webhooks=WebhooksService(client),
@@ -129,8 +131,8 @@ def create_server(
             "action plans, appointments, appointment types, appointment outcomes, attachments, "
             "automations, calls, custom fields, deals, email marketing, groups, inbox apps, "
             "people relationships, pipelines, ponds, reactions, smart lists, stages, tasks, "
-            "team inboxes, teams, templates, text messages, timeframes, notes, users, and "
-            "webhook administration."
+            "team inboxes, teams, templates, text messages, threaded replies, timeframes, "
+            "notes, users, and webhook administration."
         ),
         host=host,
         port=port,

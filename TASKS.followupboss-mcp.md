@@ -70,6 +70,8 @@ Build a production-grade Python 3.12+ repository that ingests official Follow Up
 - `DONE` Re-run `make release-validate` and `make live-identity-check` after the deal custom field admin slice.
 - `DONE` Implement typed people duplicate-check, unclaimed lead list, claim, and ignore coverage across models, services, MCP tools, tests, and docs.
 - `DONE` Re-run `make release-validate` and `make live-identity-check` after the people admin utility slice.
+- `DONE` Implement typed timeframe list coverage across models, services, MCP tools, tests, and docs.
+- `DONE` Re-run `make release-validate` and `make live-identity-check` after the timeframe slice.
 
 ## Blockers
 
@@ -104,9 +106,13 @@ Build a production-grade Python 3.12+ repository that ingests official Follow Up
 - Expanded the implementation to include typed people duplicate-check, unclaimed lead list, claim, and ignore support across the SDK, MCP surface, tests, and generated coverage docs.
 - Re-ran `make release-validate` with successful output: `Success: no issues found in 80 source files`, `107 passed, 1 skipped`, and `TOTAL 4244 0 398 0 100.00%`.
 - Re-ran `make live-identity-check` with successful output: `1 skipped` when live credentials were not enabled.
-- Re-ran `make validate` with successful output: `Success: no issues found in 80 source files`, `108 passed, 1 skipped`, and `TOTAL 4244 0 398 0 100.00%`.
+- Expanded the implementation to include typed timeframe list support across the SDK, MCP surface, tests, and generated coverage docs.
+- Re-ran `make release-validate` with successful output: `Success: no issues found in 82 source files`, `109 passed, 1 skipped`, and `TOTAL 4282 0 402 0 100.00%`.
+- Re-ran `make live-identity-check` with successful output: `1 skipped` when live credentials were not enabled.
+- Re-ran `make validate` with successful output: `Success: no issues found in 82 source files`, `109 passed, 1 skipped`, and `TOTAL 4282 0 402 0 100.00%`.
 - Re-ran `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check` with successful output: `1 passed`.
 - Ran credential-backed MCP validation with the current `.env` and updated `docs/mcp-validation-checklist.md` with live results for transports, pagination, error handling, and domain coverage across people, relationships, attachments, reactions, events, action plans, automations, calls, text messages, appointments, deals, deal attachments, templates, text message templates, and notes.
+- Added settings support for both documented `FOLLOWUPBOSS_*` variables and legacy `FOLLOW_UP_BOSS_*` aliases, then verified `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check` works with the raw `.env` names directly.
 
 ## Final Acceptance Checklist
 

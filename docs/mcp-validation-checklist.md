@@ -17,6 +17,8 @@ The domain sections below follow the registration order from `register_server_su
 | Transport(s) exercised | `stdio`, `streamable-http` |
 | Notes | The current `.env` loaded successfully using the legacy `FOLLOW_UP_BOSS_*` names because the settings layer now accepts both the documented `FOLLOWUPBOSS_*` variables and the underscored aliases. Inspector-specific connection steps remain unchecked because this run used the official Python MCP clients directly. After the follow-up fixes in this session, both `make validate` and `make live-identity-check` passed. |
 
+Update this table, the scratchpad, and the checkbox states for each fresh live-validation cycle. If you need to preserve a completed run as release evidence, copy the results into a dated artifact before resetting the checklist.
+
 ## How To Use This File
 
 1. Load `.env` into your shell before starting the server or Inspector.
@@ -38,12 +40,13 @@ set +a
 
 | Object | ID | Created Via | Cleanup Path | Notes |
 | --- | --- | --- | --- | --- |
-| Disposable person | `296999` | `followupboss_create_person` | Manual | Created and updated during live MCP validation. No MCP delete tool exists for people. |
+| Disposable person | `296999` | `followupboss_create_person` | Manual | Created and updated during live MCP validation. Reuse this record for the positive `followupboss_check_duplicate_person` control. No MCP delete tool exists for people. |
 | People relationship | `24543` | `followupboss_create_people_relationship` | `followupboss_delete_people_relationship` | Created, fetched, updated, and deleted during live stdio validation. |
 | Person attachment | `47` | `followupboss_create_person_attachment` | `followupboss_delete_person_attachment` | Created, fetched, updated, and deleted during live stdio validation. |
 | Reaction target | `556452` | Existing note, call, or threaded reply | `followupboss_delete_note` | Temporary note used for live reaction validation; deleted after the run. |
 | Reaction | Acknowledged only | `followupboss_add_reaction` | `followupboss_delete_reaction` | The live create call returned `{}` rather than a reaction record, so no reaction ID was available for `followupboss_get_reaction`. |
 | Event | `1899982` | `followupboss_send_event` | Manual | Confirmed via `followupboss_search_events`; the immediate tool response returned the person record rather than an event record. |
+| Unclaimed lead offer |  | `followupboss_list_unclaimed_people` | Manual | Claim and ignore mutate the live unclaimed-lead queue. Use only disposable offers and record whether each one was claimed or ignored. |
 | Email campaign |  | `followupboss_create_email_campaign` | Manual |  |
 | Email event batch |  | `followupboss_send_email_events` | Manual |  |
 | Action-plan person | `4505` | `followupboss_apply_action_plan` | Manual | Applied action plan `256` to person `296999` and immediately paused it. |
@@ -51,6 +54,7 @@ set +a
 | Group |  | `followupboss_create_group` | `followupboss_delete_group` |  |
 | Custom field |  | `followupboss_create_custom_field` | `followupboss_delete_custom_field` |  |
 | Deal | `2174` | `followupboss_create_deal` | `followupboss_delete_deal` | Created, fetched, updated, and deleted during live stdio validation. |
+| Deal custom field |  | `followupboss_create_deal_custom_field` | `followupboss_delete_deal_custom_field` | Capture both the field ID and generated `name` if the field will be reused in deal write tests. |
 | Deal attachment | `1` | `followupboss_create_deal_attachment` | `followupboss_delete_deal_attachment` | Created, fetched, updated, and deleted during live stdio validation. |
 | Appointment outcome |  | `followupboss_create_appointment_outcome` | `followupboss_delete_appointment_outcome` |  |
 | Appointment type |  | `followupboss_create_appointment_type` | `followupboss_delete_appointment_type` |  |
@@ -85,11 +89,14 @@ set +a
 - [x] Confirm `uv`, `make`, and `npx` are available locally.
 - [x] Confirm you have a safe validation target account and a temporary-data naming convention such as `MCP Validation <date>`.
 - [x] Confirm you have a reusable disposable person data set for cross-domain testing.
+- [ ] Confirm you have one known existing email or phone plus one clearly fake control value for `followupboss_check_duplicate_person`.
+- [ ] Confirm you have at least one disposable unclaimed lead offer if you plan to validate `followupboss_claim_person` or `followupboss_ignore_unclaimed_person`.
 - [x] Confirm you have a safe hosted file URI and file metadata for person and deal attachment tests.
 - [x] Confirm you have a valid action plan ID for mutation tests.
 - [x] Confirm you have a valid automation ID for mutation tests.
 - [ ] Confirm you have a valid inbox app setup for installation, conversation, message, and participant tests.
 - [ ] Confirm you have valid pipeline, stage, owner, type, and outcome references for deal, appointment, and stage lifecycle tests.
+- [ ] Confirm you have a unique deal custom field label and a safe field type or dropdown choices for deal custom field admin tests.
 - [ ] Confirm you have a valid reachable webhook receiver URL for webhook creation tests.
 - [ ] Confirm you have a valid email marketing `origin` and `origin_id` for campaign and email-event tests.
 - [x] Confirm you have a valid reaction target. If needed, create a temporary note first and reuse it for reaction checks.
@@ -155,6 +162,8 @@ Apply these checks wherever the surface below supports them.
 - [x] Every single-object response is JSON-serializable and safe for MCP clients. Omitted default or null fields are acceptable if the remaining payload is correct.
 - [x] Every update tool returns the mutated object and the changed values are visible in the response.
 - [x] Every delete tool returns a structured confirmation payload with `deleted: true` and the correct identifier key.
+- [ ] Every stateful flow without an inverse MCP delete or undo path is captured in the scratchpad with a manual rollback note before you move on.
+- [ ] For acknowledgement-style responses that do not return a full resource, confirm the returned payload still leaves enough information to reconcile the side effect, or record the gap in `Known Issues And Account Limitations`.
 - [x] At least one safe failure path is exercised without leaking secrets, such as requesting a clearly invalid ID or intentionally omitting a required field in Inspector.
 - [x] If you hit permission-denied or rate-limit responses, confirm the surfaced MCP error text is understandable and record the limitation in the issues table.
 - [ ] If `FOLLOWUPBOSS_SYSTEM_NAME` and `FOLLOWUPBOSS_SYSTEM_KEY` are configured, at least one flow that depends on integration headers succeeds.
@@ -175,7 +184,13 @@ Work through the sections below in order. If a domain depends on an object creat
 - [x] `followupboss_get_person`: fetch a person ID returned by the search call or from the created record below.
 - [x] `followupboss_create_person`: create a disposable person with clearly temporary data.
 - [x] `followupboss_update_person`: update the disposable person and confirm the changed fields are reflected in the response.
+- [ ] `followupboss_check_duplicate_person`: run once against the disposable person's email or phone and confirm the tool reports `found: true` with a sensible `matchedBy` or assignment summary.
+- [ ] `followupboss_check_duplicate_person`: run again with a clearly fake email or phone value and confirm the tool reports no match without surfacing a transport error.
+- [ ] `followupboss_list_unclaimed_people`: confirm the list output and `_metadata`. An empty `people` collection is acceptable, but record it if claim or ignore cannot be exercised in this account.
+- [ ] `followupboss_claim_person`: claim one disposable unclaimed lead and confirm the returned person record reflects the new claimed or assigned state.
+- [ ] `followupboss_ignore_unclaimed_person`: ignore a separate disposable unclaimed lead, or explicitly re-seed the queue before testing, and confirm the structured confirmation uses `personId`.
 - [x] Record the created `personId` and reuse it in later sections where a person is required.
+- [ ] Record any manual rollback needed for claimed or ignored lead offers because these actions change the live unclaimed-lead queue state.
 - [x] Note that there is no MCP delete tool for people and plan manual cleanup.
 
 ### People Relationships
@@ -292,13 +307,21 @@ These checks require a real inbox app setup with valid installation, conversatio
 
 - [x] `followupboss_list_deals`: confirm list output and `_metadata`.
 - [x] `followupboss_get_deal`: fetch one deal by ID.
-- [x] `followupboss_list_deal_custom_fields`: confirm the custom-field lookup list works for deal writes.
 - [x] `followupboss_create_deal`: create a disposable deal using valid sandbox references.
 - [x] `followupboss_update_deal`: update the disposable deal and confirm the changed values.
 - [x] `followupboss_delete_deal`: delete the disposable deal and confirm the structured delete response.
 - [x] Record the prerequisite pipeline, stage, and custom-field references used for deal writes.
 
 Current run note: deal list and get now succeed against the live API even when `type` is numeric. The disposable deal flow used stage `27`, person `296999`, and user `259`.
+
+### Deal Custom Fields
+
+- [x] `followupboss_list_deal_custom_fields`: confirm list output and `_metadata`.
+- [ ] `followupboss_get_deal_custom_field`: fetch one deal custom field by ID from either the list response or the created field below.
+- [ ] `followupboss_create_deal_custom_field`: create a disposable deal custom field using a unique label and a safe type. If `type="dropdown"`, include disposable choices.
+- [ ] `followupboss_update_deal_custom_field`: update the created field and confirm the changed values. If you change dropdown choices, confirm the visible choices still line up with the returned mapping.
+- [ ] `followupboss_delete_deal_custom_field`: delete the disposable field and confirm the structured delete response uses `dealCustomFieldId`.
+- [ ] Record the created field ID and generated `name` in the scratchpad if the field will be reused in later deal-write tests.
 
 ### Appointment Outcomes
 
@@ -437,7 +460,7 @@ Current run note: `followupboss_list_webhooks` failed with `Only the account own
 ## Cleanup And Follow-Up
 
 - [x] Delete every temporary object that has an MCP delete tool.
-- [ ] Manually clean up every temporary object that does not currently have an MCP delete tool, including people, calls, text messages, email campaigns, email events, inbox app side effects, and any stateful automation or action-plan artifacts such as automation-person `525018` and action-plan-person `4505`.
+- [ ] Manually clean up every temporary object that does not currently have an MCP delete tool, including people, calls, text messages, email campaigns, email events, inbox app side effects, any claimed or ignored unclaimed-lead offers that need ownership review, and any stateful automation or action-plan artifacts such as automation-person `525018` and action-plan-person `4505`.
 - [x] Review the scratchpad and confirm no temporary IDs were left behind or orphaned.
 - [x] Confirm every domain above was either validated successfully or explicitly recorded as blocked in `Known Issues And Account Limitations`.
 - [ ] If any registered tool was missing from the broader docs, update `docs/mcp-usage.md`.

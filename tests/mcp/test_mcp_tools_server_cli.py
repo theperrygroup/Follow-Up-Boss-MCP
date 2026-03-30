@@ -76,6 +76,7 @@ from followupboss_mcp.mcp_tools import (
     GetTemplateToolInput,
     GetTextMessageTemplateToolInput,
     GetTextMessageToolInput,
+    GetThreadedReplyToolInput,
     GetUserToolInput,
     GetWebhookToolInput,
     IgnoreUnclaimedPersonToolInput,
@@ -242,6 +243,7 @@ from followupboss_mcp.models.text_messages import (
     TextMessageTemplateListRequest,
     TextMessageTemplateRecord,
 )
+from followupboss_mcp.models.threaded_replies import ThreadedReplyRecord
 from followupboss_mcp.models.timeframes import TimeframeListRequest, TimeframeRecord
 from followupboss_mcp.models.users import UserListRequest, UserRecord
 from followupboss_mcp.models.webhooks import CreateWebhookRequest, WebhookListRequest, WebhookRecord
@@ -1262,6 +1264,26 @@ class StubBundle:
                 metadata=_page_metadata(),
             )
 
+        async def threaded_replies_get(threaded_reply_id: int) -> ThreadedReplyRecord:
+            return ThreadedReplyRecord(
+                id=threaded_reply_id,
+                created="2024-01-11T18:50:12Z",
+                updated="2024-01-26T19:13:27Z",
+                createdById=1,
+                refType="Note",
+                refId=468,
+                body="Hello world part 2",
+                reactions={
+                    "id": 1363,
+                    "created": "2024-03-21T21:14:13Z",
+                    "createdBy": "Tom Minch",
+                    "createdById": 1,
+                    "refType": "Note",
+                    "refId": 2144705,
+                    "body": "🤯",
+                },
+            )
+
         async def appointments_list(_: AppointmentListRequest) -> PageResult[AppointmentRecord]:
             return PageResult(
                 items=[
@@ -1646,6 +1668,9 @@ class StubBundle:
                 update_team=teams_update,
                 delete_team=teams_delete,
             ),
+            threaded_replies=_service_stub(
+                get_threaded_reply=threaded_replies_get,
+            ),
             timeframes=_service_stub(
                 list_timeframes=timeframes_list,
             ),
@@ -1773,6 +1798,9 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         "deleted": True,
         "refId": 2144705,
     }
+    assert (await adapter.get_threaded_reply(GetThreadedReplyToolInput(threaded_reply_id=1)))[
+        "id"
+    ] == 1
     assert (await adapter.search_events(EventSearchRequest()))["events"][0]["id"] == 4
     assert (await adapter.get_event(GetEventToolInput(event_id=6)))["id"] == 6
     assert (
@@ -2407,6 +2435,7 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         tasks=services.tasks,
         team_inboxes=services.team_inboxes,
         teams=services.teams,
+        threaded_replies=services.threaded_replies,
         timeframes=services.timeframes,
         text_message_templates=services.text_message_templates,
         text_messages=services.text_messages,
@@ -2557,6 +2586,24 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                 },
                 [],
                 {},
+                {
+                    "id": 1,
+                    "created": "2024-01-11T18:50:12Z",
+                    "updated": "2024-01-26T19:13:27Z",
+                    "createdById": 1,
+                    "refType": "Note",
+                    "refId": 468,
+                    "body": "Hello world part 2",
+                    "reactions": {
+                        "id": 1363,
+                        "created": "2024-03-21T21:14:13Z",
+                        "createdBy": "Tom Minch",
+                        "createdById": 1,
+                        "refType": "Note",
+                        "refId": 2144705,
+                        "body": "🤯",
+                    },
+                },
                 {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "events": [{"id": 6}]},
                 {"id": 7},
                 {"id": 8},
@@ -3080,6 +3127,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_get_template",
         "followupboss_get_text_message",
         "followupboss_get_text_message_template",
+        "followupboss_get_threaded_reply",
         "followupboss_get_user",
         "followupboss_get_webhook",
         "followupboss_ignore_unclaimed_person",
@@ -3205,6 +3253,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "deleted": True,
         "refId": 2144705,
     }
+    assert (await tools["followupboss_get_threaded_reply"].fn(1))["id"] == 1
     assert (await tools["followupboss_search_events"].fn(person_id=1))["events"][0]["id"] == 6
     assert (await tools["followupboss_get_event"].fn(7))["id"] == 7
     assert (

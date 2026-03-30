@@ -436,8 +436,9 @@ FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check
 
 - `FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check`: passed
 - result: `1 passed`
+- note: the current `.env` now works directly with either the documented `FOLLOWUPBOSS_*` names or the legacy `FOLLOW_UP_BOSS_*` aliases.
 - `docs/mcp-validation-checklist.md`: updated with credential-backed MCP validation results across stdio, streamable HTTP, pagination, safe error paths, and live domain checks.
-- confirmed live MCP flows: identity, people, people relationships list/get/create/update/delete, person attachments CRUD, reactions add/delete, events search/get/send, action plans list/apply/pause, automations get/trigger/get-person/pause, calls create/list/get/update, text messages create/list/get, appointments create/get/update/delete, deals list/get/create/update/delete, deal attachments CRUD, templates CRUD plus merge, text message templates CRUD plus merge, and notes CRUD.
+- confirmed live MCP flows: identity, people, people relationships list/get/create/update/delete, person attachments CRUD, reactions add/delete, events search/get/send, action plans list/apply/pause, automations get/trigger/get-person/pause, calls create/list/get/update, text messages create/list/get, appointments create/get/update/delete, deals list/get/create/update/delete, deal attachments CRUD, timeframes list, templates CRUD plus merge, text message templates CRUD plus merge, and notes CRUD.
 - remaining live blockers: owner-only webhook access on the current credential, inbox app fixture setup, email marketing write fixtures, and reaction lookup by ID because the live create endpoint returned an acknowledgement rather than a reaction record.
 
 ## CI Status

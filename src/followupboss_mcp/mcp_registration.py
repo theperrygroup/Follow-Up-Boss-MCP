@@ -60,6 +60,7 @@ from followupboss_mcp.mcp_tools import (
     GetTemplateToolInput,
     GetTextMessageTemplateToolInput,
     GetTextMessageToolInput,
+    GetThreadedReplyToolInput,
     GetUserToolInput,
     GetWebhookToolInput,
     IgnoreUnclaimedPersonToolInput,
@@ -199,6 +200,7 @@ def register_server_surface(
     _register_timeframe_tools(mcp, adapter)
     _register_attachment_tools(mcp, adapter)
     _register_reaction_tools(mcp, adapter)
+    _register_threaded_reply_tools(mcp, adapter)
     _register_event_tools(mcp, adapter)
     _register_email_marketing_tools(mcp, adapter)
     _register_action_plan_tools(mcp, adapter)
@@ -769,6 +771,24 @@ def _register_reaction_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> 
     ) -> dict[str, object]:
         return await adapter.delete_reaction(
             DeleteReactionToolInput(ref_type=ref_type, ref_id=ref_id, emoji=emoji)
+        )
+
+
+def _register_threaded_reply_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+    """Register threaded-reply-related MCP tools.
+
+    Args:
+        mcp: The FastMCP server instance.
+        adapter: The typed Follow Up Boss tool adapter.
+    """
+
+    @mcp.tool(
+        name="followupboss_get_threaded_reply",
+        description="Fetch a single Follow Up Boss threaded reply by ID.",
+    )
+    async def followupboss_get_threaded_reply(threaded_reply_id: int) -> dict[str, object]:
+        return await adapter.get_threaded_reply(
+            GetThreadedReplyToolInput(threaded_reply_id=threaded_reply_id)
         )
 
 

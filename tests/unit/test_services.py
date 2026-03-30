@@ -156,6 +156,7 @@ from followupboss_mcp.models.text_messages import (
     TextMessageTemplateListRequest,
     UpdateTextMessageTemplateRequest,
 )
+from followupboss_mcp.models.threaded_replies import ThreadedReplyRecord
 from followupboss_mcp.models.timeframes import TimeframeListRequest
 from followupboss_mcp.models.users import UserListRequest
 from followupboss_mcp.models.webhooks import CreateWebhookRequest, WebhookListRequest
@@ -193,6 +194,7 @@ from followupboss_mcp.services.tasks import TasksService
 from followupboss_mcp.services.team_inboxes import TeamInboxesService
 from followupboss_mcp.services.teams import TeamsService
 from followupboss_mcp.services.templates import TemplatesService
+from followupboss_mcp.services.threaded_replies import ThreadedRepliesService
 from followupboss_mcp.services.text_messages import (
     TextMessagesService,
     TextMessageTemplatesService,
@@ -3077,6 +3079,45 @@ async def test_timeframes_service() -> None:
         await invalid_service.list_timeframes()
     with pytest.raises(ValueError, match="Unexpected timeframes response"):
         await invalid_service.list_timeframes()
+
+
+@pytest.mark.asyncio
+async def test_threaded_replies_service() -> None:
+    """Threaded replies service should map payloads correctly."""
+    client = StubClient(
+        [
+            {
+                "id": 1,
+                "created": "2024-01-11T18:50:12Z",
+                "updated": "2024-01-26T19:13:27Z",
+                "createdById": 1,
+                "refType": "Note",
+                "refId": 468,
+                "body": "Hello world part 2",
+                "reactions": {
+                    "id": 1363,
+                    "created": "2024-03-21T21:14:13Z",
+                    "createdBy": "Tom Minch",
+                    "createdById": 1,
+                    "refType": "Note",
+                    "refId": 2144705,
+                    "body": "🤯",
+                },
+            }
+        ]
+    )
+    service = ThreadedRepliesService(client)
+
+    threaded_reply = await service.get_threaded_reply(1)
+    assert isinstance(threaded_reply, ThreadedReplyRecord)
+    assert threaded_reply.body == "Hello world part 2"
+    assert threaded_reply.created_by_id == 1
+    assert threaded_reply.reactions is not None
+    assert threaded_reply.model_dump(by_alias=True, exclude_none=True)["reactions"]["id"] == 1363
+    assert client.calls[0].path == "/threadedReplies/1"
+
+    with pytest.raises(ValueError, match="Unexpected threaded replies response"):
+        await ThreadedRepliesService(StubClient([[]])).get_threaded_reply(1)
 
 
 @pytest.mark.asyncio

@@ -982,6 +982,13 @@ COVERAGE_MAP: dict[str, dict[str, str]] = {
         "notes": "Lists valid Follow Up Boss timeframes for people timeframeId values.",
         "tests": "Yes",
     },
+    "GET /threadedReplies/{id}": {
+        "implementation": "Implemented",
+        "mcp": "Yes",
+        "models": "Yes",
+        "notes": "Fetches a single threaded reply with nested reactions.",
+        "tests": "Yes",
+    },
     "GET /textMessages": {
         "implementation": "Implemented",
         "mcp": "Yes",

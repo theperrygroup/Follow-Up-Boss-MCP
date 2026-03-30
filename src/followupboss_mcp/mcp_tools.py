@@ -179,6 +179,7 @@ from followupboss_mcp.services.tasks import TasksService
 from followupboss_mcp.services.team_inboxes import TeamInboxesService
 from followupboss_mcp.services.teams import TeamsService
 from followupboss_mcp.services.templates import TemplatesService
+from followupboss_mcp.services.threaded_replies import ThreadedRepliesService
 from followupboss_mcp.services.text_messages import (
     TextMessagesService,
     TextMessageTemplatesService,
@@ -208,6 +209,12 @@ class GetReactionToolInput(RequestModel):
     """Tool input for fetching a reaction by ID."""
 
     reaction_id: int
+
+
+class GetThreadedReplyToolInput(RequestModel):
+    """Tool input for fetching a threaded reply by ID."""
+
+    threaded_reply_id: int
 
 
 class GetPeopleRelationshipToolInput(RequestModel):
@@ -727,6 +734,7 @@ class ServiceBundle:
     text_message_templates: TextMessageTemplatesService
     text_messages: TextMessagesService
     templates: TemplatesService
+    threaded_replies: ThreadedRepliesService
     timeframes: TimeframesService
     users: UsersService
     webhooks: WebhooksService
@@ -1079,6 +1087,15 @@ class FollowUpBossToolAdapter:
         """Get a reaction."""
         return await self._single_result(
             lambda: self._services.reactions.get_reaction(tool_input.reaction_id)
+        )
+
+    async def get_threaded_reply(
+        self,
+        tool_input: GetThreadedReplyToolInput,
+    ) -> dict[str, Any]:
+        """Get a threaded reply."""
+        return await self._single_result(
+            lambda: self._services.threaded_replies.get_threaded_reply(tool_input.threaded_reply_id)
         )
 
     async def add_reaction(self, tool_input: AddReactionToolInput) -> dict[str, Any]:

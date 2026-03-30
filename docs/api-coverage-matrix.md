@@ -88,7 +88,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `GET /textMessageTemplates/{id}` | Implemented | Yes | Yes | Yes | Single text message template lookup. |
 | `GET /textMessages` | Implemented | Yes | Yes | Yes | Lists text messages for a person or phone number. |
 | `GET /textMessages/{id}` | Implemented | Yes | Yes | Yes | Single-text-message lookup. |
-| `GET /threadedReplies/{id}` | Deferred | No | No | No | Discovered during the official docs crawl and intentionally deferred from the current repository scope. |
+| `GET /threadedReplies/{id}` | Implemented | Yes | Yes | Yes | Fetches a single threaded reply with nested reactions. |
 | `GET /timeframes` | Implemented | Yes | Yes | Yes | Lists valid Follow Up Boss timeframes for people timeframeId values. |
 | `GET /users` | Implemented | Yes | Yes | Yes | Collection query coverage included. |
 | `GET /users/:id` | Implemented | Yes | Yes | Yes | Single-user lookup. |
