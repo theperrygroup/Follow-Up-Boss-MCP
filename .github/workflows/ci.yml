@@ -18,11 +18,29 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Install Gitleaks
+        run: |
+          go install github.com/zricethezav/gitleaks/v8@latest
+          echo "$(go env GOPATH)/bin" >> "${GITHUB_PATH}"
+
       - name: Scan for secrets
-        uses: gitleaks/gitleaks-action@v2
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_ENABLE_COMMENTS: "false"
+          EVENT_BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            log_opts="origin/${GITHUB_BASE_REF}..HEAD"
+          elif [ -n "${EVENT_BEFORE}" ] && [ "${EVENT_BEFORE}" != "0000000000000000000000000000000000000000" ]; then
+            log_opts="${EVENT_BEFORE}..${GITHUB_SHA}"
+          else
+            log_opts="-1"
+          fi
+          gitleaks detect --source . --log-opts="${log_opts}" --redact --verbose --config .gitleaks.toml
 
   quality:
     runs-on: ${{ matrix.os }}

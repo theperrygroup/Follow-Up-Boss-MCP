@@ -146,24 +146,31 @@ variables:
 - `ECR_REPOSITORY`
 - `ECS_CLUSTER`
 - `ECS_SERVICE`
-- `FUB_OAUTH_CALLBACK_URL`
-- `FUB_OAUTH_CLIENT_ID`
-- `FUB_OAUTH_SYSTEM_NAME`
 - `HOSTED_ISSUER_URL`
 - `HOSTED_RESOURCE_SERVER_URL`
 - `LOG_GROUP_NAME`
 - `TENANT_SECRET_PREFIX`
 - `TENANT_SECRET_REGION`
 
+Set `FUB_OAUTH_ENABLED=true` only after configuring the hosted OAuth app. When OAuth is enabled,
+also configure these variables:
+
+- `FUB_OAUTH_CALLBACK_URL`
+- `FUB_OAUTH_CLIENT_ID`
+- `FUB_OAUTH_SYSTEM_NAME`
+
 Configure the same `staging` environment with these secrets:
 
 - `AWS_ROLE_TO_ASSUME`
-- `FUB_OAUTH_CLIENT_SECRET_ARN`
-- `FUB_OAUTH_SYSTEM_KEY_SECRET_ARN`
 - `REDIS_URL_SECRET_ARN`
 - `TENANT_DATABASE_URL_SECRET_ARN`
 - `TASK_EXECUTION_ROLE_ARN`
 - `TASK_ROLE_ARN`
+
+When `FUB_OAUTH_ENABLED=true`, also configure these secrets:
+
+- `FUB_OAUTH_CLIENT_SECRET_ARN`
+- `FUB_OAUTH_SYSTEM_KEY_SECRET_ARN`
 
 The repository also includes `.github/workflows/publish.yml` for PyPI releases. That workflow
 triggers on `v*` tags, reruns `make release-validate`, verifies the tag matches

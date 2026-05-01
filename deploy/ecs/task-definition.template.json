@@ -76,7 +76,7 @@
         },
         {
           "name": "FOLLOWUPBOSS_HOSTED_OAUTH_ENABLED",
-          "value": "true"
+          "value": "__FUB_OAUTH_ENABLED__"
         },
         {
           "name": "FOLLOWUPBOSS_FUB_OAUTH_CLIENT_ID",

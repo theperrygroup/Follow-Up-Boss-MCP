@@ -23,6 +23,7 @@ jobs:
       ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
       ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
       ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+      FUB_OAUTH_ENABLED: ${{ vars.FUB_OAUTH_ENABLED }}
       FUB_OAUTH_CALLBACK_URL: ${{ vars.FUB_OAUTH_CALLBACK_URL }}
       FUB_OAUTH_CLIENT_ID: ${{ vars.FUB_OAUTH_CLIENT_ID }}
       FUB_OAUTH_SYSTEM_NAME: ${{ vars.FUB_OAUTH_SYSTEM_NAME }}
@@ -52,17 +53,12 @@ jobs:
             ECR_REPOSITORY
             ECS_CLUSTER
             ECS_SERVICE
-            FUB_OAUTH_CALLBACK_URL
-            FUB_OAUTH_CLIENT_ID
-            FUB_OAUTH_SYSTEM_NAME
             HOSTED_ISSUER_URL
             HOSTED_RESOURCE_SERVER_URL
             LOG_GROUP_NAME
             TENANT_SECRET_PREFIX
             TENANT_SECRET_REGION
             AWS_ROLE_TO_ASSUME
-            FUB_OAUTH_CLIENT_SECRET_ARN
-            FUB_OAUTH_SYSTEM_KEY_SECRET_ARN
             REDIS_URL_SECRET_ARN
             TENANT_DATABASE_URL_SECRET_ARN
             TASK_EXECUTION_ROLE_ARN
@@ -74,6 +70,29 @@ jobs:
               exit 1
             fi
           done
+          oauth_enabled="$(printf "%s" "${FUB_OAUTH_ENABLED:-false}" | tr '[:upper:]' '[:lower:]')"
+          case "${oauth_enabled}" in
+            true|false) ;;
+            *)
+              printf "FUB_OAUTH_ENABLED must be true or false when set.\n" >&2
+              exit 1
+              ;;
+          esac
+          if [ "${oauth_enabled}" = "true" ]; then
+            oauth_required_values=(
+              FUB_OAUTH_CALLBACK_URL
+              FUB_OAUTH_CLIENT_ID
+              FUB_OAUTH_SYSTEM_NAME
+              FUB_OAUTH_CLIENT_SECRET_ARN
+              FUB_OAUTH_SYSTEM_KEY_SECRET_ARN
+            )
+            for name in "${oauth_required_values[@]}"; do
+              if [ -z "${!name}" ]; then
+                printf "Missing required staging OAuth configuration: %s\n" "${name}" >&2
+                exit 1
+              fi
+            done
+          fi
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
@@ -94,6 +113,7 @@ jobs:
       ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
       ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
       ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+      FUB_OAUTH_ENABLED: ${{ vars.FUB_OAUTH_ENABLED }}
       FUB_OAUTH_CALLBACK_URL: ${{ vars.FUB_OAUTH_CALLBACK_URL }}
       FUB_OAUTH_CLIENT_ID: ${{ vars.FUB_OAUTH_CLIENT_ID }}
       FUB_OAUTH_SYSTEM_NAME: ${{ vars.FUB_OAUTH_SYSTEM_NAME }}
@@ -158,16 +178,43 @@ jobs:
           IMAGE_URI: ${{ steps.image-ref.outputs.image_uri }}
         run: |
           python - <<'PY'
+          import json
           import os
+          import re
           from pathlib import Path
+          from typing import Any
+
+          def replace_placeholders(value: Any, replacements: dict[str, str]) -> Any:
+              """Replace placeholders in an ECS task-definition object.
+
+              Args:
+                  value: JSON-compatible task-definition value.
+                  replacements: Placeholder-to-value mapping.
+
+              Returns:
+                  JSON-compatible value with string placeholders replaced.
+              """
+              if isinstance(value, str):
+                  rendered = value
+                  for placeholder, replacement in replacements.items():
+                      rendered = rendered.replace(placeholder, replacement)
+                  return rendered
+              if isinstance(value, list):
+                  return [replace_placeholders(item, replacements) for item in value]
+              if isinstance(value, dict):
+                  return {
+                      key: replace_placeholders(item, replacements)
+                      for key, item in value.items()
+                  }
+              return value
+
+          oauth_enabled = (os.environ.get("FUB_OAUTH_ENABLED") or "false").strip().lower()
+          if oauth_enabled not in {"true", "false"}:
+              raise SystemExit("FUB_OAUTH_ENABLED must be true or false when set.")
 
           replacements = {
               "__AWS_REGION__": os.environ["AWS_REGION"],
-              "__FUB_OAUTH_CALLBACK_URL__": os.environ["FUB_OAUTH_CALLBACK_URL"],
-              "__FUB_OAUTH_CLIENT_ID__": os.environ["FUB_OAUTH_CLIENT_ID"],
-              "__FUB_OAUTH_CLIENT_SECRET_ARN__": os.environ["FUB_OAUTH_CLIENT_SECRET_ARN"],
-              "__FUB_OAUTH_SYSTEM_KEY_SECRET_ARN__": os.environ["FUB_OAUTH_SYSTEM_KEY_SECRET_ARN"],
-              "__FUB_OAUTH_SYSTEM_NAME__": os.environ["FUB_OAUTH_SYSTEM_NAME"],
+              "__FUB_OAUTH_ENABLED__": oauth_enabled,
               "__HOSTED_ISSUER_URL__": os.environ["HOSTED_ISSUER_URL"],
               "__HOSTED_RESOURCE_SERVER_URL__": os.environ["HOSTED_RESOURCE_SERVER_URL"],
               "__IMAGE_URI__": os.environ["IMAGE_URI"],
@@ -179,12 +226,49 @@ jobs:
               "__TENANT_SECRET_PREFIX__": os.environ["TENANT_SECRET_PREFIX"],
               "__TENANT_SECRET_REGION__": os.environ["TENANT_SECRET_REGION"],
           }
+          if oauth_enabled == "true":
+              replacements.update(
+                  {
+                      "__FUB_OAUTH_CALLBACK_URL__": os.environ["FUB_OAUTH_CALLBACK_URL"],
+                      "__FUB_OAUTH_CLIENT_ID__": os.environ["FUB_OAUTH_CLIENT_ID"],
+                      "__FUB_OAUTH_CLIENT_SECRET_ARN__": os.environ[
+                          "FUB_OAUTH_CLIENT_SECRET_ARN"
+                      ],
+                      "__FUB_OAUTH_SYSTEM_KEY_SECRET_ARN__": os.environ[
+                          "FUB_OAUTH_SYSTEM_KEY_SECRET_ARN"
+                      ],
+                      "__FUB_OAUTH_SYSTEM_NAME__": os.environ["FUB_OAUTH_SYSTEM_NAME"],
+                  }
+              )
+
           template_path = Path("deploy/ecs/task-definition.template.json")
           rendered_path = Path("deploy/ecs/task-definition.rendered.json")
-          rendered_text = template_path.read_text(encoding="utf-8")
-          for placeholder, value in replacements.items():
-              rendered_text = rendered_text.replace(placeholder, value)
-          missing = [placeholder for placeholder in replacements if placeholder in rendered_text]
+          task_definition = json.loads(template_path.read_text(encoding="utf-8"))
+          if oauth_enabled == "false":
+              oauth_environment_names = {
+                  "FOLLOWUPBOSS_FUB_OAUTH_CLIENT_ID",
+                  "FOLLOWUPBOSS_FUB_OAUTH_AUTHORIZE_URL",
+                  "FOLLOWUPBOSS_FUB_OAUTH_TOKEN_URL",
+                  "FOLLOWUPBOSS_FUB_OAUTH_CALLBACK_URL",
+                  "FOLLOWUPBOSS_FUB_OAUTH_SYSTEM_NAME",
+              }
+              oauth_secret_names = {
+                  "FOLLOWUPBOSS_FUB_OAUTH_CLIENT_SECRET",
+                  "FOLLOWUPBOSS_FUB_OAUTH_SYSTEM_KEY",
+              }
+              container = task_definition["containerDefinitions"][0]
+              container["environment"] = [
+                  item
+                  for item in container["environment"]
+                  if item.get("name") not in oauth_environment_names
+              ]
+              container["secrets"] = [
+                  item for item in container["secrets"] if item.get("name") not in oauth_secret_names
+              ]
+
+          rendered_task_definition = replace_placeholders(task_definition, replacements)
+          rendered_text = json.dumps(rendered_task_definition, indent=2) + "\n"
+          missing = sorted(set(re.findall(r"__[A-Z0-9_]+__", rendered_text)))
           if missing:
               raise SystemExit(f"Unrendered ECS placeholders remain: {missing}")
           rendered_path.write_text(rendered_text, encoding="utf-8")
