@@ -10,7 +10,9 @@
       ],
       "Resource": [
         "__TENANT_DATABASE_URL_SECRET_ARN__",
-        "__REDIS_URL_SECRET_ARN__"
+        "__REDIS_URL_SECRET_ARN__",
+        "__FUB_OAUTH_CLIENT_SECRET_ARN__",
+        "__FUB_OAUTH_SYSTEM_KEY_SECRET_ARN__"
       ]
     },
     {
@@ -19,6 +21,16 @@
       "Action": [
         "secretsmanager:DescribeSecret",
         "secretsmanager:GetSecretValue"
+      ],
+      "Resource": "__TENANT_SECRET_PREFIX_ARN__*"
+    },
+    {
+      "Sid": "WriteOAuthTenantCredentialSecrets",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:CreateSecret",
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:PutSecretValue"
       ],
       "Resource": "__TENANT_SECRET_PREFIX_ARN__*"
     }

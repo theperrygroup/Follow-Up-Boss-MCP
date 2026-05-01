@@ -21,6 +21,7 @@ from followupboss_mcp.hosted_auth import (
     HostedIdentityVerifier,
     HostedTenantTokenVerifier,
 )
+from followupboss_mcp.hosted_oauth import HostedOAuthApplication
 from followupboss_mcp.hosted_rate_limits import (
     HostedEndpointRateLimiter,
     HostedRateLimitMiddleware,
@@ -136,6 +137,7 @@ class FollowUpBossFastMCP(FastMCP):
     """FastMCP subclass with hosted endpoint abuse controls."""
 
     _hosted_rate_limiter: HostedEndpointRateLimiter | None = None
+    _hosted_oauth_application: HostedOAuthApplication | None = None
 
     def streamable_http_app(self) -> Starlette:
         """Return the streamable HTTP app with hosted abuse controls applied.
@@ -144,6 +146,12 @@ class FollowUpBossFastMCP(FastMCP):
             The configured streamable HTTP Starlette application.
         """
         app = super().streamable_http_app()
+        if self._hosted_oauth_application is not None:
+            existing_paths = {getattr(route, "path", None) for route in app.routes}
+            for route in self._hosted_oauth_application.routes():
+                if route.path not in existing_paths:
+                    app.routes.append(route)
+
         if self._hosted_rate_limiter is None or self._token_verifier is None:
             return app
 
@@ -170,6 +178,7 @@ def create_server(
     hosted_token_verifier: HostedIdentityVerifier | None = None,
     tenant_store: TenantStore | None = None,
     hosted_rate_limiter: HostedEndpointRateLimiter | None = None,
+    hosted_oauth_application: HostedOAuthApplication | None = None,
     managed_resources: Sequence[AsyncManagedResource] = (),
     host: str | None = None,
     port: int | None = None,
@@ -196,6 +205,8 @@ def create_server(
             auth is enabled and no limiter is provided, a default in-memory
             per-tenant/per-client limiter is applied to the streamable HTTP
             endpoint.
+        hosted_oauth_application: Optional OAuth authorization-server routes to
+            expose beside the hosted streamable HTTP endpoint.
         managed_resources: Optional async resources to open before serving and
             close during shutdown, such as shared hosted metadata pools.
         host: Optional explicit host override.
@@ -279,6 +290,8 @@ def create_server(
                 finally:
                     if resolved_hosted_rate_limiter is not None:
                         await resolved_hosted_rate_limiter.aclose()
+                    if hosted_oauth_application is not None:
+                        await hosted_oauth_application.aclose()
 
     mcp = FollowUpBossFastMCP(
         "Follow Up Boss MCP",
@@ -300,6 +313,7 @@ def create_server(
         token_verifier=resolved_token_verifier,
     )
     mcp._hosted_rate_limiter = resolved_hosted_rate_limiter
+    mcp._hosted_oauth_application = hosted_oauth_application
     register_server_surface(
         mcp,
         adapter,

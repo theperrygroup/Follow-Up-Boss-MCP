@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import hashlib
+import json
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Mapping, Sequence
@@ -42,6 +43,19 @@ from followupboss_mcp.hosted_auth import (
     HostedAuthSettings,
     HostedIdentityVerifier,
     HostedVerifiedIdentity,
+)
+from followupboss_mcp.hosted_oauth import (
+    FollowUpBossOAuthClient,
+    FollowUpBossOAuthIdentity,
+    FollowUpBossOAuthTokenPayload,
+    HostedOAuthAccessTokenMetadata,
+    HostedOAuthApplication,
+    HostedOAuthAuthorizationCode,
+    HostedOAuthDynamicClient,
+    HostedOAuthPendingAuthorization,
+    HostedOAuthRefreshToken,
+    HostedOAuthSettings,
+    ProvisionedHostedTenant,
 )
 from followupboss_mcp.hosted_rate_limits import (
     HostedEndpointRateLimiter,
@@ -83,6 +97,91 @@ SELECT credential_id, tenant_id, auth_mode, system_name, secret_ref, status
 FROM tenant_credentials
 WHERE credential_id = %s
 LIMIT 1
+"""
+
+_HOSTED_OAUTH_CLIENT_UPSERT = """
+INSERT INTO hosted_oauth_clients (
+    client_id, client_name, redirect_uris, scope, token_endpoint_auth_method
+)
+VALUES (%s, %s, %s, %s, %s)
+ON CONFLICT (client_id) DO UPDATE SET
+    client_name = EXCLUDED.client_name,
+    redirect_uris = EXCLUDED.redirect_uris,
+    scope = EXCLUDED.scope,
+    token_endpoint_auth_method = EXCLUDED.token_endpoint_auth_method
+"""
+
+_HOSTED_OAUTH_CLIENT_QUERY = """
+SELECT client_id, client_name, redirect_uris, scope, token_endpoint_auth_method
+FROM hosted_oauth_clients
+WHERE client_id = %s
+LIMIT 1
+"""
+
+_HOSTED_ACCESS_TOKEN_INSERT = """
+INSERT INTO hosted_access_tokens (
+    token_id,
+    token_hash,
+    tenant_id,
+    subject,
+    client_id,
+    scopes,
+    credential_id,
+    expires_at,
+    revoked_at
+)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NULL)
+"""
+
+_HOSTED_OAUTH_REFRESH_TOKEN_UPSERT = """
+INSERT INTO hosted_oauth_refresh_tokens (
+    token_hash, tenant_id, subject, client_id, scopes, credential_id, expires_at, revoked_at
+)
+VALUES (%s, %s, %s, %s, %s, %s, %s, NULL)
+ON CONFLICT (token_hash) DO UPDATE SET
+    tenant_id = EXCLUDED.tenant_id,
+    subject = EXCLUDED.subject,
+    client_id = EXCLUDED.client_id,
+    scopes = EXCLUDED.scopes,
+    credential_id = EXCLUDED.credential_id,
+    expires_at = EXCLUDED.expires_at,
+    revoked_at = NULL
+"""
+
+_HOSTED_OAUTH_REFRESH_TOKEN_QUERY = """
+SELECT token_hash, tenant_id, subject, client_id, scopes, credential_id, expires_at, revoked_at
+FROM hosted_oauth_refresh_tokens
+WHERE token_hash = %s
+LIMIT 1
+"""
+
+_HOSTED_OAUTH_REFRESH_TOKEN_REVOKE = """
+UPDATE hosted_oauth_refresh_tokens
+SET revoked_at = %s
+WHERE token_hash = %s
+"""
+
+_TENANT_UPSERT = """
+INSERT INTO tenants (tenant_id, tenant_slug, display_name, credential_id, status)
+VALUES (%s, %s, %s, %s, 'active')
+ON CONFLICT (tenant_id) DO UPDATE SET
+    tenant_slug = EXCLUDED.tenant_slug,
+    display_name = EXCLUDED.display_name,
+    credential_id = EXCLUDED.credential_id,
+    status = 'active'
+"""
+
+_TENANT_CREDENTIAL_UPSERT = """
+INSERT INTO tenant_credentials (
+    credential_id, tenant_id, auth_mode, system_name, secret_ref, status
+)
+VALUES (%s, %s, 'oauth', %s, %s, 'active')
+ON CONFLICT (credential_id) DO UPDATE SET
+    tenant_id = EXCLUDED.tenant_id,
+    auth_mode = 'oauth',
+    system_name = EXCLUDED.system_name,
+    secret_ref = EXCLUDED.secret_ref,
+    status = 'active'
 """
 
 _REDIS_CONSUME_SCRIPT = """
@@ -298,6 +397,46 @@ class FollowUpBossHostedDeploymentSettings(BaseSettings):
         default=False,
         validation_alias=_settings_env_aliases("FOLLOWUPBOSS_RATE_LIMIT_INCLUDE_CLIENT_IP"),
     )
+    oauth_enabled: bool = Field(
+        default=False,
+        validation_alias=_settings_env_aliases("FOLLOWUPBOSS_HOSTED_OAUTH_ENABLED"),
+    )
+    fub_oauth_client_id: str | None = Field(
+        default=None,
+        validation_alias=_settings_env_aliases("FOLLOWUPBOSS_FUB_OAUTH_CLIENT_ID"),
+    )
+    fub_oauth_client_secret: SecretStr | None = Field(
+        default=None,
+        validation_alias=_settings_env_aliases("FOLLOWUPBOSS_FUB_OAUTH_CLIENT_SECRET"),
+    )
+    fub_oauth_authorize_url: AnyHttpUrl = Field(
+        default="https://app.followupboss.com/oauth/authorize",
+        validation_alias=_settings_env_aliases("FOLLOWUPBOSS_FUB_OAUTH_AUTHORIZE_URL"),
+    )
+    fub_oauth_token_url: AnyHttpUrl = Field(
+        default="https://app.followupboss.com/oauth/token",
+        validation_alias=_settings_env_aliases("FOLLOWUPBOSS_FUB_OAUTH_TOKEN_URL"),
+    )
+    fub_oauth_callback_url: AnyHttpUrl | None = Field(
+        default=None,
+        validation_alias=_settings_env_aliases("FOLLOWUPBOSS_FUB_OAUTH_CALLBACK_URL"),
+    )
+    fub_oauth_system_name: str | None = Field(
+        default=None,
+        validation_alias=_settings_env_aliases("FOLLOWUPBOSS_FUB_OAUTH_SYSTEM_NAME"),
+    )
+    fub_oauth_system_key: SecretStr | None = Field(
+        default=None,
+        validation_alias=_settings_env_aliases("FOLLOWUPBOSS_FUB_OAUTH_SYSTEM_KEY"),
+    )
+    hosted_oauth_access_token_seconds: int = Field(
+        default=3600,
+        validation_alias=_settings_env_aliases("FOLLOWUPBOSS_HOSTED_OAUTH_ACCESS_TOKEN_SECONDS"),
+    )
+    hosted_oauth_refresh_token_seconds: int = Field(
+        default=60 * 60 * 24 * 30,
+        validation_alias=_settings_env_aliases("FOLLOWUPBOSS_HOSTED_OAUTH_REFRESH_TOKEN_SECONDS"),
+    )
 
     @field_validator("required_scopes", mode="before")
     @classmethod
@@ -368,6 +507,44 @@ class FollowUpBossHostedDeploymentSettings(BaseSettings):
             }
         )
 
+    def hosted_oauth_settings(self) -> HostedOAuthSettings | None:
+        """Project deployment settings into hosted OAuth settings.
+
+        Returns:
+            Hosted OAuth settings when OAuth is enabled, otherwise `None`.
+
+        Raises:
+            ValueError: If OAuth is enabled without required FUB app settings.
+        """
+        if not self.oauth_enabled:
+            return None
+        if (
+            self.fub_oauth_client_id is None
+            or self.fub_oauth_client_secret is None
+            or self.fub_oauth_callback_url is None
+        ):
+            raise ValueError(
+                "FUB OAuth client id, client secret, and callback URL are required "
+                "when hosted OAuth is enabled."
+            )
+        return HostedOAuthSettings.model_validate(
+            {
+                "issuer_url": self.issuer_url,
+                "resource_server_url": self.resource_server_url,
+                "required_scopes": self.required_scopes,
+                "fub_client_id": self.fub_oauth_client_id,
+                "fub_client_secret": self.fub_oauth_client_secret,
+                "fub_authorize_url": self.fub_oauth_authorize_url,
+                "fub_token_url": self.fub_oauth_token_url,
+                "fub_callback_url": self.fub_oauth_callback_url,
+                "token_secret_prefix": self.tenant_secret_prefix,
+                "system_name": self.fub_oauth_system_name,
+                "system_key": self.fub_oauth_system_key,
+                "access_token_seconds": self.hosted_oauth_access_token_seconds,
+                "refresh_token_seconds": self.hosted_oauth_refresh_token_seconds,
+            }
+        )
+
 
 class ReferenceHostedSecretPayload(BaseModel):
     """Validated raw Follow Up Boss secret payload from AWS Secrets Manager."""
@@ -376,6 +553,8 @@ class ReferenceHostedSecretPayload(BaseModel):
 
     api_key: SecretStr | None = None
     access_token: SecretStr | None = None
+    refresh_token: SecretStr | None = None
+    access_token_expires_at: int | None = None
     system_key: SecretStr | None = None
 
     @model_validator(mode="after")
@@ -393,6 +572,28 @@ class ReferenceHostedSecretPayload(BaseModel):
         if has_api_key == has_access_token:
             raise ValueError("Exactly one of api_key or access_token must be present.")
         return self
+
+    def needs_oauth_refresh(
+        self,
+        *,
+        now: int,
+        refresh_buffer_seconds: int = 300,
+    ) -> bool:
+        """Return whether an OAuth access token should be refreshed.
+
+        Args:
+            now: Current Unix timestamp.
+            refresh_buffer_seconds: Refresh when expiry is within this window.
+
+        Returns:
+            `True` when a refresh token exists and the access token is near
+            expiry or has no expiry metadata.
+        """
+        if self.access_token is None or self.refresh_token is None:
+            return False
+        if self.access_token_expires_at is None:
+            return True
+        return self.access_token_expires_at <= now + refresh_buffer_seconds
 
 
 class _TenantCredentialMetadataRow(BaseModel):
@@ -465,6 +666,38 @@ class SecretsManagerClientProtocol(Protocol):
 
 class RedisClientProtocol(Protocol):
     """Protocol for the subset of Redis used by this module."""
+
+    def get(self, name: str) -> Awaitable[object]:
+        """Return one Redis value by key.
+
+        Args:
+            name: Redis key.
+
+        Returns:
+            Awaitable Redis value.
+        """
+
+    def set(self, name: str, value: str, *, ex: int) -> Awaitable[object]:
+        """Set one Redis value with an expiry.
+
+        Args:
+            name: Redis key.
+            value: Serialized value.
+            ex: Expiry in seconds.
+
+        Returns:
+            Awaitable Redis result.
+        """
+
+    def delete(self, name: str) -> Awaitable[object]:
+        """Delete one Redis key.
+
+        Args:
+            name: Redis key.
+
+        Returns:
+            Awaitable Redis result.
+        """
 
     def eval(self, script: str, numkeys: int, *args: str) -> Awaitable[object]:
         """Execute one Lua script against Redis.
@@ -554,6 +787,268 @@ class AwsSecretsManagerTenantSecretStore:
             raise TenantSecretStoreUnavailableError("Tenant secret store is unavailable.") from exc
 
 
+class AwsSecretsManagerHostedOAuthSecretWriter:
+    """AWS Secrets Manager writer for OAuth-backed tenant secrets."""
+
+    def __init__(
+        self,
+        *,
+        region_name: str,
+        secret_prefix: str,
+        secrets_client: object | None = None,
+    ) -> None:
+        """Initialize the OAuth secret writer.
+
+        Args:
+            region_name: AWS region used for tenant secrets.
+            secret_prefix: Logical namespace for tenant secret references.
+            secrets_client: Optional Secrets Manager client used by tests.
+        """
+        self._region_name = _normalize_required_string(region_name, field_name="region_name")
+        self._secret_prefix = _normalize_secret_prefix(secret_prefix)
+        self._secrets_client = secrets_client or boto3.session.Session().client(
+            "secretsmanager",
+            region_name=self._region_name,
+        )
+
+    def secret_ref_for_credential(self, credential_id: str) -> str:
+        """Return the managed secret reference for one credential id.
+
+        Args:
+            credential_id: Stable tenant credential id.
+
+        Returns:
+            Secrets Manager name below the configured prefix.
+        """
+        return self._secret_prefix + _normalize_required_string(
+            credential_id,
+            field_name="credential_id",
+        )
+
+    async def put_oauth_secret(
+        self,
+        *,
+        secret_ref: str,
+        payload: ReferenceHostedSecretPayload,
+    ) -> None:
+        """Create or update one OAuth tenant secret.
+
+        Args:
+            secret_ref: Secrets Manager name or ARN.
+            payload: Validated secret payload.
+
+        Raises:
+            TenantSecretStoreUnavailableError: If Secrets Manager cannot persist
+                the payload.
+        """
+        normalized_secret_ref = _normalize_required_string(secret_ref, field_name="secret_ref")
+        if not _secret_ref_matches_prefix(normalized_secret_ref, self._secret_prefix):
+            raise TenantSecretStoreUnavailableError("Tenant secret store is unavailable.")
+        payload_data: dict[str, object] = {}
+        if payload.api_key is not None:
+            payload_data["api_key"] = payload.api_key.get_secret_value()
+        if payload.access_token is not None:
+            payload_data["access_token"] = payload.access_token.get_secret_value()
+        if payload.refresh_token is not None:
+            payload_data["refresh_token"] = payload.refresh_token.get_secret_value()
+        if payload.access_token_expires_at is not None:
+            payload_data["access_token_expires_at"] = payload.access_token_expires_at
+        if payload.system_key is not None:
+            payload_data["system_key"] = payload.system_key.get_secret_value()
+        payload_json = json.dumps(payload_data, sort_keys=True)
+        try:
+            await asyncio.to_thread(
+                self._secrets_client.put_secret_value,
+                SecretId=normalized_secret_ref,
+                SecretString=payload_json,
+            )
+        except Exception:
+            try:
+                await asyncio.to_thread(
+                    self._secrets_client.create_secret,
+                    Name=normalized_secret_ref,
+                    SecretString=payload_json,
+                )
+            except Exception as exc:
+                raise TenantSecretStoreUnavailableError(
+                    "Tenant secret store is unavailable."
+                ) from exc
+
+
+class FollowUpBossTenantOAuthRefresher:
+    """Refresh near-expiry FUB OAuth tenant secrets during tenant resolution."""
+
+    def __init__(
+        self,
+        *,
+        fub_client: FollowUpBossOAuthClient,
+        secret_writer: AwsSecretsManagerHostedOAuthSecretWriter,
+        time_provider: Callable[[], int] | None = None,
+        refresh_buffer_seconds: int = 300,
+    ) -> None:
+        """Initialize the tenant OAuth refresher.
+
+        Args:
+            fub_client: Follow Up Boss OAuth client used for refresh calls.
+            secret_writer: Secret writer used to persist refreshed tokens.
+            time_provider: Optional Unix timestamp provider.
+            refresh_buffer_seconds: Refresh when expiry is inside this window.
+        """
+        self._fub_client = fub_client
+        self._secret_writer = secret_writer
+        self._time_provider = time_provider or (lambda: int(time.time()))
+        self._refresh_buffer_seconds = refresh_buffer_seconds
+
+    async def refresh_if_needed(
+        self,
+        *,
+        secret_ref: str,
+        payload: ReferenceHostedSecretPayload,
+    ) -> ReferenceHostedSecretPayload:
+        """Refresh a tenant OAuth secret when it is near expiry.
+
+        Args:
+            secret_ref: Secret reference backing the credential row.
+            payload: Current tenant secret payload.
+
+        Returns:
+            Current payload when no refresh is required, otherwise refreshed
+            payload after persistence.
+        """
+        if not payload.needs_oauth_refresh(
+            now=self._time_provider(),
+            refresh_buffer_seconds=self._refresh_buffer_seconds,
+        ):
+            return payload
+        if payload.refresh_token is None:
+            return payload
+        refreshed = await self._fub_client.refresh_token(
+            refresh_token=payload.refresh_token.get_secret_value()
+        )
+        expires_at = (
+            None
+            if refreshed.expires_in is None
+            else self._time_provider() + int(refreshed.expires_in)
+        )
+        refreshed_payload = ReferenceHostedSecretPayload.model_validate(
+            {
+                "access_token": refreshed.access_token,
+                "refresh_token": refreshed.refresh_token or payload.refresh_token,
+                "access_token_expires_at": expires_at,
+                "system_key": payload.system_key,
+            }
+        )
+        await self._secret_writer.put_oauth_secret(
+            secret_ref=secret_ref,
+            payload=refreshed_payload,
+        )
+        return refreshed_payload
+
+
+class PostgresAwsHostedOAuthTenantProvisioner:
+    """Provision hosted tenant metadata from a successful FUB OAuth login."""
+
+    def __init__(
+        self,
+        database_url: SecretStr | str | None = None,
+        *,
+        pool: ReferenceHostedPostgresPool | None = None,
+        secret_writer: AwsSecretsManagerHostedOAuthSecretWriter,
+        system_name: str | None = None,
+        system_key: SecretStr | None = None,
+        time_provider: Callable[[], int] | None = None,
+    ) -> None:
+        """Initialize the tenant provisioner.
+
+        Args:
+            database_url: PostgreSQL connection string when no pool is injected.
+            pool: Optional shared PostgreSQL pool.
+            secret_writer: Secrets Manager writer for raw FUB OAuth tokens.
+            system_name: Optional Follow Up Boss registered-system name.
+            system_key: Optional Follow Up Boss registered-system key.
+            time_provider: Optional Unix timestamp provider.
+
+        Raises:
+            ValueError: If no database source is configured.
+        """
+        if database_url is None and pool is None:
+            raise ValueError("database_url is required when pool is not provided.")
+        self._pool = pool or ReferenceHostedPostgresPool(cast(SecretStr | str, database_url))
+        self._owns_pool = pool is None
+        self._secret_writer = secret_writer
+        self._system_name = cast(str | None, _normalize_optional_string(system_name))
+        self._system_key = system_key
+        self._time_provider = time_provider or (lambda: int(time.time()))
+
+    async def provision_tenant(
+        self,
+        *,
+        identity: FollowUpBossOAuthIdentity,
+        token_payload: FollowUpBossOAuthTokenPayload,
+    ) -> ProvisionedHostedTenant:
+        """Provision tenant metadata and OAuth secret material.
+
+        Args:
+            identity: Follow Up Boss account/user identity.
+            token_payload: FUB OAuth token payload.
+
+        Returns:
+            Provisioned hosted tenant identifiers.
+        """
+        tenant_id = identity.tenant_id
+        credential_id = identity.credential_id
+        secret_ref = self._secret_writer.secret_ref_for_credential(credential_id)
+        expires_at = (
+            None
+            if token_payload.expires_in is None
+            else self._time_provider() + int(token_payload.expires_in)
+        )
+        secret_payload = ReferenceHostedSecretPayload.model_validate(
+            {
+                "access_token": token_payload.access_token,
+                "refresh_token": token_payload.refresh_token,
+                "access_token_expires_at": expires_at,
+                "system_key": self._system_key,
+            }
+        )
+        await self._secret_writer.put_oauth_secret(
+            secret_ref=secret_ref,
+            payload=secret_payload,
+        )
+        await _execute_postgres(
+            self._pool,
+            _TENANT_UPSERT,
+            (
+                tenant_id,
+                tenant_id,
+                identity.account_name,
+                credential_id,
+            ),
+        )
+        await _execute_postgres(
+            self._pool,
+            _TENANT_CREDENTIAL_UPSERT,
+            (
+                credential_id,
+                tenant_id,
+                self._system_name,
+                secret_ref,
+            ),
+        )
+        return ProvisionedHostedTenant.model_validate(
+            {
+                "tenant_id": tenant_id,
+                "credential_id": credential_id,
+                "subject": identity.subject,
+            }
+        )
+
+    async def aclose(self) -> None:
+        """Close the owned PostgreSQL pool."""
+        if self._owns_pool:
+            await self._pool.aclose()
+
+
 class ReferenceHostedPostgresPool:
     """Managed async PostgreSQL pool for hosted metadata lookups."""
 
@@ -625,6 +1120,230 @@ async def _fetch_optional_postgres_row(
     return cast(Mapping[str, object], raw_row)
 
 
+async def _execute_postgres(
+    pool: ReferenceHostedPostgresPool,
+    query: str,
+    params: tuple[object, ...],
+) -> None:
+    """Execute one PostgreSQL statement through the shared pool.
+
+    Args:
+        pool: Managed PostgreSQL pool used for the statement.
+        query: SQL statement text to execute.
+        params: Bound parameter tuple.
+    """
+    await pool.open()
+    async with pool.connection() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(query, params)
+
+
+def _coerce_json_mapping(value: object) -> Mapping[str, object] | None:
+    """Deserialize a Redis JSON payload into a mapping.
+
+    Args:
+        value: Raw Redis payload.
+
+    Returns:
+        Parsed mapping when available, otherwise `None`.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bytes | bytearray):
+        raw_text = bytes(value).decode("utf-8")
+    else:
+        raw_text = str(value)
+    parsed = json.loads(raw_text)
+    if not isinstance(parsed, Mapping):
+        return None
+    return cast(Mapping[str, object], parsed)
+
+
+class PostgresRedisHostedOAuthStore:
+    """Redis and PostgreSQL-backed storage for hosted OAuth state."""
+
+    def __init__(
+        self,
+        database_url: SecretStr | str | None = None,
+        *,
+        redis_url: SecretStr | str | None = None,
+        pool: ReferenceHostedPostgresPool | None = None,
+        redis_client: RedisClientProtocol | None = None,
+        key_prefix: str = "followupboss:hosted_oauth",
+    ) -> None:
+        """Initialize the hosted OAuth store.
+
+        Args:
+            database_url: PostgreSQL connection string when no pool is injected.
+            redis_url: Redis connection string when no client is injected.
+            pool: Optional shared PostgreSQL pool.
+            redis_client: Optional shared Redis client.
+            key_prefix: Redis key namespace for short-lived OAuth state.
+
+        Raises:
+            ValueError: If required backing clients are missing.
+        """
+        if database_url is None and pool is None:
+            raise ValueError("database_url is required when pool is not provided.")
+        if redis_url is None and redis_client is None:
+            raise ValueError("redis_url is required when redis_client is not provided.")
+        self._pool = pool or ReferenceHostedPostgresPool(cast(SecretStr | str, database_url))
+        self._owns_pool = pool is None
+        self._redis = redis_client or cast(
+            RedisClientProtocol,
+            redis_from_url(_secret_value(cast(SecretStr | str, redis_url))),
+        )
+        self._owns_redis = redis_client is None
+        self._key_prefix = _normalize_required_string(key_prefix, field_name="key_prefix").rstrip(
+            ":"
+        )
+
+    def _redis_key(self, *parts: str) -> str:
+        """Build a Redis key for short-lived OAuth data.
+
+        Args:
+            *parts: Key parts below the store prefix.
+
+        Returns:
+            Redis key.
+        """
+        return ":".join([self._key_prefix, *parts])
+
+    async def save_client(self, client: HostedOAuthDynamicClient) -> None:
+        """Persist OAuth client metadata."""
+        await _execute_postgres(
+            self._pool,
+            _HOSTED_OAUTH_CLIENT_UPSERT,
+            (
+                client.client_id,
+                client.client_name,
+                list(client.redirect_uris),
+                list(client.scope),
+                client.token_endpoint_auth_method,
+            ),
+        )
+
+    async def get_client(self, client_id: str) -> HostedOAuthDynamicClient | None:
+        """Return OAuth client metadata when known."""
+        row = await _fetch_optional_postgres_row(
+            self._pool,
+            _HOSTED_OAUTH_CLIENT_QUERY,
+            (_normalize_required_string(client_id, field_name="client_id"),),
+        )
+        if row is None:
+            return None
+        return HostedOAuthDynamicClient.model_validate(dict(row))
+
+    async def save_pending_authorization(
+        self,
+        authorization: HostedOAuthPendingAuthorization,
+    ) -> None:
+        """Persist short-lived delegated authorization state."""
+        ttl = max(authorization.expires_at - int(time.time()), 1)
+        await self._redis.set(
+            self._redis_key("state", authorization.fub_state),
+            json.dumps(authorization.model_dump(mode="json"), sort_keys=True),
+            ex=ttl,
+        )
+
+    async def consume_pending_authorization(
+        self,
+        fub_state: str,
+    ) -> HostedOAuthPendingAuthorization | None:
+        """Consume delegated authorization state once."""
+        key = self._redis_key(
+            "state",
+            _normalize_required_string(fub_state, field_name="fub_state"),
+        )
+        raw_value = await self._redis.get(key)
+        await self._redis.delete(key)
+        payload = _coerce_json_mapping(raw_value)
+        if payload is None:
+            return None
+        return HostedOAuthPendingAuthorization.model_validate(payload)
+
+    async def save_authorization_code(self, code: HostedOAuthAuthorizationCode) -> None:
+        """Persist a one-time MCP authorization code."""
+        ttl = max(code.expires_at - int(time.time()), 1)
+        await self._redis.set(
+            self._redis_key("code", code.code_hash),
+            json.dumps(code.model_dump(mode="json"), sort_keys=True),
+            ex=ttl,
+        )
+
+    async def consume_authorization_code(
+        self,
+        code_hash: str,
+    ) -> HostedOAuthAuthorizationCode | None:
+        """Consume a one-time MCP authorization code."""
+        key = self._redis_key("code", _normalize_required_string(code_hash, field_name="code_hash"))
+        raw_value = await self._redis.get(key)
+        await self._redis.delete(key)
+        payload = _coerce_json_mapping(raw_value)
+        if payload is None:
+            return None
+        return HostedOAuthAuthorizationCode.model_validate(payload)
+
+    async def save_access_token(self, token: HostedOAuthAccessTokenMetadata) -> None:
+        """Persist MCP access-token metadata."""
+        await _execute_postgres(
+            self._pool,
+            _HOSTED_ACCESS_TOKEN_INSERT,
+            (
+                token.token_id,
+                token.token_hash,
+                token.tenant_id,
+                token.subject,
+                token.client_id,
+                list(token.scopes),
+                token.credential_id,
+                token.expires_at,
+            ),
+        )
+
+    async def save_refresh_token(self, token: HostedOAuthRefreshToken) -> None:
+        """Persist MCP refresh-token metadata."""
+        await _execute_postgres(
+            self._pool,
+            _HOSTED_OAUTH_REFRESH_TOKEN_UPSERT,
+            (
+                token.token_hash,
+                token.tenant_id,
+                token.subject,
+                token.client_id,
+                list(token.scopes),
+                token.credential_id,
+                token.expires_at,
+            ),
+        )
+
+    async def get_refresh_token(self, token_hash: str) -> HostedOAuthRefreshToken | None:
+        """Return refresh-token metadata when active."""
+        row = await _fetch_optional_postgres_row(
+            self._pool,
+            _HOSTED_OAUTH_REFRESH_TOKEN_QUERY,
+            (_normalize_required_string(token_hash, field_name="token_hash"),),
+        )
+        if row is None:
+            return None
+        return HostedOAuthRefreshToken.model_validate(dict(row))
+
+    async def revoke_refresh_token(self, token_hash: str, *, revoked_at: int) -> None:
+        """Mark a refresh token as revoked."""
+        await _execute_postgres(
+            self._pool,
+            _HOSTED_OAUTH_REFRESH_TOKEN_REVOKE,
+            (revoked_at, _normalize_required_string(token_hash, field_name="token_hash")),
+        )
+
+    async def aclose(self) -> None:
+        """Close owned Redis and PostgreSQL clients."""
+        if self._owns_pool:
+            await self._pool.aclose()
+        if self._owns_redis:
+            await self._redis.aclose()
+
+
 class PostgresHostedTokenVerifier(HostedIdentityVerifier):
     """PostgreSQL-backed verifier for opaque hosted bearer tokens."""
 
@@ -688,6 +1407,7 @@ class PostgresAwsTenantStore(TenantStore):
         *,
         secret_store: HostedTenantSecretStore,
         pool: ReferenceHostedPostgresPool | None = None,
+        oauth_refresher: FollowUpBossTenantOAuthRefresher | None = None,
     ) -> None:
         """Initialize the PostgreSQL and AWS-backed tenant store.
 
@@ -698,6 +1418,7 @@ class PostgresAwsTenantStore(TenantStore):
                 Boss credentials.
             pool: Optional shared PostgreSQL pool used to reuse connections
                 across hosted token and tenant lookups.
+            oauth_refresher: Optional refresher for OAuth-backed tenant secrets.
 
         Raises:
             ValueError: If neither `database_url` nor `pool` is provided.
@@ -708,6 +1429,7 @@ class PostgresAwsTenantStore(TenantStore):
         self._pool = pool or ReferenceHostedPostgresPool(cast(SecretStr | str, database_url))
         self._owns_pool = pool is None
         self._secret_store = secret_store
+        self._oauth_refresher = oauth_refresher
 
     async def get_tenant(self, tenant_id: str) -> TenantRecord | None:
         """Look up one tenant metadata row by canonical identifier.
@@ -761,6 +1483,11 @@ class PostgresAwsTenantStore(TenantStore):
 
         metadata = _TenantCredentialMetadataRow.model_validate(dict(raw_row))
         secret_payload = await self._secret_store.get_secret_payload(metadata.secret_ref)
+        if self._oauth_refresher is not None and metadata.auth_mode is AuthMode.OAUTH:
+            secret_payload = await self._oauth_refresher.refresh_if_needed(
+                secret_ref=metadata.secret_ref,
+                payload=secret_payload,
+            )
         return TenantCredentialRecord.model_validate(
             {
                 "credential_id": metadata.credential_id,
@@ -921,10 +1648,42 @@ def create_reference_hosted_server(
         secret_prefix=resolved_hosted_settings.tenant_secret_prefix,
     )
     shared_postgres_pool = ReferenceHostedPostgresPool(resolved_hosted_settings.tenant_database_url)
+    oauth_settings = resolved_hosted_settings.hosted_oauth_settings()
+    oauth_application: HostedOAuthApplication | None = None
+    oauth_refresher: FollowUpBossTenantOAuthRefresher | None = None
+    if oauth_settings is not None:
+        oauth_secret_writer = AwsSecretsManagerHostedOAuthSecretWriter(
+            region_name=resolved_hosted_settings.tenant_secret_region,
+            secret_prefix=resolved_hosted_settings.tenant_secret_prefix,
+        )
+        oauth_fub_client = FollowUpBossOAuthClient(oauth_settings)
+        oauth_refresher = FollowUpBossTenantOAuthRefresher(
+            fub_client=oauth_fub_client,
+            secret_writer=oauth_secret_writer,
+        )
+        oauth_store = PostgresRedisHostedOAuthStore(
+            resolved_hosted_settings.tenant_database_url,
+            redis_url=resolved_hosted_settings.redis_url,
+            pool=shared_postgres_pool,
+        )
+        oauth_provisioner = PostgresAwsHostedOAuthTenantProvisioner(
+            resolved_hosted_settings.tenant_database_url,
+            pool=shared_postgres_pool,
+            secret_writer=oauth_secret_writer,
+            system_name=oauth_settings.system_name,
+            system_key=oauth_settings.system_key,
+        )
+        oauth_application = HostedOAuthApplication(
+            settings=oauth_settings,
+            store=oauth_store,
+            tenant_provisioner=oauth_provisioner,
+            fub_client=oauth_fub_client,
+        )
     tenant_store = PostgresAwsTenantStore(
         resolved_hosted_settings.tenant_database_url,
         secret_store=secret_store,
         pool=shared_postgres_pool,
+        oauth_refresher=oauth_refresher,
     )
     hosted_rate_limiter = HostedEndpointRateLimiter(
         settings=resolved_hosted_settings.hosted_rate_limit_settings(),
@@ -940,6 +1699,7 @@ def create_reference_hosted_server(
         ),
         tenant_store=tenant_store,
         hosted_rate_limiter=hosted_rate_limiter,
+        hosted_oauth_application=oauth_application,
         managed_resources=(shared_postgres_pool,),
     )
 

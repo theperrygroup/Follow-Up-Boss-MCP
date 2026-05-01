@@ -146,7 +146,9 @@ Hosted multi-tenant operator guidance lives in
 Treat the local commands above as developer workflows, not as the production
 recipe for the shared hosted deployment. The repository now also ships
 `followupboss-mcp-hosted` as the reference hosted entrypoint described in the
-hosted deployment guide.
+hosted deployment guide. Hosted deployments can expose OAuth authorization
+server routes that let Cursor delegate browser consent to Follow Up Boss and
+receive MCP-scoped hosted bearer tokens.
 
 ## Examples
 

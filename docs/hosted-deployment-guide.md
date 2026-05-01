@@ -28,6 +28,7 @@ handling, see [security.md](security.md) and
 | Tenant metadata store | PostgreSQL `tenants` and `tenant_credentials` tables | Strong consistency, auditable row updates, and simple operator tooling. |
 | Tenant secret store | AWS Secrets Manager referenced by `secret_ref` or ARN from the credential row | Keeps raw Follow Up Boss secrets out of the database while still allowing request-time resolution into `TenantCredentialRecord`. |
 | Hosted endpoint rate-limit backend | Redis shared by every app instance | Prevents per-process budget drift and replaces the development-only in-memory limiter. |
+| MCP client login | Hosted OAuth authorization server delegating user consent to Follow Up Boss OAuth | Lets Cursor discover OAuth metadata, complete browser consent, and receive MCP-scoped bearer tokens without treating raw Follow Up Boss tokens as MCP credentials. |
 | TLS termination | Trusted reverse proxy or load balancer | The app can stay on private HTTP behind the proxy, but the client-facing contract is always HTTPS. |
 | Failure stance | Fail closed for auth, tenant store, secret store, and rate-limit backend outages | Matches the repository's hosted security model. |
 
@@ -155,6 +156,29 @@ CREATE TABLE hosted_access_tokens (
 CREATE INDEX hosted_access_tokens_lookup_idx
     ON hosted_access_tokens (token_hash)
     WHERE revoked_at IS NULL;
+
+CREATE TABLE hosted_oauth_clients (
+    client_id TEXT PRIMARY KEY,
+    client_name TEXT NOT NULL,
+    redirect_uris TEXT[] NOT NULL,
+    scope TEXT[] NOT NULL DEFAULT ARRAY['followupboss:mcp'],
+    token_endpoint_auth_method TEXT NOT NULL DEFAULT 'none'
+);
+
+CREATE TABLE hosted_oauth_refresh_tokens (
+    token_hash TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL REFERENCES tenants (tenant_id),
+    subject TEXT NOT NULL,
+    client_id TEXT NOT NULL,
+    scopes TEXT[] NOT NULL DEFAULT ARRAY['followupboss:mcp'],
+    credential_id TEXT NOT NULL,
+    expires_at BIGINT NOT NULL,
+    revoked_at BIGINT NULL
+);
+
+CREATE INDEX hosted_oauth_refresh_tokens_active_idx
+    ON hosted_oauth_refresh_tokens (token_hash)
+    WHERE revoked_at IS NULL;
 ```
 
 `PostgresHostedTokenVerifier` looks up bearer tokens by the `sha256:`-prefixed token hash. The
@@ -199,6 +223,12 @@ reference contract for that hosted wrapper:
 | `FOLLOWUPBOSS_RATE_LIMIT_REQUESTS_PER_WINDOW` | Hosted request budget per window. Start at `300`. |
 | `FOLLOWUPBOSS_RATE_LIMIT_WINDOW_SECONDS` | Hosted rate-limit window length. Start at `60`. |
 | `FOLLOWUPBOSS_RATE_LIMIT_INCLUDE_CLIENT_IP` | `true` only when proxy trust is fully defined and sanitized. Default `false`. |
+| `FOLLOWUPBOSS_HOSTED_OAUTH_ENABLED` | Set `true` to expose MCP OAuth authorization-server routes for Cursor and other remote MCP clients. |
+| `FOLLOWUPBOSS_FUB_OAUTH_CLIENT_ID` | Follow Up Boss OAuth client id for delegated user consent. |
+| `FOLLOWUPBOSS_FUB_OAUTH_CLIENT_SECRET` | Follow Up Boss OAuth client secret, loaded from Secrets Manager in ECS. |
+| `FOLLOWUPBOSS_FUB_OAUTH_CALLBACK_URL` | Public callback URL registered with Follow Up Boss, such as `https://mcp.example.com/oauth/follow-up-boss/callback`. |
+| `FOLLOWUPBOSS_FUB_OAUTH_SYSTEM_NAME` | Registered Follow Up Boss system name stored on OAuth-created tenant credentials. |
+| `FOLLOWUPBOSS_FUB_OAUTH_SYSTEM_KEY` | Registered Follow Up Boss system key stored with OAuth-created tenant secrets. |
 
 Reference example:
 
@@ -222,6 +252,13 @@ FOLLOWUPBOSS_REDIS_URL=redis://cache.example.com:6379/0
 FOLLOWUPBOSS_RATE_LIMIT_REQUESTS_PER_WINDOW=300
 FOLLOWUPBOSS_RATE_LIMIT_WINDOW_SECONDS=60
 FOLLOWUPBOSS_RATE_LIMIT_INCLUDE_CLIENT_IP=false
+
+FOLLOWUPBOSS_HOSTED_OAUTH_ENABLED=true
+FOLLOWUPBOSS_FUB_OAUTH_CLIENT_ID=replace-with-fub-client-id
+FOLLOWUPBOSS_FUB_OAUTH_CLIENT_SECRET=replace-with-secret-manager-value
+FOLLOWUPBOSS_FUB_OAUTH_CALLBACK_URL=https://mcp.example.com/oauth/follow-up-boss/callback
+FOLLOWUPBOSS_FUB_OAUTH_SYSTEM_NAME=The-Perry-Group
+FOLLOWUPBOSS_FUB_OAUTH_SYSTEM_KEY=replace-with-secret-manager-value
 ```
 
 ### Reference Entrypoint
@@ -347,6 +384,25 @@ Recommended token metadata:
 The reference verifier does not need to expose raw token values after issuance. Token rotation is
 done by creating a second active token row, distributing it, and then revoking the old row after
 validation.
+
+## Cursor OAuth Login Flow
+
+When `FOLLOWUPBOSS_HOSTED_OAUTH_ENABLED=true`, the hosted deployment also acts as the OAuth
+authorization server advertised by FastMCP protected-resource metadata:
+
+1. Cursor discovers `/.well-known/oauth-authorization-server`.
+2. Cursor dynamically registers a public MCP client at `/oauth/register`.
+3. Cursor starts `/oauth/authorize` with PKCE.
+4. The hosted server redirects the browser to Follow Up Boss OAuth consent.
+5. The hosted callback exchanges the Follow Up Boss `auth_code`, calls `/identity`, provisions or
+   updates the tenant metadata row, and stores raw Follow Up Boss OAuth tokens only in AWS Secrets
+   Manager.
+6. The hosted token endpoint issues opaque MCP access and refresh tokens. Only token hashes are
+   persisted in PostgreSQL.
+
+The bearer token used against `/mcp` is still an MCP-scoped hosted token, not the raw Follow Up
+Boss access token. This keeps revocation, tenant binding, rate limiting, and MCP scopes under the
+hosted deployment's control.
 
 ## Tenant Store And Secret Store Expectations
 

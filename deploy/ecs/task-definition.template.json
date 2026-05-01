@@ -75,6 +75,30 @@
           "value": "followupboss:mcp"
         },
         {
+          "name": "FOLLOWUPBOSS_HOSTED_OAUTH_ENABLED",
+          "value": "true"
+        },
+        {
+          "name": "FOLLOWUPBOSS_FUB_OAUTH_CLIENT_ID",
+          "value": "__FUB_OAUTH_CLIENT_ID__"
+        },
+        {
+          "name": "FOLLOWUPBOSS_FUB_OAUTH_AUTHORIZE_URL",
+          "value": "https://app.followupboss.com/oauth/authorize"
+        },
+        {
+          "name": "FOLLOWUPBOSS_FUB_OAUTH_TOKEN_URL",
+          "value": "https://app.followupboss.com/oauth/token"
+        },
+        {
+          "name": "FOLLOWUPBOSS_FUB_OAUTH_CALLBACK_URL",
+          "value": "__FUB_OAUTH_CALLBACK_URL__"
+        },
+        {
+          "name": "FOLLOWUPBOSS_FUB_OAUTH_SYSTEM_NAME",
+          "value": "__FUB_OAUTH_SYSTEM_NAME__"
+        },
+        {
           "name": "FOLLOWUPBOSS_TENANT_SECRET_PREFIX",
           "value": "__TENANT_SECRET_PREFIX__"
         },
@@ -91,6 +115,14 @@
         {
           "name": "FOLLOWUPBOSS_REDIS_URL",
           "valueFrom": "__REDIS_URL_SECRET_ARN__"
+        },
+        {
+          "name": "FOLLOWUPBOSS_FUB_OAUTH_CLIENT_SECRET",
+          "valueFrom": "__FUB_OAUTH_CLIENT_SECRET_ARN__"
+        },
+        {
+          "name": "FOLLOWUPBOSS_FUB_OAUTH_SYSTEM_KEY",
+          "valueFrom": "__FUB_OAUTH_SYSTEM_KEY_SECRET_ARN__"
         }
       ],
       "logConfiguration": {

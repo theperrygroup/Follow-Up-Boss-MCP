@@ -42,6 +42,12 @@ Follow Up Boss client:
 - When `credential_id` is present, it must match the tenant's currently active stored credential.
 - Hosted mode exposes no intentionally public tools, resources, or prompts.
 
+Hosted deployments can now expose OAuth authorization-server routes for clients such as Cursor.
+That browser flow delegates user consent to Follow Up Boss OAuth, then returns MCP-scoped hosted
+tokens to the client. The MCP token is distinct from the raw Follow Up Boss OAuth access token:
+raw Follow Up Boss token material is stored only in the tenant secret store and is used solely for
+upstream API calls after hosted auth resolves a tenant.
+
 When auth fails, the hosted endpoint fails closed before any upstream Follow Up Boss credential is
 used. The common client-visible response is:
 
@@ -347,8 +353,9 @@ npx @modelcontextprotocol/inspector uv run followupboss-mcp stdio
 For streamable HTTP:
 
 1. start the server with the `streamable-http` transport
-2. point Inspector at the configured HTTP endpoint
-3. add `Authorization: Bearer <token>` when you are testing the hosted multi-tenant flow
+2. point Inspector or Cursor at the configured HTTP endpoint
+3. either complete the hosted OAuth flow when the client supports it, or add
+   `Authorization: Bearer <token>` when you are testing with a pre-issued hosted token
 4. exercise tools, resources, and prompts through the Inspector UI
 
 Hosted tools, resources, and prompts all share the same auth boundary. If the bearer token is

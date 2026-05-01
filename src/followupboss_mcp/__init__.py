@@ -19,6 +19,11 @@ from followupboss_mcp.hosted_auth import (
     get_hosted_authenticated_tenant,
     get_hosted_verified_identity,
 )
+from followupboss_mcp.hosted_oauth import (
+    FollowUpBossOAuthClient,
+    HostedOAuthApplication,
+    HostedOAuthSettings,
+)
 from followupboss_mcp.hosted_rate_limits import (
     HostedEndpointRateLimiter,
     HostedRateLimitDecision,
@@ -53,6 +58,7 @@ __all__ = [
     "DevelopmentHostedTokenVerifier",
     "FollowUpBossAsyncClient",
     "FollowUpBossHostedDeploymentSettings",
+    "FollowUpBossOAuthClient",
     "FollowUpBossServerSettings",
     "FollowUpBossSettings",
     "FollowUpBossTenantRuntimeDefaults",
@@ -61,6 +67,8 @@ __all__ = [
     "HostedAccessToken",
     "HostedAuthenticatedTenant",
     "HostedAuthSettings",
+    "HostedOAuthApplication",
+    "HostedOAuthSettings",
     "HostedIdentityVerifier",
     "HostedEndpointRateLimiter",
     "HostedRateLimitDecision",

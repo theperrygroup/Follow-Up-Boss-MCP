@@ -23,6 +23,11 @@ Before registering the task definition, replace the placeholders below:
 | Placeholder | Meaning |
 | --- | --- |
 | `__AWS_ACCOUNT_ID__` | AWS account ID that owns the ECR repository. |
+| `__FUB_OAUTH_CALLBACK_URL__` | Public callback URL registered on the Follow Up Boss OAuth app, such as `https://mcp-staging.example.com/oauth/follow-up-boss/callback`. |
+| `__FUB_OAUTH_CLIENT_ID__` | Follow Up Boss OAuth client id. |
+| `__FUB_OAUTH_CLIENT_SECRET_ARN__` | Secrets Manager ARN whose secret string is the Follow Up Boss OAuth client secret. |
+| `__FUB_OAUTH_SYSTEM_KEY_SECRET_ARN__` | Secrets Manager ARN whose secret string is the registered-system key for OAuth-created tenant credentials. |
+| `__FUB_OAUTH_SYSTEM_NAME__` | Registered Follow Up Boss system name associated with the OAuth app. |
 | `__AWS_REGION__` | AWS region, such as `us-west-1`. |
 | `__HOSTED_ISSUER_URL__` | Stable issuer URL for hosted auth, such as the customer portal or control plane. |
 | `__HOSTED_RESOURCE_SERVER_URL__` | External HTTPS MCP URL, such as `https://mcp-staging.example.com/mcp`. |
@@ -92,6 +97,9 @@ Store non-tenant runtime connection URLs separately from tenant credentials:
   `FOLLOWUPBOSS_TENANT_DATABASE_URL`
 - one Secrets Manager secret whose secret string is the Redis URL used for
   `FOLLOWUPBOSS_REDIS_URL`
+- one Secrets Manager secret whose secret string is the Follow Up Boss OAuth client secret
+- one Secrets Manager secret whose secret string is the Follow Up Boss registered-system key used
+  for OAuth-created tenant credentials
 - one Secrets Manager prefix for tenant Follow Up Boss credentials, such as
   `followupboss/staging/tenants/tenant-a/...`
 
@@ -138,6 +146,9 @@ variables:
 - `ECR_REPOSITORY`
 - `ECS_CLUSTER`
 - `ECS_SERVICE`
+- `FUB_OAUTH_CALLBACK_URL`
+- `FUB_OAUTH_CLIENT_ID`
+- `FUB_OAUTH_SYSTEM_NAME`
 - `HOSTED_ISSUER_URL`
 - `HOSTED_RESOURCE_SERVER_URL`
 - `LOG_GROUP_NAME`
@@ -147,6 +158,8 @@ variables:
 Configure the same `staging` environment with these secrets:
 
 - `AWS_ROLE_TO_ASSUME`
+- `FUB_OAUTH_CLIENT_SECRET_ARN`
+- `FUB_OAUTH_SYSTEM_KEY_SECRET_ARN`
 - `REDIS_URL_SECRET_ARN`
 - `TENANT_DATABASE_URL_SECRET_ARN`
 - `TASK_EXECUTION_ROLE_ARN`
