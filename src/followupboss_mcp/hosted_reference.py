@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import hashlib
 import json
+import logging
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Mapping, Sequence
@@ -75,6 +76,7 @@ from mcp.server.fastmcp import FastMCP
 
 _DEFAULT_HOSTED_REQUIRED_SCOPE = "followupboss:mcp"
 _DEFAULT_REDIS_KEY_PREFIX = "followupboss:hosted_rate_limit"
+_LOGGER = logging.getLogger(__name__)
 
 _HOSTED_ACCESS_TOKEN_QUERY = """
 SELECT tenant_id, subject, client_id, scopes, expires_at, token_id, credential_id
@@ -1528,10 +1530,19 @@ class PostgresAwsTenantStore(TenantStore):
         metadata = _TenantCredentialMetadataRow.model_validate(dict(raw_row))
         secret_payload = await self._secret_store.get_secret_payload(metadata.secret_ref)
         if self._oauth_refresher is not None and metadata.auth_mode is AuthMode.OAUTH:
-            secret_payload = await self._oauth_refresher.refresh_if_needed(
-                secret_ref=metadata.secret_ref,
-                payload=secret_payload,
-            )
+            try:
+                secret_payload = await self._oauth_refresher.refresh_if_needed(
+                    secret_ref=metadata.secret_ref,
+                    payload=secret_payload,
+                )
+            except Exception as exc:
+                _LOGGER.warning(
+                    "OAuth credential refresh failed; using current tenant payload. "
+                    "credential_id=%s tenant_id=%s error_type=%s",
+                    metadata.credential_id,
+                    metadata.tenant_id,
+                    type(exc).__name__,
+                )
         return TenantCredentialRecord.model_validate(
             {
                 "credential_id": metadata.credential_id,

@@ -1201,6 +1201,69 @@ async def test_postgres_aws_tenant_store_refreshes_oauth_credentials() -> None:
 
 
 @pytest.mark.asyncio
+async def test_postgres_aws_tenant_store_uses_current_oauth_on_refresh_failure() -> None:
+    """A failed proactive OAuth refresh should not block tenant credential resolution."""
+
+    class FailingOAuthRefresher:
+        """OAuth refresher that simulates a transient upstream refresh failure."""
+
+        def __init__(self) -> None:
+            """Initialize the fake refresher call recorder."""
+            self.secret_refs: list[str] = []
+
+        async def refresh_if_needed(
+            self,
+            *,
+            secret_ref: str,
+            payload: ReferenceHostedSecretPayload,
+        ) -> ReferenceHostedSecretPayload:
+            """Raise after recording the refresh attempt."""
+            del payload
+            self.secret_refs.append(secret_ref)
+            raise RuntimeError("temporary FUB outage")
+
+    oauth_refresher = FailingOAuthRefresher()
+    factory = FakeConnectionFactory(
+        [
+            {
+                "tenant_id": "tenant-2",
+                "tenant_slug": "tenant-two",
+                "display_name": "Tenant Two",
+                "credential_id": "credential-2",
+                "status": "active",
+            },
+            {
+                "credential_id": "credential-2",
+                "tenant_id": "tenant-2",
+                "auth_mode": "oauth",
+                "system_name": None,
+                "secret_ref": "followupboss/prod/tenants/tenant-2/credential-2",
+                "status": "active",
+            },
+        ]
+    )
+    store = PostgresAwsTenantStore(
+        secret_store=FakeSecretStore(
+            ReferenceHostedSecretPayload.model_validate(
+                {
+                    "access_token": "current-token",
+                    "refresh_token": "refresh-token",
+                    "access_token_expires_at": 1240,
+                }
+            )
+        ),
+        pool=cast(hosted_reference.ReferenceHostedPostgresPool, factory),
+        oauth_refresher=cast(FollowUpBossTenantOAuthRefresher, oauth_refresher),
+    )
+
+    resolved = await store.resolve_tenant("tenant-2")
+
+    assert resolved.credential.access_token is not None
+    assert resolved.credential.access_token.get_secret_value() == "current-token"
+    assert oauth_refresher.secret_refs == ["followupboss/prod/tenants/tenant-2/credential-2"]
+
+
+@pytest.mark.asyncio
 async def test_postgres_aws_tenant_store_wraps_database_failures() -> None:
     """The PostgreSQL and AWS-backed tenant store should map database failures to safe errors."""
     tenant_factory = FakeConnectionFactory([RuntimeError("db down")])
