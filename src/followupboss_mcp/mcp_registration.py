@@ -420,7 +420,9 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
     @mcp.tool(
         name="followupboss_search_people",
         description=(
-            "Search Follow Up Boss people with documented query parameters and pagination metadata."
+            "Search Follow Up Boss people with documented query parameters and pagination metadata. "
+            "By default this searches the authenticated user's assigned leads; set include_ponds=true "
+            "to include pond/shared leads visible to the authenticated user."
         ),
     )
     async def followupboss_search_people(
@@ -438,6 +440,7 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
         email: str | None = None,
         first_name: str | None = None,
         include_trash: bool | None = None,
+        include_ponds: bool | None = None,
         last_name: str | None = None,
         name: str | None = None,
         phone: str | None = None,

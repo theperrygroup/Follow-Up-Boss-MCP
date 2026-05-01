@@ -28,6 +28,7 @@ class PeopleSearchRequest(CommonListQuery):
     email: str | None = None
     first_name: str | None = Field(default=None, serialization_alias="firstName")
     include_trash: bool | None = Field(default=None, serialization_alias="includeTrash")
+    include_ponds: bool | None = Field(default=None, exclude=True)
     last_name: str | None = Field(default=None, serialization_alias="lastName")
     name: str | None = None
     phone: str | None = None

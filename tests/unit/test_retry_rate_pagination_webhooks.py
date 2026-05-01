@@ -79,7 +79,10 @@ def test_shared_query_serialization_and_custom_field_helpers() -> None:
         "next": "token",
     }
 
-    people_query = PeopleSearchRequest(custom_field_filters={"customSource": "Zillow"})
+    people_query = PeopleSearchRequest(
+        custom_field_filters={"customSource": "Zillow"},
+        include_ponds=True,
+    )
     assert people_query.to_query_params() == {}
 
     valid = CustomFieldsService.validate_custom_field_names({"customBirthday": "2026-03-28"})

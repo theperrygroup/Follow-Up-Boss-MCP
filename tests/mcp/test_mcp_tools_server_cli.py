@@ -515,10 +515,13 @@ class StubBundle:
     """Service bundle stub for adapter-only tests."""
 
     def __post_init__(self) -> None:
+        self.people_search_requests: list[PeopleSearchRequest] = []
+
         async def identity_get() -> IdentityResponse:
             return IdentityResponse(id=1, name="Picard")
 
-        async def people_search(_: PeopleSearchRequest) -> PageResult[PersonRecord]:
+        async def people_search(request: PeopleSearchRequest) -> PageResult[PersonRecord]:
+            self.people_search_requests.append(request)
             return PageResult(
                 items=[PersonRecord(id=2, firstName="Will")], metadata=_page_metadata()
             )
@@ -2017,6 +2020,13 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert (await adapter.get_me())["callingCapabilityToken"] == "***redacted***"
     assert (await adapter.get_me())["intercomSettings"]["user_hash"] == "***redacted***"
     assert (await adapter.search_people(PeopleSearchRequest()))["people"][0]["id"] == 2
+    assert services.people_search_requests[-1].assigned_user_id == 1
+    assert services.people_search_requests[-1].include_ponds is None
+    assert (
+        await adapter.search_people(PeopleSearchRequest(include_ponds=True))
+    )["people"][0]["id"] == 2
+    assert services.people_search_requests[-1].assigned_user_id is None
+    assert services.people_search_requests[-1].include_ponds is True
     assert (await adapter.get_person(GetPersonToolInput(person_id=3)))["id"] == 3
     assert (await adapter.create_person(CreatePersonRequest(first_name="Tom")))["id"] == 3
     assert (await adapter.update_person(UpdatePersonToolInput(person_id=4)))["id"] == 4
@@ -2776,7 +2786,7 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     with pytest.raises(RuntimeError, match="bad me"):
         await adapter.get_me()
     with pytest.raises(RuntimeError, match="bad people"):
-        await adapter.search_people(PeopleSearchRequest())
+        await adapter.search_people(PeopleSearchRequest(include_ponds=True))
     with pytest.raises(RuntimeError, match="bad delete"):
         await adapter.delete_note(DeleteNoteToolInput(note_id=1))
 

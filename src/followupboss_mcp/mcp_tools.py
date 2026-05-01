@@ -87,6 +87,7 @@ from followupboss_mcp.models.people import (
     CreatePersonRequest,
     IgnoreUnclaimedPersonRequest,
     PeopleSearchRequest,
+    PersonRecord,
     PersonDuplicateCheckRequest,
     PersonLookupRequest,
     UnclaimedPeopleListRequest,
@@ -150,6 +151,7 @@ from followupboss_mcp.models.webhooks import (
     UpdateWebhookRequest,
     WebhookListRequest,
 )
+from followupboss_mcp.pagination import PageResult
 from followupboss_mcp.tenant_runtime import ServiceBundle, ServiceBundleResolver
 
 _ACTIVE_SERVICE_BUNDLE: ContextVar[ServiceBundle | None] = ContextVar(
@@ -961,9 +963,29 @@ class FollowUpBossToolAdapter:
     async def search_people(self, tool_input: PeopleSearchRequest) -> dict[str, Any]:
         """Search people."""
         return await self._page_result(
-            lambda: self._services.people.search_people(tool_input),
+            lambda: self._search_people_with_default_scope(tool_input),
             key="people",
         )
+
+    async def _search_people_with_default_scope(
+        self,
+        tool_input: PeopleSearchRequest,
+    ) -> PageResult[PersonRecord]:
+        """Search people with an owned-leads default scope.
+
+        Args:
+            tool_input: Validated people-search tool input.
+
+        Returns:
+            The paginated people search result.
+        """
+        if tool_input.assigned_user_id is not None or tool_input.include_ponds is True:
+            return await self._services.people.search_people(tool_input)
+        identity = await self._services.identity.get_identity()
+        if identity.id is None:
+            raise RuntimeError("Authenticated Follow Up Boss user id is unavailable.")
+        scoped_input = tool_input.model_copy(update={"assigned_user_id": identity.id})
+        return await self._services.people.search_people(scoped_input)
 
     async def get_person(self, tool_input: GetPersonToolInput) -> dict[str, Any]:
         """Get a person."""
