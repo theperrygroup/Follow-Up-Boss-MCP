@@ -21,6 +21,7 @@ from followupboss_mcp.hosted_auth import (
     HostedAuthSettings,
     HostedVerifiedIdentity,
 )
+from followupboss_mcp.hosted_oauth import HostedOAuthApplication
 from followupboss_mcp.hosted_rate_limits import HostedEndpointRateLimiter, HostedRateLimitMiddleware
 from followupboss_mcp.http_client import FollowUpBossClientProtocol
 from followupboss_mcp.mcp_server import (
@@ -220,6 +221,75 @@ def test_streamable_http_app_returns_base_app_without_hosted_rate_limiter(
     assert server.streamable_http_app() is base_app
 
 
+def test_streamable_http_app_mounts_hosted_oauth_routes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Hosted OAuth routes should be added beside the streamable HTTP route."""
+    base_app = Starlette(routes=[Route("/mcp", _ok_route)])
+    oauth_route = Route("/oauth/token", _ok_route, methods=["POST"])
+
+    class FakeHostedOAuthApplication:
+        """Minimal OAuth route provider."""
+
+        def routes(self) -> tuple[Route, ...]:
+            """Return one OAuth route."""
+            return (oauth_route,)
+
+    monkeypatch.setattr(
+        "followupboss_mcp.mcp_server.FastMCP.streamable_http_app",
+        lambda self: base_app,
+    )
+
+    server = FollowUpBossFastMCP(
+        "Test MCP",
+        host="127.0.0.1",
+        port=8000,
+        streamable_http_path="/mcp",
+        json_response=True,
+        log_level="INFO",
+    )
+    server._hosted_oauth_application = cast(HostedOAuthApplication, FakeHostedOAuthApplication())
+
+    returned_app = server.streamable_http_app()
+
+    assert returned_app is base_app
+    assert {cast(Route, route).path for route in base_app.routes} == {"/mcp", "/oauth/token"}
+
+
+def test_streamable_http_app_skips_duplicate_hosted_oauth_routes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Hosted OAuth route mounting should not duplicate existing paths."""
+    existing_route = Route("/oauth/token", _ok_route, methods=["POST"])
+    base_app = Starlette(routes=[existing_route])
+
+    class FakeHostedOAuthApplication:
+        """Minimal OAuth route provider with one duplicate path."""
+
+        def routes(self) -> tuple[Route, ...]:
+            """Return one duplicate OAuth route."""
+            return (Route("/oauth/token", _ok_route, methods=["POST"]),)
+
+    monkeypatch.setattr(
+        "followupboss_mcp.mcp_server.FastMCP.streamable_http_app",
+        lambda self: base_app,
+    )
+
+    server = FollowUpBossFastMCP(
+        "Test MCP",
+        host="127.0.0.1",
+        port=8000,
+        streamable_http_path="/mcp",
+        json_response=True,
+        log_level="INFO",
+    )
+    server._hosted_oauth_application = cast(HostedOAuthApplication, FakeHostedOAuthApplication())
+
+    server.streamable_http_app()
+
+    assert base_app.routes == [existing_route]
+
+
 def test_streamable_http_app_leaves_non_matching_routes_unwrapped(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -373,6 +443,46 @@ async def test_create_server_hosted_lifespan_closes_rate_limiter(
     async with server._mcp_server.lifespan(server._mcp_server):
         assert rate_limiter.closed is False
     assert rate_limiter.closed is True
+
+
+@pytest.mark.asyncio
+async def test_create_server_hosted_lifespan_closes_oauth_application(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Hosted lifespan shutdown should close injected OAuth route providers."""
+
+    class RecordingOAuthApplication:
+        """OAuth route provider that records shutdown."""
+
+        def __init__(self) -> None:
+            self.closed = False
+
+        def routes(self) -> tuple[Route, ...]:
+            """Return no routes for this focused lifespan test."""
+            return ()
+
+        async def aclose(self) -> None:
+            """Record close calls."""
+            self.closed = True
+
+    monkeypatch.setattr(
+        "followupboss_mcp.mcp_server.register_server_surface",
+        _noop_register_server_surface,
+    )
+    oauth_application = RecordingOAuthApplication()
+    server = cast(
+        FollowUpBossFastMCP,
+        create_server(
+            hosted_auth=_hosted_auth_settings(),
+            hosted_token_verifier=_hosted_token_verifier(),
+            tenant_store=_tenant_store(),
+            hosted_oauth_application=cast(HostedOAuthApplication, oauth_application),
+        ),
+    )
+
+    async with server._mcp_server.lifespan(server._mcp_server):
+        assert oauth_application.closed is False
+    assert oauth_application.closed is True
 
 
 @pytest.mark.asyncio

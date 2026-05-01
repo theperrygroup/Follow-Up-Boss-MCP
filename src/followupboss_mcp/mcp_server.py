@@ -148,9 +148,9 @@ class FollowUpBossFastMCP(FastMCP):
         app = super().streamable_http_app()
         if self._hosted_oauth_application is not None:
             existing_paths = {getattr(route, "path", None) for route in app.routes}
-            for route in self._hosted_oauth_application.routes():
-                if route.path not in existing_paths:
-                    app.routes.append(route)
+            for oauth_route in self._hosted_oauth_application.routes():
+                if oauth_route.path not in existing_paths:
+                    app.routes.append(oauth_route)
 
         if self._hosted_rate_limiter is None or self._token_verifier is None:
             return app

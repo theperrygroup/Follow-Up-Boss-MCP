@@ -204,12 +204,12 @@ class HostedOAuthSettings(BaseModel):
     required_scopes: tuple[str, ...] = ()
     fub_client_id: str
     fub_client_secret: SecretStr
-    fub_authorize_url: AnyHttpUrl = Field(
+    fub_authorize_url: AnyHttpUrl | str = Field(
         default="https://app.followupboss.com/oauth/authorize"
     )
-    fub_token_url: AnyHttpUrl = Field(default="https://app.followupboss.com/oauth/token")
+    fub_token_url: AnyHttpUrl | str = Field(default="https://app.followupboss.com/oauth/token")
     fub_callback_url: AnyHttpUrl
-    fub_base_url: AnyHttpUrl = Field(default="https://api.followupboss.com/v1")
+    fub_base_url: AnyHttpUrl | str = Field(default="https://api.followupboss.com/v1")
     token_secret_prefix: str
     system_name: str | None = None
     system_key: SecretStr | None = None
@@ -1078,8 +1078,17 @@ class HostedOAuthApplication:
         return _json_error("unsupported_grant_type", "Unsupported grant_type.")
 
     async def _authorization_code_token(self, payload: Mapping[str, str]) -> JSONResponse:
-        """Exchange one MCP authorization code for tokens."""
-        code = payload.get("code", "")
+        """Exchange one MCP authorization code for tokens.
+
+        Args:
+            payload: Parsed OAuth token request form fields.
+
+        Returns:
+            OAuth token response.
+        """
+        code = payload.get("code")
+        if code is None or not code.strip():
+            return _json_error("invalid_grant", "Authorization code is invalid.")
         code_record = await self._store.consume_authorization_code(_hash_secret(code))
         if code_record is None:
             return _json_error("invalid_grant", "Authorization code is invalid.")
@@ -1104,8 +1113,17 @@ class HostedOAuthApplication:
         )
 
     async def _refresh_token(self, payload: Mapping[str, str]) -> JSONResponse:
-        """Exchange one MCP refresh token for a new token pair."""
-        raw_refresh_token = payload.get("refresh_token", "")
+        """Exchange one MCP refresh token for a new token pair.
+
+        Args:
+            payload: Parsed OAuth token request form fields.
+
+        Returns:
+            OAuth token response.
+        """
+        raw_refresh_token = payload.get("refresh_token")
+        if raw_refresh_token is None or not raw_refresh_token.strip():
+            return _json_error("invalid_grant", "Refresh token is invalid.")
         token_record = await self._store.get_refresh_token(_hash_secret(raw_refresh_token))
         if token_record is None or token_record.revoked_at is not None:
             return _json_error("invalid_grant", "Refresh token is invalid.")

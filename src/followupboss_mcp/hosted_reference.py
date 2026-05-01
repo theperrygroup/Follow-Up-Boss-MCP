@@ -184,6 +184,15 @@ ON CONFLICT (credential_id) DO UPDATE SET
     status = 'active'
 """
 
+_REDIS_GET_DELETE_SCRIPT = """
+local key = KEYS[1]
+local value = redis.call("GET", key)
+if value then
+  redis.call("DEL", key)
+end
+return value
+"""
+
 _REDIS_CONSUME_SCRIPT = """
 local key = KEYS[1]
 local now_ms = tonumber(ARGV[1])
@@ -409,11 +418,11 @@ class FollowUpBossHostedDeploymentSettings(BaseSettings):
         default=None,
         validation_alias=_settings_env_aliases("FOLLOWUPBOSS_FUB_OAUTH_CLIENT_SECRET"),
     )
-    fub_oauth_authorize_url: AnyHttpUrl = Field(
+    fub_oauth_authorize_url: AnyHttpUrl | str = Field(
         default="https://app.followupboss.com/oauth/authorize",
         validation_alias=_settings_env_aliases("FOLLOWUPBOSS_FUB_OAUTH_AUTHORIZE_URL"),
     )
-    fub_oauth_token_url: AnyHttpUrl = Field(
+    fub_oauth_token_url: AnyHttpUrl | str = Field(
         default="https://app.followupboss.com/oauth/token",
         validation_alias=_settings_env_aliases("FOLLOWUPBOSS_FUB_OAUTH_TOKEN_URL"),
     )
@@ -664,6 +673,30 @@ class SecretsManagerClientProtocol(Protocol):
         """
 
 
+class SecretsManagerWriterClientProtocol(SecretsManagerClientProtocol, Protocol):
+    """Protocol for the Secrets Manager writes used by OAuth provisioning."""
+
+    def put_secret_value(self, **kwargs: object) -> object:
+        """Store a new version for an existing secret.
+
+        Args:
+            **kwargs: Keyword arguments forwarded to Secrets Manager.
+
+        Returns:
+            Raw Secrets Manager response payload.
+        """
+
+    def create_secret(self, **kwargs: object) -> object:
+        """Create a secret when it does not already exist.
+
+        Args:
+            **kwargs: Keyword arguments forwarded to Secrets Manager.
+
+        Returns:
+            Raw Secrets Manager response payload.
+        """
+
+
 class RedisClientProtocol(Protocol):
     """Protocol for the subset of Redis used by this module."""
 
@@ -795,7 +828,7 @@ class AwsSecretsManagerHostedOAuthSecretWriter:
         *,
         region_name: str,
         secret_prefix: str,
-        secrets_client: object | None = None,
+        secrets_client: SecretsManagerWriterClientProtocol | None = None,
     ) -> None:
         """Initialize the OAuth secret writer.
 
@@ -806,9 +839,12 @@ class AwsSecretsManagerHostedOAuthSecretWriter:
         """
         self._region_name = _normalize_required_string(region_name, field_name="region_name")
         self._secret_prefix = _normalize_secret_prefix(secret_prefix)
-        self._secrets_client = secrets_client or boto3.session.Session().client(
-            "secretsmanager",
-            region_name=self._region_name,
+        self._secrets_client = secrets_client or cast(
+            SecretsManagerWriterClientProtocol,
+            boto3.session.Session().client(
+                "secretsmanager",
+                region_name=self._region_name,
+            ),
         )
 
     def secret_ref_for_credential(self, credential_id: str) -> str:
@@ -1209,6 +1245,18 @@ class PostgresRedisHostedOAuthStore:
         """
         return ":".join([self._key_prefix, *parts])
 
+    async def _consume_redis_json(self, key: str) -> Mapping[str, object] | None:
+        """Atomically read and delete one serialized Redis JSON payload.
+
+        Args:
+            key: Redis key to consume.
+
+        Returns:
+            Parsed JSON mapping when a value existed, otherwise `None`.
+        """
+        raw_value = await self._redis.eval(_REDIS_GET_DELETE_SCRIPT, 1, key)
+        return _coerce_json_mapping(raw_value)
+
     async def save_client(self, client: HostedOAuthDynamicClient) -> None:
         """Persist OAuth client metadata."""
         await _execute_postgres(
@@ -1255,9 +1303,7 @@ class PostgresRedisHostedOAuthStore:
             "state",
             _normalize_required_string(fub_state, field_name="fub_state"),
         )
-        raw_value = await self._redis.get(key)
-        await self._redis.delete(key)
-        payload = _coerce_json_mapping(raw_value)
+        payload = await self._consume_redis_json(key)
         if payload is None:
             return None
         return HostedOAuthPendingAuthorization.model_validate(payload)
@@ -1277,9 +1323,7 @@ class PostgresRedisHostedOAuthStore:
     ) -> HostedOAuthAuthorizationCode | None:
         """Consume a one-time MCP authorization code."""
         key = self._redis_key("code", _normalize_required_string(code_hash, field_name="code_hash"))
-        raw_value = await self._redis.get(key)
-        await self._redis.delete(key)
-        payload = _coerce_json_mapping(raw_value)
+        payload = await self._consume_redis_json(key)
         if payload is None:
             return None
         return HostedOAuthAuthorizationCode.model_validate(payload)
