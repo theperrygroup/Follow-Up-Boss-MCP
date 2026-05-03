@@ -8,7 +8,7 @@ import socket
 import sys
 import textwrap
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -2023,9 +2023,9 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert (await adapter.search_people(PeopleSearchRequest()))["people"][0]["id"] == 2
     assert stub.people_search_requests[-1].assigned_user_id == 1
     assert stub.people_search_requests[-1].include_ponds is None
-    assert (
-        await adapter.search_people(PeopleSearchRequest(include_ponds=True))
-    )["people"][0]["id"] == 2
+    assert (await adapter.search_people(PeopleSearchRequest(include_ponds=True)))["people"][0][
+        "id"
+    ] == 2
     assert stub.people_search_requests[-1].assigned_user_id is None
     assert stub.people_search_requests[-1].include_ponds is True
     assert (await adapter.get_person(GetPersonToolInput(person_id=3)))["id"] == 3
@@ -2790,6 +2790,24 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         await adapter.search_people(PeopleSearchRequest(include_ponds=True))
     with pytest.raises(RuntimeError, match="bad delete"):
         await adapter.delete_note(DeleteNoteToolInput(note_id=1))
+
+
+@pytest.mark.asyncio
+async def test_search_people_requires_identity_id_for_default_scope() -> None:
+    """People search should fail before querying when default scoping has no user id."""
+    stub = StubBundle()
+
+    async def identity_get_without_id() -> IdentityResponse:
+        """Return an identity payload that cannot scope owned leads."""
+        return IdentityResponse(name="Picard")
+
+    services = replace(stub.bundle, identity=_service_stub(get_identity=identity_get_without_id))
+    adapter = FollowUpBossToolAdapter(services)
+
+    with pytest.raises(RuntimeError, match="Authenticated Follow Up Boss user id is unavailable"):
+        await adapter.search_people(PeopleSearchRequest())
+
+    assert stub.people_search_requests == []
 
 
 class QueueClient:
