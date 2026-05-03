@@ -87,9 +87,9 @@ from followupboss_mcp.models.people import (
     CreatePersonRequest,
     IgnoreUnclaimedPersonRequest,
     PeopleSearchRequest,
-    PersonRecord,
     PersonDuplicateCheckRequest,
     PersonLookupRequest,
+    PersonRecord,
     UnclaimedPeopleListRequest,
     UpdatePersonRequest,
 )

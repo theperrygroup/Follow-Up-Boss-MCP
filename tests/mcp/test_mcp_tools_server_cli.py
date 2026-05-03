@@ -2011,7 +2011,8 @@ class StubBundle:
 @pytest.mark.asyncio
 async def test_tool_adapter_success_and_failure_paths() -> None:
     """The MCP adapter should normalize service results and safe errors."""
-    services = StubBundle().bundle
+    stub = StubBundle()
+    services = stub.bundle
     adapter = FollowUpBossToolAdapter(services)
     assert (await adapter.get_identity())["id"] == 1
     assert (await adapter.get_me())["id"] == 1
@@ -2020,13 +2021,13 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert (await adapter.get_me())["callingCapabilityToken"] == "***redacted***"
     assert (await adapter.get_me())["intercomSettings"]["user_hash"] == "***redacted***"
     assert (await adapter.search_people(PeopleSearchRequest()))["people"][0]["id"] == 2
-    assert services.people_search_requests[-1].assigned_user_id == 1
-    assert services.people_search_requests[-1].include_ponds is None
+    assert stub.people_search_requests[-1].assigned_user_id == 1
+    assert stub.people_search_requests[-1].include_ponds is None
     assert (
         await adapter.search_people(PeopleSearchRequest(include_ponds=True))
     )["people"][0]["id"] == 2
-    assert services.people_search_requests[-1].assigned_user_id is None
-    assert services.people_search_requests[-1].include_ponds is True
+    assert stub.people_search_requests[-1].assigned_user_id is None
+    assert stub.people_search_requests[-1].include_ponds is True
     assert (await adapter.get_person(GetPersonToolInput(person_id=3)))["id"] == 3
     assert (await adapter.create_person(CreatePersonRequest(first_name="Tom")))["id"] == 3
     assert (await adapter.update_person(UpdatePersonToolInput(person_id=4)))["id"] == 4
@@ -3613,7 +3614,13 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         )
     )["apiKey"] == "***redacted***"
     assert (
-        await _call_public_tool(server, tools, "followupboss_search_people", email="a@example.com")
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_search_people",
+            email="a@example.com",
+            include_ponds=True,
+        )
     )["people"][0]["id"] == 2
     assert await _call_public_tool(server, tools, "followupboss_get_person", 3) == {"id": 3}
     assert (await _call_public_tool(server, tools, "followupboss_create_person", first_name="Tom"))[
@@ -4536,7 +4543,7 @@ async def test_stdio_client_interoperates_with_server_surface() -> None:
 
             people_result = await session.call_tool(
                 "followupboss_search_people",
-                {"email": "a@example.com"},
+                {"email": "a@example.com", "include_ponds": True},
             )
             assert people_result.isError is False
             assert people_result.structuredContent is not None
@@ -4784,7 +4791,7 @@ async def test_streamable_http_client_interoperates_with_server_surface() -> Non
 
                 people_result = await session.call_tool(
                     "followupboss_search_people",
-                    {"email": "a@example.com"},
+                    {"email": "a@example.com", "include_ponds": True},
                 )
                 assert people_result.isError is False
                 assert people_result.structuredContent is not None

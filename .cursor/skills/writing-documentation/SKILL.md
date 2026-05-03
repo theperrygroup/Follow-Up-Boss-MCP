@@ -1,9 +1,19 @@
 ---
 name: writing-documentation
-description: Write, revise, and review software documentation including READMEs, architecture docs, API docs, examples, troubleshooting guides, and release notes. Use when the user asks to create docs, update docs after code changes, improve documentation clarity, or document project workflows.
+description: Write, revise, and review software documentation including READMEs, architecture docs, API docs, examples, troubleshooting guides, and release notes. Use when the user asks to create docs, update docs after code changes, improve documentation clarity, document project workflows, or invokes this skill by name; when invoked without a target, infer the documentation task from current repo context and start working.
 ---
 
 # Writing Documentation
+
+## Bare Invocation Behavior
+
+If the user invokes this skill without a specific documentation target, do not ask a broad startup question like "what would you like me to document?" Start the documentation workflow immediately:
+
+1. Inspect the current repo context, including open files, recent changes, `git status`, and relevant diffs.
+2. Identify the most likely documentation need from changed behavior, new files, stale docs, missing examples, or nearby README/docs gaps.
+3. Read the relevant source code and existing docs.
+4. Update the best matching documentation, or report that no documentation change is needed if the context proves the docs are already accurate.
+5. Ask a clarifying question only when the next action is genuinely blocked by missing information that cannot be inferred safely.
 
 ## Core Workflow
 
