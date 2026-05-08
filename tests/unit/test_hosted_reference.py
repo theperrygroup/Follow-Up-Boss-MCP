@@ -685,7 +685,7 @@ async def test_oauth_tenant_provisioner_upserts_metadata_and_secret() -> None:
     )
 
     assert provisioned.tenant_id == "fub-account-1746230763"
-    assert provisioned.credential_id == "cred-fub-account-1746230763-oauth-primary"
+    assert provisioned.credential_id == "cred-fub-account-1746230763-fub-user-456-oauth"
     assert fake_client.put_calls
     assert len(fake_pool.execute_calls) == 2
     assert "INSERT INTO tenants" in fake_pool.execute_calls[0][0]

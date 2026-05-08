@@ -582,12 +582,12 @@ class FollowUpBossOAuthIdentity(BaseModel):
 
     @property
     def credential_id(self) -> str:
-        """Return the canonical hosted credential id for this FUB account.
+        """Return the canonical hosted credential id for this FUB user.
 
         Returns:
-            Stable hosted credential id.
+            Stable hosted credential id scoped to the authenticated FUB user.
         """
-        return f"cred-{self.tenant_id}-oauth-primary"
+        return f"cred-{self.tenant_id}-{self.subject}-oauth"
 
     @property
     def subject(self) -> str:

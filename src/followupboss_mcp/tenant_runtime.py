@@ -15,7 +15,7 @@ from followupboss_mcp.config import (
     FollowUpBossTenantRuntimeDefaults,
     FollowUpBossTenantSettings,
 )
-from followupboss_mcp.errors import TenantCredentialNotFoundError, TenantStoreError
+from followupboss_mcp.errors import TenantStoreError
 from followupboss_mcp.hosted_auth import (
     HostedAuthenticatedTenant,
     get_hosted_authenticated_tenant,
@@ -329,9 +329,10 @@ class TenantRuntimeFactory:
             TenantStoreError: If the tenant or its credential can no longer be
                 resolved.
         """
-        resolved = await self._tenant_store.resolve_tenant(authenticated_tenant.tenant_id)
-        if resolved.credential.credential_id != authenticated_tenant.credential_id:
-            raise TenantCredentialNotFoundError("Hosted tenant runtime is unavailable.")
+        resolved = await self._tenant_store.resolve_tenant_credential(
+            tenant_id=authenticated_tenant.tenant_id,
+            credential_id=authenticated_tenant.credential_id,
+        )
         return self.runtime_from_resolved_tenant(
             resolved,
             authenticated_tenant=authenticated_tenant,

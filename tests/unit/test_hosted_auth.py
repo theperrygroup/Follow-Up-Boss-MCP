@@ -297,7 +297,7 @@ async def test_hosted_tenant_token_verifier_resolves_active_tenant_context() -> 
             "subject": "user-123",
             "client_id": "portal-app",
             "scopes": ["tools:read"],
-            "credential_id": "credential-1",
+            "credential_id": "credential-2",
             "token_id": "token-123",
         }
     )
@@ -305,7 +305,10 @@ async def test_hosted_tenant_token_verifier_resolves_active_tenant_context() -> 
         identity_verifier=DevelopmentHostedTokenVerifier.from_mapping({"dev-token": identity}),
         tenant_store=DevelopmentTenantStore(
             tenants=[_tenant_record()],
-            credentials=[_credential_record()],
+            credentials=[
+                _credential_record(),
+                _credential_record(credential_id="credential-2"),
+            ],
         ),
         logger=logger,
     )
@@ -316,7 +319,7 @@ async def test_hosted_tenant_token_verifier_resolves_active_tenant_context() -> 
     assert access_token.identity == identity
     assert access_token.tenant.tenant_id == "tenant-1"
     assert access_token.tenant.tenant_slug == "tenant-one"
-    assert access_token.tenant.credential_id == "credential-1"
+    assert access_token.tenant.credential_id == "credential-2"
     assert access_token.client_id == "portal-app"
     assert access_token.scopes == ["tools:read"]
     log_output = stream.getvalue()
@@ -324,14 +327,14 @@ async def test_hosted_tenant_token_verifier_resolves_active_tenant_context() -> 
     assert '"event": "tenant_resolution_succeeded"' in log_output
     assert '"tenant_id": "tenant-1"' in log_output
     assert '"tenant_slug": "tenant-one"' in log_output
-    assert '"credential_id": "credential-1"' in log_output
+    assert '"credential_id": "credential-2"' in log_output
     assert '"token_id": "token-123"' in log_output
     assert "dev-token" not in log_output
 
 
 @pytest.mark.asyncio
 async def test_hosted_tenant_token_verifier_returns_none_for_wrong_tenant_binding() -> None:
-    """Credential bindings on the token should fail closed when they mismatch."""
+    """Credential bindings on the token should fail closed when unavailable."""
     stream = io.StringIO()
     logger = logging.getLogger("followupboss_mcp_test_hosted_auth_failure_audit")
     logger.handlers.clear()
@@ -364,6 +367,53 @@ async def test_hosted_tenant_token_verifier_returns_none_for_wrong_tenant_bindin
     assert '"event": "tenant_resolution_failed"' in log_output
     assert '"reason": "credential_binding_mismatch"' in log_output
     assert "wrong-tenant-token" not in log_output
+
+
+@pytest.mark.asyncio
+async def test_hosted_tenant_token_verifier_rejects_legacy_account_oauth_credential() -> None:
+    """Legacy account-wide OAuth credentials should fail closed."""
+    stream = io.StringIO()
+    logger = logging.getLogger("followupboss_mcp_test_hosted_auth_legacy_oauth_audit")
+    logger.handlers.clear()
+    logger.setLevel("INFO")
+    logger.propagate = False
+    logger.addHandler(logging.StreamHandler(stream))
+    verifier = HostedTenantTokenVerifier(
+        identity_verifier=DevelopmentHostedTokenVerifier.from_mapping(
+            {
+                "legacy-oauth-token": HostedVerifiedIdentity.model_validate(
+                    {
+                        "tenant_id": "fub-account-1746230763",
+                        "subject": "fub-user-456",
+                        "client_id": "portal-app",
+                        "credential_id": "cred-fub-account-1746230763-oauth-primary",
+                    }
+                )
+            }
+        ),
+        tenant_store=DevelopmentTenantStore(
+            tenants=[
+                _tenant_record(
+                    tenant_id="fub-account-1746230763",
+                    credential_id="cred-fub-account-1746230763-oauth-primary",
+                )
+            ],
+            credentials=[
+                _credential_record(
+                    credential_id="cred-fub-account-1746230763-oauth-primary",
+                    tenant_id="fub-account-1746230763",
+                )
+            ],
+        ),
+        logger=logger,
+    )
+
+    assert await verifier.verify_token("legacy-oauth-token") is None
+    log_output = stream.getvalue()
+    assert '"event": "hosted_auth_succeeded"' in log_output
+    assert '"event": "tenant_resolution_failed"' in log_output
+    assert '"reason": "legacy_account_oauth_credential"' in log_output
+    assert "legacy-oauth-token" not in log_output
 
 
 @pytest.mark.asyncio

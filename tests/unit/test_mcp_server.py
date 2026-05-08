@@ -374,6 +374,17 @@ def test_create_server_requires_tenant_store_when_hosted_auth_resolution_is_forc
         create_server()
 
 
+def test_create_server_rejects_injected_client_when_hosted_auth_is_enabled() -> None:
+    """Hosted server creation should reject shared clients that bypass tenant auth."""
+    with pytest.raises(ValueError, match="client cannot be provided when hosted auth is enabled."):
+        create_server(
+            hosted_auth=_hosted_auth_settings(),
+            hosted_token_verifier=_hosted_token_verifier(),
+            tenant_store=_tenant_store(),
+            client=cast(FollowUpBossClientProtocol, object()),
+        )
+
+
 def test_create_server_requires_credentialed_local_settings_without_hosted_auth() -> None:
     """Local startup should reject credential-free runtime defaults when no client is injected."""
     with pytest.raises(

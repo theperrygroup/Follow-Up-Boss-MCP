@@ -149,7 +149,13 @@ async def test_tenant_runtime_factory_builds_runtime_from_authenticated_tenant()
     )
     tenant_store = DevelopmentTenantStore(
         tenants=[_tenant_record()],
-        credentials=[_credential_record()],
+        credentials=[
+            _credential_record(),
+            _credential_record(
+                credential_id="credential-2",
+                api_key="tenant-one-agent-api-key",
+            ),
+        ],
     )
     factory = TenantRuntimeFactory(
         default_settings=default_settings,
@@ -160,7 +166,7 @@ async def test_tenant_runtime_factory_builds_runtime_from_authenticated_tenant()
             "tenant_id": "tenant-1",
             "tenant_slug": "tenant-one",
             "display_name": "Tenant One",
-            "credential_id": "credential-1",
+            "credential_id": "credential-2",
         }
     )
 
@@ -169,7 +175,7 @@ async def test_tenant_runtime_factory_builds_runtime_from_authenticated_tenant()
     assert runtime.tenant == authenticated_tenant
     assert runtime.settings.auth_mode is AuthMode.API_KEY
     assert runtime.settings.api_key is not None
-    assert runtime.settings.api_key.get_secret_value() == "tenant-one-api-key"
+    assert runtime.settings.api_key.get_secret_value() == "tenant-one-agent-api-key"
     assert runtime.settings.system_name == "Tenant One System"
     assert runtime.settings.system_key_value() == "tenant-one-system-key"
     assert str(runtime.settings.base_url) == "https://api.followupboss.com/v1"

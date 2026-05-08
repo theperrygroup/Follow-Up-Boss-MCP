@@ -339,14 +339,76 @@ class TenantStore(ABC):
             The credential record when one exists, otherwise `None`.
         """
 
-    async def resolve_tenant(self, tenant_id: str) -> ResolvedTenantCredentials:
-        """Resolve one active tenant and its active credential material.
+    async def _resolve_active_tenant(self, tenant_id: str) -> TenantRecord:
+        """Resolve and validate one active tenant record.
 
         Args:
             tenant_id: The canonical hosted tenant identifier.
 
         Returns:
-            The resolved tenant metadata and credential record.
+            The active tenant record.
+
+        Raises:
+            TenantStoreUnavailableError: If the tenant metadata store cannot be
+                queried safely.
+            TenantNotFoundError: If the tenant ID does not exist.
+            TenantDisabledError: If the tenant exists but is disabled.
+        """
+        try:
+            tenant = await self.get_tenant(tenant_id)
+        except TenantStoreError:
+            raise
+        except Exception as exc:
+            raise TenantStoreUnavailableError("Tenant store is unavailable.") from exc
+        if tenant is None:
+            raise TenantNotFoundError("Tenant could not be resolved.")
+        if tenant.status is TenantStatus.DISABLED:
+            raise TenantDisabledError("Tenant is disabled.")
+        return tenant
+
+    async def _resolve_active_credential(
+        self,
+        *,
+        tenant: TenantRecord,
+        credential_id: str,
+    ) -> TenantCredentialRecord:
+        """Resolve and validate one active credential for a tenant.
+
+        Args:
+            tenant: The already validated tenant record.
+            credential_id: The exact credential identifier to resolve.
+
+        Returns:
+            The active credential record.
+
+        Raises:
+            TenantSecretStoreUnavailableError: If the tenant credential or
+                secret store cannot be queried safely.
+            TenantCredentialNotFoundError: If the credential record is missing
+                or belongs to another tenant.
+            TenantCredentialRevokedError: If the credential exists but is
+                revoked.
+        """
+        try:
+            credential = await self.get_credential(credential_id)
+        except TenantStoreError:
+            raise
+        except Exception as exc:
+            raise TenantSecretStoreUnavailableError("Tenant secret store is unavailable.") from exc
+        if credential is None or credential.tenant_id != tenant.tenant_id:
+            raise TenantCredentialNotFoundError("Tenant credentials could not be resolved.")
+        if credential.status is TenantCredentialStatus.REVOKED:
+            raise TenantCredentialRevokedError("Tenant credentials are revoked.")
+        return credential
+
+    async def resolve_tenant(self, tenant_id: str) -> ResolvedTenantCredentials:
+        """Resolve one active tenant and its default credential material.
+
+        Args:
+            tenant_id: The canonical hosted tenant identifier.
+
+        Returns:
+            The resolved tenant metadata and default credential record.
 
         Raises:
             TenantStoreUnavailableError: If the tenant metadata store cannot be
@@ -360,28 +422,47 @@ class TenantStore(ABC):
             TenantCredentialRevokedError: If the tenant's credential exists but
                 is revoked.
         """
-        try:
-            tenant = await self.get_tenant(tenant_id)
-        except TenantStoreError:
-            raise
-        except Exception as exc:
-            raise TenantStoreUnavailableError("Tenant store is unavailable.") from exc
-        if tenant is None:
-            raise TenantNotFoundError("Tenant could not be resolved.")
-        if tenant.status is TenantStatus.DISABLED:
-            raise TenantDisabledError("Tenant is disabled.")
+        tenant = await self._resolve_active_tenant(tenant_id)
+        credential = await self._resolve_active_credential(
+            tenant=tenant,
+            credential_id=tenant.credential_id,
+        )
 
-        try:
-            credential = await self.get_credential(tenant.credential_id)
-        except TenantStoreError:
-            raise
-        except Exception as exc:
-            raise TenantSecretStoreUnavailableError("Tenant secret store is unavailable.") from exc
-        if credential is None or credential.tenant_id != tenant.tenant_id:
-            raise TenantCredentialNotFoundError("Tenant credentials could not be resolved.")
-        if credential.status is TenantCredentialStatus.REVOKED:
-            raise TenantCredentialRevokedError("Tenant credentials are revoked.")
+        return ResolvedTenantCredentials(tenant=tenant, credential=credential)
 
+    async def resolve_tenant_credential(
+        self,
+        *,
+        tenant_id: str,
+        credential_id: str,
+    ) -> ResolvedTenantCredentials:
+        """Resolve one active tenant with an exact token-bound credential.
+
+        Args:
+            tenant_id: The canonical hosted tenant identifier.
+            credential_id: The exact credential identifier bound to the caller's
+                hosted access token.
+
+        Returns:
+            The resolved tenant metadata and requested credential record.
+
+        Raises:
+            TenantStoreUnavailableError: If the tenant metadata store cannot be
+                queried safely.
+            TenantSecretStoreUnavailableError: If the tenant credential or
+                secret store cannot be queried safely.
+            TenantNotFoundError: If the tenant ID does not exist.
+            TenantDisabledError: If the tenant exists but is disabled.
+            TenantCredentialNotFoundError: If the requested credential record is
+                missing or belongs to another tenant.
+            TenantCredentialRevokedError: If the requested credential exists but
+                is revoked.
+        """
+        tenant = await self._resolve_active_tenant(tenant_id)
+        credential = await self._resolve_active_credential(
+            tenant=tenant,
+            credential_id=credential_id,
+        )
         return ResolvedTenantCredentials(tenant=tenant, credential=credential)
 
 

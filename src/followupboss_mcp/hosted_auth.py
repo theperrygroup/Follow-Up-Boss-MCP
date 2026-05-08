@@ -16,7 +16,7 @@ from pydantic import (
     model_validator,
 )
 
-from followupboss_mcp.errors import TenantStoreError
+from followupboss_mcp.errors import TenantCredentialNotFoundError, TenantStoreError
 from followupboss_mcp.logging import emit_audit_event, tenant_store_error_reason
 from followupboss_mcp.tenant_store import ResolvedTenantCredentials, TenantStore
 from mcp.server.auth.middleware.auth_context import get_access_token
@@ -146,6 +146,20 @@ def _tenant_audit_fields(tenant: HostedAuthenticatedTenant) -> dict[str, object]
         "tenant_slug": tenant.tenant_slug,
         "credential_id": tenant.credential_id,
     }
+
+
+def _is_legacy_account_oauth_credential_id(credential_id: str | None) -> bool:
+    """Return whether a credential id uses the retired account-wide OAuth shape.
+
+    Args:
+        credential_id: Optional hosted credential identifier from a verified
+            MCP bearer token.
+
+    Returns:
+        `True` when the credential id matches the legacy account-level OAuth
+        identifier that could be shared by multiple FUB users.
+    """
+    return credential_id is not None and credential_id.endswith("-oauth-primary")
 
 
 class HostedVerifiedIdentity(BaseModel):
@@ -561,29 +575,37 @@ class HostedTenantTokenVerifier(TokenVerifier):
             event="hosted_auth_succeeded",
             fields=_identity_audit_fields(identity),
         )
-        try:
-            resolved = await self._tenant_store.resolve_tenant(identity.tenant_id)
-        except TenantStoreError as exc:
+        if _is_legacy_account_oauth_credential_id(identity.credential_id):
             emit_audit_event(
                 self._logger,
                 event="tenant_resolution_failed",
                 fields={
                     **_identity_audit_fields(identity),
-                    "reason": tenant_store_error_reason(exc),
+                    "reason": "legacy_account_oauth_credential",
                 },
             )
             return None
-
-        if (
-            identity.credential_id is not None
-            and identity.credential_id != resolved.credential.credential_id
-        ):
+        try:
+            if identity.credential_id is None:
+                resolved = await self._tenant_store.resolve_tenant(identity.tenant_id)
+            else:
+                resolved = await self._tenant_store.resolve_tenant_credential(
+                    tenant_id=identity.tenant_id,
+                    credential_id=identity.credential_id,
+                )
+        except TenantStoreError as exc:
+            failure_reason = tenant_store_error_reason(exc)
+            if (
+                isinstance(exc, TenantCredentialNotFoundError)
+                and identity.credential_id is not None
+            ):
+                failure_reason = "credential_binding_mismatch"
             emit_audit_event(
                 self._logger,
                 event="tenant_resolution_failed",
                 fields={
                     **_identity_audit_fields(identity),
-                    "reason": "credential_binding_mismatch",
+                    "reason": failure_reason,
                 },
             )
             return None

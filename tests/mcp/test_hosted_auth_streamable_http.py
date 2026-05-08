@@ -80,7 +80,6 @@ async def test_streamable_http_hosted_auth_supports_authenticated_official_clien
         from collections.abc import Mapping
 
         from followupboss_mcp.auth import AuthMode
-        from followupboss_mcp.config import FollowUpBossSettings
         from followupboss_mcp.hosted_auth import (
             DevelopmentHostedTokenVerifier,
             HostedAuthSettings,
@@ -163,11 +162,10 @@ async def test_streamable_http_hosted_auth_supports_authenticated_official_clien
         )
 
         create_server(
-            FollowUpBossSettings.model_validate({{"api_key": "key"}}),
-            client=QueueClient(),
             hosted_auth=hosted_auth,
             hosted_token_verifier=hosted_token_verifier,
             tenant_store=tenant_store,
+            tenant_client_factory=lambda settings, logger: QueueClient(),
             host="127.0.0.1",
             port={port},
             streamable_http_path="/mcp",

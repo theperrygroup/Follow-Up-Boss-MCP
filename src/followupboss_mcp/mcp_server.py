@@ -34,6 +34,7 @@ from followupboss_mcp.tenant_runtime import (
     RequestScopedTenantServiceBundleResolver,
     ServiceBundleResolver,
     StaticServiceBundleResolver,
+    TenantClientFactory,
     TenantRuntimeFactory,
     build_service_bundle,
 )
@@ -177,6 +178,7 @@ def create_server(
     hosted_auth: HostedAuthSettings | None = None,
     hosted_token_verifier: HostedIdentityVerifier | None = None,
     tenant_store: TenantStore | None = None,
+    tenant_client_factory: TenantClientFactory | None = None,
     hosted_rate_limiter: HostedEndpointRateLimiter | None = None,
     hosted_oauth_application: HostedOAuthApplication | None = None,
     managed_resources: Sequence[AsyncManagedResource] = (),
@@ -194,13 +196,18 @@ def create_server(
             caller passes explicit hosted runtime defaults.
         server_settings: Optional server-only bootstrap settings for host, port,
             transport, and log level.
-        client: Optional prebuilt client implementation used mainly by tests.
+        client: Optional prebuilt client implementation used mainly by local
+            tests. Hosted auth rejects injected clients because they would
+            bypass per-request tenant credentials.
         hosted_auth: Optional hosted-auth resource-server settings for bearer
             token verification on the streamable HTTP transport.
         hosted_token_verifier: Optional hosted token verifier that validates
             bearer tokens into the canonical hosted identity payload.
         tenant_store: Optional tenant store used to resolve the canonical
             hosted `tenant_id` claim into one active tenant.
+        tenant_client_factory: Optional per-tenant client factory used mainly by
+            hosted tests. Unlike `client`, this factory is called after the
+            authenticated tenant credential has been resolved.
         hosted_rate_limiter: Optional hosted endpoint rate limiter. When hosted
             auth is enabled and no limiter is provided, a default in-memory
             per-tenant/per-client limiter is applied to the streamable HTTP
@@ -238,10 +245,13 @@ def create_server(
     if resolved_mcp_auth_settings is not None:
         if tenant_store is None:
             raise ValueError("tenant_store is required when hosted auth is enabled.")
+        if client is not None:
+            raise ValueError("client cannot be provided when hosted auth is enabled.")
         runtime_factory = TenantRuntimeFactory(
             default_settings=_resolve_tenant_runtime_defaults(settings),
             tenant_store=tenant_store,
             logger=resolved_logger,
+            client_factory=tenant_client_factory,
         )
         if resolved_hosted_rate_limiter is None:
             resolved_hosted_rate_limiter = HostedEndpointRateLimiter(logger=resolved_logger)
