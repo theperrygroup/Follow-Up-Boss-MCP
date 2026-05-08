@@ -166,6 +166,12 @@ class GetPersonToolInput(PersonLookupRequest):
     person_id: int
 
 
+class GetLatestLeadToolInput(RequestModel):
+    """Tool input for fetching the authenticated user's latest assigned lead."""
+
+    fields: list[str] | None = None
+
+
 class CheckDuplicatePersonToolInput(PersonDuplicateCheckRequest):
     """Tool input for checking whether a person already exists."""
 
@@ -966,6 +972,39 @@ class FollowUpBossToolAdapter:
             lambda: self._search_people_with_default_scope(tool_input),
             key="people",
         )
+
+    async def get_latest_lead(self, tool_input: GetLatestLeadToolInput) -> dict[str, Any]:
+        """Return the newest lead assigned to the authenticated user.
+
+        Args:
+            tool_input: Optional field selection for the returned person.
+
+        Returns:
+            A structured payload containing pagination metadata and the single newest
+            assigned person, or ``None`` when no assigned leads are available.
+        """
+        request = PeopleSearchRequest(fields=tool_input.fields, limit=1)
+        try:
+            page = await self._execute_with_services(
+                lambda: self._search_people_with_default_scope(request)
+            )
+        except FollowUpBossError as exc:
+            raise RuntimeError(_mcp_safe_error(exc)) from exc
+
+        person = page.items[0] if page.items else None
+        return {
+            "_metadata": asdict(page.metadata),
+            "person": (
+                person.model_dump(
+                    mode="json",
+                    by_alias=True,
+                    exclude_defaults=True,
+                    exclude_none=True,
+                )
+                if person is not None
+                else None
+            ),
+        }
 
     async def _search_people_with_default_scope(
         self,

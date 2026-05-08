@@ -64,6 +64,7 @@ from followupboss_mcp.mcp_tools import (
     GetDealToolInput,
     GetEventToolInput,
     GetGroupToolInput,
+    GetLatestLeadToolInput,
     GetNoteToolInput,
     GetPeopleRelationshipToolInput,
     GetPersonAttachmentToolInput,
@@ -337,6 +338,7 @@ EXPECTED_REGISTERED_TOOL_NAMES = [
     "followupboss_get_event",
     "followupboss_get_group",
     "followupboss_get_identity",
+    "followupboss_get_latest_lead",
     "followupboss_get_me",
     "followupboss_get_note",
     "followupboss_get_people_relationship",
@@ -2023,6 +2025,9 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert (await adapter.search_people(PeopleSearchRequest()))["people"][0]["id"] == 2
     assert stub.people_search_requests[-1].assigned_user_id == 1
     assert stub.people_search_requests[-1].include_ponds is None
+    assert (await adapter.get_latest_lead(GetLatestLeadToolInput()))["person"]["id"] == 2
+    assert stub.people_search_requests[-1].assigned_user_id == 1
+    assert stub.people_search_requests[-1].limit == 1
     assert (await adapter.search_people(PeopleSearchRequest(include_ponds=True)))["people"][0][
         "id"
     ] == 2
@@ -2879,6 +2884,8 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                     "features": ["calling", "link-tracking"],
                 },
                 {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "people": [{"id": 2}]},
+                {"id": 1},
+                {"_metadata": {"limit": 1, "offset": 0, "total": 1}, "people": [{"id": 2}]},
                 {"id": 3},
                 {"id": 4},
                 {"id": 5},
@@ -3530,6 +3537,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_get_event",
         "followupboss_get_group",
         "followupboss_get_identity",
+        "followupboss_get_latest_lead",
         "followupboss_get_me",
         "followupboss_get_note",
         "followupboss_get_people_relationship",
@@ -3640,6 +3648,13 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
             include_ponds=True,
         )
     )["people"][0]["id"] == 2
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_get_latest_lead",
+        )
+    )["person"]["id"] == 2
     assert await _call_public_tool(server, tools, "followupboss_get_person", 3) == {"id": 3}
     assert (await _call_public_tool(server, tools, "followupboss_create_person", first_name="Tom"))[
         "id"

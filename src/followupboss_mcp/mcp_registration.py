@@ -48,6 +48,7 @@ from followupboss_mcp.mcp_tools import (
     GetDealToolInput,
     GetEventToolInput,
     GetGroupToolInput,
+    GetLatestLeadToolInput,
     GetNoteToolInput,
     GetPeopleRelationshipToolInput,
     GetPersonAttachmentToolInput,
@@ -423,7 +424,9 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
             "Search Follow Up Boss people with documented query parameters "
             "and pagination metadata. By default this searches the authenticated "
             "user's assigned leads; set include_ponds=true to include pond/shared "
-            "leads visible to the authenticated user."
+            "leads visible to the authenticated user. For 'my latest lead', "
+            "'newest lead', or 'most recent lead I received', use "
+            "followupboss_get_latest_lead instead of searching by name."
         ),
     )
     async def followupboss_search_people(
@@ -451,6 +454,20 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
     ) -> dict[str, object]:
         tool_input = _validated_request(PeopleSearchRequest, locals())
         return await adapter.search_people(tool_input)
+
+    @mcp.tool(
+        name="followupboss_get_latest_lead",
+        description=(
+            "Return the single most recently created Follow Up Boss lead assigned "
+            "to the authenticated user. Use this for requests like 'my latest lead', "
+            "'newest lead', or 'most recent lead I received'."
+        ),
+    )
+    async def followupboss_get_latest_lead(
+        *,
+        fields: list[str] | None = None,
+    ) -> dict[str, object]:
+        return await adapter.get_latest_lead(_validated_request(GetLatestLeadToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_get_person",
