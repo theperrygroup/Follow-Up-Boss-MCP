@@ -68,8 +68,10 @@ from followupboss_mcp.mcp_tools import (
     GetWebhookEventToolInput,
     GetWebhookToolInput,
     IgnoreUnclaimedPersonToolInput,
+    ListActiveDealsForPersonToolInput,
     ListInboxAppInstallationsToolInput,
     ListInboxAppParticipantsToolInput,
+    ListMyTaskIntentToolInput,
     UpdateActionPlanPersonToolInput,
     UpdateAppointmentOutcomeToolInput,
     UpdateAppointmentToolInput,
@@ -424,9 +426,14 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
             "Search Follow Up Boss people with documented query parameters "
             "and pagination metadata. By default this searches the authenticated "
             "user's assigned leads; set include_ponds=true to include pond/shared "
-            "leads visible to the authenticated user. For 'my latest lead', "
-            "'newest lead', or 'most recent lead I received', use "
-            "followupboss_get_latest_lead instead of searching by name."
+            "leads visible to the authenticated user. Use this broad search for "
+            "explicit person filters or smart-list counts. To answer questions about "
+            "a named smart list, call followupboss_list_smart_lists to resolve the "
+            "list ID, then call this tool with smart_list_id and a small limit; "
+            "use _metadata.total as the count. Do not use this broad search for "
+            "'my latest lead', 'newest lead', or 'most recent lead I received'; "
+            "use followupboss_get_latest_lead so the authenticated user is resolved "
+            "internally."
         ),
     )
     async def followupboss_search_people(
@@ -448,6 +455,7 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
         last_name: str | None = None,
         name: str | None = None,
         phone: str | None = None,
+        smart_list_id: int | None = None,
         source: str | None = None,
         stage: str | None = None,
         custom_field_filters: dict[str, str] | None = None,
@@ -460,7 +468,9 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
         description=(
             "Return the single most recently created Follow Up Boss lead assigned "
             "to the authenticated user. Use this for requests like 'my latest lead', "
-            "'newest lead', or 'most recent lead I received'."
+            "'newest lead', or 'most recent lead I received'. Resolves the "
+            "authenticated user internally; do not ask the caller for an "
+            "assigned_user_id."
         ),
     )
     async def followupboss_get_latest_lead(
@@ -517,7 +527,10 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_update_person",
-        description="Update a single Follow Up Boss person by ID.",
+        description=(
+            "Update a single Follow Up Boss person by explicit person_id. Do not "
+            "infer the person_id from vague natural-language intent."
+        ),
     )
     async def followupboss_update_person(
         person_id: int,
@@ -588,7 +601,10 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_delete_person",
-        description="Delete a Follow Up Boss person by ID.",
+        description=(
+            "Delete a Follow Up Boss person by explicit person_id. Do not infer the "
+            "person_id from vague natural-language intent."
+        ),
     )
     async def followupboss_delete_person(person_id: int) -> dict[str, object]:
         return await adapter.delete_person(_validated_request(DeletePersonToolInput, locals()))
@@ -1673,7 +1689,11 @@ def _register_deal_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
 
     @mcp.tool(
         name="followupboss_list_deals",
-        description="List Follow Up Boss deals with documented filters and pagination metadata.",
+        description=(
+            "List Follow Up Boss deals with documented filters and pagination metadata. "
+            "For active deals tied to a specific lead/person, use "
+            "followupboss_list_active_deals_for_person."
+        ),
     )
     async def followupboss_list_deals(
         *,
@@ -1685,6 +1705,19 @@ def _register_deal_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         user_id: int | None = None,
     ) -> dict[str, object]:
         return await adapter.list_deals(_validated_request(DealListRequest, locals()))
+
+    @mcp.tool(
+        name="followupboss_list_active_deals_for_person",
+        description=(
+            "List active, non-archived Follow Up Boss deals for a specific person/lead. "
+            "Use this for requests like 'open deals for this lead' or "
+            "'active deals for person 123'."
+        ),
+    )
+    async def followupboss_list_active_deals_for_person(person_id: int) -> dict[str, object]:
+        return await adapter.list_active_deals_for_person(
+            _validated_request(ListActiveDealsForPersonToolInput, locals())
+        )
 
     @mcp.tool(
         name="followupboss_get_deal",
@@ -2132,7 +2165,9 @@ def _register_smart_list_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -
     @mcp.tool(
         name="followupboss_list_smart_lists",
         description=(
-            "List Follow Up Boss smart lists with documented filters and pagination metadata."
+            "List Follow Up Boss smart lists with documented filters and pagination metadata. "
+            "When resolving a user-provided smart list name, set include_all=true so both "
+            "classic and current Follow Up Boss smart lists are considered."
         ),
     )
     async def followupboss_list_smart_lists(
@@ -2223,7 +2258,13 @@ def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
 
     @mcp.tool(
         name="followupboss_list_tasks",
-        description="List Follow Up Boss tasks with documented filters and pagination metadata.",
+        description=(
+            "List Follow Up Boss tasks with documented filters and pagination metadata. "
+            "Use this broad list only when the request provides explicit task filters "
+            "or needs non-owned task discovery. For your overdue tasks, use "
+            "followupboss_list_my_overdue_tasks. For your tasks due today, use "
+            "followupboss_list_my_tasks_due_today."
+        ),
     )
     async def followupboss_list_tasks(
         *,
@@ -2247,6 +2288,46 @@ def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         type: list[str] | None = None,
     ) -> dict[str, object]:
         return await adapter.list_tasks(_validated_request(TaskListRequest, locals()))
+
+    @mcp.tool(
+        name="followupboss_list_my_overdue_tasks",
+        description=(
+            "List incomplete overdue Follow Up Boss tasks assigned to the authenticated user. "
+            "Use this for requests like 'my overdue tasks' or 'what am I late on?'. "
+            "Resolves the authenticated user internally and forces incomplete overdue "
+            "task scope."
+        ),
+    )
+    async def followupboss_list_my_overdue_tasks(
+        *,
+        fields: list[str] | None = None,
+        limit: int | None = None,
+        next_token: str | None = None,
+        offset: int | None = None,
+    ) -> dict[str, object]:
+        return await adapter.list_my_overdue_tasks(
+            _validated_request(ListMyTaskIntentToolInput, locals())
+        )
+
+    @mcp.tool(
+        name="followupboss_list_my_tasks_due_today",
+        description=(
+            "List incomplete Follow Up Boss tasks due today and assigned to the "
+            "authenticated user. Use this for requests like 'my tasks today' or "
+            "'what do I need to do today?'. Resolves the authenticated user "
+            "internally and forces incomplete due-today task scope."
+        ),
+    )
+    async def followupboss_list_my_tasks_due_today(
+        *,
+        fields: list[str] | None = None,
+        limit: int | None = None,
+        next_token: str | None = None,
+        offset: int | None = None,
+    ) -> dict[str, object]:
+        return await adapter.list_my_tasks_due_today(
+            _validated_request(ListMyTaskIntentToolInput, locals())
+        )
 
     @mcp.tool(
         name="followupboss_get_task",
@@ -2276,7 +2357,10 @@ def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
 
     @mcp.tool(
         name="followupboss_update_task",
-        description="Update a Follow Up Boss task by ID.",
+        description=(
+            "Update a Follow Up Boss task by explicit task_id. Do not infer the "
+            "task_id from vague natural-language intent."
+        ),
     )
     async def followupboss_update_task(
         task_id: int,
@@ -2294,7 +2378,10 @@ def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
 
     @mcp.tool(
         name="followupboss_delete_task",
-        description="Delete a Follow Up Boss task by ID.",
+        description=(
+            "Delete a Follow Up Boss task by explicit task_id. Do not infer the "
+            "task_id from vague natural-language intent."
+        ),
     )
     async def followupboss_delete_task(task_id: int) -> dict[str, object]:
         return await adapter.delete_task(_validated_request(DeleteTaskToolInput, locals()))

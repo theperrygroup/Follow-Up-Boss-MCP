@@ -1142,10 +1142,18 @@ async def test_people_service_search_create_update_get_and_wait() -> None:
     )
     service = PeopleService(client, sleep=sleep)
     search = await service.search_people(
-        PeopleSearchRequest(email="a@example.com", custom_field_filters={"customSource": "Zillow"})
+        PeopleSearchRequest(
+            email="a@example.com",
+            smart_list_id=74,
+            custom_field_filters={"customSource": "Zillow"},
+        )
     )
     assert search.items[0].id == 7
-    assert client.calls[0].params == {"customSource": "Zillow", "email": "a@example.com"}
+    assert client.calls[0].params == {
+        "customSource": "Zillow",
+        "email": "a@example.com",
+        "smartListId": "74",
+    }
 
     created = await service.create_person(
         CreatePersonRequest(

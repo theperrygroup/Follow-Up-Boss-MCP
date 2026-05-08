@@ -121,7 +121,12 @@ from followupboss_mcp.models.stages import (
     StageListRequest,
     UpdateStageRequest,
 )
-from followupboss_mcp.models.tasks import CreateTaskRequest, TaskListRequest, UpdateTaskRequest
+from followupboss_mcp.models.tasks import (
+    CreateTaskRequest,
+    TaskListRequest,
+    TaskRecord,
+    UpdateTaskRequest,
+)
 from followupboss_mcp.models.team_inboxes import TeamInboxListRequest
 from followupboss_mcp.models.teams import (
     CreateTeamRequest,
@@ -170,6 +175,21 @@ class GetLatestLeadToolInput(RequestModel):
     """Tool input for fetching the authenticated user's latest assigned lead."""
 
     fields: list[str] | None = None
+
+
+class ListMyTaskIntentToolInput(RequestModel):
+    """Tool input for listing the authenticated user's intent-scoped tasks."""
+
+    fields: list[str] | None = None
+    limit: int | None = None
+    next_token: str | None = None
+    offset: int | None = None
+
+
+class ListActiveDealsForPersonToolInput(RequestModel):
+    """Tool input for listing active deals tied to one person."""
+
+    person_id: int
 
 
 class CheckDuplicatePersonToolInput(PersonDuplicateCheckRequest):
@@ -1562,6 +1582,29 @@ class FollowUpBossToolAdapter:
             key="deals",
         )
 
+    async def list_active_deals_for_person(
+        self,
+        tool_input: ListActiveDealsForPersonToolInput,
+    ) -> dict[str, Any]:
+        """Return active non-archived deals tied to a person.
+
+        Args:
+            tool_input: The person identifier to use when filtering deals.
+
+        Returns:
+            A paginated payload containing active deals associated with the person.
+        """
+        request = DealListRequest(
+            include_archived=False,
+            include_deleted=False,
+            person_id=tool_input.person_id,
+            status="Active",
+        )
+        return await self._page_result(
+            lambda: self._services.deals.list_deals(request),
+            key="deals",
+        )
+
     async def get_deal(self, tool_input: GetDealToolInput) -> dict[str, Any]:
         """Get a deal."""
         return await self._single_result(lambda: self._services.deals.get_deal(tool_input.deal_id))
@@ -1897,6 +1940,74 @@ class FollowUpBossToolAdapter:
             lambda: self._services.tasks.list_tasks(tool_input),
             key="tasks",
         )
+
+    async def list_my_overdue_tasks(
+        self,
+        tool_input: ListMyTaskIntentToolInput,
+    ) -> dict[str, Any]:
+        """Return incomplete overdue tasks assigned to the authenticated user.
+
+        Args:
+            tool_input: Optional pagination and field-selection settings.
+
+        Returns:
+            A paginated payload containing overdue incomplete tasks assigned to the
+            authenticated Follow Up Boss user.
+        """
+        return await self._page_result(
+            lambda: self._list_my_tasks_by_due(tool_input, due="overdue"),
+            key="tasks",
+        )
+
+    async def list_my_tasks_due_today(
+        self,
+        tool_input: ListMyTaskIntentToolInput,
+    ) -> dict[str, Any]:
+        """Return incomplete tasks due today and assigned to the authenticated user.
+
+        Args:
+            tool_input: Optional pagination and field-selection settings.
+
+        Returns:
+            A paginated payload containing today's incomplete tasks assigned to the
+            authenticated Follow Up Boss user.
+        """
+        return await self._page_result(
+            lambda: self._list_my_tasks_by_due(tool_input, due="today"),
+            key="tasks",
+        )
+
+    async def _list_my_tasks_by_due(
+        self,
+        tool_input: ListMyTaskIntentToolInput,
+        *,
+        due: str,
+    ) -> PageResult[TaskRecord]:
+        """List authenticated-user tasks for a canonical due bucket.
+
+        Args:
+            tool_input: Optional pagination and field-selection settings.
+            due: Follow Up Boss task due bucket to request.
+
+        Returns:
+            The paginated task result returned by Follow Up Boss.
+
+        Raises:
+            RuntimeError: If the authenticated user's Follow Up Boss ID is unavailable.
+        """
+        identity = await self._services.identity.get_identity()
+        if identity.id is None:
+            raise RuntimeError("Authenticated Follow Up Boss user id is unavailable.")
+        request = TaskListRequest(
+            assigned_user_id=identity.id,
+            due=due,
+            fields=tool_input.fields,
+            is_completed=False,
+            limit=tool_input.limit,
+            next_token=tool_input.next_token,
+            offset=tool_input.offset,
+        )
+        return await self._services.tasks.list_tasks(request)
 
     async def get_task(self, tool_input: GetTaskToolInput) -> dict[str, Any]:
         """Get a task."""

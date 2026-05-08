@@ -32,6 +32,7 @@ class PeopleSearchRequest(CommonListQuery):
     last_name: str | None = Field(default=None, serialization_alias="lastName")
     name: str | None = None
     phone: str | None = None
+    smart_list_id: int | None = Field(default=None, serialization_alias="smartListId")
     source: str | None = None
     stage: str | None = None
     updated_after: datetime | None = Field(default=None, serialization_alias="updatedAfter")

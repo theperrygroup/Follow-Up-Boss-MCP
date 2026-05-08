@@ -177,6 +177,8 @@ Apply these checks wherever the surface below supports them.
 - [ ] `followupboss_get_me` redacts secret-like fields such as `apiKey` before returning the current-user payload.
 - [ ] Every update tool returns the mutated object or a successful acknowledgement that can be reconciled against a follow-up read.
 - [ ] Every delete tool returns a structured confirmation payload with `deleted: true` and the correct identifier key such as `personId`, `userId`, `noteId`, or `webhookId`.
+- [ ] For explicit-ID mutation tools, confirm the ID comes from a known fixture, list result, or just-created object rather than vague natural-language inference.
+- [ ] For common authenticated-user intents, prefer the narrow helper tool over a broad search or list tool when the helper exists.
 - [ ] For acknowledgement-style responses that do not return a full resource, confirm the returned payload still leaves enough information to reconcile the side effect, or record the gap in `Known Issues And Account Limitations`.
 - [ ] At least one safe failure path is exercised without leaking secrets, such as a clearly invalid ID or a missing required field.
 - [ ] If you hit permission-denied or rate-limit responses, confirm the surfaced MCP error text is understandable and record the limitation in the issues table.
@@ -197,15 +199,16 @@ Work through the sections below in order. If a domain depends on an object creat
 ### People
 
 - [ ] `followupboss_search_people`: run with a small `limit` and confirm the `people` collection plus `_metadata`.
+- [ ] `followupboss_get_latest_lead`: ask for "my latest lead" and confirm the helper returns either one assigned person or `person: null` with usable `_metadata`, without requiring a caller-supplied `assigned_user_id`.
 - [ ] `followupboss_get_person`: fetch a person ID returned by the search call or from the created record below.
 - [ ] `followupboss_create_person`: create a disposable person with clearly temporary data.
-- [ ] `followupboss_update_person`: update the disposable person and confirm the changed fields are reflected in the response.
+- [ ] `followupboss_update_person`: update the disposable person by explicit `person_id` and confirm the changed fields are reflected in the response.
 - [ ] `followupboss_check_duplicate_person`: run once against the disposable person's email or phone and confirm the tool reports a positive match.
 - [ ] `followupboss_check_duplicate_person`: run again with a clearly fake email or phone value and confirm the tool reports no match without a transport error.
 - [ ] `followupboss_list_unclaimed_people`: confirm the list output and `_metadata`. An empty `people` collection is acceptable if the blocker is recorded.
 - [ ] `followupboss_claim_person`: claim one disposable unclaimed lead and confirm the returned person record reflects the new claimed or assigned state.
 - [ ] `followupboss_ignore_unclaimed_person`: ignore a separate disposable unclaimed lead and confirm the structured acknowledgement uses `personId`.
-- [ ] `followupboss_delete_person`: delete a disposable person only after all downstream person-dependent checks are complete and confirm the structured delete response uses `personId`.
+- [ ] `followupboss_delete_person`: delete a disposable person by explicit `person_id` only after all downstream person-dependent checks are complete and confirm the structured delete response uses `personId`.
 - [ ] Record the created `personId` in the scratchpad and note whether it will be reused or deleted during cleanup.
 
 ### People Relationships
@@ -404,10 +407,12 @@ User deletion is destructive. Use a disposable user and a safe reassignment targ
 ### Tasks
 
 - [ ] `followupboss_list_tasks`: confirm list output and `_metadata`.
+- [ ] `followupboss_list_my_overdue_tasks`: ask for "my overdue tasks" and confirm the helper returns incomplete overdue tasks assigned to the authenticated user, with pagination metadata.
+- [ ] `followupboss_list_my_tasks_due_today`: ask for "my tasks today" and confirm the helper returns incomplete tasks due today assigned to the authenticated user, with pagination metadata.
 - [ ] `followupboss_get_task`: fetch one task by ID.
 - [ ] `followupboss_create_task`: create a disposable task for the validation person and include assignee fields if the account requires them.
-- [ ] `followupboss_update_task`: update the disposable task and confirm the changed values.
-- [ ] `followupboss_delete_task`: delete the disposable task and confirm the structured delete response.
+- [ ] `followupboss_update_task`: update the disposable task by explicit `task_id` and confirm the changed values.
+- [ ] `followupboss_delete_task`: delete the disposable task by explicit `task_id` and confirm the structured delete response.
 
 ### Team Inboxes
 

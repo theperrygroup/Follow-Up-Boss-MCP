@@ -139,15 +139,30 @@ contract.
 
 All tools are namespaced with the `followupboss_` prefix.
 
+## Intent Routing
+
+Use narrow intent helpers when the user asks for authenticated-user-owned data.
+Those helpers resolve the Follow Up Boss user internally and avoid broad search
+or list calls when the intent is already clear.
+
+| User intent | Preferred tool | Avoid |
+| --- | --- | --- |
+| "my latest lead", "newest lead", or "most recent lead I received" | `followupboss_get_latest_lead` | Searching people by name or asking the caller for `assigned_user_id`. |
+| "my overdue tasks" or "what am I late on?" | `followupboss_list_my_overdue_tasks` | A broad task list without authenticated-user and incomplete-task scope. |
+| "my tasks today" or "what do I need to do today?" | `followupboss_list_my_tasks_due_today` | A broad task list without authenticated-user and incomplete-task scope. |
+| A named smart-list count | `followupboss_list_smart_lists`, then `followupboss_search_people` with `smart_list_id` and a small `limit` | Inferring the smart-list ID from the name alone. |
+| Updating or deleting people and tasks | The explicit-ID mutation tool such as `followupboss_update_person`, `followupboss_delete_person`, `followupboss_update_task`, or `followupboss_delete_task` | Inferring IDs from vague natural-language intent. |
+
 | Tool | Purpose |
 | --- | --- |
 | `followupboss_get_identity` | Return identity information for the authenticated Follow Up Boss account and user. |
 | `followupboss_get_me` | Retrieve the current Follow Up Boss user profile with sensitive keys redacted. |
-| `followupboss_search_people` | Search people with documented filters and pagination metadata. |
+| `followupboss_search_people` | Search people with documented filters and pagination metadata; use `followupboss_get_latest_lead` for latest-owned-lead intent. |
+| `followupboss_get_latest_lead` | Retrieve the newest lead assigned to the authenticated user. |
 | `followupboss_get_person` | Retrieve one person by ID. |
 | `followupboss_create_person` | Create a person directly. |
-| `followupboss_update_person` | Update a person directly. |
-| `followupboss_delete_person` | Delete a person by ID and return a structured confirmation. |
+| `followupboss_update_person` | Update a person by explicit ID. |
+| `followupboss_delete_person` | Delete a person by explicit ID and return a structured confirmation. |
 | `followupboss_check_duplicate_person` | Check whether a person already exists by email or phone. |
 | `followupboss_list_unclaimed_people` | List unclaimed leads available to the authenticated user. |
 | `followupboss_claim_person` | Claim an unclaimed lead by person ID. |
@@ -264,11 +279,13 @@ All tools are namespaced with the `followupboss_` prefix.
 | `followupboss_get_call` | Retrieve one call by ID. |
 | `followupboss_create_call` | Create a call log entry. |
 | `followupboss_update_call` | Update one call by ID. |
-| `followupboss_list_tasks` | List tasks with documented filters and pagination metadata. |
+| `followupboss_list_tasks` | List tasks with documented filters and pagination metadata; use the owned task helpers for common "my tasks" intents. |
+| `followupboss_list_my_overdue_tasks` | List incomplete overdue tasks assigned to the authenticated user. |
+| `followupboss_list_my_tasks_due_today` | List incomplete tasks due today and assigned to the authenticated user. |
 | `followupboss_get_task` | Retrieve one task by ID. |
 | `followupboss_create_task` | Create a task for a person. |
-| `followupboss_update_task` | Update one task by ID. |
-| `followupboss_delete_task` | Delete one task by ID and return a structured confirmation. |
+| `followupboss_update_task` | Update one task by explicit ID. |
+| `followupboss_delete_task` | Delete one task by explicit ID and return a structured confirmation. |
 | `followupboss_list_templates` | List email templates with pagination metadata. |
 | `followupboss_get_template` | Retrieve one email template by ID. |
 | `followupboss_merge_template` | Merge an email template with recipients. |

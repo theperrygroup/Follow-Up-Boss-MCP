@@ -307,7 +307,7 @@ def create_server(
         "Follow Up Boss MCP",
         instructions=(
             "Use the typed Follow Up Boss tools for identity checks, lead search, lead ingestion, "
-            "latest owned lead lookup, "
+            "latest owned lead lookup, owned task intent helpers, lead deal lookups, "
             "action plans, appointments, appointment types, appointment outcomes, attachments, "
             "automations, calls, custom fields, deals, email marketing, groups, inbox apps, "
             "people relationships, pipelines, ponds, reactions, smart lists, stages, tasks, "

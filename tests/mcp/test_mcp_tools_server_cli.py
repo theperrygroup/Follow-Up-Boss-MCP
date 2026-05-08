@@ -84,8 +84,10 @@ from followupboss_mcp.mcp_tools import (
     GetWebhookEventToolInput,
     GetWebhookToolInput,
     IgnoreUnclaimedPersonToolInput,
+    ListActiveDealsForPersonToolInput,
     ListInboxAppInstallationsToolInput,
     ListInboxAppParticipantsToolInput,
+    ListMyTaskIntentToolInput,
     UpdateActionPlanPersonToolInput,
     UpdateAppointmentOutcomeToolInput,
     UpdateAppointmentToolInput,
@@ -362,6 +364,7 @@ EXPECTED_REGISTERED_TOOL_NAMES = [
     "followupboss_install_inbox_app",
     "followupboss_list_action_plan_people",
     "followupboss_list_action_plans",
+    "followupboss_list_active_deals_for_person",
     "followupboss_list_appointment_outcomes",
     "followupboss_list_appointment_types",
     "followupboss_list_appointments",
@@ -376,6 +379,8 @@ EXPECTED_REGISTERED_TOOL_NAMES = [
     "followupboss_list_groups",
     "followupboss_list_inbox_app_installations",
     "followupboss_list_inbox_app_participants",
+    "followupboss_list_my_overdue_tasks",
+    "followupboss_list_my_tasks_due_today",
     "followupboss_list_people_relationships",
     "followupboss_list_pipelines",
     "followupboss_list_ponds",
@@ -517,7 +522,9 @@ class StubBundle:
     """Service bundle stub for adapter-only tests."""
 
     def __post_init__(self) -> None:
+        self.deal_list_requests: list[DealListRequest] = []
         self.people_search_requests: list[PeopleSearchRequest] = []
+        self.task_list_requests: list[TaskListRequest] = []
 
         async def identity_get() -> IdentityResponse:
             return IdentityResponse(id=1, name="Picard")
@@ -1311,7 +1318,8 @@ class StubBundle:
                 ],
             )
 
-        async def deals_list(_: DealListRequest) -> PageResult[DealRecord]:
+        async def deals_list(request: DealListRequest) -> PageResult[DealRecord]:
+            self.deal_list_requests.append(request)
             return PageResult(
                 items=[DealRecord(id=8, name="Buyer contract", pipelineId=3, stageId=7)],
                 metadata=_page_metadata(),
@@ -1618,7 +1626,8 @@ class StubBundle:
             del request
             return CallRecord(id=call_id, personId=2, phone="555-0000", userName="Data")
 
-        async def tasks_list(_: TaskListRequest) -> PageResult[TaskRecord]:
+        async def tasks_list(request: TaskListRequest) -> PageResult[TaskRecord]:
+            self.task_list_requests.append(request)
             return PageResult(
                 items=[TaskRecord(id=17, personId=2, assignedTo="Data", type="Call")],
                 metadata=_page_metadata(),
@@ -2033,6 +2042,11 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     ] == 2
     assert stub.people_search_requests[-1].assigned_user_id is None
     assert stub.people_search_requests[-1].include_ponds is True
+    assert (
+        await adapter.search_people(PeopleSearchRequest(include_ponds=True, smart_list_id=74))
+    )["people"][0]["id"] == 2
+    assert stub.people_search_requests[-1].assigned_user_id is None
+    assert stub.people_search_requests[-1].smart_list_id == 74
     assert (await adapter.get_person(GetPersonToolInput(person_id=3)))["id"] == 3
     assert (await adapter.create_person(CreatePersonRequest(first_name="Tom")))["id"] == 3
     assert (await adapter.update_person(UpdatePersonToolInput(person_id=4)))["id"] == 4
@@ -2403,6 +2417,15 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         )
     )["emEventIds"] == [193928, 193929]
     assert (await adapter.list_deals(DealListRequest()))["deals"][0]["id"] == 8
+    assert (
+        await adapter.list_active_deals_for_person(
+            ListActiveDealsForPersonToolInput(person_id=42)
+        )
+    )["deals"][0]["id"] == 8
+    assert stub.deal_list_requests[-1].person_id == 42
+    assert stub.deal_list_requests[-1].status == "Active"
+    assert stub.deal_list_requests[-1].include_archived is False
+    assert stub.deal_list_requests[-1].include_deleted is False
     assert (await adapter.get_deal(GetDealToolInput(deal_id=9)))["id"] == 9
     assert (
         await adapter.create_deal(
@@ -2596,6 +2619,19 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         "id"
     ] == 13
     assert (await adapter.list_tasks(TaskListRequest()))["tasks"][0]["id"] == 17
+    assert (
+        await adapter.list_my_overdue_tasks(ListMyTaskIntentToolInput(limit=25))
+    )["tasks"][0]["id"] == 17
+    assert stub.task_list_requests[-1].assigned_user_id == 1
+    assert stub.task_list_requests[-1].due == "overdue"
+    assert stub.task_list_requests[-1].is_completed is False
+    assert stub.task_list_requests[-1].limit == 25
+    assert (
+        await adapter.list_my_tasks_due_today(ListMyTaskIntentToolInput())
+    )["tasks"][0]["id"] == 17
+    assert stub.task_list_requests[-1].assigned_user_id == 1
+    assert stub.task_list_requests[-1].due == "today"
+    assert stub.task_list_requests[-1].is_completed is False
     assert (await adapter.get_task(GetTaskToolInput(task_id=18)))["id"] == 18
     assert (
         await adapter.create_task(CreateTaskRequest(person_id=1, assigned_to="Data", type="Email"))
@@ -2811,8 +2847,43 @@ async def test_search_people_requires_identity_id_for_default_scope() -> None:
 
     with pytest.raises(RuntimeError, match="Authenticated Follow Up Boss user id is unavailable"):
         await adapter.search_people(PeopleSearchRequest())
+    with pytest.raises(RuntimeError, match="Authenticated Follow Up Boss user id is unavailable"):
+        await adapter.get_latest_lead(GetLatestLeadToolInput())
+    with pytest.raises(RuntimeError, match="Authenticated Follow Up Boss user id is unavailable"):
+        await adapter.list_my_overdue_tasks(ListMyTaskIntentToolInput())
 
     assert stub.people_search_requests == []
+    assert stub.task_list_requests == []
+
+
+@pytest.mark.asyncio
+async def test_latest_lead_returns_none_when_owned_scope_is_empty() -> None:
+    """Latest-lead helper should return an explicit null person for empty owned results."""
+    stub = StubBundle()
+
+    async def empty_people_search(request: PeopleSearchRequest) -> PageResult[PersonRecord]:
+        """Record the scoped request and return an empty people page."""
+        stub.people_search_requests.append(request)
+        return PageResult(
+            items=[],
+            metadata=PaginationMetadata(
+                count=0,
+                limit=1,
+                next_token=None,
+                next_link=None,
+                offset=0,
+                total=0,
+            ),
+        )
+
+    services = replace(stub.bundle, people=_service_stub(search_people=empty_people_search))
+    adapter = FollowUpBossToolAdapter(services)
+
+    result = await adapter.get_latest_lead(GetLatestLeadToolInput())
+
+    assert result["person"] is None
+    assert stub.people_search_requests[-1].assigned_user_id == 1
+    assert stub.people_search_requests[-1].limit == 1
 
 
 class QueueClient:
@@ -3264,6 +3335,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                     ],
                 },
                 {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "deals": [{"id": 40}]},
+                {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "deals": [{"id": 40}]},
                 {"id": 41, "name": "Buyer contract"},
                 {"id": 42, "name": "New deal"},
                 {"id": 43, "name": "Updated deal"},
@@ -3372,6 +3444,10 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                 {"id": 14, "personId": 2, "phone": "555-0000", "userName": "Data"},
                 {"id": 15, "personId": 2, "phone": "555-0000", "userName": "Data"},
                 {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "tasks": [{"id": 16}]},
+                {"id": 1},
+                {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "tasks": [{"id": 16}]},
+                {"id": 1},
+                {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "tasks": [{"id": 16}]},
                 {"id": 17, "personId": 2, "assignedTo": "Data", "type": "Call"},
                 {"id": 18, "personId": 2, "assignedTo": "Data", "type": "Email"},
                 {"id": 19, "personId": 2, "assignedTo": "Data", "type": "Text"},
@@ -3470,6 +3546,28 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     listed_tools = await server.list_tools()
     tool_names = sorted(tool.name for tool in listed_tools)
     tools = {tool.name: tool for tool in listed_tools}
+    search_people_properties = tools["followupboss_search_people"].inputSchema.get("properties", {})
+    assert isinstance(search_people_properties, dict)
+    assert "smart_list_id" in search_people_properties
+    search_people_description = tools["followupboss_search_people"].description
+    assert "Do not use this broad search for 'my latest lead'" in search_people_description
+    assert "use followupboss_get_latest_lead" in search_people_description
+    latest_lead_description = tools["followupboss_get_latest_lead"].description
+    assert "Resolves the authenticated user internally" in latest_lead_description
+    list_tasks_description = tools["followupboss_list_tasks"].description
+    assert "Use this broad list only when the request provides explicit task filters" in (
+        list_tasks_description
+    )
+    assert "followupboss_list_my_overdue_tasks" in list_tasks_description
+    assert "followupboss_list_my_tasks_due_today" in list_tasks_description
+    overdue_tasks_description = tools["followupboss_list_my_overdue_tasks"].description
+    assert "forces incomplete overdue task scope" in overdue_tasks_description
+    today_tasks_description = tools["followupboss_list_my_tasks_due_today"].description
+    assert "forces incomplete due-today task scope" in today_tasks_description
+    assert "explicit person_id" in tools["followupboss_update_person"].description
+    assert "explicit person_id" in tools["followupboss_delete_person"].description
+    assert "explicit task_id" in tools["followupboss_update_task"].description
+    assert "explicit task_id" in tools["followupboss_delete_task"].description
     assert tool_names == [
         "followupboss_add_inbox_app_message",
         "followupboss_add_inbox_app_note",
@@ -3561,6 +3659,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_install_inbox_app",
         "followupboss_list_action_plan_people",
         "followupboss_list_action_plans",
+        "followupboss_list_active_deals_for_person",
         "followupboss_list_appointment_outcomes",
         "followupboss_list_appointment_types",
         "followupboss_list_appointments",
@@ -3575,6 +3674,8 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_list_groups",
         "followupboss_list_inbox_app_installations",
         "followupboss_list_inbox_app_participants",
+        "followupboss_list_my_overdue_tasks",
+        "followupboss_list_my_tasks_due_today",
         "followupboss_list_people_relationships",
         "followupboss_list_pipelines",
         "followupboss_list_ponds",
@@ -3646,6 +3747,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
             "followupboss_search_people",
             email="a@example.com",
             include_ponds=True,
+            smart_list_id=74,
         )
     )["people"][0]["id"] == 2
     assert (
@@ -4066,6 +4168,14 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
             "followupboss_list_deals",
         )
     )["deals"][0]["id"] == 40
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_active_deals_for_person",
+            2,
+        )
+    )["deals"][0]["id"] == 40
     assert (await _call_public_tool(server, tools, "followupboss_get_deal", 41))["id"] == 41
     assert (
         await _call_public_tool(
@@ -4247,6 +4357,20 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
             server,
             tools,
             "followupboss_list_tasks",
+        )
+    )["tasks"][0]["id"] == 16
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_my_overdue_tasks",
+        )
+    )["tasks"][0]["id"] == 16
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_my_tasks_due_today",
         )
     )["tasks"][0]["id"] == 16
     assert (await _call_public_tool(server, tools, "followupboss_get_task", 17))["id"] == 17
