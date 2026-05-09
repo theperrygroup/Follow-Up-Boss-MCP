@@ -11,7 +11,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from pydantic import AnyUrl, TypeAdapter
@@ -2042,6 +2042,12 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     ] == 2
     assert stub.people_search_requests[-1].assigned_user_id is None
     assert stub.people_search_requests[-1].include_ponds is True
+    assert (await adapter.search_people(PeopleSearchRequest(smart_list_id=74)))["people"][0][
+        "id"
+    ] == 2
+    assert stub.people_search_requests[-1].assigned_user_id is None
+    assert stub.people_search_requests[-1].include_ponds is None
+    assert stub.people_search_requests[-1].smart_list_id == 74
     assert (
         await adapter.search_people(PeopleSearchRequest(include_ponds=True, smart_list_id=74))
     )["people"][0]["id"] == 2
@@ -3549,25 +3555,25 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     search_people_properties = tools["followupboss_search_people"].inputSchema.get("properties", {})
     assert isinstance(search_people_properties, dict)
     assert "smart_list_id" in search_people_properties
-    search_people_description = tools["followupboss_search_people"].description
+    search_people_description = cast("str", tools["followupboss_search_people"].description)
     assert "Do not use this broad search for 'my latest lead'" in search_people_description
     assert "use followupboss_get_latest_lead" in search_people_description
-    latest_lead_description = tools["followupboss_get_latest_lead"].description
+    latest_lead_description = cast("str", tools["followupboss_get_latest_lead"].description)
     assert "Resolves the authenticated user internally" in latest_lead_description
-    list_tasks_description = tools["followupboss_list_tasks"].description
+    list_tasks_description = cast("str", tools["followupboss_list_tasks"].description)
     assert "Use this broad list only when the request provides explicit task filters" in (
         list_tasks_description
     )
     assert "followupboss_list_my_overdue_tasks" in list_tasks_description
     assert "followupboss_list_my_tasks_due_today" in list_tasks_description
-    overdue_tasks_description = tools["followupboss_list_my_overdue_tasks"].description
+    overdue_tasks_description = cast("str", tools["followupboss_list_my_overdue_tasks"].description)
     assert "forces incomplete overdue task scope" in overdue_tasks_description
-    today_tasks_description = tools["followupboss_list_my_tasks_due_today"].description
+    today_tasks_description = cast("str", tools["followupboss_list_my_tasks_due_today"].description)
     assert "forces incomplete due-today task scope" in today_tasks_description
-    assert "explicit person_id" in tools["followupboss_update_person"].description
-    assert "explicit person_id" in tools["followupboss_delete_person"].description
-    assert "explicit task_id" in tools["followupboss_update_task"].description
-    assert "explicit task_id" in tools["followupboss_delete_task"].description
+    assert "explicit person_id" in cast("str", tools["followupboss_update_person"].description)
+    assert "explicit person_id" in cast("str", tools["followupboss_delete_person"].description)
+    assert "explicit task_id" in cast("str", tools["followupboss_update_task"].description)
+    assert "explicit task_id" in cast("str", tools["followupboss_delete_task"].description)
     assert tool_names == [
         "followupboss_add_inbox_app_message",
         "followupboss_add_inbox_app_note",
