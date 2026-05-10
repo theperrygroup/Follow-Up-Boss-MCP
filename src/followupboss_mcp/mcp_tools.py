@@ -1003,7 +1003,7 @@ class FollowUpBossToolAdapter:
             A structured payload containing pagination metadata and the single newest
             assigned person, or ``None`` when no assigned leads are available.
         """
-        request = PeopleSearchRequest(fields=tool_input.fields, limit=1)
+        request = PeopleSearchRequest(fields=tool_input.fields, limit=1, sort="-created")
         try:
             page = await self._execute_with_services(
                 lambda: self._search_people_with_default_scope(request)

@@ -2037,6 +2037,7 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert (await adapter.get_latest_lead(GetLatestLeadToolInput()))["person"]["id"] == 2
     assert stub.people_search_requests[-1].assigned_user_id == 1
     assert stub.people_search_requests[-1].limit == 1
+    assert stub.people_search_requests[-1].sort == "-created"
     assert (await adapter.search_people(PeopleSearchRequest(include_ponds=True)))["people"][0][
         "id"
     ] == 2
@@ -2890,6 +2891,7 @@ async def test_latest_lead_returns_none_when_owned_scope_is_empty() -> None:
     assert result["person"] is None
     assert stub.people_search_requests[-1].assigned_user_id == 1
     assert stub.people_search_requests[-1].limit == 1
+    assert stub.people_search_requests[-1].sort == "-created"
 
 
 class QueueClient:
