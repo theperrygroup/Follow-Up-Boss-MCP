@@ -31,7 +31,7 @@ jobs:
       HOSTED_RESOURCE_SERVER_URL: ${{ vars.HOSTED_RESOURCE_SERVER_URL }}
       LOG_GROUP_NAME: ${{ vars.LOG_GROUP_NAME }}
       SENTRY_DSN: ${{ vars.SENTRY_DSN }}
-      SENTRY_ENVIRONMENT: ${{ vars.SENTRY_ENVIRONMENT }}
+      SENTRY_ENVIRONMENT: ${{ vars.SENTRY_ENVIRONMENT || 'staging' }}
       SENTRY_RELEASE: followupboss-mcp@${{ github.sha }}
       SENTRY_TRACES_SAMPLE_RATE: ${{ vars.SENTRY_TRACES_SAMPLE_RATE }}
       TENANT_SECRET_PREFIX: ${{ vars.TENANT_SECRET_PREFIX }}
@@ -125,7 +125,7 @@ jobs:
       HOSTED_RESOURCE_SERVER_URL: ${{ vars.HOSTED_RESOURCE_SERVER_URL }}
       LOG_GROUP_NAME: ${{ vars.LOG_GROUP_NAME }}
       SENTRY_DSN: ${{ vars.SENTRY_DSN }}
-      SENTRY_ENVIRONMENT: ${{ vars.SENTRY_ENVIRONMENT }}
+      SENTRY_ENVIRONMENT: ${{ vars.SENTRY_ENVIRONMENT || 'staging' }}
       SENTRY_RELEASE: followupboss-mcp@${{ github.sha }}
       SENTRY_TRACES_SAMPLE_RATE: ${{ vars.SENTRY_TRACES_SAMPLE_RATE }}
       TENANT_SECRET_PREFIX: ${{ vars.TENANT_SECRET_PREFIX }}
