@@ -130,6 +130,12 @@ class SentrySettings(BaseSettings):
         """Normalize optional text settings."""
         return _normalize_optional_string(value)
 
+    @field_validator("traces_sample_rate", "profiles_sample_rate", mode="before")
+    @classmethod
+    def _normalize_optional_sample_rate(cls, value: object) -> object:
+        """Normalize optional sample-rate settings before float validation."""
+        return _normalize_optional_string(value)
+
     @field_validator("environment")
     @classmethod
     def _validate_environment(cls, value: str) -> str:

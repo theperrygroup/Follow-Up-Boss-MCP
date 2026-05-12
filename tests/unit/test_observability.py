@@ -37,10 +37,19 @@ def test_sentry_settings_normalize_and_validate() -> None:
     assert settings.enable_logs is True
     assert settings.debug is True
 
-    disabled_settings = SentrySettings.model_validate({"dsn": " ", "release": " "})
+    disabled_settings = SentrySettings.model_validate(
+        {
+            "dsn": " ",
+            "release": " ",
+            "traces_sample_rate": " ",
+            "profiles_sample_rate": "",
+        }
+    )
     assert disabled_settings.enabled is False
     assert disabled_settings.dsn is None
     assert disabled_settings.release is None
+    assert disabled_settings.traces_sample_rate is None
+    assert disabled_settings.profiles_sample_rate is None
 
     with pytest.raises(ValidationError, match="environment must not be empty"):
         SentrySettings.model_validate({"environment": " "})
@@ -115,6 +124,33 @@ def test_configure_sentry_skips_initialization_without_dsn(
     monkeypatch.setattr(observability, "_load_sentry_sdk", fail_load_sentry_sdk)
 
     enabled = configure_sentry(SentrySettings.model_validate({}), entrypoint="followupboss-mcp")
+
+    assert enabled is False
+    assert observability._SENTRY_INITIALIZED is False
+
+
+def test_configure_sentry_ignores_blank_optional_rates_without_dsn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Disabled Sentry startup should tolerate blank optional rate placeholders."""
+    observability._SENTRY_INITIALIZED = False
+    for key in (
+        "SENTRY_DSN",
+        "SENTRY_RELEASE",
+        "SENTRY_TRACES_SAMPLE_RATE",
+        "SENTRY_PROFILES_SAMPLE_RATE",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("SENTRY_TRACES_SAMPLE_RATE", "")
+    monkeypatch.setenv("SENTRY_PROFILES_SAMPLE_RATE", "")
+
+    def fail_load_sentry_sdk() -> object:
+        """Fail if disabled Sentry configuration imports the SDK."""
+        raise AssertionError("Sentry SDK should not be imported without a DSN.")
+
+    monkeypatch.setattr(observability, "_load_sentry_sdk", fail_load_sentry_sdk)
+
+    enabled = configure_sentry(entrypoint="followupboss-mcp")
 
     assert enabled is False
     assert observability._SENTRY_INITIALIZED is False
