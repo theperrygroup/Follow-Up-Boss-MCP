@@ -18,7 +18,11 @@ from pydantic import AnyUrl, TypeAdapter
 
 from followupboss_mcp.cli import build_parser, main
 from followupboss_mcp.config import FollowUpBossSettings
-from followupboss_mcp.errors import FollowUpBossRateLimitError, FollowUpBossValidationError
+from followupboss_mcp.errors import (
+    FollowUpBossError,
+    FollowUpBossRateLimitError,
+    FollowUpBossValidationError,
+)
 from followupboss_mcp.mcp_server import create_server
 from followupboss_mcp.mcp_tools import (
     AddInboxAppMessageToolInput,
@@ -2890,6 +2894,22 @@ async def test_latest_lead_returns_none_when_owned_scope_is_empty() -> None:
     assert stub.people_search_requests[-1].assigned_user_id == 1
     assert stub.people_search_requests[-1].limit == 1
     assert stub.people_search_requests[-1].sort == "-created"
+
+
+@pytest.mark.asyncio
+async def test_latest_lead_returns_safe_runtime_error_for_follow_up_boss_failures() -> None:
+    """Latest-lead helper should surface Follow Up Boss failures as safe runtime errors."""
+    stub = StubBundle()
+
+    async def failing_people_search(_: PeopleSearchRequest) -> PageResult[PersonRecord]:
+        """Raise a representative Follow Up Boss service failure."""
+        raise FollowUpBossError("upstream exploded")
+
+    services = replace(stub.bundle, people=_service_stub(search_people=failing_people_search))
+    adapter = FollowUpBossToolAdapter(services)
+
+    with pytest.raises(RuntimeError, match="upstream exploded"):
+        await adapter.get_latest_lead(GetLatestLeadToolInput())
 
 
 class QueueClient:

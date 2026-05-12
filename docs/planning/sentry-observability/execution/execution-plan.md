@@ -42,8 +42,6 @@ landed, what is blocked, and what still remains open.
 
 - Sentry DSN, organization/project, environment names, release naming, and alert
   destination are not known yet.
-- Full lint, type, test, coverage, and docs validation still needs to run after
-  this implementation slice.
 - Staged Sentry smoke validation has not run.
 
 ## 4. Completed Planning Or Landed Proof
@@ -78,19 +76,21 @@ landed, what is blocked, and what still remains open.
 - Result:
   - Sentry is disabled by default, enabled by `SENTRY_DSN`, initialized lazily,
     and filtered through a privacy-safe `before_send` hook.
+  - Format, lint, type, docs, full pytest, and 100% coverage gates pass for the
+    implementation slice.
 
 ## 5. Current Work Queue
 
 | Task | Status | Why it is still open |
 | --- | --- | --- |
 | Confirm Sentry project and SDK guidance | In progress | SDK guidance was read; real DSN/project and alert destination remain unknown. |
-| Add privacy-safe runtime instrumentation | In progress | Core code and focused tests landed; full validation is still pending. |
+| Add privacy-safe runtime instrumentation | Checked in | Core code, focused tests, and full local validation landed. |
 | Wire local and hosted entrypoints | Checked in | Bootstrap paths call the Sentry initializer with entrypoint and transport tags. |
 | Update deployment and operator docs | In progress | ECS, README, hosted guide, and workflow metadata are updated; alert ownership remains open. |
-| Run automated and staged validation | In progress | Focused tests pass; full gates and staged Sentry smoke remain open. |
+| Run automated and staged validation | In progress | Local automated gates pass; staged Sentry smoke remains open. |
 
 ## 6. Current Conclusion
 
-Sentry observability has core runtime instrumentation checked in, but it is not
-ready for runtime rollout until full validation, Sentry project configuration,
-alert ownership, and staged smoke evidence are complete.
+Sentry observability has core runtime instrumentation checked in with local
+automated validation, but it is not ready for runtime rollout until Sentry
+project configuration, alert ownership, and staged smoke evidence are complete.

@@ -22,14 +22,13 @@ Snapshot date: `2026-05-10`
 | SDK-specific guidance | Checked in | The Sentry Python SDK setup guidance and current Sentry Python options docs were read before implementation. |
 | Runtime instrumentation | In progress | Dependency, settings, initializer, sanitizer, bootstrap wiring, and focused tests are checked in; staged Sentry smoke is still open. |
 | Deployment operations | In progress | ECS, GitHub Actions, hosted docs, and release metadata are wired; real Sentry project and alert settings remain open. |
-| Validation evidence | In progress | Focused automated tests pass; full project gates and staged Sentry validation remain open. |
+| Validation evidence | In progress | Format, lint, type, docs, pytest, and 100% coverage gates pass; staged Sentry validation remains open. |
 
 ## Broad Blockers Before Sentry Rollout
 
 - Confirm the Sentry project DSN and target environment names.
 - Decide whether Sentry alert configuration will be manual operator setup or
   represented in a checked-in artifact.
-- Run full lint, type, test, coverage, and docs validation.
 - Run staged Sentry smoke validation with a sanitized intentional exception.
 
 ## Focused Tracker Snapshot

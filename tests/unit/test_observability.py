@@ -184,3 +184,41 @@ def test_configure_sentry_initializes_once_and_sets_safe_options(
         ("entrypoint", "followupboss-mcp-hosted"),
         ("transport", "streamable-http"),
     ]
+
+
+def test_configure_sentry_allows_missing_transport_tag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sentry initialization should allow callers without a transport tag."""
+    observability._SENTRY_INITIALIZED = False
+    tag_calls: list[tuple[str, str]] = []
+
+    class FakeSentrySdk:
+        """Sentry SDK stand-in for no-transport initialization."""
+
+        def init(self, **kwargs: object) -> object:
+            """Accept initialization options."""
+            return kwargs
+
+        def set_tag(self, key: str, value: str) -> None:
+            """Record one global tag call."""
+            tag_calls.append((key, value))
+
+    monkeypatch.setattr(observability, "_load_sentry_sdk", FakeSentrySdk)
+
+    assert (
+        configure_sentry(
+            SentrySettings.model_validate({"dsn": "https://public@example.com/1"}),
+            entrypoint="custom-entrypoint",
+        )
+        is True
+    )
+    assert tag_calls == [("entrypoint", "custom-entrypoint")]
+
+
+def test_load_sentry_sdk_imports_real_module() -> None:
+    """The lazy loader should import the installed Sentry SDK."""
+    loaded_sdk = observability._load_sentry_sdk()
+
+    assert callable(loaded_sdk.init)
+    assert callable(loaded_sdk.set_tag)

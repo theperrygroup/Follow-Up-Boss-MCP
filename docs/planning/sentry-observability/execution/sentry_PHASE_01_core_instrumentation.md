@@ -19,6 +19,7 @@ focused automated tests.
 | Startup performance | `src/followupboss_mcp/__init__.py` lazily loads hosted reference exports so local MCP subprocess startup does not import the hosted PostgreSQL stack unnecessarily. |
 | Tests | `tests/unit/test_observability.py`, `tests/unit/test_auth_config_logging.py`, and focused MCP/server tests cover settings, sanitizer, initialization, exports, and startup behavior. |
 | Deployment docs | `README.md`, `docs/hosted-deployment-guide.md`, `deploy/ecs/README.md`, `deploy/ecs/task-definition.template.json`, and `.github/workflows/deploy-staging.yml` describe or wire Sentry runtime variables. |
+| Validation | `ruff format --check`, `ruff check`, uncached `mypy`, docs validation, full pytest, and 100% branch coverage pass locally. |
 
 ## Behavior Covered
 

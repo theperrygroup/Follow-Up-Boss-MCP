@@ -25,8 +25,8 @@ The current working tree contains these useful anchors:
 - hosted deployment docs in `docs/hosted-deployment-guide.md`
 
 Core Sentry dependency, settings, initialization, sanitizer, bootstrap wiring,
-and hosted deployment variables are now checked in. Real Sentry project
-configuration, alert ownership, full validation, and staged smoke evidence
+hosted deployment variables, and local automated validation are now checked in.
+Real Sentry project configuration, alert ownership, and staged smoke evidence
 remain open.
 
 ## 3. Target Contract
@@ -143,11 +143,10 @@ Acceptance criteria:
 
 ## 6. Next Slice
 
-The next implementation slice should be validation and rollout proof:
+The next implementation slice should be rollout proof:
 
-1. Run full lint, type, docs, tests, and coverage gates.
-2. Confirm the real Sentry project DSN, environment naming, and alert
+1. Confirm the real Sentry project DSN, environment naming, and alert
    destination.
-3. Add or document alert ownership and triage expectations.
-4. Run a staged sanitized exception smoke with `SENTRY_DSN` configured.
-5. Refresh the focused trackers and execution ledger with validation evidence.
+2. Add or document alert ownership and triage expectations.
+3. Run a staged sanitized exception smoke with `SENTRY_DSN` configured.
+4. Refresh the focused trackers and execution ledger with validation evidence.

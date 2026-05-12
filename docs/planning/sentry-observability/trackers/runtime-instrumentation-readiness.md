@@ -37,7 +37,7 @@ Sentry project configuration and staged smoke validation remain open.
   request-time failures without writing MCP diagnostics to stdout.
 - [x] Tests cover disabled initialization, configured initialization, sanitizer
   behavior, and at least one bootstrap call path.
-- [ ] `ruff`, `mypy`, `pytest`, and coverage remain green after implementation.
+- [x] `ruff`, `mypy`, `pytest`, and coverage remain green after implementation.
 
 ## Open Questions
 
@@ -51,6 +51,4 @@ Sentry project configuration and staged smoke validation remain open.
 ## Current Blockers
 
 - The DSN and environment naming convention have not been chosen.
-- Full lint, type, test, and coverage validation still needs to run after the
-  docs sync.
 - Staged Sentry smoke validation still needs a real Sentry project.

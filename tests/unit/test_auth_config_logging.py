@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import base64
+import importlib
 import io
 import logging
+from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
@@ -72,6 +74,25 @@ def test_package_exports() -> None:
     assert "get_hosted_authenticated_tenant" in followupboss_mcp.__all__
     assert "get_hosted_verified_identity" in followupboss_mcp.__all__
     assert "hash_hosted_bearer_token" in followupboss_mcp.__all__
+
+
+def test_package_lazy_hosted_reference_exports(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hosted reference exports should load lazily from the package root."""
+    monkeypatch.delattr(followupboss_mcp, "hash_hosted_bearer_token", raising=False)
+
+    def fake_import_module(module_name: str) -> SimpleNamespace:
+        """Return a hosted-reference stand-in for lazy export resolution."""
+        assert module_name == "followupboss_mcp.hosted_reference"
+        return SimpleNamespace(hash_hosted_bearer_token=lambda token: f"hashed:{token}")
+
+    monkeypatch.setattr(importlib, "import_module", fake_import_module)
+
+    resolved = followupboss_mcp.__getattr__("hash_hosted_bearer_token")
+
+    assert resolved("token") == "hashed:token"
+    assert followupboss_mcp.hash_hosted_bearer_token("other") == "hashed:other"
+    with pytest.raises(AttributeError, match="missing_export"):
+        followupboss_mcp.__getattr__("missing_export")
 
 
 def test_basic_auth_strategy_and_injection() -> None:
