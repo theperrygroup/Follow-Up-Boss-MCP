@@ -34,6 +34,10 @@ Before registering the task definition, replace the placeholders below:
 | `__IMAGE_URI__` | Full ECR image URI, including tag. |
 | `__LOG_GROUP_NAME__` | CloudWatch Logs group name for the ECS service. |
 | `__REDIS_URL_SECRET_ARN__` | Secrets Manager ARN whose secret string is the complete Redis URL. |
+| `__SENTRY_DSN__` | Sentry project DSN for hosted error monitoring. Leave empty to disable Sentry. |
+| `__SENTRY_ENVIRONMENT__` | Sentry environment name, such as `staging` or `production`. |
+| `__SENTRY_RELEASE__` | Sentry release identifier, usually package version plus Git SHA. |
+| `__SENTRY_TRACES_SAMPLE_RATE__` | Optional Sentry trace sample rate between `0.0` and `1.0`; leave empty to disable tracing. |
 | `__TASK_EXECUTION_ROLE_ARN__` | ECS task execution role ARN. |
 | `__TASK_ROLE_ARN__` | ECS task role ARN used by the app at runtime. |
 | `__TENANT_DATABASE_URL_SECRET_ARN__` | Secrets Manager ARN whose secret string is the complete PostgreSQL connection URL. |
@@ -149,8 +153,14 @@ variables:
 - `HOSTED_ISSUER_URL`
 - `HOSTED_RESOURCE_SERVER_URL`
 - `LOG_GROUP_NAME`
+- `SENTRY_DSN` (optional; omit or leave empty to disable Sentry)
+- `SENTRY_ENVIRONMENT` (optional; defaults to `staging` in the staging workflow)
+- `SENTRY_TRACES_SAMPLE_RATE` (optional; leave empty to disable tracing)
 - `TENANT_SECRET_PREFIX`
 - `TENANT_SECRET_REGION`
+
+The staging workflow sets `SENTRY_RELEASE` to `followupboss-mcp@${{ github.sha }}` when rendering
+the task definition.
 
 Set `FUB_OAUTH_ENABLED=true` only after configuring the hosted OAuth app. When OAuth is enabled,
 also configure these variables:

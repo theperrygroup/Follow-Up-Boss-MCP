@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Sequence
+from typing import cast
 
-from followupboss_mcp.config import FollowUpBossServerSettings, FollowUpBossSettings
+from followupboss_mcp.config import FollowUpBossServerSettings, FollowUpBossSettings, TransportMode
 from followupboss_mcp.mcp_server import create_server
+from followupboss_mcp.observability import configure_sentry
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -53,8 +55,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     server_settings = FollowUpBossServerSettings()
-    local_dev_settings = FollowUpBossSettings()
     command = args.command or server_settings.transport
+    configure_sentry(entrypoint="followupboss-mcp", transport=cast(TransportMode, command))
+    local_dev_settings = FollowUpBossSettings()
 
     if command == "stdio":
         server = create_server(

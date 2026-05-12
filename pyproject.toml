@@ -22,6 +22,7 @@ dependencies = [
   "pydantic-settings>=2.8.0,<3",
   "python-multipart>=0.0.26",
   "redis>=7.4.0",
+  "sentry-sdk>=2.59.0",
 ]
 
 [project.optional-dependencies]

@@ -183,7 +183,8 @@ or list calls when the intent is already clear.
 | `followupboss_update_email_campaign` | Update one email marketing campaign by ID. |
 | `followupboss_list_email_events` | List email marketing events. |
 | `followupboss_send_email_events` | Post batched email marketing events. |
-| `followupboss_list_deals` | List deals with documented filters and pagination metadata. |
+| `followupboss_list_deals` | List deals with documented filters and pagination metadata; use `followupboss_list_active_deals_for_person` for active deals tied to a specific lead/person. |
+| `followupboss_list_active_deals_for_person` | List active, non-archived deals for a specific person/lead by explicit `person_id`. |
 | `followupboss_get_deal` | Retrieve one deal by ID. |
 | `followupboss_create_deal` | Create a deal. |
 | `followupboss_update_deal` | Update one deal by ID. |

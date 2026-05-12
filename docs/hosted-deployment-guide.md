@@ -200,9 +200,20 @@ defaults:
 - `FOLLOWUPBOSS_BASE_URL`
 - `FOLLOWUPBOSS_TIMEOUT_SECONDS`
 - `FOLLOWUPBOSS_MAX_RETRIES`
+- `SENTRY_DSN`
+- `SENTRY_ENVIRONMENT`
+- `SENTRY_RELEASE`
+- `SENTRY_SAMPLE_RATE`
+- `SENTRY_TRACES_SAMPLE_RATE`
+- `SENTRY_PROFILES_SAMPLE_RATE`
+- `SENTRY_ENABLE_LOGS`
+- `SENTRY_DEBUG`
 
 These values remain global defaults for the hosted deployment. They are safe to share across
-tenants because they do not carry customer-specific Follow Up Boss credentials.
+tenants because they do not carry customer-specific Follow Up Boss credentials. `SENTRY_DSN`
+identifies the Sentry project and enables Sentry only when set; the runtime sanitizer still prevents
+Follow Up Boss secrets, authorization headers, tenant secret references, and customer payloads from
+being submitted.
 
 ### Reference Hosted Wrapper Settings
 
@@ -241,6 +252,15 @@ FOLLOWUPBOSS_LOG_LEVEL=INFO
 FOLLOWUPBOSS_BASE_URL=https://api.followupboss.com/v1
 FOLLOWUPBOSS_TIMEOUT_SECONDS=10
 FOLLOWUPBOSS_MAX_RETRIES=3
+
+SENTRY_DSN=https://public@example.ingest.sentry.io/project-id
+SENTRY_ENVIRONMENT=production
+SENTRY_RELEASE=followupboss-mcp@0.1.0+replace-with-git-sha
+SENTRY_SAMPLE_RATE=1.0
+SENTRY_TRACES_SAMPLE_RATE=
+SENTRY_PROFILES_SAMPLE_RATE=
+SENTRY_ENABLE_LOGS=false
+SENTRY_DEBUG=false
 
 FOLLOWUPBOSS_HOSTED_ISSUER_URL=https://portal.example.com
 FOLLOWUPBOSS_HOSTED_RESOURCE_SERVER_URL=https://mcp.example.com/mcp
@@ -632,6 +652,8 @@ Do not widen rollout until every check below passes:
 - logs show `hosted_auth_succeeded`, `tenant_resolution_succeeded`, and `upstream_credential_usage`
   for both tenants
 - logs do not show `hosted_rate_limit_backend_failed`
+- when `SENTRY_DSN` is configured, a sanitized staged exception appears in the expected Sentry
+  project, environment, and release without Follow Up Boss secrets or customer payloads
 - a no-downtime Follow Up Boss credential rotation succeeds for one tenant without impacting the
   other tenant
 - a hosted bearer-token rotation succeeds, and the revoked token fails closed on the next request
@@ -645,6 +667,7 @@ Use this table to capture rollout evidence:
 | Tenant B shared-endpoint smoke | | |
 | Cross-tenant fixture isolation | | |
 | Resource and prompt auth boundary | | |
+| Sentry sanitized exception smoke | | |
 | Tenant B credential rotation | | |
 | Tenant A bearer-token rotation | | |
 | Hosted rate-limit backend healthy | | |

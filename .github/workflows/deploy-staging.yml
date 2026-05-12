@@ -30,6 +30,10 @@ jobs:
       HOSTED_ISSUER_URL: ${{ vars.HOSTED_ISSUER_URL }}
       HOSTED_RESOURCE_SERVER_URL: ${{ vars.HOSTED_RESOURCE_SERVER_URL }}
       LOG_GROUP_NAME: ${{ vars.LOG_GROUP_NAME }}
+      SENTRY_DSN: ${{ vars.SENTRY_DSN }}
+      SENTRY_ENVIRONMENT: ${{ vars.SENTRY_ENVIRONMENT }}
+      SENTRY_RELEASE: followupboss-mcp@${{ github.sha }}
+      SENTRY_TRACES_SAMPLE_RATE: ${{ vars.SENTRY_TRACES_SAMPLE_RATE }}
       TENANT_SECRET_PREFIX: ${{ vars.TENANT_SECRET_PREFIX }}
       TENANT_SECRET_REGION: ${{ vars.TENANT_SECRET_REGION }}
       AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
@@ -120,6 +124,10 @@ jobs:
       HOSTED_ISSUER_URL: ${{ vars.HOSTED_ISSUER_URL }}
       HOSTED_RESOURCE_SERVER_URL: ${{ vars.HOSTED_RESOURCE_SERVER_URL }}
       LOG_GROUP_NAME: ${{ vars.LOG_GROUP_NAME }}
+      SENTRY_DSN: ${{ vars.SENTRY_DSN }}
+      SENTRY_ENVIRONMENT: ${{ vars.SENTRY_ENVIRONMENT }}
+      SENTRY_RELEASE: followupboss-mcp@${{ github.sha }}
+      SENTRY_TRACES_SAMPLE_RATE: ${{ vars.SENTRY_TRACES_SAMPLE_RATE }}
       TENANT_SECRET_PREFIX: ${{ vars.TENANT_SECRET_PREFIX }}
       TENANT_SECRET_REGION: ${{ vars.TENANT_SECRET_REGION }}
       AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
@@ -220,6 +228,11 @@ jobs:
               "__IMAGE_URI__": os.environ["IMAGE_URI"],
               "__LOG_GROUP_NAME__": os.environ["LOG_GROUP_NAME"],
               "__REDIS_URL_SECRET_ARN__": os.environ["REDIS_URL_SECRET_ARN"],
+              "__SENTRY_DSN__": os.environ.get("SENTRY_DSN", ""),
+              "__SENTRY_ENVIRONMENT__": os.environ.get("SENTRY_ENVIRONMENT") or "staging",
+              "__SENTRY_RELEASE__": os.environ.get("SENTRY_RELEASE")
+              or f"followupboss-mcp@{os.environ['GITHUB_SHA']}",
+              "__SENTRY_TRACES_SAMPLE_RATE__": os.environ.get("SENTRY_TRACES_SAMPLE_RATE", ""),
               "__TASK_EXECUTION_ROLE_ARN__": os.environ["TASK_EXECUTION_ROLE_ARN"],
               "__TASK_ROLE_ARN__": os.environ["TASK_ROLE_ARN"],
               "__TENANT_DATABASE_URL_SECRET_ARN__": os.environ["TENANT_DATABASE_URL_SECRET_ARN"],

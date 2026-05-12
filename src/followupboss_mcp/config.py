@@ -45,6 +45,124 @@ def _settings_env_aliases(canonical_name: str, *legacy_names: str) -> AliasChoic
     return AliasChoices(canonical_name, *legacy_names)
 
 
+def _normalize_optional_string(value: object) -> object:
+    """Normalize optional string settings from environment variables.
+
+    Args:
+        value: The raw settings value supplied by pydantic-settings.
+
+    Returns:
+        `None` for blank strings, a stripped string for populated strings, or
+        the original value for pydantic to validate.
+    """
+    if isinstance(value, str):
+        normalized = value.strip()
+        return normalized or None
+    return value
+
+
+def _validate_sample_rate(value: float | None, *, field_name: str) -> float | None:
+    """Validate an optional Sentry sample-rate value.
+
+    Args:
+        value: The candidate sample rate.
+        field_name: The public field name used in the validation error.
+
+    Returns:
+        The validated sample rate.
+
+    Raises:
+        ValueError: If the value is outside Sentry's accepted `0.0` to `1.0`
+            range.
+    """
+    if value is None:
+        return None
+    if value < 0 or value > 1:
+        raise ValueError(f"{field_name} must be between 0.0 and 1.0.")
+    return value
+
+
+class SentrySettings(BaseSettings):
+    """Environment-backed Sentry runtime settings."""
+
+    model_config = SettingsConfigDict(
+        case_sensitive=False,
+        extra="ignore",
+        populate_by_name=True,
+    )
+
+    dsn: str | None = Field(
+        default=None,
+        validation_alias=_settings_env_aliases("SENTRY_DSN"),
+    )
+    environment: str = Field(
+        default="local",
+        validation_alias=_settings_env_aliases("SENTRY_ENVIRONMENT"),
+    )
+    release: str | None = Field(
+        default=None,
+        validation_alias=_settings_env_aliases("SENTRY_RELEASE"),
+    )
+    error_sample_rate: float = Field(
+        default=1.0,
+        validation_alias=_settings_env_aliases("SENTRY_SAMPLE_RATE"),
+    )
+    traces_sample_rate: float | None = Field(
+        default=None,
+        validation_alias=_settings_env_aliases("SENTRY_TRACES_SAMPLE_RATE"),
+    )
+    profiles_sample_rate: float | None = Field(
+        default=None,
+        validation_alias=_settings_env_aliases("SENTRY_PROFILES_SAMPLE_RATE"),
+    )
+    enable_logs: bool = Field(
+        default=False,
+        validation_alias=_settings_env_aliases("SENTRY_ENABLE_LOGS"),
+    )
+    debug: bool = Field(
+        default=False,
+        validation_alias=_settings_env_aliases("SENTRY_DEBUG"),
+    )
+
+    @field_validator("dsn", "release", mode="before")
+    @classmethod
+    def _normalize_optional_text(cls, value: object) -> object:
+        """Normalize optional text settings."""
+        return _normalize_optional_string(value)
+
+    @field_validator("environment")
+    @classmethod
+    def _validate_environment(cls, value: str) -> str:
+        """Require a non-empty Sentry environment name."""
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("environment must not be empty.")
+        return normalized
+
+    @field_validator("error_sample_rate")
+    @classmethod
+    def _validate_error_sample_rate(cls, value: float) -> float:
+        """Validate the error-event sample rate."""
+        return cast(float, _validate_sample_rate(value, field_name="error_sample_rate"))
+
+    @field_validator("traces_sample_rate")
+    @classmethod
+    def _validate_traces_sample_rate(cls, value: float | None) -> float | None:
+        """Validate the optional trace sample rate."""
+        return _validate_sample_rate(value, field_name="traces_sample_rate")
+
+    @field_validator("profiles_sample_rate")
+    @classmethod
+    def _validate_profiles_sample_rate(cls, value: float | None) -> float | None:
+        """Validate the optional profiling sample rate."""
+        return _validate_sample_rate(value, field_name="profiles_sample_rate")
+
+    @property
+    def enabled(self) -> bool:
+        """Return whether Sentry should be initialized."""
+        return self.dsn is not None
+
+
 class FollowUpBossServerSettings(BaseSettings):
     """Environment-backed server-only runtime settings."""
 

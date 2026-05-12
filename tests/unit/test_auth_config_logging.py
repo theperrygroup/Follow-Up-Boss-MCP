@@ -61,6 +61,7 @@ def test_package_exports() -> None:
     assert "RedisHostedRateLimitBackend" in followupboss_mcp.__all__
     assert "ReferenceHostedSecretPayload" in followupboss_mcp.__all__
     assert "ResolvedTenantCredentials" in followupboss_mcp.__all__
+    assert "SentrySettings" in followupboss_mcp.__all__
     assert "TenantCredentialRecord" in followupboss_mcp.__all__
     assert "TenantCredentialStatus" in followupboss_mcp.__all__
     assert "TenantRecord" in followupboss_mcp.__all__

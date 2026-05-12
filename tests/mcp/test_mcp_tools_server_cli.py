@@ -2049,9 +2049,9 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert stub.people_search_requests[-1].assigned_user_id is None
     assert stub.people_search_requests[-1].include_ponds is None
     assert stub.people_search_requests[-1].smart_list_id == 74
-    assert (
-        await adapter.search_people(PeopleSearchRequest(include_ponds=True, smart_list_id=74))
-    )["people"][0]["id"] == 2
+    assert (await adapter.search_people(PeopleSearchRequest(include_ponds=True, smart_list_id=74)))[
+        "people"
+    ][0]["id"] == 2
     assert stub.people_search_requests[-1].assigned_user_id is None
     assert stub.people_search_requests[-1].smart_list_id == 74
     assert (await adapter.get_person(GetPersonToolInput(person_id=3)))["id"] == 3
@@ -2425,9 +2425,7 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     )["emEventIds"] == [193928, 193929]
     assert (await adapter.list_deals(DealListRequest()))["deals"][0]["id"] == 8
     assert (
-        await adapter.list_active_deals_for_person(
-            ListActiveDealsForPersonToolInput(person_id=42)
-        )
+        await adapter.list_active_deals_for_person(ListActiveDealsForPersonToolInput(person_id=42))
     )["deals"][0]["id"] == 8
     assert stub.deal_list_requests[-1].person_id == 42
     assert stub.deal_list_requests[-1].status == "Active"
@@ -2626,16 +2624,16 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         "id"
     ] == 13
     assert (await adapter.list_tasks(TaskListRequest()))["tasks"][0]["id"] == 17
-    assert (
-        await adapter.list_my_overdue_tasks(ListMyTaskIntentToolInput(limit=25))
-    )["tasks"][0]["id"] == 17
+    assert (await adapter.list_my_overdue_tasks(ListMyTaskIntentToolInput(limit=25)))["tasks"][0][
+        "id"
+    ] == 17
     assert stub.task_list_requests[-1].assigned_user_id == 1
     assert stub.task_list_requests[-1].due == "overdue"
     assert stub.task_list_requests[-1].is_completed is False
     assert stub.task_list_requests[-1].limit == 25
-    assert (
-        await adapter.list_my_tasks_due_today(ListMyTaskIntentToolInput())
-    )["tasks"][0]["id"] == 17
+    assert (await adapter.list_my_tasks_due_today(ListMyTaskIntentToolInput()))["tasks"][0][
+        "id"
+    ] == 17
     assert stub.task_list_requests[-1].assigned_user_id == 1
     assert stub.task_list_requests[-1].due == "today"
     assert stub.task_list_requests[-1].is_completed is False

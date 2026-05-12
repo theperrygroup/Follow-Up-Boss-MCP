@@ -66,6 +66,7 @@ from followupboss_mcp.hosted_rate_limits import (
     HostedRateLimitSettings,
 )
 from followupboss_mcp.mcp_server import create_server
+from followupboss_mcp.observability import configure_sentry
 from followupboss_mcp.tenant_store import (
     TenantCredentialRecord,
     TenantCredentialStatus,
@@ -1756,6 +1757,7 @@ def create_reference_hosted_server(
         hosted_rate_limiter=hosted_rate_limiter,
         hosted_oauth_application=oauth_application,
         managed_resources=(shared_postgres_pool,),
+        sentry_entrypoint="followupboss-mcp-hosted",
     )
 
 
@@ -1787,6 +1789,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     base_server_settings = FollowUpBossServerSettings()
+    configure_sentry(entrypoint="followupboss-mcp-hosted", transport="streamable-http")
     server_settings = base_server_settings.model_copy(
         update={
             "transport": "streamable-http",

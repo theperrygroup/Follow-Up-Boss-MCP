@@ -15,6 +15,7 @@ from followupboss_mcp.config import (
     FollowUpBossSettings,
     FollowUpBossTenantRuntimeDefaults,
     FollowUpBossTenantSettings,
+    SentrySettings,
 )
 from followupboss_mcp.hosted_auth import (
     HostedAuthSettings,
@@ -30,6 +31,7 @@ from followupboss_mcp.http_client import FollowUpBossAsyncClient, FollowUpBossCl
 from followupboss_mcp.logging import configure_logging
 from followupboss_mcp.mcp_registration import register_server_surface
 from followupboss_mcp.mcp_tools import FollowUpBossToolAdapter
+from followupboss_mcp.observability import configure_sentry
 from followupboss_mcp.tenant_runtime import (
     RequestScopedTenantServiceBundleResolver,
     ServiceBundleResolver,
@@ -182,6 +184,8 @@ def create_server(
     hosted_rate_limiter: HostedEndpointRateLimiter | None = None,
     hosted_oauth_application: HostedOAuthApplication | None = None,
     managed_resources: Sequence[AsyncManagedResource] = (),
+    sentry_settings: SentrySettings | None = None,
+    sentry_entrypoint: str = "followupboss-mcp",
     host: str | None = None,
     port: int | None = None,
     streamable_http_path: str | None = None,
@@ -216,6 +220,10 @@ def create_server(
             expose beside the hosted streamable HTTP endpoint.
         managed_resources: Optional async resources to open before serving and
             close during shutdown, such as shared hosted metadata pools.
+        sentry_settings: Optional Sentry settings used to initialize error
+            monitoring. When omitted, Sentry settings are loaded from
+            environment variables and disabled when no DSN is configured.
+        sentry_entrypoint: Stable runtime entrypoint tag for Sentry events.
         host: Optional explicit host override.
         port: Optional explicit port override.
         streamable_http_path: Optional explicit streamable HTTP path override.
@@ -232,6 +240,11 @@ def create_server(
     else:
         resolved_server_settings = FollowUpBossServerSettings()
 
+    configure_sentry(
+        sentry_settings,
+        entrypoint=sentry_entrypoint,
+        transport=resolved_server_settings.transport,
+    )
     resolved_logger = configure_logging(resolved_server_settings.log_level)
 
     resolved_mcp_auth_settings, resolved_token_verifier = _resolve_hosted_auth(

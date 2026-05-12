@@ -63,6 +63,26 @@
           "value": "3"
         },
         {
+          "name": "SENTRY_DSN",
+          "value": "__SENTRY_DSN__"
+        },
+        {
+          "name": "SENTRY_ENVIRONMENT",
+          "value": "__SENTRY_ENVIRONMENT__"
+        },
+        {
+          "name": "SENTRY_RELEASE",
+          "value": "__SENTRY_RELEASE__"
+        },
+        {
+          "name": "SENTRY_SAMPLE_RATE",
+          "value": "1.0"
+        },
+        {
+          "name": "SENTRY_TRACES_SAMPLE_RATE",
+          "value": "__SENTRY_TRACES_SAMPLE_RATE__"
+        },
+        {
           "name": "FOLLOWUPBOSS_HOSTED_ISSUER_URL",
           "value": "__HOSTED_ISSUER_URL__"
         },

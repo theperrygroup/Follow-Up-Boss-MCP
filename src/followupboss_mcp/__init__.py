@@ -1,10 +1,14 @@
 """Follow Up Boss MCP package."""
 
+import importlib
+from typing import Any
+
 from followupboss_mcp.config import (
     FollowUpBossServerSettings,
     FollowUpBossSettings,
     FollowUpBossTenantRuntimeDefaults,
     FollowUpBossTenantSettings,
+    SentrySettings,
 )
 from followupboss_mcp.hosted_auth import (
     DevelopmentHostedTokenRecord,
@@ -31,16 +35,6 @@ from followupboss_mcp.hosted_rate_limits import (
     HostedRateLimitSettings,
     InMemoryHostedRateLimitBackend,
 )
-from followupboss_mcp.hosted_reference import (
-    AwsSecretsManagerTenantSecretStore,
-    FollowUpBossHostedDeploymentSettings,
-    PostgresAwsTenantStore,
-    PostgresHostedTokenVerifier,
-    RedisHostedRateLimitBackend,
-    ReferenceHostedSecretPayload,
-    create_reference_hosted_server,
-    hash_hosted_bearer_token,
-)
 from followupboss_mcp.http_client import FollowUpBossAsyncClient
 from followupboss_mcp.tenant_store import (
     DevelopmentTenantStore,
@@ -51,6 +45,17 @@ from followupboss_mcp.tenant_store import (
     TenantStatus,
     TenantStore,
 )
+
+_HOSTED_REFERENCE_EXPORTS = {
+    "AwsSecretsManagerTenantSecretStore",
+    "FollowUpBossHostedDeploymentSettings",
+    "PostgresAwsTenantStore",
+    "PostgresHostedTokenVerifier",
+    "RedisHostedRateLimitBackend",
+    "ReferenceHostedSecretPayload",
+    "create_reference_hosted_server",
+    "hash_hosted_bearer_token",
+}
 
 __all__ = [
     "DevelopmentTenantStore",
@@ -82,6 +87,7 @@ __all__ = [
     "RedisHostedRateLimitBackend",
     "ReferenceHostedSecretPayload",
     "ResolvedTenantCredentials",
+    "SentrySettings",
     "TenantCredentialRecord",
     "TenantCredentialStatus",
     "TenantRecord",
@@ -95,3 +101,23 @@ __all__ = [
 ]
 
 __version__ = "0.1.0"
+
+
+def __getattr__(name: str) -> Any:
+    """Lazily load hosted reference exports when package users request them.
+
+    Args:
+        name: The package-level attribute name being resolved.
+
+    Returns:
+        The requested hosted reference export.
+
+    Raises:
+        AttributeError: If `name` is not a known package export.
+    """
+    if name in _HOSTED_REFERENCE_EXPORTS:
+        hosted_reference = importlib.import_module("followupboss_mcp.hosted_reference")
+        value = getattr(hosted_reference, name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

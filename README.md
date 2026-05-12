@@ -76,6 +76,14 @@ This installs the package plus the default development group defined in `pyproje
 | `FOLLOWUPBOSS_TIMEOUT_SECONDS` | No | `10.0` | Per-request timeout. Must be greater than zero. The legacy alias `FOLLOW_UP_BOSS_TIMEOUT_SECONDS` is also accepted. |
 | `FOLLOWUPBOSS_MAX_RETRIES` | No | `3` | Retry budget for retryable failures. Must be zero or greater. The legacy alias `FOLLOW_UP_BOSS_MAX_RETRIES` is also accepted. |
 | `FOLLOWUPBOSS_LOG_LEVEL` | No | `INFO` | One of `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. The legacy alias `FOLLOW_UP_BOSS_LOG_LEVEL` is also accepted. |
+| `SENTRY_DSN` | No | None | Enables Sentry error monitoring when set. The DSN identifies the Sentry project but does not grant access to project data. |
+| `SENTRY_ENVIRONMENT` | No | `local` | Sentry environment name, such as `local`, `staging`, or `production`. |
+| `SENTRY_RELEASE` | No | None | Sentry release identifier, such as `followupboss-mcp@0.1.0+<git-sha>`. |
+| `SENTRY_SAMPLE_RATE` | No | `1.0` | Error-event sample rate between `0.0` and `1.0`. |
+| `SENTRY_TRACES_SAMPLE_RATE` | No | None | Optional transaction trace sample rate between `0.0` and `1.0`; tracing is disabled when unset. |
+| `SENTRY_PROFILES_SAMPLE_RATE` | No | None | Optional profiling sample rate between `0.0` and `1.0`; profiling is disabled when unset. |
+| `SENTRY_ENABLE_LOGS` | No | `false` | Set `true` to send supported Python logging events to Sentry. |
+| `SENTRY_DEBUG` | No | `false` | Enables verbose Sentry SDK diagnostics; avoid in stdio MCP sessions unless debugging startup. |
 
 ## Development Commands
 
