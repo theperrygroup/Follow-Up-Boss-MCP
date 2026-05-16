@@ -325,7 +325,12 @@ def create_server(
             "automations, calls, custom fields, deals, email marketing, groups, inbox apps, "
             "people relationships, pipelines, ponds, reactions, smart lists, stages, tasks, "
             "team inboxes, teams, templates, text messages, threaded replies, timeframes, "
-            "notes, users, and webhook administration."
+            "notes, users, and webhook administration. If a user asks for notes associated "
+            "with a Follow Up Boss person or lead ID, do not search events or infer that "
+            "there are no notes. Follow Up Boss has not made note search by FUB person ID "
+            "available via the API; tell the user this and suggest asking "
+            "support@followupboss.com to make it possible to search for notes associated "
+            "with a FUB person ID."
         ),
         host=resolved_host,
         port=resolved_port,

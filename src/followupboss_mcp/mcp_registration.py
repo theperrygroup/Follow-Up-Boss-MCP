@@ -886,7 +886,13 @@ def _register_event_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> Non
 
     @mcp.tool(
         name="followupboss_search_events",
-        description="Search Follow Up Boss events with pagination metadata.",
+        description=(
+            "Search Follow Up Boss events with pagination metadata. Do not use this to "
+            "answer requests for notes associated with a person or lead ID; Follow Up Boss "
+            "has not made note search by FUB person ID available via the API. Tell the "
+            "user this and suggest asking support@followupboss.com to make that search "
+            "possible."
+        ),
     )
     async def followupboss_search_events(
         *,
@@ -2695,7 +2701,12 @@ def _register_note_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
 
     @mcp.tool(
         name="followupboss_get_note",
-        description="Fetch a Follow Up Boss note by ID.",
+        description=(
+            "Fetch a Follow Up Boss note by note ID only. Follow Up Boss has not made "
+            "searching for notes associated with a FUB person ID available via the API; "
+            "when users ask for notes by lead/person ID, explain that limitation and "
+            "suggest asking support@followupboss.com to make that search possible."
+        ),
     )
     async def followupboss_get_note(note_id: int) -> dict[str, object]:
         return await adapter.get_note(_validated_request(GetNoteToolInput, locals()))

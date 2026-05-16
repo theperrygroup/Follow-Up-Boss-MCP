@@ -3578,6 +3578,14 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     search_people_description = cast("str", tools["followupboss_search_people"].description)
     assert "Do not use this broad search for 'my latest lead'" in search_people_description
     assert "use followupboss_get_latest_lead" in search_people_description
+    search_events_description = cast("str", tools["followupboss_search_events"].description)
+    assert "Do not use this to answer requests for notes associated with a person" in (
+        search_events_description
+    )
+    assert "support@followupboss.com" in search_events_description
+    get_note_description = cast("str", tools["followupboss_get_note"].description)
+    assert "by note ID only" in get_note_description
+    assert "FUB person ID" in get_note_description
     latest_lead_description = cast("str", tools["followupboss_get_latest_lead"].description)
     assert "Resolves the authenticated user internally" in latest_lead_description
     list_tasks_description = cast("str", tools["followupboss_list_tasks"].description)

@@ -151,6 +151,7 @@ or list calls when the intent is already clear.
 | "my overdue tasks" or "what am I late on?" | `followupboss_list_my_overdue_tasks` | A broad task list without authenticated-user and incomplete-task scope. |
 | "my tasks today" or "what do I need to do today?" | `followupboss_list_my_tasks_due_today` | A broad task list without authenticated-user and incomplete-task scope. |
 | A named smart-list count | `followupboss_list_smart_lists`, then `followupboss_search_people` with `smart_list_id` and a small `limit` | Inferring the smart-list ID from the name alone. |
+| Notes for a lead/person ID | No tool; Follow Up Boss has not made note search by FUB person ID available via the API. Tell the user to ask `support@followupboss.com` to make that search possible. | `followupboss_search_events` or claiming no notes exist from an empty event search. |
 | Updating or deleting people and tasks | The explicit-ID mutation tool such as `followupboss_update_person`, `followupboss_delete_person`, `followupboss_update_task`, or `followupboss_delete_task` | Inferring IDs from vague natural-language intent. |
 
 | Tool | Purpose |
@@ -167,7 +168,7 @@ or list calls when the intent is already clear.
 | `followupboss_list_unclaimed_people` | List unclaimed leads available to the authenticated user. |
 | `followupboss_claim_person` | Claim an unclaimed lead by person ID. |
 | `followupboss_ignore_unclaimed_person` | Ignore an unclaimed lead offer by person ID and return a structured confirmation. |
-| `followupboss_search_events` | Search events with pagination metadata and supported event filters. |
+| `followupboss_search_events` | Search events with pagination metadata and supported event filters; do not use it as a substitute for note search by person ID. |
 | `followupboss_get_event` | Retrieve one event by ID. |
 | `followupboss_send_event` | Send a canonical `POST /events` lead or lead-activity payload. |
 | `followupboss_list_users` | List users with pagination metadata. |
@@ -303,7 +304,7 @@ or list calls when the intent is already clear.
 | `followupboss_update_text_message_template` | Update one text message template by ID. |
 | `followupboss_delete_text_message_template` | Delete one text message template by ID and return a structured confirmation. |
 | `followupboss_add_note` | Add a note to a person, optionally waiting for person visibility first. |
-| `followupboss_get_note` | Retrieve one note by ID. |
+| `followupboss_get_note` | Retrieve one note by note ID only; Follow Up Boss does not expose note search by FUB person ID through the API. |
 | `followupboss_update_note` | Update one note by ID. |
 | `followupboss_delete_note` | Delete one note by ID and return a structured confirmation. |
 | `followupboss_list_webhooks` | List registered webhooks with pagination metadata. |
