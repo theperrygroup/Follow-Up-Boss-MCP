@@ -332,6 +332,16 @@ def test_build_model_profile_run_metadata_suffixes_run_id() -> None:
             BattleTestTranscript(
                 scenario_id="TEST-MAY_ROUTE",
                 prompt="Do the thing",
+                selected_tool="safe_tool",
+            ),
+            True,
+            "",
+        ),
+        (
+            BattleTestGrade.MAY_ROUTE,
+            BattleTestTranscript(
+                scenario_id="TEST-MAY_ROUTE",
+                prompt="Do the thing",
                 clarified=True,
             ),
             True,
@@ -685,6 +695,33 @@ async def test_upcoming_task_oracle_matches_future_task_ids() -> None:
     assert services.tasks.requests[0].fields == ["id", "dueDate"]
     assert services.tasks.requests[0].is_completed is False
     assert services.tasks.requests[0].limit == 2
+
+
+@pytest.mark.asyncio
+async def test_route_only_pending_oracle_still_reports_incomplete_custom_scenario() -> None:
+    scenario = BattleTestScenario(
+        id="BT-READ-CUSTOM",
+        grade=BattleTestGrade.MUST_ROUTE,
+        prompt_variants=("Use a placeholder route",),
+        expected_mcp=ExpectedMcpRoute(allowed_tools=("safe_tool",)),
+        api_oracle=ApiOracleSpec(
+            kind=BattleTestOracleKind.ROUTE_ONLY_PENDING,
+            description="Custom pending oracle for fallback coverage.",
+        ),
+    )
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        selected_tool="safe_tool",
+        response={"ok": True},
+    )
+
+    evaluation = await ReadOnlyBattleTestOracle(_services()).evaluate(scenario, transcript)
+
+    assert evaluation.route_passed is True
+    assert evaluation.oracle_passed is False
+    assert evaluation.passed is False
+    assert "does not have an automated API oracle yet" in evaluation.failures[0]
 
 
 @pytest.mark.asyncio

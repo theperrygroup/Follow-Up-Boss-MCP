@@ -2888,6 +2888,10 @@ async def test_search_people_requires_identity_id_for_default_scope() -> None:
         await adapter.get_latest_lead(GetLatestLeadToolInput())
     with pytest.raises(RuntimeError, match="Authenticated Follow Up Boss user id is unavailable"):
         await adapter.list_my_overdue_tasks(ListMyTaskIntentToolInput())
+    with pytest.raises(RuntimeError, match="Authenticated Follow Up Boss user id is unavailable"):
+        await adapter.list_my_tasks_due_today(ListMyTaskIntentToolInput())
+    with pytest.raises(RuntimeError, match="Authenticated Follow Up Boss user id is unavailable"):
+        await adapter.list_my_upcoming_tasks(ListMyTaskIntentToolInput())
 
     assert stub.people_search_requests == []
     assert stub.task_list_requests == []
