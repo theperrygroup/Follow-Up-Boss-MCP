@@ -17,7 +17,10 @@ from followupboss_mcp.battle_test_ai import (
     BattleTestModelDecision,
     BattleTestModelSelector,
     OpenAiBattleTestModelSelector,
+    _anthropic_decision_from_response,
+    _conversation_prompt,
     _json_value,
+    _openai_decision_from_response,
     battle_test_ai_selectors_from_env,
     battle_test_selection_instructions,
     capture_ai_selected_conversation_transcript,
@@ -413,6 +416,26 @@ async def test_openai_selector_parses_multiple_function_calls_in_order() -> None
     await selector.aclose()
 
 
+def test_openai_single_decision_parser_preserves_existing_private_helper() -> None:
+    scenario = scenario_by_id("BT-READ-001")
+
+    decision = _openai_decision_from_response(
+        scenario=scenario,
+        prompt="Latest lead?",
+        payload={
+            "output": [
+                {
+                    "type": "function_call",
+                    "name": "followupboss_get_latest_lead",
+                    "arguments": "{}",
+                }
+            ]
+        },
+    )
+
+    assert decision.selected_tool == "followupboss_get_latest_lead"
+
+
 @pytest.mark.asyncio
 async def test_openai_selector_handles_unstructured_payload_and_non_object_response() -> None:
     responses = [
@@ -564,6 +587,26 @@ async def test_anthropic_selector_parses_multiple_tool_uses_in_order() -> None:
     assert decisions[0].arguments == {"limit": 3}
     assert decisions[1].arguments == {"fields": ["id", "dueDate"]}
     await selector.aclose()
+
+
+def test_anthropic_single_decision_parser_preserves_existing_private_helper() -> None:
+    scenario = scenario_by_id("BT-READ-003")
+
+    decision = _anthropic_decision_from_response(
+        scenario=scenario,
+        prompt="Today?",
+        payload={
+            "content": [
+                {
+                    "type": "tool_use",
+                    "name": "followupboss_list_my_tasks_due_today",
+                    "input": {},
+                }
+            ]
+        },
+    )
+
+    assert decision.selected_tool == "followupboss_list_my_tasks_due_today"
 
 
 @pytest.mark.asyncio
@@ -781,6 +824,85 @@ async def test_capture_ai_selected_multi_call_transcript_executes_ordered_calls(
 
 
 @pytest.mark.asyncio
+async def test_capture_ai_selected_multi_call_transcript_handles_missing_and_extra_calls() -> None:
+    conversation = read_only_battle_test_conversations(BattleTestConversationKind.MULTI_ASK)[0]
+    selector = StubMultiAiSelector(
+        decision_batches=[
+            (
+                BattleTestModelDecision(
+                    scenario_id=f"{conversation.id}-T01",
+                    prompt=conversation.prompt or "",
+                    assistant_message="I cannot search notes.",
+                    unsupported_explained=True,
+                ),
+                BattleTestModelDecision(
+                    scenario_id=f"{conversation.id}-EXTRA-01",
+                    prompt=conversation.prompt or "",
+                    selected_tool="followupboss_get_latest_lead",
+                ),
+                BattleTestModelDecision(
+                    scenario_id=f"{conversation.id}-EXTRA-02",
+                    prompt=conversation.prompt or "",
+                    selected_tool="followupboss_list_my_overdue_tasks",
+                ),
+            )
+        ]
+    )
+    client = StubMcpClient(results=[{"person": {"id": 42}}, RuntimeError("extra failed")])
+
+    transcript = await capture_ai_selected_multi_call_transcript(
+        selector=selector,
+        profile=battle_test_model_profile_by_id("gpt-5.5-low-reasoning"),
+        conversation=conversation,
+        mcp_client=client,
+    )
+
+    assert transcript.transcripts[0].unsupported_explained is True
+    assert transcript.transcripts[1].selected_tool == "followupboss_get_latest_lead"
+    assert transcript.transcripts[2].scenario_id == f"{conversation.id}-EXTRA-01"
+    assert transcript.transcripts[2].response == {"error": "extra failed"}
+
+
+@pytest.mark.asyncio
+async def test_capture_ai_selected_multi_call_transcript_records_missing_calls() -> None:
+    conversation = read_only_battle_test_conversations(BattleTestConversationKind.MULTI_ASK)[0]
+    selector = StubMultiAiSelector(
+        decision_batches=[
+            (
+                BattleTestModelDecision(
+                    scenario_id=f"{conversation.id}-T01",
+                    prompt=conversation.prompt or "",
+                    selected_tool="followupboss_get_latest_lead",
+                ),
+            )
+        ]
+    )
+
+    transcript = await capture_ai_selected_multi_call_transcript(
+        selector=selector,
+        profile=battle_test_model_profile_by_id("gpt-5.5-low-reasoning"),
+        conversation=conversation,
+        mcp_client=StubMcpClient(results=[{"person": {"id": 42}}]),
+    )
+
+    assert transcript.transcripts[1].selected_tool is None
+    assert transcript.transcripts[1].assistant_message is None
+
+
+@pytest.mark.asyncio
+async def test_capture_ai_selected_multi_call_transcript_rejects_multi_turn() -> None:
+    conversation = read_only_battle_test_conversations(BattleTestConversationKind.MULTI_TURN)[0]
+
+    with pytest.raises(ValueError, match="multi-ask conversation"):
+        await capture_ai_selected_multi_call_transcript(
+            selector=StubMultiAiSelector(decision_batches=[]),
+            profile=battle_test_model_profile_by_id("gpt-5.5-low-reasoning"),
+            conversation=conversation,
+            mcp_client=StubMcpClient(results=[]),
+        )
+
+
+@pytest.mark.asyncio
 async def test_capture_ai_selected_conversation_transcript_passes_history() -> None:
     conversation = read_only_battle_test_conversations(BattleTestConversationKind.MULTI_TURN)[0]
     selector = StubMultiAiSelector(
@@ -818,6 +940,55 @@ async def test_capture_ai_selected_conversation_transcript_passes_history() -> N
     assert selector.prompts[0] == "Show my latest lead"
     assert "Previous conversation context:" in selector.prompts[1]
     assert "called followupboss_get_latest_lead" in selector.prompts[1]
+
+
+@pytest.mark.asyncio
+async def test_capture_ai_selected_conversation_transcript_records_selection_error() -> None:
+    conversation = read_only_battle_test_conversations(BattleTestConversationKind.MULTI_TURN)[0]
+    selector = StubAiSelector(decisions=[TimeoutError("selector timed out")])
+
+    transcript = await capture_ai_selected_conversation_transcript(
+        selector=selector,
+        profile=battle_test_model_profile_by_id("gpt-5.5-low-reasoning"),
+        conversation=conversation.model_copy(update={"turns": conversation.turns[:1]}),
+        mcp_client=StubMcpClient(results=[]),
+    )
+
+    assert transcript.turn_transcripts[0].response == {
+        "error": "AI route selection failed: selector timed out"
+    }
+    assert transcript.turn_transcripts[0].assistant_message == "selector timed out"
+
+
+def test_conversation_prompt_renders_non_tool_history_branches() -> None:
+    prompt = _conversation_prompt(
+        "What next?",
+        (
+            BattleTestTranscript(
+                scenario_id="A",
+                prompt="Find notes",
+                unsupported_explained=True,
+            ),
+            BattleTestTranscript(
+                scenario_id="B",
+                prompt="Do it",
+                clarified=True,
+            ),
+            BattleTestTranscript(
+                scenario_id="C",
+                prompt="Hello",
+                assistant_message="I can help.",
+            ),
+            BattleTestTranscript(
+                scenario_id="D",
+                prompt="No visible action",
+            ),
+        ),
+    )
+
+    assert "explained unsupported capability" in prompt
+    assert "asked for clarification" in prompt
+    assert "Assistant: I can help." in prompt
 
 
 @pytest.mark.asyncio
@@ -904,6 +1075,57 @@ async def test_run_ai_model_profile_conversation_battle_tests_writes_chain_summa
     assert artifacts[0].summary.overall_passed is True
     assert artifacts[0].conversation_evaluations[0].passed is True
     assert (tmp_path / "chains-unit-gpt-5.5-low-reasoning.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_run_ai_model_profile_conversation_battle_tests_supports_chain_depth() -> None:
+    conversation = read_only_battle_test_conversations(BattleTestConversationKind.MULTI_TURN)[0]
+    profile = battle_test_model_profile_by_id("gpt-5.5-low-reasoning")
+
+    artifacts = await run_ai_model_profile_conversation_battle_tests(
+        mcp_client=StubMcpClient(results=[{"person": {"id": 42}}]),
+        oracle=ReadOnlyBattleTestOracle(StubBattleTestServices()),
+        selectors={
+            BattleTestModelProvider.OPENAI: StubAiSelector(
+                decisions=[
+                    BattleTestModelDecision(
+                        scenario_id=f"{conversation.id}-T01",
+                        prompt=conversation.turns[0].prompt,
+                        selected_tool="followupboss_get_latest_lead",
+                    )
+                ]
+            )
+        },
+        run_id_prefix="chains-depth",
+        client="unit",
+        profiles=(profile,),
+        conversations=(conversation,),
+        chain_depth=1,
+    )
+
+    assert artifacts[0].summary.total_scenarios == 1
+    assert artifacts[0].summary.overall_passed is True
+
+
+@pytest.mark.asyncio
+async def test_run_ai_model_profile_conversation_battle_tests_requires_selector() -> None:
+    profile = BattleTestModelProfile(
+        id="missing-conversation-selector",
+        provider=BattleTestModelProvider.OPENAI,
+        model="gpt-5.5",
+        display_name="Missing Selector",
+    )
+
+    with pytest.raises(RuntimeError, match="No battle-test selector"):
+        await run_ai_model_profile_conversation_battle_tests(
+            mcp_client=StubMcpClient(results=[]),
+            oracle=ReadOnlyBattleTestOracle(StubBattleTestServices()),
+            selectors={},
+            run_id_prefix="missing-conversation-selector",
+            client="unit",
+            profiles=(profile,),
+            conversations=(read_only_battle_test_conversations()[:1]),
+        )
 
 
 def test_load_env_file_preserves_existing_values_and_strips_quotes(
