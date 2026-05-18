@@ -82,6 +82,7 @@ def test_sanitize_sentry_event_redacts_secrets_and_customer_payloads() -> None:
             "tasks": [{"subject": "Call lead"}],
             "tenant_secret_ref": "arn:aws:secretsmanager:secret",
             "apiKey": "follow-up-boss-secret",
+            "exception_value": "Hosted runtime failed token=super-secret-token",
             "next_token": "pagination-token",
             "items": [{"note": "private note"}, "kept-scalar"],
         },
@@ -105,6 +106,7 @@ def test_sanitize_sentry_event_redacts_secrets_and_customer_payloads() -> None:
     assert extra["tasks"] == "***redacted***"
     assert extra["tenant_secret_ref"] == "***redacted***"
     assert extra["apiKey"] == "***redacted***"
+    assert extra["exception_value"] == "Hosted runtime failed token=***redacted***"
     assert extra["next_token"] == "pagination-token"
     assert extra["items"] == [{"note": "***redacted***"}, "kept-scalar"]
 

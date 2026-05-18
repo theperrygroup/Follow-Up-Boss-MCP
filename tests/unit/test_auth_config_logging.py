@@ -419,6 +419,7 @@ def test_redaction_helpers_and_logger_configuration() -> None:
                 "callingCapabilityToken": "secret-calling-token",
                 "user_hash": "secret-hash",
             },
+            "error": "Runtime failed token=super-secret-token with Bearer oauth-secret",
             "next_token": "page-token",
             "ok": 1,
         }
@@ -434,6 +435,7 @@ def test_redaction_helpers_and_logger_configuration() -> None:
             "callingCapabilityToken": "***redacted***",
             "user_hash": "***redacted***",
         },
+        "error": "Runtime failed token=***redacted*** with Bearer ***redacted***",
         "next_token": "page-token",
         "ok": 1,
     }

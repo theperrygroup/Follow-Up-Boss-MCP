@@ -326,8 +326,8 @@ async def _resolve_surface_runtime(
         return None
     try:
         return await tenant_runtime_factory.runtime_for_current_tenant()
-    except Exception as exc:
-        raise _surface_runtime_resolution_error() from exc
+    except Exception:
+        raise _surface_runtime_resolution_error() from None
 
 
 def _render_api_coverage_matrix_resource(

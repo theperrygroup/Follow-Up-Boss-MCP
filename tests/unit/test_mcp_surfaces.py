@@ -140,6 +140,7 @@ async def test_resolve_surface_runtime_handles_disabled_public_and_failure_paths
             tenant_runtime_factory=cast(TenantRuntimeFactory, FailingRuntimeFactory()),
         )
     assert "super-secret-token" not in str(exc_info.value)
+    assert exc_info.value.__cause__ is None
 
 
 def test_tool_adapter_requires_active_runtime_for_resolver_backed_services() -> None:

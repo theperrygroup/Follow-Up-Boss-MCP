@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sys
 from collections.abc import Mapping
 from typing import Any
@@ -33,6 +34,15 @@ _SENSITIVE_VALUE_KEYS = _SENSITIVE_HEADERS | {
     "token",
     "user_hash",
 }
+_SENSITIVE_ASSIGNMENT_PATTERN = re.compile(
+    r"\b(?P<key>access[_-]?token|api[_-]?key|authorization|password|secret|system[_-]?key|token)"
+    r"=(?P<value>[^\s,;&]+)",
+    re.IGNORECASE,
+)
+_SENSITIVE_BEARER_PATTERN = re.compile(
+    r"\b(?P<prefix>Bearer)\s+(?P<value>[A-Za-z0-9._~+/=-]+)",
+    re.IGNORECASE,
+)
 
 
 def _is_sensitive_key(key: str, *, headers_only: bool = False) -> bool:
@@ -68,6 +78,31 @@ def redact_headers(headers: dict[str, str]) -> dict[str, str]:
     return redacted
 
 
+def _redact_sensitive_text(value: str) -> str:
+    """Redact secret-looking assignments embedded in free-form text.
+
+    Args:
+        value: The free-form string to sanitize.
+
+    Returns:
+        A sanitized string with known credential assignment and bearer-token
+        patterns replaced by the stable redaction marker.
+    """
+
+    def redact_assignment(match: re.Match[str]) -> str:
+        """Redact one `key=value` secret assignment while preserving the key."""
+        return f"{match.group('key')}={_REDACTED}"
+
+    def redact_bearer(match: re.Match[str]) -> str:
+        """Redact one bearer credential while preserving the auth scheme."""
+        return f"{match.group('prefix')} {_REDACTED}"
+
+    return _SENSITIVE_BEARER_PATTERN.sub(
+        redact_bearer,
+        _SENSITIVE_ASSIGNMENT_PATTERN.sub(redact_assignment, value),
+    )
+
+
 def redact_value(value: Any) -> Any:
     """Redact known secret-looking values from arbitrary nested data.
 
@@ -85,6 +120,8 @@ def redact_value(value: Any) -> Any:
         }
     if isinstance(value, list):
         return [redact_value(item) for item in value]
+    if isinstance(value, str):
+        return _redact_sensitive_text(value)
     return value
 
 
