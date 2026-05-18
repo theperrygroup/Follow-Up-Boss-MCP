@@ -11,6 +11,28 @@ from followupboss_mcp import observability
 from followupboss_mcp.config import SentrySettings
 from followupboss_mcp.observability import before_send, configure_sentry, sanitize_sentry_event
 
+_SENTRY_ENV_KEYS = (
+    "SENTRY_DSN",
+    "SENTRY_ENVIRONMENT",
+    "SENTRY_RELEASE",
+    "SENTRY_SAMPLE_RATE",
+    "SENTRY_TRACES_SAMPLE_RATE",
+    "SENTRY_PROFILES_SAMPLE_RATE",
+    "SENTRY_ENABLE_LOGS",
+    "SENTRY_DEBUG",
+)
+
+
+def _clear_sentry_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Remove Sentry environment variables from one test case.
+
+    Args:
+        monkeypatch: Pytest monkeypatch fixture used to isolate process
+            environment changes.
+    """
+    for key in _SENTRY_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+
 
 def test_sentry_settings_normalize_and_validate() -> None:
     """Sentry settings should normalize optional fields and validate sample rates."""
@@ -118,6 +140,7 @@ def test_configure_sentry_skips_initialization_without_dsn(
 ) -> None:
     """Sentry initialization should be disabled when no DSN is configured."""
     observability._SENTRY_INITIALIZED = False
+    _clear_sentry_env(monkeypatch)
 
     def fail_load_sentry_sdk() -> object:
         """Fail if disabled Sentry configuration imports the SDK."""
@@ -136,13 +159,7 @@ def test_configure_sentry_ignores_blank_optional_rates_without_dsn(
 ) -> None:
     """Disabled Sentry startup should tolerate blank optional rate placeholders."""
     observability._SENTRY_INITIALIZED = False
-    for key in (
-        "SENTRY_DSN",
-        "SENTRY_RELEASE",
-        "SENTRY_TRACES_SAMPLE_RATE",
-        "SENTRY_PROFILES_SAMPLE_RATE",
-    ):
-        monkeypatch.delenv(key, raising=False)
+    _clear_sentry_env(monkeypatch)
     monkeypatch.setenv("SENTRY_TRACES_SAMPLE_RATE", "")
     monkeypatch.setenv("SENTRY_PROFILES_SAMPLE_RATE", "")
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from datetime import UTC, date, datetime, time, timedelta
 from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
@@ -34,6 +35,7 @@ class BattleTestOracleKind(StrEnum):
     LATEST_ASSIGNED_LEAD = "latest_assigned_lead"
     MY_OVERDUE_TASKS = "my_overdue_tasks"
     MY_TASKS_DUE_TODAY = "my_tasks_due_today"
+    MY_UPCOMING_TASKS = "my_upcoming_tasks"
     ROUTE_ONLY_PENDING = "route_only_pending"
     UNSUPPORTED_NOTE_SEARCH = "unsupported_note_search"
 
@@ -734,6 +736,8 @@ class ReadOnlyBattleTestOracle:
             return await self._owned_task_snapshot(scenario, transcript, due="overdue")
         if scenario.api_oracle.kind is BattleTestOracleKind.MY_TASKS_DUE_TODAY:
             return await self._owned_task_snapshot(scenario, transcript, due="today")
+        if scenario.api_oracle.kind is BattleTestOracleKind.MY_UPCOMING_TASKS:
+            return await self._upcoming_task_snapshot(scenario, transcript)
         if scenario.api_oracle.kind is BattleTestOracleKind.UNSUPPORTED_NOTE_SEARCH:
             return BattleTestOracleSnapshot(
                 scenario_id=scenario.id,
@@ -863,6 +867,37 @@ class ReadOnlyBattleTestOracle:
             },
         )
 
+    async def _upcoming_task_snapshot(
+        self,
+        scenario: BattleTestScenario,
+        transcript: BattleTestTranscript,
+    ) -> BattleTestOracleSnapshot:
+        """Build direct API truth for authenticated-user upcoming tasks."""
+        user_id = await self._authenticated_user_id()
+        due_start = _upcoming_task_due_start()
+        page = await self._services.tasks.list_tasks(
+            TaskListRequest(
+                assigned_user_id=user_id,
+                due_start=due_start,
+                fields=_optional_string_list(transcript.arguments.get("fields")),
+                is_completed=False,
+                limit=_optional_int(transcript.arguments.get("limit")),
+                next_token=_optional_string(transcript.arguments.get("next_token")),
+                offset=_optional_int(transcript.arguments.get("offset")),
+            )
+        )
+        return BattleTestOracleSnapshot(
+            scenario_id=scenario.id,
+            kind=scenario.api_oracle.kind,
+            automated=True,
+            expected={
+                "assigned_user_id": user_id,
+                "due_start": due_start.isoformat(),
+                "is_completed": False,
+                "task_ids": [task.id for task in page.items],
+            },
+        )
+
 
 def _check_required_route(
     scenario: BattleTestScenario,
@@ -951,6 +986,7 @@ def _compare_transcript_to_oracle(
     if snapshot.kind in {
         BattleTestOracleKind.MY_OVERDUE_TASKS,
         BattleTestOracleKind.MY_TASKS_DUE_TODAY,
+        BattleTestOracleKind.MY_UPCOMING_TASKS,
     }:
         return _compare_task_response(transcript, snapshot)
     return []
@@ -1052,6 +1088,16 @@ def _optional_string_list(value: JsonValue) -> list[str] | None:
         return None
     strings = [item for item in value if isinstance(item, str)]
     return strings if len(strings) == len(value) else None
+
+
+def _upcoming_task_due_start() -> datetime:
+    """Return the inclusive lower bound for upcoming task due dates.
+
+    Returns:
+        Midnight UTC tomorrow, matching the MCP helper's "after today" contract.
+    """
+    tomorrow = date.today() + timedelta(days=1)
+    return datetime.combine(tomorrow, time.min, tzinfo=UTC)
 
 
 _READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
@@ -1166,7 +1212,7 @@ _READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
     ),
     BattleTestScenario(
         id="BT-READ-004",
-        grade=BattleTestGrade.MAY_ROUTE,
+        grade=BattleTestGrade.MUST_ROUTE,
         prompt_variants=(
             "What do I have coming up?",
             "Show my next tasks",
@@ -1190,16 +1236,16 @@ _READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
             "Show later tasks I should be aware of",
         ),
         expected_mcp=ExpectedMcpRoute(
-            allowed_tools=("followupboss_list_tasks", "future:followupboss_list_my_upcoming_tasks"),
+            allowed_tools=("followupboss_list_my_upcoming_tasks",),
             forbidden_tools=(),
         ),
         api_oracle=ApiOracleSpec(
-            kind=BattleTestOracleKind.ROUTE_ONLY_PENDING,
+            kind=BattleTestOracleKind.MY_UPCOMING_TASKS,
             description=(
-                "Route-only placeholder until a canonical future-task API filter is chosen."
+                "Direct query for incomplete tasks due after today and assigned to authenticated user."
             ),
         ),
-        response_assertions=("safe route or clarification only",),
+        response_assertions=("response.tasks[*].id == api_oracle.task_ids",),
     ),
     BattleTestScenario(
         id="BT-READ-005",

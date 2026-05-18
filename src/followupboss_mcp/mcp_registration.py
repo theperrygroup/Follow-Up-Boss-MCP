@@ -2269,7 +2269,8 @@ def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
             "Use this broad list only when the request provides explicit task filters "
             "or needs non-owned task discovery. For your overdue tasks, use "
             "followupboss_list_my_overdue_tasks. For your tasks due today, use "
-            "followupboss_list_my_tasks_due_today."
+            "followupboss_list_my_tasks_due_today. For your upcoming tasks after "
+            "today, use followupboss_list_my_upcoming_tasks."
         ),
     )
     async def followupboss_list_tasks(
@@ -2332,6 +2333,26 @@ def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         offset: int | None = None,
     ) -> dict[str, object]:
         return await adapter.list_my_tasks_due_today(
+            _validated_request(ListMyTaskIntentToolInput, locals())
+        )
+
+    @mcp.tool(
+        name="followupboss_list_my_upcoming_tasks",
+        description=(
+            "List incomplete Follow Up Boss tasks due after today and assigned to "
+            "the authenticated user. Use this for requests like 'my upcoming tasks', "
+            "'what do I have coming up?', or 'what is due after today?'. Resolves "
+            "the authenticated user internally and forces incomplete future task scope."
+        ),
+    )
+    async def followupboss_list_my_upcoming_tasks(
+        *,
+        fields: list[str] | None = None,
+        limit: int | None = None,
+        next_token: str | None = None,
+        offset: int | None = None,
+    ) -> dict[str, object]:
+        return await adapter.list_my_upcoming_tasks(
             _validated_request(ListMyTaskIntentToolInput, locals())
         )
 
