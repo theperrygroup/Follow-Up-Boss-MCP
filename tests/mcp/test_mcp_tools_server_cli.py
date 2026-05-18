@@ -395,6 +395,7 @@ EXPECTED_REGISTERED_TOOL_NAMES = [
     "followupboss_list_inbox_app_participants",
     "followupboss_list_my_overdue_tasks",
     "followupboss_list_my_tasks_due_today",
+    "followupboss_list_my_upcoming_tasks",
     "followupboss_list_people_relationships",
     "followupboss_list_pipelines",
     "followupboss_list_ponds",
@@ -2653,6 +2654,14 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert stub.task_list_requests[-1].assigned_user_id == 1
     assert stub.task_list_requests[-1].due == "today"
     assert stub.task_list_requests[-1].is_completed is False
+    assert (await adapter.list_my_upcoming_tasks(ListMyTaskIntentToolInput(limit=10)))["tasks"][0][
+        "id"
+    ] == 17
+    assert stub.task_list_requests[-1].assigned_user_id == 1
+    assert stub.task_list_requests[-1].due is None
+    assert stub.task_list_requests[-1].due_start is not None
+    assert stub.task_list_requests[-1].is_completed is False
+    assert stub.task_list_requests[-1].limit == 10
     assert ListMyTaskIntentToolInput(fields=["id", "name", "dueDate"]).fields == [
         "id",
         "name",
@@ -3493,6 +3502,10 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                 {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "tasks": [{"id": 16}]},
                 {"id": 1},
                 {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "tasks": [{"id": 16}]},
+                {"id": 1},
+                {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "tasks": [{"id": 16}]},
+                {"id": 1},
+                {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "tasks": [{"id": 16}]},
                 {"id": 17, "personId": 2, "assignedTo": "Data", "type": "Call"},
                 {"id": 18, "personId": 2, "assignedTo": "Data", "type": "Email"},
                 {"id": 19, "personId": 2, "assignedTo": "Data", "type": "Text"},
@@ -3613,10 +3626,15 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     )
     assert "followupboss_list_my_overdue_tasks" in list_tasks_description
     assert "followupboss_list_my_tasks_due_today" in list_tasks_description
+    assert "followupboss_list_my_upcoming_tasks" in list_tasks_description
     overdue_tasks_description = cast("str", tools["followupboss_list_my_overdue_tasks"].description)
     assert "forces incomplete overdue task scope" in overdue_tasks_description
     today_tasks_description = cast("str", tools["followupboss_list_my_tasks_due_today"].description)
     assert "forces incomplete due-today task scope" in today_tasks_description
+    upcoming_tasks_description = cast(
+        "str", tools["followupboss_list_my_upcoming_tasks"].description
+    )
+    assert "forces incomplete future task scope" in upcoming_tasks_description
     assert "explicit person_id" in cast("str", tools["followupboss_update_person"].description)
     assert "explicit person_id" in cast("str", tools["followupboss_delete_person"].description)
     assert "explicit task_id" in cast("str", tools["followupboss_update_task"].description)
@@ -3729,6 +3747,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_list_inbox_app_participants",
         "followupboss_list_my_overdue_tasks",
         "followupboss_list_my_tasks_due_today",
+        "followupboss_list_my_upcoming_tasks",
         "followupboss_list_people_relationships",
         "followupboss_list_pipelines",
         "followupboss_list_ponds",
@@ -4424,6 +4443,13 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
             server,
             tools,
             "followupboss_list_my_tasks_due_today",
+        )
+    )["tasks"][0]["id"] == 16
+    assert (
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_my_upcoming_tasks",
         )
     )["tasks"][0]["id"] == 16
     assert (await _call_public_tool(server, tools, "followupboss_get_task", 17))["id"] == 17

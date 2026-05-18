@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from datetime import UTC, date, datetime, time, timedelta
 from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
@@ -15,6 +14,7 @@ from followupboss_mcp.models.identity import IdentityResponse
 from followupboss_mcp.models.people import PeopleSearchRequest, PersonRecord
 from followupboss_mcp.models.tasks import TaskListRequest, TaskRecord
 from followupboss_mcp.pagination import PageResult
+from followupboss_mcp.task_intents import upcoming_task_due_start as _upcoming_task_due_start
 
 type JsonObject = dict[str, JsonValue]
 
@@ -1090,16 +1090,6 @@ def _optional_string_list(value: JsonValue) -> list[str] | None:
     return strings if len(strings) == len(value) else None
 
 
-def _upcoming_task_due_start() -> datetime:
-    """Return the inclusive lower bound for upcoming task due dates.
-
-    Returns:
-        Midnight UTC tomorrow, matching the MCP helper's "after today" contract.
-    """
-    tomorrow = date.today() + timedelta(days=1)
-    return datetime.combine(tomorrow, time.min, tzinfo=UTC)
-
-
 _READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
     BattleTestScenario(
         id="BT-READ-001",
@@ -1242,7 +1232,8 @@ _READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
         api_oracle=ApiOracleSpec(
             kind=BattleTestOracleKind.MY_UPCOMING_TASKS,
             description=(
-                "Direct query for incomplete tasks due after today and assigned to authenticated user."
+                "Direct query for incomplete tasks due after today and assigned "
+                "to authenticated user."
             ),
         ),
         response_assertions=("response.tasks[*].id == api_oracle.task_ids",),

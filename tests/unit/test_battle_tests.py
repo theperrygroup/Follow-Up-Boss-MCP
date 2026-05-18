@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import time, timedelta
 from pathlib import Path
 
 import pytest
 
+import followupboss_mcp.battle_tests as battle_tests_module
+import followupboss_mcp.mcp_tools as mcp_tools_module
 from followupboss_mcp.battle_tests import (
     ApiOracleSpec,
     BattleTestEvaluation,
@@ -59,6 +62,14 @@ def _people_page(*people: PersonRecord) -> PageResult[PersonRecord]:
 
 def _tasks_page(*tasks: TaskRecord) -> PageResult[TaskRecord]:
     return PageResult(items=list(tasks), metadata=_metadata(len(tasks)))
+
+
+def test_upcoming_task_due_start_is_shared_by_oracle_and_tool_adapter() -> None:
+    due_start = battle_tests_module._upcoming_task_due_start()
+
+    assert battle_tests_module._upcoming_task_due_start is mcp_tools_module._upcoming_task_due_start
+    assert due_start.utcoffset() == timedelta(0)
+    assert due_start.time() == time.min
 
 
 @dataclass
@@ -182,6 +193,11 @@ def test_read_only_scenario_corpus_is_stable() -> None:
     assert scenario_by_id("BT-READ-001").expected_mcp.allowed_tools == (
         "followupboss_get_latest_lead",
     )
+    assert scenario_by_id("BT-READ-004").grade is BattleTestGrade.MUST_ROUTE
+    assert scenario_by_id("BT-READ-004").expected_mcp.allowed_tools == (
+        "followupboss_list_my_upcoming_tasks",
+    )
+    assert scenario_by_id("BT-READ-004").api_oracle.kind is BattleTestOracleKind.MY_UPCOMING_TASKS
     with pytest.raises(KeyError):
         scenario_by_id("BT-READ-999")
 
@@ -637,21 +653,28 @@ async def test_unsupported_note_search_evaluates_without_api_call() -> None:
 
 
 @pytest.mark.asyncio
-async def test_pending_route_only_scenario_is_not_oracle_complete() -> None:
+async def test_upcoming_task_oracle_matches_future_task_ids() -> None:
     scenario = scenario_by_id("BT-READ-004")
+    services = _services(tasks=_tasks_page(TaskRecord.model_validate({"id": 8})))
     transcript = BattleTestTranscript(
         scenario_id=scenario.id,
         prompt=scenario.prompt_variants[0],
-        selected_tool="followupboss_list_tasks",
-        response={"tasks": []},
+        selected_tool="followupboss_list_my_upcoming_tasks",
+        arguments={"fields": ["id", "dueDate"], "limit": 2},
+        response={"tasks": [{"id": 8}]},
     )
 
-    evaluation = await ReadOnlyBattleTestOracle(_services()).evaluate(scenario, transcript)
+    evaluation = await ReadOnlyBattleTestOracle(services).evaluate(scenario, transcript)
 
     assert evaluation.route_passed is True
-    assert evaluation.oracle_passed is False
-    assert evaluation.passed is False
-    assert "does not have an automated API oracle yet" in evaluation.failures[0]
+    assert evaluation.oracle_passed is True
+    assert evaluation.passed is True
+    assert services.tasks.requests[0].assigned_user_id == 7
+    assert services.tasks.requests[0].due is None
+    assert services.tasks.requests[0].due_start is not None
+    assert services.tasks.requests[0].fields == ["id", "dueDate"]
+    assert services.tasks.requests[0].is_completed is False
+    assert services.tasks.requests[0].limit == 2
 
 
 @pytest.mark.asyncio

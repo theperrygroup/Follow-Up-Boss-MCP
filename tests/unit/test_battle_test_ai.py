@@ -19,6 +19,7 @@ from followupboss_mcp.battle_test_ai import (
     OpenAiBattleTestModelSelector,
     _json_value,
     battle_test_ai_selectors_from_env,
+    battle_test_selection_instructions,
     capture_ai_selected_transcript,
     load_env_file,
     read_only_battle_test_ai_tool_specs,
@@ -188,11 +189,17 @@ def test_read_only_tool_specs_constrain_owned_task_fields() -> None:
         dict[str, object],
         specs["followupboss_list_my_tasks_due_today"].input_schema["properties"],
     )
+    upcoming_schema = cast(
+        dict[str, object],
+        specs["followupboss_list_my_upcoming_tasks"].input_schema["properties"],
+    )
 
     overdue_fields = overdue_schema["fields"]
     today_fields = today_schema["fields"]
+    upcoming_fields = upcoming_schema["fields"]
 
     assert overdue_fields == today_fields
+    assert overdue_fields == upcoming_fields
     assert overdue_fields == {
         "type": "array",
         "description": "Optional task response fields to request.",
@@ -209,6 +216,26 @@ def test_read_only_tool_specs_constrain_owned_task_fields() -> None:
             ],
         },
     }
+
+
+def test_read_only_tool_specs_steer_notes_to_unsupported_sentinel() -> None:
+    specs = {tool.name: tool for tool in read_only_battle_test_ai_tool_specs()}
+
+    assert "notes by person" in specs["followupboss_search_events"].description
+    assert "battle_test_explain_unsupported" in specs["followupboss_search_events"].description
+    assert "notes by lead" in specs["followupboss_get_note"].description
+    assert "battle_test_explain_unsupported" in specs["followupboss_get_note"].description
+    assert (
+        "notes by person, lead, or contact" in specs["battle_test_explain_unsupported"].description
+    )
+
+
+def test_selection_instructions_explain_unsupported_note_search() -> None:
+    instructions = battle_test_selection_instructions()
+
+    assert "notes by person, lead, or contact" in instructions
+    assert "explicit note ID" in instructions
+    assert "battle_test_explain_unsupported" in instructions
 
 
 @pytest.mark.asyncio

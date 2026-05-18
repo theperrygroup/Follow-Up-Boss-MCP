@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
 from dataclasses import asdict
-from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, cast
 
 from pydantic import field_validator
@@ -160,6 +159,7 @@ from followupboss_mcp.models.webhooks import (
     WebhookListRequest,
 )
 from followupboss_mcp.pagination import PageResult
+from followupboss_mcp.task_intents import upcoming_task_due_start as _upcoming_task_due_start
 from followupboss_mcp.tenant_runtime import ServiceBundle, ServiceBundleResolver
 
 _ACTIVE_SERVICE_BUNDLE: ContextVar[ServiceBundle | None] = ContextVar(
@@ -177,17 +177,6 @@ _TASK_INTENT_RESPONSE_FIELDS = frozenset(
         "type",
     }
 )
-
-
-def _upcoming_task_due_start() -> datetime:
-    """Return the lower bound for authenticated-user upcoming tasks.
-
-    Returns:
-        Midnight UTC tomorrow, used as the inclusive due-start boundary for
-        "after today" task queries.
-    """
-    tomorrow = datetime.now(UTC).date() + timedelta(days=1)
-    return datetime.combine(tomorrow, time.min, tzinfo=UTC)
 
 
 class GetPersonToolInput(PersonLookupRequest):

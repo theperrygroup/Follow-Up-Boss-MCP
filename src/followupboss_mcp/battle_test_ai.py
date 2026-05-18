@@ -145,10 +145,17 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
             input_schema=paginated_fields_schema,
         ),
         BattleTestAiToolSpec(
+            name="followupboss_list_my_upcoming_tasks",
+            description=(
+                "List incomplete tasks due after today and assigned to the authenticated user."
+            ),
+            input_schema=paginated_fields_schema,
+        ),
+        BattleTestAiToolSpec(
             name="followupboss_list_tasks",
             description=(
                 "Broad task list for explicit filters. Do not use for my overdue or "
-                "my tasks today when narrow helpers apply."
+                "my tasks today or my upcoming tasks when narrow helpers apply."
             ),
             input_schema={
                 "type": "object",
@@ -163,12 +170,18 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
         ),
         BattleTestAiToolSpec(
             name="followupboss_search_events",
-            description="Search events. Do not use as a substitute for notes by person ID.",
+            description=(
+                "Search events. Do not use as a substitute for notes by person, lead, "
+                "or contact ID; use battle_test_explain_unsupported for those requests."
+            ),
             input_schema={"type": "object", "properties": {}, "additionalProperties": False},
         ),
         BattleTestAiToolSpec(
             name="followupboss_get_note",
-            description="Fetch one note by explicit note ID only.",
+            description=(
+                "Fetch one note by explicit note ID only. For note history, notes by person, "
+                "notes by lead, or notes by contact, use battle_test_explain_unsupported."
+            ),
             input_schema={
                 "type": "object",
                 "properties": {"note_id": _integer_schema("Explicit note ID.")},
@@ -184,7 +197,8 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
         BattleTestAiToolSpec(
             name=_UNSUPPORTED_TOOL,
             description=(
-                "Use when Follow Up Boss or this MCP does not support the requested action."
+                "Use when Follow Up Boss or this MCP does not support the requested action, "
+                "including note history or notes by person, lead, or contact."
             ),
             input_schema=message_schema,
         ),
@@ -202,7 +216,9 @@ def battle_test_selection_instructions() -> str:
         "Call exactly one tool when the user's prompt has a safe supported route. "
         f"Use {_CLARIFY_TOOL} when the prompt needs more information before any MCP call. "
         f"Use {_UNSUPPORTED_TOOL} when this MCP or the Follow Up Boss API does not support "
-        "the requested capability. Do not invent IDs, owners, filters, or unsupported tools."
+        "the requested capability. Note history and notes by person, lead, or contact are "
+        f"unsupported unless the user provides an explicit note ID; use {_UNSUPPORTED_TOOL} "
+        "for those requests. Do not invent IDs, owners, filters, or unsupported tools."
     )
 
 

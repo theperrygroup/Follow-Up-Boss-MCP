@@ -150,6 +150,7 @@ or list calls when the intent is already clear.
 | "my latest lead", "newest lead", or "most recent lead I received" | `followupboss_get_latest_lead` | Searching people by name or asking the caller for `assigned_user_id`. |
 | "my overdue tasks" or "what am I late on?" | `followupboss_list_my_overdue_tasks` | A broad task list without authenticated-user and incomplete-task scope. |
 | "my tasks today" or "what do I need to do today?" | `followupboss_list_my_tasks_due_today` | A broad task list without authenticated-user and incomplete-task scope. |
+| "my upcoming tasks" or "what do I have coming up?" | `followupboss_list_my_upcoming_tasks` | A broad task list without authenticated-user and incomplete-task scope. |
 | A named smart-list count | `followupboss_list_smart_lists`, then `followupboss_search_people` with `smart_list_id` and a small `limit` | Inferring the smart-list ID from the name alone. |
 | Notes for a lead/person ID | No tool; Follow Up Boss has not made note search by FUB person ID available via the API. Tell the user to ask `support@followupboss.com` to make that search possible. | `followupboss_search_events` or claiming no notes exist from an empty event search. |
 | Updating or deleting people and tasks | The explicit-ID mutation tool such as `followupboss_update_person`, `followupboss_delete_person`, `followupboss_update_task`, or `followupboss_delete_task` | Inferring IDs from vague natural-language intent. |
@@ -284,6 +285,7 @@ or list calls when the intent is already clear.
 | `followupboss_list_tasks` | List tasks with documented filters and pagination metadata; use the owned task helpers for common "my tasks" intents. |
 | `followupboss_list_my_overdue_tasks` | List incomplete overdue tasks assigned to the authenticated user. |
 | `followupboss_list_my_tasks_due_today` | List incomplete tasks due today and assigned to the authenticated user. |
+| `followupboss_list_my_upcoming_tasks` | List incomplete future tasks assigned to the authenticated user. |
 | `followupboss_get_task` | Retrieve one task by ID. |
 | `followupboss_create_task` | Create a task for a person. |
 | `followupboss_update_task` | Update one task by explicit ID. |
