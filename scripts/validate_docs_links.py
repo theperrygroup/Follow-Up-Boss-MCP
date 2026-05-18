@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from os import walk
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -17,6 +18,7 @@ _TOOL_NAME_RE = re.compile(r'name="(followupboss_[^"]+)"')
 _RESOURCE_NAME_RE = re.compile(r'"(followupboss://[^"]+)"')
 _PROMPT_NAME_RE = re.compile(r'name="(followupboss_[^"]+)"')
 _SKIP_SCHEMES = ("http://", "https://", "mailto:", "followupboss://", "mcp://")
+_SKIPPED_MARKDOWN_DIRS = (Path("docs/planning"),)
 
 
 @dataclass(frozen=True)
@@ -34,9 +36,37 @@ def _iter_markdown_files(project_root: Path) -> list[Path]:
         project_root: The repository root.
 
     Returns:
-        Sorted markdown paths relative to the repository root.
+        Sorted markdown paths, excluding private planning trees.
     """
-    return sorted(project_root.glob("**/*.md"))
+    markdown_files: list[Path] = []
+    for directory, dirnames, filenames in walk(project_root):
+        directory_path = Path(directory)
+        dirnames[:] = sorted(
+            dirname
+            for dirname in dirnames
+            if not _is_skipped_markdown_dir(directory_path / dirname, project_root)
+        )
+        markdown_files.extend(
+            directory_path / filename for filename in sorted(filenames) if filename.endswith(".md")
+        )
+    return sorted(markdown_files)
+
+
+def _is_skipped_markdown_dir(directory_path: Path, project_root: Path) -> bool:
+    """Return whether a directory should be excluded from docs validation.
+
+    Args:
+        directory_path: The directory being considered for traversal.
+        project_root: The repository root.
+
+    Returns:
+        `True` when the directory is private validation input and should not be read.
+    """
+    relative_path = directory_path.relative_to(project_root)
+    return any(
+        relative_path == skipped_dir or skipped_dir in relative_path.parents
+        for skipped_dir in _SKIPPED_MARKDOWN_DIRS
+    )
 
 
 def _strip_code_blocks(text: str) -> str:

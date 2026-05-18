@@ -82,6 +82,10 @@ uv run coverage run --branch -m pytest
 uv run coverage report --fail-under=100
 ```
 
+Docs validation intentionally skips `docs/planning/`. Keep README and public docs index links
+out of that private planning tree; if planning content becomes public documentation, move a
+curated tracked copy outside `docs/planning/` before linking it.
+
 ## Live Contract Test Strategy
 
 Live Follow Up Boss tests are intentionally not required for the default suite. If you add live contract tests later:

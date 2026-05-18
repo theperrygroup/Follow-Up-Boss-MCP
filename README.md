@@ -238,7 +238,6 @@ For a streamable HTTP server, start the server first and then connect Inspector 
 - [docs/customer-onboarding-flow.md](docs/customer-onboarding-flow.md)
 - [docs/mcp-usage.md](docs/mcp-usage.md)
 - [docs/mcp-validation-checklist.md](docs/mcp-validation-checklist.md)
-- [docs/planning/mcp-intent-hardening/README.md](docs/planning/mcp-intent-hardening/README.md)
 - [docs/testing.md](docs/testing.md)
 - [docs/security.md](docs/security.md)
 - [docs/security-incident-playbook.md](docs/security-incident-playbook.md)

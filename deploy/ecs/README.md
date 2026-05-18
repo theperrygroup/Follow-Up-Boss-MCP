@@ -159,6 +159,10 @@ variables:
 - `TENANT_SECRET_PREFIX`
 - `TENANT_SECRET_REGION`
 
+The current staging Sentry project is `theperrygroup/followupboss-mcp` in the US Sentry region.
+Keep the project DSN in the GitHub `staging` environment's `SENTRY_DSN` variable instead of
+hardcoding it in this template.
+
 The staging workflow sets `SENTRY_RELEASE` to `followupboss-mcp@${{ github.sha }}` when rendering
 the task definition.
 
