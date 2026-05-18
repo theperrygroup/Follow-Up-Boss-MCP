@@ -10,19 +10,22 @@ verification.
 Snapshot date: `2026-05-18`
 
 - `src/followupboss_mcp/battle_tests.py` now encodes `BT-READ-001` through
-  `BT-READ-005`, scenario grades, captured transcript records, route evaluation,
-  read-only typed service oracle helpers, corpus-level run evaluation, and JSON
-  run artifact writing. It also defines separate model-profile run labels for
-  GPT-5.5 low reasoning and Sonnet 4.7.
+  `BT-READ-005` with 20 prompt variants per scenario, scenario grades, captured
+  transcript records, route evaluation, read-only typed service oracle helpers,
+  corpus-level run evaluation, prompt-variant expansion, and JSON run artifact
+  writing. It also defines separate model-profile run labels for GPT-5.5 low
+  reasoning and Sonnet 4.7.
 - `src/followupboss_mcp/battle_test_ai.py` can ask OpenAI Responses and Anthropic
   Messages to select a route for the default profiles, then convert selected
   tool calls or sentinel clarification/unsupported outcomes into transcripts.
 - `scripts/run_battle_test_model_profiles.py` loads `.env`, builds a local
-  FastMCP client, and writes separate artifacts for the default model profiles.
+  FastMCP client, can run either one prompt variant or every prompt variant, and
+  writes separate artifacts for the default model profiles.
 - `tests/unit/test_battle_tests.py` covers the first reusable evaluator.
 - `tests/unit/test_battle_test_ai.py` covers mocked OpenAI and Anthropic payloads
   and separate profile artifact writing.
-- No live AI/API-backed battle-test run artifact has landed yet.
+- Live AI/API-backed run artifacts exist under `execution/run-artifacts/`, but
+  they currently show failures rather than readiness.
 
 ## 1. Objective
 
@@ -78,11 +81,11 @@ selection heuristics.
 
 | ID | Grade | Prompt variants | Expected direction | API oracle |
 | --- | --- | --- | --- | --- |
-| `BT-READ-001` | `MUST_ROUTE` | "What is my latest lead?"; "Who was the newest lead I got?"; "Show me the most recent lead assigned to me"; "Pull up my newest person"; "Anything new for me?" | `followupboss_get_latest_lead` | Direct people query for newest person assigned to authenticated user. |
-| `BT-READ-002` | `MUST_ROUTE` | "What am I late on?"; "Show my overdue tasks"; "Which follow-ups did I miss?"; "What tasks are past due for me?"; "Anything I should have done already?" | `followupboss_list_my_overdue_tasks` | Direct task query for incomplete overdue tasks assigned to authenticated user. |
-| `BT-READ-003` | `MUST_ROUTE` | "What do I need to do today?"; "Show my tasks today"; "What's on deck for me today?"; "Any follow-ups due today?"; "Give me today's to-do list" | `followupboss_list_my_tasks_due_today` | Direct task query for incomplete tasks due today and assigned to authenticated user. |
-| `BT-READ-004` | `MAY_ROUTE` | "What do I have coming up?"; "Show my next tasks"; "What's due later this week?"; "Any follow-ups after today?"; "What should I prep for next?" | Generic task list with authenticated-user and future due filters, or a future accepted helper. | Direct task query for incomplete future tasks assigned to authenticated user. |
-| `BT-READ-005` | `MUST_EXPLAIN_UNSUPPORTED` | "Show notes for lead 123"; "What notes are on this person?"; "Find all notes for this FUB lead"; "Search notes by person ID"; "Do they have any notes?" | Explain that Follow Up Boss does not expose note search by person ID through this MCP. | Confirm no note-search tool was called and no empty event search was misrepresented as notes. |
+| `BT-READ-001` | `MUST_ROUTE` | 20 variants for newest/latest assigned lead wording. | `followupboss_get_latest_lead` | Direct people query for newest person assigned to authenticated user. |
+| `BT-READ-002` | `MUST_ROUTE` | 20 variants for overdue, late, missed, and past-due follow-up wording. | `followupboss_list_my_overdue_tasks` | Direct task query for incomplete overdue tasks assigned to authenticated user. |
+| `BT-READ-003` | `MUST_ROUTE` | 20 variants for today, due-now, and current-day task wording. | `followupboss_list_my_tasks_due_today` | Direct task query for incomplete tasks due today and assigned to authenticated user. |
+| `BT-READ-004` | `MAY_ROUTE` | 20 variants for upcoming, next, future, and later-task wording. | Generic task list with authenticated-user and future due filters, or a future accepted helper. | Direct task query for incomplete future tasks assigned to authenticated user. |
+| `BT-READ-005` | `MUST_EXPLAIN_UNSUPPORTED` | 20 variants for note-search-by-person wording. | Explain that Follow Up Boss does not expose note search by person ID through this MCP. | Confirm no note-search tool was called and no empty event search was misrepresented as notes. |
 
 ### People, Smart Lists, And Duplicate Discovery
 
@@ -264,11 +267,12 @@ Acceptance criteria:
 ## 7. Next Slice
 
 The first schema, read-only oracle code, run artifact evaluator, profile matrix,
-and AI-backed local runner have landed. Continue with the smallest useful live
-evidence loop:
+AI-backed local runner, and prompt-variant sweep support have landed. Continue
+with the smallest useful live evidence loop:
 
-1. Run `scripts/run_battle_test_model_profiles.py` against the approved
-   read-only environment with the `.env` AI keys and Follow Up Boss credentials.
+1. Run `scripts/run_battle_test_model_profiles.py --all-prompt-variants`
+   against the approved read-only environment with the `.env` AI keys and
+   Follow Up Boss credentials.
 2. Inspect the sibling artifacts for `gpt-5.5-low-reasoning` and `sonnet-4.7`.
 3. Triage routing failures separately from API-oracle failures.
 4. Decide whether to check in the dated evidence artifact or summarize it in a

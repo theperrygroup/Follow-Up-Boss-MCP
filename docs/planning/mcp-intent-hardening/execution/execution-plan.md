@@ -35,16 +35,16 @@ landed, what is blocked, and what still remains open.
 - Execution docs define the active sequence and baseline roadmap.
 - Battle-test planning now defines how vague chatbot prompts should be verified
   through observed MCP routing and direct Follow Up Boss API oracle checks.
-- Read-only battle-test code now encodes the first `BT-READ-*` scenarios and can
-  evaluate captured transcripts against typed service oracles for implemented
-  read-only cases.
+- Read-only battle-test code now encodes the first `BT-READ-*` scenarios with
+  20 prompt variants each and can evaluate captured transcripts against typed
+  service oracles for implemented read-only cases.
 - Battle-test run artifact helpers now summarize evaluated transcripts, missing
   scenarios, unknown transcript IDs, and formatted JSON evidence output.
 - Battle-test run metadata now carries model profiles, with default separate
   targets for GPT-5.5 low reasoning and Sonnet 4.7.
 - An AI-backed profile runner can now call OpenAI Responses for GPT-5.5 low
   reasoning and Anthropic Messages for Sonnet 4.7, execute selected local FastMCP
-  tools, and write separate artifacts.
+  tools, expand all prompt variants, and write separate artifacts.
 
 ## 3. Current Blockers
 
@@ -56,7 +56,8 @@ landed, what is blocked, and what still remains open.
   requests.
 - Non-read-only vague chatbot prompt scenarios have not been encoded into a
   repeatable corpus.
-- No live AI/API-backed battle-test artifact has been produced yet.
+- Live AI/API-backed battle-test artifacts exist, but currently record failures
+  and are not readiness evidence.
 - `BT-READ-004` remains route-only pending until future-task routing is decided.
 - Live validation scenarios should wait until the offline contract is expanded.
 
@@ -163,8 +164,10 @@ landed, what is blocked, and what still remains open.
     and Sonnet 4.7 to select MCP routes, execute selected tools through a local
     FastMCP adapter, evaluate transcripts through the read-only oracle, and write
     sibling profile-specific artifacts.
-  - This is still not live run evidence; it is the executable runner needed
-    before a dated run artifact can be recorded.
+  - All-variant mode expands the 5 read-only scenarios into 100 prompt cases per
+    model profile.
+  - Initial live artifacts exist but record failures; they should drive
+    hardening rather than readiness claims.
 
 ## 5. Current Work Queue
 

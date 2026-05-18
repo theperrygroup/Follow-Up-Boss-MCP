@@ -24,6 +24,7 @@ from followupboss_mcp.battle_tests import (
     build_model_profile_run_metadata,
     capture_mcp_tool_transcript,
     evaluate_battle_test_run,
+    expand_battle_test_prompt_variants,
     read_only_battle_test_scenarios,
     write_battle_test_run_artifact,
 )
@@ -447,6 +448,7 @@ async def run_ai_model_profile_battle_tests(
     scenarios: tuple[BattleTestScenario, ...] | None = None,
     artifact_directory: Path | None = None,
     prompt_variant_index: int = 0,
+    all_prompt_variants: bool = False,
     environment: str | None = None,
     started_at: str | None = None,
     notes: tuple[str, ...] = (),
@@ -464,6 +466,8 @@ async def run_ai_model_profile_battle_tests(
         scenarios: Optional scenario corpus. Defaults to read-only scenarios.
         artifact_directory: Optional output directory for JSON artifacts.
         prompt_variant_index: Prompt variant index to run for each scenario.
+        all_prompt_variants: Whether to expand every scenario prompt variant
+            into a separately evaluated case.
         environment: Optional target environment label.
         started_at: Optional ISO-like run timestamp.
         notes: Optional notes stored in each artifact.
@@ -471,7 +475,10 @@ async def run_ai_model_profile_battle_tests(
     Returns:
         One run artifact per model profile.
     """
-    scenario_corpus = scenarios or read_only_battle_test_scenarios()
+    scenario_corpus = _resolve_prompt_variant_corpus(
+        scenarios=scenarios,
+        all_prompt_variants=all_prompt_variants,
+    )
     artifacts: list[BattleTestRunArtifact] = []
     for profile in profiles or battle_test_model_profiles():
         selector = selectors.get(profile.provider)
@@ -485,7 +492,10 @@ async def run_ai_model_profile_battle_tests(
                     selector=selector,
                     profile=profile,
                     scenario=scenario,
-                    prompt=_prompt_variant(scenario, prompt_variant_index),
+                    prompt=_prompt_variant(
+                        scenario,
+                        0 if all_prompt_variants else prompt_variant_index,
+                    ),
                     mcp_client=mcp_client,
                 )
                 for scenario in scenario_corpus
@@ -512,6 +522,18 @@ async def run_ai_model_profile_battle_tests(
             )
         artifacts.append(artifact)
     return tuple(artifacts)
+
+
+def _resolve_prompt_variant_corpus(
+    *,
+    scenarios: tuple[BattleTestScenario, ...] | None,
+    all_prompt_variants: bool,
+) -> tuple[BattleTestScenario, ...]:
+    """Resolve the scenario corpus for one AI runner invocation."""
+    scenario_corpus = scenarios or read_only_battle_test_scenarios()
+    if all_prompt_variants:
+        return expand_battle_test_prompt_variants(scenario_corpus)
+    return scenario_corpus
 
 
 def _first_env_value(env: Mapping[str, str], *keys: str) -> str | None:

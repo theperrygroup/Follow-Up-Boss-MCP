@@ -14,12 +14,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: stable
           cache: false
@@ -56,18 +56,18 @@ jobs:
             python-version: "3.12"
           - os: macos-latest
             python-version: "3.13"
-          - os: windows-latest
+          - os: windows-2025-vs2026
             python-version: "3.12"
-          - os: windows-latest
+          - os: windows-2025-vs2026
             python-version: "3.13"
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
@@ -102,19 +102,19 @@ jobs:
             python-version: "3.12"
           - os: macos-latest
             python-version: "3.12"
-          - os: windows-latest
+          - os: windows-2025-vs2026
             python-version: "3.12"
     needs:
       - secrets
       - quality
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python-version }}
           enable-cache: true

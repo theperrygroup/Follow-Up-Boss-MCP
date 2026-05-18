@@ -333,6 +333,36 @@ def read_only_battle_test_scenarios() -> tuple[BattleTestScenario, ...]:
     return _READ_ONLY_SCENARIOS
 
 
+def expand_battle_test_prompt_variants(
+    scenarios: tuple[BattleTestScenario, ...] | None = None,
+) -> tuple[BattleTestScenario, ...]:
+    """Expand prompt variants into individually evaluated scenario cases.
+
+    Args:
+        scenarios: Optional scenario corpus to expand. Defaults to the read-only
+            battle-test corpus.
+
+    Returns:
+        A tuple where each prompt variant has a stable variant-specific scenario
+        ID such as `BT-READ-001-P01`.
+    """
+    expanded: list[BattleTestScenario] = []
+    for scenario in scenarios or read_only_battle_test_scenarios():
+        for index, prompt in enumerate(scenario.prompt_variants, start=1):
+            expanded.append(
+                BattleTestScenario(
+                    id=f"{scenario.id}-P{index:02d}",
+                    grade=scenario.grade,
+                    prompt_variants=(prompt,),
+                    expected_mcp=scenario.expected_mcp,
+                    api_oracle=scenario.api_oracle,
+                    response_assertions=scenario.response_assertions,
+                    cleanup=scenario.cleanup,
+                )
+            )
+    return tuple(expanded)
+
+
 def scenario_by_id(scenario_id: str) -> BattleTestScenario:
     """Return one read-only battle-test scenario by ID.
 
@@ -1034,6 +1064,21 @@ _READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
             "Show me the most recent lead assigned to me",
             "Pull up my newest person",
             "Anything new for me?",
+            "Did I get any new leads?",
+            "Who is the latest person assigned to me?",
+            "Bring up the newest lead in my name",
+            "Show the last lead that came to me",
+            "What lead just landed in my account?",
+            "Open my freshest lead",
+            "Who is my newest assigned contact?",
+            "What is the most recent person I should follow up with?",
+            "Show the newest record owned by me",
+            "Any fresh leads assigned to me today?",
+            "Find my most recently created lead",
+            "Who did I most recently receive?",
+            "Pull my latest incoming prospect",
+            "Show my newest FUB person",
+            "What new person is waiting for me?",
         ),
         expected_mcp=ExpectedMcpRoute(
             allowed_tools=("followupboss_get_latest_lead",),
@@ -1054,6 +1099,21 @@ _READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
             "Which follow-ups did I miss?",
             "What tasks are past due for me?",
             "Anything I should have done already?",
+            "What follow-ups are overdue for me?",
+            "Do I have any late to-dos?",
+            "Show the tasks I missed",
+            "What did I forget to complete?",
+            "Which of my tasks are behind schedule?",
+            "List my overdue follow-ups",
+            "What should I have handled already?",
+            "Any past-due reminders assigned to me?",
+            "Show what is late under my name",
+            "What tasks are overdue on my plate?",
+            "Give me my missed follow-up list",
+            "What FUB tasks did I let slip?",
+            "Anything overdue that I own?",
+            "Which assigned tasks are already late?",
+            "Show my stale tasks",
         ),
         expected_mcp=ExpectedMcpRoute(
             allowed_tools=("followupboss_list_my_overdue_tasks",),
@@ -1076,6 +1136,21 @@ _READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
             "What's on deck for me today?",
             "Any follow-ups due today?",
             "Give me today's to-do list",
+            "What follow-ups are due for me today?",
+            "Show today's tasks assigned to me",
+            "What should I work on today?",
+            "Any reminders for me today?",
+            "List my due-today FUB tasks",
+            "What is on my calendar of tasks today?",
+            "Show the follow-ups I owe today",
+            "Anything I need to complete before end of day?",
+            "What tasks are assigned to me for today?",
+            "Give me my daily follow-up list",
+            "What is due now for me?",
+            "Any current-day tasks in my queue?",
+            "Show my action items due today",
+            "What should I not miss today?",
+            "Which incomplete tasks are due today under my name?",
         ),
         expected_mcp=ExpectedMcpRoute(
             allowed_tools=("followupboss_list_my_tasks_due_today",),
@@ -1098,6 +1173,21 @@ _READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
             "What's due later this week?",
             "Any follow-ups after today?",
             "What should I prep for next?",
+            "What follow-ups are coming soon?",
+            "Show my upcoming tasks",
+            "What is due after today?",
+            "Anything on my plate later?",
+            "What tasks should I plan for?",
+            "Give me my future to-do list",
+            "Which follow-ups are next for me?",
+            "What should I get ready for this week?",
+            "Show tasks that are not due yet",
+            "Any incomplete tasks coming up?",
+            "What reminders are scheduled ahead?",
+            "What do I have after today in FUB?",
+            "List upcoming follow-ups assigned to me",
+            "What is next on my CRM task list?",
+            "Show later tasks I should be aware of",
         ),
         expected_mcp=ExpectedMcpRoute(
             allowed_tools=("followupboss_list_tasks", "future:followupboss_list_my_upcoming_tasks"),
@@ -1120,6 +1210,21 @@ _READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
             "Find all notes for this FUB lead",
             "Search notes by person ID",
             "Do they have any notes?",
+            "Pull up the notes for this lead",
+            "Can you search notes attached to person 123?",
+            "Show every note on that contact",
+            "Look through this person's notes",
+            "Find notes for the buyer",
+            "What note history does this lead have?",
+            "Search all notes for that FUB person",
+            "Do we have notes saved on this contact?",
+            "Open the note thread for this lead",
+            "Find lead notes by contact ID",
+            "Show me notes related to this person record",
+            "Can you list notes for lead ID 123?",
+            "What has been noted on this person?",
+            "Search the notes field for this lead",
+            "Pull notes connected to this contact",
         ),
         expected_mcp=ExpectedMcpRoute(
             allowed_tools=(),

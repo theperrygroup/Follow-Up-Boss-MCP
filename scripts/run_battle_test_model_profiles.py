@@ -144,6 +144,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         help="Prompt variant index to run for each scenario.",
     )
+    parser.add_argument(
+        "--all-prompt-variants",
+        action="store_true",
+        help="Run every prompt variant as a separate evaluated scenario case.",
+    )
     return parser
 
 
@@ -176,6 +181,7 @@ async def run(argv: Sequence[str] | None = None) -> int:
             client=args.client_label,
             artifact_directory=args.artifact_dir,
             prompt_variant_index=args.prompt_variant_index,
+            all_prompt_variants=args.all_prompt_variants,
             environment=args.environment,
             started_at=started_at,
             notes=("read-only", "ai-selected-tools"),

@@ -693,6 +693,49 @@ async def test_run_ai_model_profile_battle_tests_can_skip_artifact_directory() -
 
 
 @pytest.mark.asyncio
+async def test_run_ai_model_profile_battle_tests_can_expand_all_prompt_variants() -> None:
+    base = scenario_by_id("BT-READ-005").model_copy(
+        update={"prompt_variants": ("Show notes for lead 123", "Find all notes for this lead")},
+        deep=True,
+    )
+    profile = battle_test_model_profile_by_id("gpt-5.5-low-reasoning")
+    selector = StubAiSelector(
+        decisions=[
+            BattleTestModelDecision(
+                scenario_id="BT-READ-005-P01",
+                prompt="Show notes for lead 123",
+                assistant_message="Unsupported.",
+                unsupported_explained=True,
+            ),
+            BattleTestModelDecision(
+                scenario_id="BT-READ-005-P02",
+                prompt="Find all notes for this lead",
+                assistant_message="Unsupported.",
+                unsupported_explained=True,
+            ),
+        ]
+    )
+
+    artifacts = await run_ai_model_profile_battle_tests(
+        mcp_client=StubMcpClient(results=[]),
+        oracle=ReadOnlyBattleTestOracle(StubBattleTestServices()),
+        selectors={BattleTestModelProvider.OPENAI: selector},
+        run_id_prefix="all-variants",
+        client="unit",
+        profiles=(profile,),
+        scenarios=(base,),
+        all_prompt_variants=True,
+    )
+
+    assert artifacts[0].summary.total_scenarios == 2
+    assert artifacts[0].summary.passed_scenarios == 2
+    assert [evaluation.scenario_id for evaluation in artifacts[0].evaluations] == [
+        "BT-READ-005-P01",
+        "BT-READ-005-P02",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_run_ai_model_profile_battle_tests_rejects_bad_prompt_index() -> None:
     with pytest.raises(IndexError, match="Prompt variant index"):
         await run_ai_model_profile_battle_tests(

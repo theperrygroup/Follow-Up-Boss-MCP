@@ -12,14 +12,14 @@ Snapshot date: `2026-05-18`
 
 | Readiness lens | Status | Current answer |
 | --- | --- | --- |
-| Prompt corpus | In progress | `src/followupboss_mcp/battle_tests.py` now encodes `BT-READ-001` through `BT-READ-005`; mutation, safety, and boundary prompt batches remain planned. |
+| Prompt corpus | In progress | `src/followupboss_mcp/battle_tests.py` now encodes `BT-READ-001` through `BT-READ-005` with 20 prompt variants each; mutation, safety, and boundary prompt batches remain planned. |
 | Scenario grading | In progress | The grade enum and route evaluator are implemented for captured transcripts; more scenario families still need encoded assertions. |
 | API oracle strategy | In progress | Read-only oracle helpers exist for latest lead, overdue tasks, today's tasks, unsupported note search, and route-only pending scenarios. |
 | Fixture graph | Planned | Disposable people, tasks, deals, notes, appointments, campaigns, templates, and admin fixtures need deterministic setup and cleanup. |
-| Transcript capture | In progress | `BattleTestTranscript` defines the captured data shape, and `src/followupboss_mcp/battle_test_ai.py` can convert AI-selected routes into transcripts through a local FastMCP adapter. No live transcript artifact has been produced yet. |
-| Run artifact persistence | In progress | `BattleTestRunArtifact` and `write_battle_test_run_artifact()` can persist evaluated transcripts as JSON evidence; no live run artifact has been produced yet. |
-| Model profile matrix | In progress | Default run profiles now exist for `gpt-5.5-low-reasoning` and `sonnet-4.7`; the local runner can invoke each provider separately and write separate artifacts. |
-| Live battle-test run | Planned | No vague-prompt battle-test run has been executed or recorded. |
+| Transcript capture | In progress | `BattleTestTranscript` defines the captured data shape, and `src/followupboss_mcp/battle_test_ai.py` can convert AI-selected routes into transcripts through a local FastMCP adapter. |
+| Run artifact persistence | In progress | `BattleTestRunArtifact` and `write_battle_test_run_artifact()` can persist evaluated transcripts as JSON evidence, including variant-expanded scenario IDs. |
+| Model profile matrix | In progress | Default run profiles now exist for `gpt-5.5-low-reasoning` and `sonnet-4.7`; the local runner can invoke each provider separately, run one variant or every variant, and write separate artifacts. |
+| Live battle-test run | In progress | Initial live artifacts exist, but they currently record failures and are not readiness evidence. |
 
 ## Focus Areas
 
@@ -71,6 +71,6 @@ Snapshot date: `2026-05-18`
 
 Battle testing is now partially implemented for the first read-only corpus, run
 artifact evaluation, profile-specific artifact separation, and an AI-backed
-local runner. The next slice should execute a live read-only run for both default
-model profiles and inspect the resulting sibling artifacts before mutation
-batches are encoded.
+local runner with all-variant sweep support. The next slice should use the
+variant-expanded artifacts to tighten tool schemas and model instructions before
+mutation batches are encoded.

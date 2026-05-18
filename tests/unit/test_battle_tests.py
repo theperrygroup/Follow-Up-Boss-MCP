@@ -29,6 +29,7 @@ from followupboss_mcp.battle_tests import (
     evaluate_battle_test_run,
     evaluate_model_profile_battle_test_runs,
     evaluate_transcript_route,
+    expand_battle_test_prompt_variants,
     mcp_tool_result_to_json,
     read_only_battle_test_scenarios,
     run_battle_test_tool_calls,
@@ -177,12 +178,31 @@ def test_read_only_scenario_corpus_is_stable() -> None:
         "BT-READ-004",
         "BT-READ-005",
     ]
-    assert all(len(scenario.prompt_variants) == 5 for scenario in scenarios)
+    assert all(len(scenario.prompt_variants) == 20 for scenario in scenarios)
     assert scenario_by_id("BT-READ-001").expected_mcp.allowed_tools == (
         "followupboss_get_latest_lead",
     )
     with pytest.raises(KeyError):
         scenario_by_id("BT-READ-999")
+
+
+def test_prompt_variant_expansion_creates_stable_cases() -> None:
+    scenario = BattleTestScenario(
+        id="BT-READ-TEST",
+        grade=BattleTestGrade.MUST_ROUTE,
+        prompt_variants=("First wording", "Second wording"),
+        expected_mcp=ExpectedMcpRoute(allowed_tools=("safe_tool",)),
+        api_oracle=ApiOracleSpec(
+            kind=BattleTestOracleKind.UNSUPPORTED_NOTE_SEARCH,
+            description="Test-only oracle.",
+        ),
+    )
+
+    expanded = expand_battle_test_prompt_variants((scenario,))
+
+    assert [item.id for item in expanded] == ["BT-READ-TEST-P01", "BT-READ-TEST-P02"]
+    assert [item.prompt_variants for item in expanded] == [("First wording",), ("Second wording",)]
+    assert all(item.expected_mcp == scenario.expected_mcp for item in expanded)
 
 
 def test_scenario_requires_non_empty_prompt_variants() -> None:
