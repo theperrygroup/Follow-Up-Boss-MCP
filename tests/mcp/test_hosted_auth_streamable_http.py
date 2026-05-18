@@ -18,6 +18,16 @@ from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.exceptions import McpError
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_SENTRY_ENV_KEYS = (
+    "SENTRY_DSN",
+    "SENTRY_ENVIRONMENT",
+    "SENTRY_RELEASE",
+    "SENTRY_SAMPLE_RATE",
+    "SENTRY_TRACES_SAMPLE_RATE",
+    "SENTRY_PROFILES_SAMPLE_RATE",
+    "SENTRY_ENABLE_LOGS",
+    "SENTRY_DEBUG",
+)
 
 
 def _reserve_port() -> int:
@@ -63,6 +73,8 @@ def _server_python_env() -> dict[str, str]:
         subprocess server under test.
     """
     server_env = dict(os.environ)
+    for key in _SENTRY_ENV_KEYS:
+        server_env.pop(key, None)
     existing_pythonpath = server_env.get("PYTHONPATH")
     pythonpath_entries = [str(PROJECT_ROOT / "src")]
     if existing_pythonpath:
