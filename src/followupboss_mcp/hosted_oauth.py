@@ -905,13 +905,13 @@ class HostedOAuthApplication:
             _: Incoming request.
 
         Returns:
-            ICO favicon response with long-lived static-asset cache headers.
+            ICO favicon response with short revalidation headers.
         """
         favicon_path = resources.files(_LOGO_ASSET_PACKAGE).joinpath(_FAVICON_ASSET_NAME)
         return FileResponse(
             str(favicon_path),
             media_type="image/x-icon",
-            headers={"Cache-Control": "public, max-age=604800, immutable"},
+            headers={"Cache-Control": "public, max-age=300, must-revalidate"},
         )
 
     async def logo(self, _: Request) -> FileResponse:

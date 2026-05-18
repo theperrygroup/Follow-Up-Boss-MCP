@@ -282,7 +282,7 @@ def test_settings_and_metadata_validation() -> None:
     favicon_response = client.get("/favicon.ico")
     assert favicon_response.status_code == 200
     assert favicon_response.headers["content-type"] == "image/x-icon"
-    assert favicon_response.headers["cache-control"] == "public, max-age=604800, immutable"
+    assert favicon_response.headers["cache-control"] == "public, max-age=300, must-revalidate"
     assert favicon_response.content.startswith(b"\x00\x00\x01\x00")
 
 
