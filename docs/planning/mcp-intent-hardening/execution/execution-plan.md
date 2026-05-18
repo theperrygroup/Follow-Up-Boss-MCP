@@ -38,6 +38,13 @@ landed, what is blocked, and what still remains open.
 - Read-only battle-test code now encodes the first `BT-READ-*` scenarios and can
   evaluate captured transcripts against typed service oracles for implemented
   read-only cases.
+- Battle-test run artifact helpers now summarize evaluated transcripts, missing
+  scenarios, unknown transcript IDs, and formatted JSON evidence output.
+- Battle-test run metadata now carries model profiles, with default separate
+  targets for GPT-5.5 low reasoning and Sonnet 4.7.
+- An AI-backed profile runner can now call OpenAI Responses for GPT-5.5 low
+  reasoning and Anthropic Messages for Sonnet 4.7, execute selected local FastMCP
+  tools, and write separate artifacts.
 
 ## 3. Current Blockers
 
@@ -49,8 +56,7 @@ landed, what is blocked, and what still remains open.
   requests.
 - Non-read-only vague chatbot prompt scenarios have not been encoded into a
   repeatable corpus.
-- No real MCP client transcript-capture runner exists yet for prompt-level
-  battle tests.
+- No live AI/API-backed battle-test artifact has been produced yet.
 - `BT-READ-004` remains route-only pending until future-task routing is decided.
 - Live validation scenarios should wait until the offline contract is expanded.
 
@@ -119,6 +125,47 @@ landed, what is blocked, and what still remains open.
   - This is not live run evidence; it is reusable evaluator code and focused
     unit proof.
 
+### 2026-05-18 - Phase 04 Battle-Test Run Artifact Evaluator
+
+- Checked-in proof:
+  - `src/followupboss_mcp/battle_tests.py`
+  - `tests/unit/test_battle_tests.py`
+  - `docs/planning/mcp-intent-hardening/execution/intent_PHASE_04_run_artifact_evaluator.md`
+- Result:
+  - Captured transcripts can now be evaluated as a corpus and serialized as a
+    JSON run artifact with aggregate pass/fail, missing-scenario, and
+    unknown-transcript counts.
+  - This is still not live run evidence; it is the persistence layer that a
+    future client transcript runner should call.
+
+### 2026-05-18 - Phase 05 Battle-Test Model Profile Matrix
+
+- Checked-in proof:
+  - `src/followupboss_mcp/battle_tests.py`
+  - `tests/unit/test_battle_tests.py`
+  - `docs/planning/mcp-intent-hardening/execution/intent_PHASE_05_model_profile_matrix.md`
+- Result:
+  - Battle-test run artifacts can now carry a model profile and be written as
+    separate profile-specific JSON files.
+  - The default comparison targets are `gpt-5.5-low-reasoning` and `sonnet-4.7`.
+  - This is still not live run evidence; it is the artifact boundary needed
+    before the client-backed run executes each model separately.
+
+### 2026-05-18 - Phase 06 AI Model Profile Battle-Test Runner
+
+- Checked-in proof:
+  - `src/followupboss_mcp/battle_test_ai.py`
+  - `tests/unit/test_battle_test_ai.py`
+  - `scripts/run_battle_test_model_profiles.py`
+  - `docs/planning/mcp-intent-hardening/execution/intent_PHASE_06_ai_model_profile_runner.md`
+- Result:
+  - The local runner can load AI API keys from `.env`, ask GPT-5.5 low reasoning
+    and Sonnet 4.7 to select MCP routes, execute selected tools through a local
+    FastMCP adapter, evaluate transcripts through the read-only oracle, and write
+    sibling profile-specific artifacts.
+  - This is still not live run evidence; it is the executable runner needed
+    before a dated run artifact can be recorded.
+
 ## 5. Current Work Queue
 
 | Task | Status | Why it is still open |
@@ -129,12 +176,13 @@ landed, what is blocked, and what still remains open.
 | Expand offline validation | In progress | Registered metadata assertions landed for the first slice; future helper or safety wording work still needs coverage. |
 | Update public docs and validation checklist | In progress | First intent-routing and explicit-ID guidance landed; future helper decisions still need doc sync. |
 | Encode vague-prompt battle-test corpus | In progress | `BT-READ-001` through `BT-READ-005` are encoded; mutation, safety, and boundary prompt batches remain planned. |
-| Build battle-test API oracle harness | In progress | Read-only typed service oracle helpers exist, but real transcript capture, direct client runner, cleanup reporting, and mutation oracles still need implementation. |
+| Build battle-test API oracle harness | In progress | Read-only typed service oracle helpers, model-profile run metadata, run artifact writing, and the AI-backed read-only runner exist, but live run evidence, cleanup reporting, and mutation oracles still need implementation. |
 | Run live intent validation | Planned | Should happen only after offline contract and docs are ready. |
 
 ## 6. Current Conclusion
 
 - MCP intent hardening has a planning home, a concrete active sequence, and a
   focused battle-test plan, and the first read-only evaluator. It is not done;
-  the next implementation slice should capture selected MCP tool paths from a
-  real client session and persist run artifacts before mutation batches run.
+  the next implementation slice should execute the checked-in AI runner against
+  the approved read-only environment and record sibling dated artifacts before
+  mutation batches run.

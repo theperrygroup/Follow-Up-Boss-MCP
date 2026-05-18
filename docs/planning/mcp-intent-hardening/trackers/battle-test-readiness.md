@@ -16,7 +16,9 @@ Snapshot date: `2026-05-18`
 | Scenario grading | In progress | The grade enum and route evaluator are implemented for captured transcripts; more scenario families still need encoded assertions. |
 | API oracle strategy | In progress | Read-only oracle helpers exist for latest lead, overdue tasks, today's tasks, unsupported note search, and route-only pending scenarios. |
 | Fixture graph | Planned | Disposable people, tasks, deals, notes, appointments, campaigns, templates, and admin fixtures need deterministic setup and cleanup. |
-| Transcript capture | In progress | `BattleTestTranscript` defines the captured data shape, but no chatbot or MCP client runner captures real transcripts yet. |
+| Transcript capture | In progress | `BattleTestTranscript` defines the captured data shape, and `src/followupboss_mcp/battle_test_ai.py` can convert AI-selected routes into transcripts through a local FastMCP adapter. No live transcript artifact has been produced yet. |
+| Run artifact persistence | In progress | `BattleTestRunArtifact` and `write_battle_test_run_artifact()` can persist evaluated transcripts as JSON evidence; no live run artifact has been produced yet. |
+| Model profile matrix | In progress | Default run profiles now exist for `gpt-5.5-low-reasoning` and `sonnet-4.7`; the local runner can invoke each provider separately and write separate artifacts. |
 | Live battle-test run | Planned | No vague-prompt battle-test run has been executed or recorded. |
 
 ## Focus Areas
@@ -48,7 +50,10 @@ Snapshot date: `2026-05-18`
 - Do not treat a chatbot answer as passing without observed MCP tool selection.
 - Do not use production data unless the scenario is read-only and explicitly
   approved for that account.
-- Do not mark battle-test readiness complete without a repeatable run artifact.
+- Do not mark battle-test readiness complete without a repeatable run artifact
+  produced from real MCP client transcripts.
+- Do not combine GPT-5.5 low-reasoning and Sonnet 4.7 evidence into one pass or
+  fail result; each model profile needs its own artifact.
 
 ## Open Questions
 
@@ -59,9 +64,13 @@ Snapshot date: `2026-05-18`
   the typed service layer so assertions share repository models?
 - Which mutation domains are safe enough for the first live run after people and
   task fixtures?
+- Should the local AI runner become the canonical harness, or should Cursor/MCP
+  Inspector transcript capture also be recorded for comparison?
 
 ## Current Conclusion
 
-Battle testing is now partially implemented for the first read-only corpus. The
-next slice should capture real MCP client transcripts and feed them into the
-checked-in evaluator before mutation batches are encoded.
+Battle testing is now partially implemented for the first read-only corpus, run
+artifact evaluation, profile-specific artifact separation, and an AI-backed
+local runner. The next slice should execute a live read-only run for both default
+model profiles and inspect the resulting sibling artifacts before mutation
+batches are encoded.

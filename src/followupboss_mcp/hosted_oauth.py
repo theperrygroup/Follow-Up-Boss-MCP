@@ -32,6 +32,8 @@ _DEFAULT_AUTHORIZATION_CODE_SECONDS = 300
 _DEFAULT_REFRESH_TOKEN_SECONDS = 60 * 60 * 24 * 30
 _DEFAULT_STATE_SECONDS = 600
 _DEFAULT_TOKEN_BYTES = 32
+_FAVICON_ASSET_NAME = "favicon.ico"
+_FAVICON_ROUTE_PATH = "/favicon.ico"
 _LOGO_ASSET_PACKAGE = "followupboss_mcp.assets"
 _LOGO_ASSET_NAME = "follow-up-boss-logo.png"
 _LOGO_ROUTE_PATH = f"/assets/{_LOGO_ASSET_NAME}"
@@ -854,6 +856,7 @@ class HostedOAuthApplication:
         return (
             Route("/.well-known/oauth-authorization-server", self.authorization_server_metadata),
             Route("/.well-known/openid-configuration", self.authorization_server_metadata),
+            Route(_FAVICON_ROUTE_PATH, self.favicon),
             Route(_LOGO_ROUTE_PATH, self.logo),
             Route("/oauth/register", self.register_client, methods=["POST"]),
             Route("/oauth/authorize", self.authorize),
@@ -893,6 +896,22 @@ class HostedOAuthApplication:
                 "logo_uri": self._settings.endpoint_url(_LOGO_ROUTE_PATH),
             },
             headers={"Cache-Control": "public, max-age=3600"},
+        )
+
+    async def favicon(self, _: Request) -> FileResponse:
+        """Return the packaged Follow Up Boss favicon for issuer-host branding.
+
+        Args:
+            _: Incoming request.
+
+        Returns:
+            ICO favicon response with long-lived static-asset cache headers.
+        """
+        favicon_path = resources.files(_LOGO_ASSET_PACKAGE).joinpath(_FAVICON_ASSET_NAME)
+        return FileResponse(
+            str(favicon_path),
+            media_type="image/x-icon",
+            headers={"Cache-Control": "public, max-age=604800, immutable"},
         )
 
     async def logo(self, _: Request) -> FileResponse:

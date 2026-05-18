@@ -186,6 +186,33 @@
 - Explanation: This file records the first reusable implementation slice for
   read-only battle-test scenario encoding and oracle evaluation.
 
+### Phase 04 Battle-Test Run Artifact Evaluator Proof
+
+- Actual repo path: `docs/planning/mcp-intent-hardening/execution/intent_PHASE_04_run_artifact_evaluator.md`
+- Already exists: `YES`
+- Canonical for future prompts: `YES`
+- Confidence: `High`
+- Explanation: This file records reusable run-artifact summary, serialization,
+  missing-scenario, and unknown-transcript evaluator support.
+
+### Phase 05 Battle-Test Model Profile Matrix Proof
+
+- Actual repo path: `docs/planning/mcp-intent-hardening/execution/intent_PHASE_05_model_profile_matrix.md`
+- Already exists: `YES`
+- Canonical for future prompts: `YES`
+- Confidence: `High`
+- Explanation: This file records default GPT-5.5 low-reasoning and Sonnet 4.7
+  battle-test profile labels and separate artifact boundaries.
+
+### Phase 06 AI Model Profile Runner Proof
+
+- Actual repo path: `docs/planning/mcp-intent-hardening/execution/intent_PHASE_06_ai_model_profile_runner.md`
+- Already exists: `YES`
+- Canonical for future prompts: `YES`
+- Confidence: `High`
+- Explanation: This file records the checked-in OpenAI/Anthropic route selector
+  runner, local command, and remaining live-run evidence gap.
+
 ## Runtime Artifact Homes
 
 These homes are named because they are already stable in the repository. This
@@ -200,7 +227,10 @@ index does not claim planned changes have landed there.
 | MCP server and adapter tests | `tests/mcp/test_mcp_tools_server_cli.py` |
 | Cross-cutting service tests | `tests/unit/test_services.py` |
 | Battle-test scenario schema and read-only oracle helpers | `src/followupboss_mcp/battle_tests.py` |
+| AI-backed battle-test model-profile runner | `src/followupboss_mcp/battle_test_ai.py` |
 | Battle-test unit tests | `tests/unit/test_battle_tests.py` |
+| AI-backed battle-test unit tests | `tests/unit/test_battle_test_ai.py` |
+| Local AI battle-test command | `scripts/run_battle_test_model_profiles.py` |
 | MCP public usage docs | `docs/mcp-usage.md` |
 | Live MCP validation checklist | `docs/mcp-validation-checklist.md` |
 
@@ -230,5 +260,8 @@ docs/planning/mcp-intent-hardening/
     intent_PHASE_01_description_hardening.md
     intent_PHASE_02_battle_test_planning.md
     intent_PHASE_03_read_only_battle_test_schema.md
+    intent_PHASE_04_run_artifact_evaluator.md
+    intent_PHASE_05_model_profile_matrix.md
+    intent_PHASE_06_ai_model_profile_runner.md
     intent_PHASE_##_<slug>.md
 ```

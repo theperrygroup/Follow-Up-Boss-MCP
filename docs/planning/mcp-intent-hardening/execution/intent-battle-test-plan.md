@@ -11,10 +11,18 @@ Snapshot date: `2026-05-18`
 
 - `src/followupboss_mcp/battle_tests.py` now encodes `BT-READ-001` through
   `BT-READ-005`, scenario grades, captured transcript records, route evaluation,
-  and read-only typed service oracle helpers.
+  read-only typed service oracle helpers, corpus-level run evaluation, and JSON
+  run artifact writing. It also defines separate model-profile run labels for
+  GPT-5.5 low reasoning and Sonnet 4.7.
+- `src/followupboss_mcp/battle_test_ai.py` can ask OpenAI Responses and Anthropic
+  Messages to select a route for the default profiles, then convert selected
+  tool calls or sentinel clarification/unsupported outcomes into transcripts.
+- `scripts/run_battle_test_model_profiles.py` loads `.env`, builds a local
+  FastMCP client, and writes separate artifacts for the default model profiles.
 - `tests/unit/test_battle_tests.py` covers the first reusable evaluator.
-- No real MCP client transcript-capture runner or live battle-test run has
-  landed yet.
+- `tests/unit/test_battle_test_ai.py` covers mocked OpenAI and Anthropic payloads
+  and separate profile artifact writing.
+- No live AI/API-backed battle-test run artifact has landed yet.
 
 ## 1. Objective
 
@@ -152,6 +160,19 @@ selection heuristics.
   Follow Up Boss behavior.
 - Record any official API gap that should be escalated to docs or coverage.
 
+### Model Profile Run Matrix
+
+Each live battle-test batch should produce separate run artifacts for each model
+profile. The checked-in defaults are:
+
+| Profile ID | Model label | Reasoning | Artifact rule |
+| --- | --- | --- | --- |
+| `gpt-5.5-low-reasoning` | `gpt-5.5` | `low` | Use one profile-specific artifact with the shared run prefix plus the profile ID. |
+| `sonnet-4.7` | `claude-sonnet-4.7` | provider default | Use a separate profile-specific artifact with the same scenario corpus. |
+
+Do not aggregate these as one pass/fail result. Compare them as sibling run
+artifacts so routing differences remain visible.
+
 ## 6. Phase Sequence
 
 ### Phase 0 - Scenario Schema And Harness Contract
@@ -242,13 +263,17 @@ Acceptance criteria:
 
 ## 7. Next Slice
 
-The first schema and read-only oracle code has landed. Continue with the
-smallest useful client-backed loop:
+The first schema, read-only oracle code, run artifact evaluator, profile matrix,
+and AI-backed local runner have landed. Continue with the smallest useful live
+evidence loop:
 
-1. Capture selected MCP tool names and arguments from one local client.
-2. Feed the captured transcript into the checked-in `battle_tests` evaluator.
-3. Record pass/fail output in a dated artifact.
-4. Decide whether `BT-READ-004` gets a canonical future-task API oracle or stays
+1. Run `scripts/run_battle_test_model_profiles.py` against the approved
+   read-only environment with the `.env` AI keys and Follow Up Boss credentials.
+2. Inspect the sibling artifacts for `gpt-5.5-low-reasoning` and `sonnet-4.7`.
+3. Triage routing failures separately from API-oracle failures.
+4. Decide whether to check in the dated evidence artifact or summarize it in a
+   validation report.
+5. Decide whether `BT-READ-004` gets a canonical future-task API oracle or stays
    route-only pending.
-5. Refresh `battle-test-readiness.md` and `execution-plan.md` with the checked-in
+6. Refresh `battle-test-readiness.md` and `execution-plan.md` with the checked-in
    truth.

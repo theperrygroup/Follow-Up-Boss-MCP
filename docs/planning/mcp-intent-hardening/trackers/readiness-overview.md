@@ -23,7 +23,7 @@ Snapshot date: `2026-05-18`
 | Runtime hardening | In progress | Latest-lead and task due-bucket helpers exist, and first-pass description hardening has landed for people and tasks. Additional intent categories and wider safety wording remain planned. |
 | Offline validation | In progress | Tests assert existing helpers and the first registered metadata hardening slice, but planned routing taxonomy and docs drift checks are not complete. |
 | Public docs and live validation | In progress | `docs/mcp-usage.md` and `docs/mcp-validation-checklist.md` now include first-pass intent guidance; live validation remains planned. |
-| Vague-prompt battle testing | In progress | Read-only scenario schema, `BT-READ-001` through `BT-READ-005`, route grading, and typed oracle helpers are checked in; real client transcript capture, fixture graph, mutation batches, and live runs remain planned. |
+| Vague-prompt battle testing | In progress | Read-only scenario schema, `BT-READ-001` through `BT-READ-005`, route grading, typed oracle helpers, JSON run artifact evaluation, default model-profile artifact separation, and an AI-backed local runner are checked in; live run artifacts, fixture graph, and mutation batches remain planned. |
 
 ## Broad Blockers Before Intent-Hardening Readiness
 
@@ -34,8 +34,8 @@ Snapshot date: `2026-05-18`
   complete intent-routing guide for the full MCP surface.
 - Live validation should wait until the offline contract names the intended
   helper behavior.
-- Vague-prompt battle testing still needs real client transcript capture before
-  the checked-in oracle helpers can prove chatbot behavior.
+- Vague-prompt battle testing still needs a live AI/API-backed run artifact
+  before the checked-in runner can prove chatbot behavior in the target account.
 
 ## Focused Tracker Snapshot
 
@@ -43,12 +43,13 @@ Snapshot date: `2026-05-18`
 | --- | --- | --- |
 | `intent-routing-readiness.md` | In progress | Existing helper anchors and first-pass description redirects are present, but the full routing taxonomy is planned. |
 | `safety-validation-readiness.md` | In progress | Identity fail-closed behavior and explicit-ID wording for people/tasks have some proof, but broader mutation wording and live validation remain planned. |
-| `battle-test-readiness.md` | In progress | The first read-only corpus and oracle evaluator are checked in, but real transcript capture and run artifacts do not exist yet. |
+| `battle-test-readiness.md` | In progress | The first read-only corpus, oracle evaluator, run artifact writer, default model-profile matrix, and AI-backed local runner are checked in, but live run artifacts do not exist yet. |
 
 ## Current Conclusion
 
 - The initiative is planned and partially grounded in checked-in helper anchors.
   It now has a battle-test plan and first read-only evaluator for vague chatbot
-  prompts, but it is not yet complete because taxonomy, safety wording, real
-  transcript capture, mutation scenarios, and broader validation proof remain
+  prompts, plus a run artifact evaluator, model-profile artifact matrix, and
+  local AI runner, but it is not yet complete because taxonomy, safety wording,
+  live run evidence, mutation scenarios, and broader validation proof remain
   open.

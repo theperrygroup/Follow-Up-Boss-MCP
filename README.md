@@ -25,6 +25,8 @@ The repository is intentionally layered:
 3. `models/*` and `services/*` provide typed Follow Up Boss operations.
 4. `webhooks.py` contains reusable webhook signature verification and fast-ack helpers.
 5. `mcp_tools.py`, `mcp_registration.py`, `mcp_server.py`, and `cli.py` expose the typed client through a predictable MCP surface.
+6. `hosted_auth.py`, `hosted_oauth.py`, `hosted_rate_limits.py`, and `hosted_reference.py` provide the shared hosted deployment path.
+7. `battle_tests.py` encodes prompt-level MCP routing scenarios and read-only API-oracle checks for intent hardening.
 
 More detail is in [docs/architecture.md](docs/architecture.md).
 
@@ -44,6 +46,9 @@ More detail is in [docs/architecture.md](docs/architecture.md).
 - explicit webhook signature verification using the exact raw request body
 - MCP tools, one resource, and one lead-event composition prompt
 - stdio and streamable HTTP transports
+- hosted OAuth authorization-server routes for dynamic client registration, Follow Up Boss browser consent delegation, and MCP-scoped bearer tokens
+- hosted branding metadata with a packaged Follow Up Boss logo served from `/assets/follow-up-boss-logo.png`, advertised as `logo_uri`, and mirrored as the issuer-host favicon at `/favicon.ico`
+- read-only battle-test scenario models for vague chatbot prompts, selected MCP tool routes, forbidden tools, and typed API-oracle comparison
 
 ## Repository Layout
 
@@ -52,6 +57,8 @@ More detail is in [docs/architecture.md](docs/architecture.md).
 - `scripts/validate_api_coverage.py`: explicit API coverage matrix generator
 - `docs/followupboss-endpoint-manifest.json`: machine-readable Follow Up Boss manifest
 - `docs/api-coverage-matrix.md`: implementation matrix across discovered official endpoints
+- `src/followupboss_mcp/assets`: packaged hosted branding assets, including the Follow Up Boss logo and favicon used by OAuth metadata and issuer-host discovery
+- `src/followupboss_mcp/battle_tests.py`: reusable read-only battle-test scenario and oracle evaluator code
 - `examples`: runnable examples for health checks, event submission, and server transports
 - `tests`: unit, integration, contract, and MCP test suites
 
@@ -158,6 +165,37 @@ hosted deployment guide. Hosted deployments can expose OAuth authorization
 server routes that let Cursor delegate browser consent to Follow Up Boss and
 receive MCP-scoped hosted bearer tokens.
 
+The current staging deployment is served at:
+
+```text
+https://fub.theperry.group/mcp
+```
+
+The same issuer host also serves OAuth discovery and branding endpoints:
+
+```text
+https://fub.theperry.group/.well-known/oauth-authorization-server
+https://fub.theperry.group/.well-known/openid-configuration
+https://fub.theperry.group/assets/follow-up-boss-logo.png
+https://fub.theperry.group/favicon.ico
+```
+
+The hosted OAuth metadata includes `logo_uri` so MCP clients can discover the
+packaged Follow Up Boss logo without hard-coding an asset path. The same logo is
+also exported as `/favicon.ico` so clients that infer branding from the issuer
+domain receive the MCP-specific icon rather than a generic domain icon.
+
+### Staging Deployment
+
+The staging GitHub Actions workflow is `.github/workflows/deploy-staging.yml`.
+It deploys automatically on pushes to `main` and can also be started manually
+with `workflow_dispatch`. The workflow builds the hosted image, pushes it to
+ECR, renders the ECS task definition from the staging environment variables, and
+updates the `followupboss-mcp-hosted` ECS service.
+
+Pushing to a non-`main` branch does not deploy staging unless that branch is
+merged into `main` or the workflow is manually dispatched for the desired ref.
+
 ## Examples
 
 Identity-based health check:
@@ -200,6 +238,7 @@ For a streamable HTTP server, start the server first and then connect Inspector 
 - [docs/customer-onboarding-flow.md](docs/customer-onboarding-flow.md)
 - [docs/mcp-usage.md](docs/mcp-usage.md)
 - [docs/mcp-validation-checklist.md](docs/mcp-validation-checklist.md)
+- [docs/planning/mcp-intent-hardening/README.md](docs/planning/mcp-intent-hardening/README.md)
 - [docs/testing.md](docs/testing.md)
 - [docs/security.md](docs/security.md)
 - [docs/security-incident-playbook.md](docs/security-incident-playbook.md)

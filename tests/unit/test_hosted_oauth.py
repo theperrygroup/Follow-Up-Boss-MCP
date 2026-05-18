@@ -279,6 +279,12 @@ def test_settings_and_metadata_validation() -> None:
     assert logo_response.headers["cache-control"] == "public, max-age=604800, immutable"
     assert logo_response.content.startswith(b"\x89PNG")
 
+    favicon_response = client.get("/favicon.ico")
+    assert favicon_response.status_code == 200
+    assert favicon_response.headers["content-type"] == "image/x-icon"
+    assert favicon_response.headers["cache-control"] == "public, max-age=604800, immutable"
+    assert favicon_response.content.startswith(b"\x00\x00\x01\x00")
+
 
 def test_dynamic_client_validation_rejects_bad_redirect_shapes() -> None:
     """Dynamic client validation should reject invalid redirect metadata."""
