@@ -178,6 +178,39 @@ async def test_openai_selector_sends_low_reasoning_and_parses_tool_call() -> Non
     await selector.aclose()
 
 
+def test_read_only_tool_specs_constrain_owned_task_fields() -> None:
+    specs = {tool.name: tool for tool in read_only_battle_test_ai_tool_specs()}
+    overdue_schema = cast(
+        dict[str, object],
+        specs["followupboss_list_my_overdue_tasks"].input_schema["properties"],
+    )
+    today_schema = cast(
+        dict[str, object],
+        specs["followupboss_list_my_tasks_due_today"].input_schema["properties"],
+    )
+
+    overdue_fields = overdue_schema["fields"]
+    today_fields = today_schema["fields"]
+
+    assert overdue_fields == today_fields
+    assert overdue_fields == {
+        "type": "array",
+        "description": "Optional task response fields to request.",
+        "items": {
+            "type": "string",
+            "enum": [
+                "id",
+                "name",
+                "dueDate",
+                "assignedUserId",
+                "personId",
+                "isCompleted",
+                "type",
+            ],
+        },
+    }
+
+
 @pytest.mark.asyncio
 async def test_openai_selector_returns_text_when_no_tool_call() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
@@ -339,13 +372,13 @@ async def test_anthropic_selector_parses_unsupported_tool_use() -> None:
     scenario = scenario_by_id("BT-READ-005")
 
     decision = await selector.select_tool(
-        profile=battle_test_model_profile_by_id("sonnet-4.7"),
+        profile=battle_test_model_profile_by_id("sonnet-4.6"),
         scenario=scenario,
         prompt=scenario.prompt_variants[0],
         tools=read_only_battle_test_ai_tool_specs(),
     )
 
-    assert requests[0]["model"] == "claude-sonnet-4.7"
+    assert requests[0]["model"] == "claude-sonnet-4-6"
     assert "reasoning" not in requests[0]
     assert decision.selected_tool is None
     assert decision.unsupported_explained is True
@@ -368,7 +401,7 @@ async def test_anthropic_selector_returns_text_without_tool_use() -> None:
     scenario = scenario_by_id("BT-READ-005")
 
     decision = await selector.select_tool(
-        profile=battle_test_model_profile_by_id("sonnet-4.7"),
+        profile=battle_test_model_profile_by_id("sonnet-4.6"),
         scenario=scenario,
         prompt=scenario.prompt_variants[0],
         tools=read_only_battle_test_ai_tool_specs(),
@@ -396,7 +429,7 @@ async def test_anthropic_selector_handles_bad_payload_shapes() -> None:
     scenario = scenario_by_id("BT-READ-005")
 
     decision = await selector.select_tool(
-        profile=battle_test_model_profile_by_id("sonnet-4.7"),
+        profile=battle_test_model_profile_by_id("sonnet-4.6"),
         scenario=scenario,
         prompt=scenario.prompt_variants[0],
         tools=read_only_battle_test_ai_tool_specs(),
@@ -405,7 +438,7 @@ async def test_anthropic_selector_handles_bad_payload_shapes() -> None:
     assert decision.assistant_message is None
     with pytest.raises(ValueError, match="Anthropic route-selection response"):
         await selector.select_tool(
-            profile=battle_test_model_profile_by_id("sonnet-4.7"),
+            profile=battle_test_model_profile_by_id("sonnet-4.6"),
             scenario=scenario,
             prompt=scenario.prompt_variants[0],
             tools=read_only_battle_test_ai_tool_specs(),
@@ -434,7 +467,7 @@ async def test_anthropic_selector_ignores_non_tool_content_items() -> None:
     scenario = scenario_by_id("BT-READ-005")
 
     decision = await selector.select_tool(
-        profile=battle_test_model_profile_by_id("sonnet-4.7"),
+        profile=battle_test_model_profile_by_id("sonnet-4.6"),
         scenario=scenario,
         prompt=scenario.prompt_variants[0],
         tools=read_only_battle_test_ai_tool_specs(),
@@ -530,7 +563,7 @@ async def test_capture_ai_selected_transcript_records_model_selection_errors() -
 async def test_run_ai_model_profile_battle_tests_writes_separate_artifacts(tmp_path: Path) -> None:
     scenario = scenario_by_id("BT-READ-005")
     gpt_profile = battle_test_model_profile_by_id("gpt-5.5-low-reasoning")
-    sonnet_profile = battle_test_model_profile_by_id("sonnet-4.7")
+    sonnet_profile = battle_test_model_profile_by_id("sonnet-4.6")
     selectors: dict[BattleTestModelProvider, BattleTestModelSelector] = {
         BattleTestModelProvider.OPENAI: StubAiSelector(
             decisions=[
@@ -569,7 +602,7 @@ async def test_run_ai_model_profile_battle_tests_writes_separate_artifacts(tmp_p
 
     assert [artifact.summary.overall_passed for artifact in artifacts] == [True, True]
     assert (tmp_path / "read-only-unit-gpt-5.5-low-reasoning.json").exists()
-    assert (tmp_path / "read-only-unit-sonnet-4.7.json").exists()
+    assert (tmp_path / "read-only-unit-sonnet-4.6.json").exists()
 
 
 def test_load_env_file_preserves_existing_values_and_strips_quotes(

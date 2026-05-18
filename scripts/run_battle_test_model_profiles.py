@@ -8,7 +8,7 @@ import json
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol, cast
 
 from followupboss_mcp.battle_test_ai import (
     battle_test_ai_selectors_from_env,
@@ -26,7 +26,7 @@ from followupboss_mcp.tenant_runtime import build_service_bundle
 class FastMcpCallable(Protocol):
     """Protocol for the FastMCP tool-calling surface used by this script."""
 
-    async def call_tool(self, name: str, arguments: Mapping[str, JsonValue]) -> object:
+    async def call_tool(self, name: str, arguments: dict[str, Any]) -> object:
         """Call one registered MCP tool."""
 
 
@@ -80,7 +80,7 @@ def _decode_fastmcp_result(result: object) -> JsonValue:
             if isinstance(text, str):
                 parsed = json.loads(text)
                 if _is_json_value(parsed):
-                    return parsed
+                    return cast(JsonValue, parsed)
     return None
 
 
@@ -109,7 +109,7 @@ def build_parser() -> argparse.ArgumentParser:
         Configured parser for the model-profile runner.
     """
     parser = argparse.ArgumentParser(
-        description="Run read-only MCP battle tests through GPT-5.5 low reasoning and Sonnet 4.7.",
+        description="Run read-only MCP battle tests through GPT-5.5 low reasoning and Sonnet 4.6.",
     )
     parser.add_argument(
         "--env-file",

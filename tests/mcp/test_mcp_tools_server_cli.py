@@ -14,7 +14,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
-from pydantic import AnyUrl, TypeAdapter
+from pydantic import AnyUrl, TypeAdapter, ValidationError
 
 from followupboss_mcp.cli import build_parser, main
 from followupboss_mcp.config import FollowUpBossSettings
@@ -2641,6 +2641,13 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert stub.task_list_requests[-1].assigned_user_id == 1
     assert stub.task_list_requests[-1].due == "today"
     assert stub.task_list_requests[-1].is_completed is False
+    assert ListMyTaskIntentToolInput(fields=["id", "name", "dueDate"]).fields == [
+        "id",
+        "name",
+        "dueDate",
+    ]
+    with pytest.raises(ValidationError, match="Unsupported task fields"):
+        ListMyTaskIntentToolInput(fields=["id", "personName"])
     assert (await adapter.get_task(GetTaskToolInput(task_id=18)))["id"] == 18
     assert (
         await adapter.create_task(CreateTaskRequest(person_id=1, assigned_to="Data", type="Email"))

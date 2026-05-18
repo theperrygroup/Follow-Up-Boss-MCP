@@ -37,6 +37,15 @@ _ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages"
 _ANTHROPIC_VERSION = "2023-06-01"
 _CLARIFY_TOOL = "battle_test_clarify"
 _UNSUPPORTED_TOOL = "battle_test_explain_unsupported"
+_TASK_INTENT_RESPONSE_FIELDS = (
+    "id",
+    "name",
+    "dueDate",
+    "assignedUserId",
+    "personId",
+    "isCompleted",
+    "type",
+)
 
 
 class BattleTestAiToolSpec(RequestModel):
@@ -92,7 +101,10 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
     paginated_fields_schema: JsonObject = {
         "type": "object",
         "properties": {
-            "fields": _array_schema("Optional response fields to request."),
+            "fields": _enum_array_schema(
+                "Optional task response fields to request.",
+                _TASK_INTENT_RESPONSE_FIELDS,
+            ),
             "limit": _integer_schema("Optional page size."),
             "next_token": _string_schema("Optional next page token."),
             "offset": _integer_schema("Optional offset."),
@@ -462,7 +474,7 @@ async def run_ai_model_profile_battle_tests(
         run_id_prefix: Shared run prefix for sibling profile artifacts.
         client: Client or harness label.
         profiles: Optional profile list. Defaults to GPT-5.5 low reasoning and
-            Sonnet 4.7.
+            Sonnet 4.6.
         scenarios: Optional scenario corpus. Defaults to read-only scenarios.
         artifact_directory: Optional output directory for JSON artifacts.
         prompt_variant_index: Prompt variant index to run for each scenario.
@@ -575,6 +587,23 @@ def _array_schema(description: str) -> JsonObject:
         "type": "array",
         "description": description,
         "items": {"type": "string"},
+    }
+
+
+def _enum_array_schema(description: str, allowed_values: tuple[str, ...]) -> JsonObject:
+    """Return a JSON schema string-array property with enum-constrained values.
+
+    Args:
+        description: Human-readable schema description.
+        allowed_values: Values accepted for each item in the array.
+
+    Returns:
+        A JSON schema object for a string array with enumerated items.
+    """
+    return {
+        "type": "array",
+        "description": description,
+        "items": {"type": "string", "enum": list(allowed_values)},
     }
 
 

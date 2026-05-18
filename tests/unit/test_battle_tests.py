@@ -222,14 +222,14 @@ def test_scenario_requires_non_empty_prompt_variants() -> None:
 def test_default_model_profiles_are_separate_run_targets() -> None:
     profiles = battle_test_model_profiles()
 
-    assert [profile.id for profile in profiles] == ["gpt-5.5-low-reasoning", "sonnet-4.7"]
+    assert [profile.id for profile in profiles] == ["gpt-5.5-low-reasoning", "sonnet-4.6"]
     assert profiles[0].provider is BattleTestModelProvider.OPENAI
     assert profiles[0].model == "gpt-5.5"
     assert profiles[0].reasoning_effort == "low"
     assert profiles[1].provider is BattleTestModelProvider.ANTHROPIC
-    assert profiles[1].model == "claude-sonnet-4.7"
+    assert profiles[1].model == "claude-sonnet-4-6"
     assert profiles[1].reasoning_effort is None
-    assert battle_test_model_profile_by_id("sonnet-4.7") == profiles[1]
+    assert battle_test_model_profile_by_id("sonnet-4.6") == profiles[1]
     with pytest.raises(KeyError):
         battle_test_model_profile_by_id("missing")
 
@@ -995,23 +995,23 @@ async def test_evaluate_model_profile_battle_test_runs_keeps_profiles_separate(
         if artifact.metadata.model_profile
     ] == [
         "gpt-5.5-low-reasoning",
-        "sonnet-4.7",
+        "sonnet-4.6",
     ]
     assert artifacts[0].summary.overall_passed is True
     assert artifacts[1].summary.overall_passed is False
     assert artifacts[1].missing_scenario_ids == ("BT-READ-005",)
     gpt_artifact = tmp_path / "read-only-20260518-gpt-5.5-low-reasoning.json"
-    sonnet_artifact = tmp_path / "read-only-20260518-sonnet-4.7.json"
+    sonnet_artifact = tmp_path / "read-only-20260518-sonnet-4.6.json"
     assert gpt_artifact.exists()
     assert sonnet_artifact.exists()
     assert '"reasoning_effort": "low"' in gpt_artifact.read_text(encoding="utf-8")
-    assert '"model": "claude-sonnet-4.7"' in sonnet_artifact.read_text(encoding="utf-8")
+    assert '"model": "claude-sonnet-4-6"' in sonnet_artifact.read_text(encoding="utf-8")
 
 
 @pytest.mark.asyncio
 async def test_evaluate_model_profile_battle_test_runs_can_skip_artifact_directory() -> None:
     scenario = scenario_by_id("BT-READ-005")
-    profile = battle_test_model_profile_by_id("sonnet-4.7")
+    profile = battle_test_model_profile_by_id("sonnet-4.6")
     transcript = BattleTestTranscript(
         scenario_id=scenario.id,
         prompt=scenario.prompt_variants[0],
@@ -1020,7 +1020,7 @@ async def test_evaluate_model_profile_battle_test_runs_can_skip_artifact_directo
 
     artifacts = await evaluate_model_profile_battle_test_runs(
         ReadOnlyBattleTestOracle(_services()),
-        {"sonnet-4.7": (transcript,)},
+        {"sonnet-4.6": (transcript,)},
         run_id_prefix="read-only-20260518",
         client="cursor",
         profiles=(profile,),
@@ -1028,5 +1028,5 @@ async def test_evaluate_model_profile_battle_test_runs_can_skip_artifact_directo
     )
 
     assert len(artifacts) == 1
-    assert artifacts[0].metadata.run_id == "read-only-20260518-sonnet-4.7"
+    assert artifacts[0].metadata.run_id == "read-only-20260518-sonnet-4.6"
     assert artifacts[0].summary.overall_passed is True

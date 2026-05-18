@@ -257,13 +257,13 @@ GPT_55_LOW_REASONING_PROFILE = BattleTestModelProfile(
     display_name="GPT-5.5 low reasoning",
     reasoning_effort="low",
 )
-SONNET_47_PROFILE = BattleTestModelProfile(
-    id="sonnet-4.7",
+SONNET_46_PROFILE = BattleTestModelProfile(
+    id="sonnet-4.6",
     provider=BattleTestModelProvider.ANTHROPIC,
-    model="claude-sonnet-4.7",
-    display_name="Sonnet 4.7",
+    model="claude-sonnet-4-6",
+    display_name="Sonnet 4.6",
 )
-_DEFAULT_MODEL_PROFILES = (GPT_55_LOW_REASONING_PROFILE, SONNET_47_PROFILE)
+_DEFAULT_MODEL_PROFILES = (GPT_55_LOW_REASONING_PROFILE, SONNET_46_PROFILE)
 
 
 def battle_test_model_profiles() -> tuple[BattleTestModelProfile, ...]:
@@ -271,7 +271,7 @@ def battle_test_model_profiles() -> tuple[BattleTestModelProfile, ...]:
 
     Returns:
         The default profile tuple containing GPT-5.5 low reasoning and Sonnet
-        4.7 labels.
+        4.6 labels.
     """
     return _DEFAULT_MODEL_PROFILES
 
@@ -483,7 +483,7 @@ async def evaluate_model_profile_battle_test_runs(
         run_id_prefix: Shared run prefix for the model comparison batch.
         client: Client or harness label used to capture transcripts.
         profiles: Optional profile set. Defaults to the standard GPT-5.5 low
-            reasoning and Sonnet 4.7 profiles.
+            reasoning and Sonnet 4.6 profiles.
         environment: Optional target environment label.
         started_at: Optional ISO-like run timestamp.
         notes: Optional run notes.

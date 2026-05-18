@@ -7,6 +7,8 @@ from contextvars import ContextVar
 from dataclasses import asdict
 from typing import Any, cast
 
+from pydantic import field_validator
+
 from followupboss_mcp.errors import FollowUpBossError, FollowUpBossRateLimitError
 from followupboss_mcp.models.action_plans import (
     ActionPlanListRequest,
@@ -163,6 +165,17 @@ _ACTIVE_SERVICE_BUNDLE: ContextVar[ServiceBundle | None] = ContextVar(
     "followupboss_active_service_bundle",
     default=None,
 )
+_TASK_INTENT_RESPONSE_FIELDS = frozenset(
+    {
+        "id",
+        "name",
+        "dueDate",
+        "assignedUserId",
+        "personId",
+        "isCompleted",
+        "type",
+    }
+)
 
 
 class GetPersonToolInput(PersonLookupRequest):
@@ -184,6 +197,33 @@ class ListMyTaskIntentToolInput(RequestModel):
     limit: int | None = None
     next_token: str | None = None
     offset: int | None = None
+
+    @field_validator("fields")
+    @classmethod
+    def _validate_fields(cls, value: list[str] | None) -> list[str] | None:
+        """Validate task projection fields for owned task intent helpers.
+
+        Args:
+            value: Optional field names requested by the MCP caller.
+
+        Returns:
+            The original field list when every field is supported.
+
+        Raises:
+            ValueError: If any requested field is not supported by the narrow
+                owned-task helpers.
+        """
+        if value is None:
+            return None
+        invalid_fields = sorted(set(value) - _TASK_INTENT_RESPONSE_FIELDS)
+        if invalid_fields:
+            allowed_fields = ", ".join(sorted(_TASK_INTENT_RESPONSE_FIELDS))
+            invalid = ", ".join(invalid_fields)
+            raise ValueError(
+                f"Unsupported task fields for owned task helpers: {invalid}. "
+                f"Allowed fields: {allowed_fields}."
+            )
+        return value
 
 
 class ListActiveDealsForPersonToolInput(RequestModel):
