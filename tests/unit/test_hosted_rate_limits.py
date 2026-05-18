@@ -258,6 +258,81 @@ async def test_hosted_rate_limit_middleware_skips_non_http_scopes() -> None:
 
 
 @pytest.mark.asyncio
+async def test_hosted_rate_limit_middleware_reports_backend_failure_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Rate-limit backend failures should be captured before fail-open behavior."""
+
+    class FailingBackend:
+        """Backend stub that raises while checking the request budget."""
+
+        async def consume(
+            self,
+            key: HostedRateLimitKey,
+            *,
+            limit: int,
+            window_seconds: float,
+        ) -> HostedRateLimitDecision:
+            """Raise a backend outage."""
+            del key, limit, window_seconds
+            raise RuntimeError("redis unavailable")
+
+    captured: list[tuple[Exception, dict[str, object] | None, dict[str, object] | None]] = []
+    downstream_calls: list[str] = []
+
+    def fake_capture_sentry_exception(
+        exc: Exception,
+        *,
+        tags: dict[str, object] | None = None,
+        extras: dict[str, object] | None = None,
+    ) -> str:
+        """Record captured rate-limit backend failures."""
+        captured.append((exc, tags, extras))
+        return "event-id"
+
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        """Record that fail-open behavior forwarded to the app."""
+        del receive, send
+        downstream_calls.append(scope["path"])
+
+    async def send(_: Message) -> None:
+        """Ignore emitted ASGI messages."""
+        return None
+
+    monkeypatch.setattr(
+        "followupboss_mcp.hosted_rate_limits.get_hosted_access_token",
+        lambda: _access_token(),
+    )
+    monkeypatch.setattr(
+        "followupboss_mcp.hosted_rate_limits.capture_sentry_exception",
+        fake_capture_sentry_exception,
+    )
+    middleware = HostedRateLimitMiddleware(
+        app,
+        rate_limiter=HostedEndpointRateLimiter(
+            settings=HostedRateLimitSettings(backend_failure_mode="open"),
+            backend=FailingBackend(),
+        ),
+    )
+
+    await middleware(_http_scope(), _empty_receive, send)
+
+    assert downstream_calls == ["/mcp"]
+    assert len(captured) == 1
+    assert captured[0][1] == {
+        "component": "hosted_rate_limits",
+        "rate_limit_failure_mode": "open",
+    }
+    assert captured[0][2] == {
+        "tenant_id": "tenant-1",
+        "client_id": "portal-app",
+        "requests_per_window": 300,
+        "window_seconds": 60.0,
+        "backend_failure_mode": "open",
+    }
+
+
+@pytest.mark.asyncio
 async def test_hosted_rate_limit_middleware_omits_retry_after_without_backend_hint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

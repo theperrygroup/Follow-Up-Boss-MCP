@@ -17,6 +17,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from followupboss_mcp.hosted_auth import HostedAccessToken, get_hosted_access_token
 from followupboss_mcp.logging import emit_audit_event
+from followupboss_mcp.observability import capture_sentry_exception
 
 type HostedRateLimitFailureMode = Literal["closed", "open"]
 
@@ -337,6 +338,14 @@ class HostedRateLimitMiddleware:
         try:
             decision = await self._rate_limiter.check_request(access_token, client_ip=client_ip)
         except Exception as exc:  # pragma: no cover - exercised via focused HTTP tests
+            capture_sentry_exception(
+                exc,
+                tags={
+                    "component": "hosted_rate_limits",
+                    "rate_limit_failure_mode": self._rate_limiter.settings.backend_failure_mode,
+                },
+                extras=_rate_limit_fields(key, settings=self._rate_limiter.settings),
+            )
             emit_audit_event(
                 self._rate_limiter.logger,
                 event="hosted_rate_limit_backend_failed",

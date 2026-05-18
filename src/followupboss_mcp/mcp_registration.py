@@ -189,6 +189,7 @@ from followupboss_mcp.models.webhooks import (
     CreateWebhookRequest,
     WebhookListRequest,
 )
+from followupboss_mcp.observability import capture_sentry_exception
 from followupboss_mcp.tenant_runtime import TenantRuntime, TenantRuntimeFactory
 from mcp.server.fastmcp import FastMCP
 
@@ -326,7 +327,15 @@ async def _resolve_surface_runtime(
         return None
     try:
         return await tenant_runtime_factory.runtime_for_current_tenant()
-    except Exception:
+    except Exception as exc:
+        capture_sentry_exception(
+            exc,
+            tags={
+                "component": "mcp_registration",
+                "surface_runtime_phase": "resolve_surface_runtime",
+            },
+            extras={"surface_name": surface_name},
+        )
         raise _surface_runtime_resolution_error() from None
 
 

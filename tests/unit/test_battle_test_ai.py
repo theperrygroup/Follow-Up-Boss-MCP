@@ -903,6 +903,24 @@ async def test_capture_ai_selected_multi_call_transcript_rejects_multi_turn() ->
 
 
 @pytest.mark.asyncio
+async def test_capture_ai_selected_multi_call_transcript_records_selection_error() -> None:
+    conversation = read_only_battle_test_conversations(BattleTestConversationKind.MULTI_ASK)[0]
+
+    transcript = await capture_ai_selected_multi_call_transcript(
+        selector=StubAiSelector(decisions=[TimeoutError("selector timed out")]),
+        profile=battle_test_model_profile_by_id("gpt-5.5-low-reasoning"),
+        conversation=conversation,
+        mcp_client=StubMcpClient(results=[]),
+    )
+
+    assert [item.response for item in transcript.transcripts] == [
+        {"error": "AI route selection failed: selector timed out"},
+        {"error": "AI route selection failed: selector timed out"},
+    ]
+    assert transcript.assistant_message == "selector timed out"
+
+
+@pytest.mark.asyncio
 async def test_capture_ai_selected_conversation_transcript_passes_history() -> None:
     conversation = read_only_battle_test_conversations(BattleTestConversationKind.MULTI_TURN)[0]
     selector = StubMultiAiSelector(

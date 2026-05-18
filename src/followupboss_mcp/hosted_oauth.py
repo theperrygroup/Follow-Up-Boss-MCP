@@ -26,6 +26,7 @@ from starlette.routing import Route
 
 from followupboss_mcp.config import FollowUpBossTenantRuntimeDefaults
 from followupboss_mcp.models.identity import IdentityResponse
+from followupboss_mcp.observability import capture_sentry_exception, capture_sentry_message
 
 _DEFAULT_ACCESS_TOKEN_SECONDS = 3600
 _DEFAULT_AUTHORIZATION_CODE_SECONDS = 300
@@ -34,6 +35,7 @@ _DEFAULT_STATE_SECONDS = 600
 _DEFAULT_TOKEN_BYTES = 32
 _FAVICON_ASSET_NAME = "favicon.ico"
 _FAVICON_ROUTE_PATH = "/favicon.ico"
+_FUB_CALLBACK_ROUTE_PATH = "/oauth/follow-up-boss/callback"
 _LOGO_ASSET_PACKAGE = "followupboss_mcp.assets"
 _LOGO_ASSET_NAME = "follow-up-boss-logo.png"
 _LOGO_ROUTE_PATH = f"/assets/{_LOGO_ASSET_NAME}"
@@ -190,6 +192,75 @@ def _redirect_error(
         params["state"] = state
     separator = "&" if "?" in redirect_uri else "?"
     return RedirectResponse(f"{redirect_uri}{separator}{urlencode(params)}", status_code=302)
+
+
+def _normalize_url_without_trailing_slash(value: object) -> str:
+    """Return a URL-like value as a string without a trailing slash.
+
+    Args:
+        value: URL-like value from Pydantic settings.
+
+    Returns:
+        The URL string with a single trailing slash removed.
+    """
+    return str(value).rstrip("/")
+
+
+def validate_fub_callback_configuration(settings: HostedOAuthSettings) -> None:
+    """Validate that FUB is configured to call the hosted callback route.
+
+    Args:
+        settings: Hosted OAuth settings to validate.
+
+    Raises:
+        ValueError: If the configured FUB callback URL does not match the
+            callback route exposed by this hosted OAuth application.
+    """
+    expected_callback_url = settings.endpoint_url(_FUB_CALLBACK_ROUTE_PATH)
+    actual_callback_url = _normalize_url_without_trailing_slash(settings.fub_callback_url)
+    if actual_callback_url == expected_callback_url:
+        return
+
+    capture_sentry_message(
+        "hosted_oauth_callback_url_mismatch",
+        level="error",
+        tags={"route": _FUB_CALLBACK_ROUTE_PATH, "oauth_phase": "configuration"},
+        extras={
+            "expected_callback_url": expected_callback_url,
+            "actual_callback_url": actual_callback_url,
+        },
+    )
+    raise ValueError(
+        f"fub_callback_url must match the hosted OAuth callback endpoint: {expected_callback_url}"
+    )
+
+
+def _capture_oauth_callback_exception(
+    exc: Exception,
+    *,
+    phase: str,
+    pending: HostedOAuthPendingAuthorization,
+) -> None:
+    """Report a handled hosted OAuth callback failure to Sentry.
+
+    Args:
+        exc: The operational exception being converted into an OAuth redirect.
+        phase: Stable callback phase where the failure occurred.
+        pending: Pending authorization metadata for safe, non-secret context.
+    """
+    capture_sentry_exception(
+        exc,
+        tags={
+            "route": _FUB_CALLBACK_ROUTE_PATH,
+            "oauth_phase": phase,
+        },
+        extras={
+            "client_id": pending.client_id,
+            "has_client_state": pending.client_state is not None,
+            "requested_scopes": list(pending.scopes),
+            "resource": pending.resource,
+        },
+    )
 
 
 async def _form_payload(request: Request) -> dict[str, str]:
@@ -842,6 +913,7 @@ class HostedOAuthApplication:
             time_provider: Optional Unix timestamp provider.
         """
         self._settings = settings
+        validate_fub_callback_configuration(settings)
         self._store = store
         self._tenant_provisioner = tenant_provisioner
         self._fub_client = fub_client or FollowUpBossOAuthClient(settings)
@@ -860,7 +932,7 @@ class HostedOAuthApplication:
             Route(_LOGO_ROUTE_PATH, self.logo),
             Route("/oauth/register", self.register_client, methods=["POST"]),
             Route("/oauth/authorize", self.authorize),
-            Route("/oauth/follow-up-boss/callback", self.follow_up_boss_callback),
+            Route(_FUB_CALLBACK_ROUTE_PATH, self.follow_up_boss_callback),
             Route("/oauth/token", self.token, methods=["POST"]),
         )
 
@@ -1071,14 +1143,35 @@ class HostedOAuthApplication:
                 auth_code=auth_code,
                 fub_state=fub_state,
             )
+        except Exception as exc:
+            _capture_oauth_callback_exception(exc, phase="fub_token_exchange", pending=pending)
+            return _redirect_error(
+                pending.redirect_uri,
+                "server_error",
+                state=pending.client_state,
+                description="Follow Up Boss OAuth exchange failed.",
+            )
+
+        try:
             fub_identity = await self._fub_client.get_identity(
                 access_token=token_payload.access_token.get_secret_value()
             )
+        except Exception as exc:
+            _capture_oauth_callback_exception(exc, phase="fub_identity_lookup", pending=pending)
+            return _redirect_error(
+                pending.redirect_uri,
+                "server_error",
+                state=pending.client_state,
+                description="Follow Up Boss OAuth exchange failed.",
+            )
+
+        try:
             provisioned = await self._tenant_provisioner.provision_tenant(
                 identity=fub_identity,
                 token_payload=token_payload,
             )
-        except Exception:
+        except Exception as exc:
+            _capture_oauth_callback_exception(exc, phase="tenant_provisioning", pending=pending)
             return _redirect_error(
                 pending.redirect_uri,
                 "server_error",

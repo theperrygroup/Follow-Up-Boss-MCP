@@ -559,13 +559,29 @@ async def capture_ai_selected_multi_call_transcript(
     expected_scenarios = tuple(
         conversation_turn_to_scenario(conversation, turn) for turn in conversation.turns
     )
-    decisions = await _select_tool_decisions(
-        selector=selector,
-        profile=profile,
-        scenario=expected_scenarios[0],
-        prompt=prompt,
-        tools=tools or read_only_battle_test_ai_tool_specs(),
-    )
+    try:
+        decisions = await _select_tool_decisions(
+            selector=selector,
+            profile=profile,
+            scenario=expected_scenarios[0],
+            prompt=prompt,
+            tools=tools or read_only_battle_test_ai_tool_specs(),
+        )
+    except Exception as exc:
+        return BattleTestMultiCallTranscript(
+            scenario_id=conversation.id,
+            prompt=prompt,
+            transcripts=tuple(
+                BattleTestTranscript(
+                    scenario_id=scenario.id,
+                    prompt=prompt,
+                    response={"error": f"AI route selection failed: {exc}"},
+                    assistant_message=str(exc),
+                )
+                for scenario in expected_scenarios
+            ),
+            assistant_message=str(exc),
+        )
     transcripts: list[BattleTestTranscript] = []
     for index, expected_scenario in enumerate(expected_scenarios):
         decision = (

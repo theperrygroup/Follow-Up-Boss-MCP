@@ -8,7 +8,7 @@ from typing import cast
 
 from followupboss_mcp.config import FollowUpBossServerSettings, FollowUpBossSettings, TransportMode
 from followupboss_mcp.mcp_server import create_server
-from followupboss_mcp.observability import configure_sentry
+from followupboss_mcp.observability import configure_sentry, flush_sentry
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -54,34 +54,41 @@ def main(argv: Sequence[str] | None = None) -> int:
     """
     parser = build_parser()
     args = parser.parse_args(argv)
+    early_transport = (
+        cast(TransportMode, args.command) if args.command in {"stdio", "streamable-http"} else None
+    )
+    configure_sentry(entrypoint="followupboss-mcp", transport=early_transport)
     server_settings = FollowUpBossServerSettings()
     command = args.command or server_settings.transport
     configure_sentry(entrypoint="followupboss-mcp", transport=cast(TransportMode, command))
     local_dev_settings = FollowUpBossSettings()
 
-    if command == "stdio":
-        server = create_server(
-            local_dev_settings,
-            server_settings=server_settings.model_copy(update={"transport": "stdio"}),
-        )
-        server.run(transport="stdio")
-        return 0
+    try:
+        if command == "stdio":
+            server = create_server(
+                local_dev_settings,
+                server_settings=server_settings.model_copy(update={"transport": "stdio"}),
+            )
+            server.run(transport="stdio")
+            return 0
 
-    resolved_server_settings = server_settings.model_copy(
-        update={
-            "transport": "streamable-http",
-            "host": getattr(args, "host", server_settings.host),
-            "port": getattr(args, "port", server_settings.port),
-            "streamable_http_path": getattr(
-                args,
-                "path",
-                server_settings.streamable_http_path,
-            ),
-        }
-    )
-    server = create_server(local_dev_settings, server_settings=resolved_server_settings)
-    server.run(transport="streamable-http")
-    return 0
+        resolved_server_settings = server_settings.model_copy(
+            update={
+                "transport": "streamable-http",
+                "host": getattr(args, "host", server_settings.host),
+                "port": getattr(args, "port", server_settings.port),
+                "streamable_http_path": getattr(
+                    args,
+                    "path",
+                    server_settings.streamable_http_path,
+                ),
+            }
+        )
+        server = create_server(local_dev_settings, server_settings=resolved_server_settings)
+        server.run(transport="streamable-http")
+        return 0
+    finally:
+        flush_sentry()
 
 
 if __name__ == "__main__":

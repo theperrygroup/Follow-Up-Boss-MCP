@@ -9,6 +9,7 @@ import pytest
 from pydantic import SecretStr, ValidationError
 
 from followupboss_mcp.auth import AuthMode
+from followupboss_mcp.errors import TenantStoreUnavailableError
 from followupboss_mcp.hosted_auth import (
     DevelopmentHostedTokenRecord,
     DevelopmentHostedTokenVerifier,
@@ -24,6 +25,7 @@ from followupboss_mcp.hosted_auth import (
 )
 from followupboss_mcp.tenant_store import (
     DevelopmentTenantStore,
+    ResolvedTenantCredentials,
     TenantCredentialRecord,
     TenantCredentialStatus,
     TenantRecord,
@@ -442,8 +444,27 @@ async def test_hosted_tenant_token_verifier_emits_audit_event_for_failed_verific
 
 
 @pytest.mark.asyncio
-async def test_hosted_tenant_token_verifier_emits_audit_event_for_verifier_outage() -> None:
+async def test_hosted_tenant_token_verifier_emits_audit_event_for_verifier_outage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Hosted auth should fail closed when the underlying token verifier is unavailable."""
+    captured: list[tuple[Exception, dict[str, object] | None]] = []
+
+    def fake_capture_sentry_exception(
+        exc: Exception,
+        *,
+        tags: dict[str, object] | None = None,
+        extras: dict[str, object] | None = None,
+    ) -> str:
+        """Record captured token-verifier outages."""
+        del extras
+        captured.append((exc, tags))
+        return "event-id"
+
+    monkeypatch.setattr(
+        "followupboss_mcp.hosted_auth.capture_sentry_exception",
+        fake_capture_sentry_exception,
+    )
 
     class UnavailableHostedIdentityVerifier:
         """Hosted-identity verifier stub that fails during verification."""
@@ -474,3 +495,78 @@ async def test_hosted_tenant_token_verifier_emits_audit_event_for_verifier_outag
     assert '"reason": "token_verifier_unavailable"' in log_output
     assert '"error_type": "RuntimeError"' in log_output
     assert "any-token" not in log_output
+    assert len(captured) == 1
+    assert captured[0][1] == {
+        "component": "hosted_auth",
+        "hosted_auth_phase": "token_verifier",
+    }
+
+
+@pytest.mark.asyncio
+async def test_hosted_tenant_token_verifier_reports_tenant_store_outage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Hosted auth should report tenant-store outages while failing closed."""
+    captured: list[tuple[Exception, dict[str, object] | None, dict[str, object] | None]] = []
+
+    def fake_capture_sentry_exception(
+        exc: Exception,
+        *,
+        tags: dict[str, object] | None = None,
+        extras: dict[str, object] | None = None,
+    ) -> str:
+        """Record captured tenant-store outages."""
+        captured.append((exc, tags, extras))
+        return "event-id"
+
+    class UnavailableTenantStore(DevelopmentTenantStore):
+        """Tenant store that raises a backend outage during credential resolution."""
+
+        async def resolve_tenant_credential(
+            self,
+            *,
+            tenant_id: str,
+            credential_id: str,
+        ) -> ResolvedTenantCredentials:
+            """Raise a tenant-store outage."""
+            del tenant_id, credential_id
+            raise TenantStoreUnavailableError("Tenant store is unavailable.")
+
+    monkeypatch.setattr(
+        "followupboss_mcp.hosted_auth.capture_sentry_exception",
+        fake_capture_sentry_exception,
+    )
+    verifier = HostedTenantTokenVerifier(
+        identity_verifier=DevelopmentHostedTokenVerifier.from_mapping(
+            {
+                "dev-token": HostedVerifiedIdentity.model_validate(
+                    {
+                        "tenant_id": "tenant-1",
+                        "subject": "user-123",
+                        "client_id": "portal-app",
+                        "credential_id": "credential-1",
+                        "token_id": "token-123",
+                    }
+                )
+            }
+        ),
+        tenant_store=UnavailableTenantStore(
+            tenants=[_tenant_record()],
+            credentials=[_credential_record()],
+        ),
+    )
+
+    assert await verifier.verify_token("dev-token") is None
+    assert len(captured) == 1
+    assert captured[0][1] == {
+        "component": "hosted_auth",
+        "hosted_auth_phase": "tenant_resolution",
+        "tenant_resolution_reason": "tenant_store_unavailable",
+    }
+    assert captured[0][2] == {
+        "tenant_id": "tenant-1",
+        "subject": "user-123",
+        "client_id": "portal-app",
+        "credential_id": "credential-1",
+        "token_id": "token-123",
+    }

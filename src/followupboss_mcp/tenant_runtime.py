@@ -15,13 +15,18 @@ from followupboss_mcp.config import (
     FollowUpBossTenantRuntimeDefaults,
     FollowUpBossTenantSettings,
 )
-from followupboss_mcp.errors import TenantStoreError
+from followupboss_mcp.errors import (
+    TenantSecretStoreUnavailableError,
+    TenantStoreError,
+    TenantStoreUnavailableError,
+)
 from followupboss_mcp.hosted_auth import (
     HostedAuthenticatedTenant,
     get_hosted_authenticated_tenant,
 )
 from followupboss_mcp.http_client import FollowUpBossAsyncClient, FollowUpBossClientProtocol
 from followupboss_mcp.logging import emit_audit_event
+from followupboss_mcp.observability import capture_sentry_exception
 from followupboss_mcp.services.action_plans import ActionPlansService
 from followupboss_mcp.services.appointment_metadata import (
     AppointmentOutcomesService,
@@ -354,6 +359,19 @@ class TenantRuntimeFactory:
         try:
             return await self.runtime_from_authenticated_tenant(authenticated_tenant)
         except TenantStoreError as exc:
+            if isinstance(exc, TenantStoreUnavailableError | TenantSecretStoreUnavailableError):
+                capture_sentry_exception(
+                    exc,
+                    tags={
+                        "component": "tenant_runtime",
+                        "tenant_runtime_phase": "resolve_current_tenant",
+                    },
+                    extras={
+                        "tenant_id": authenticated_tenant.tenant_id,
+                        "tenant_slug": authenticated_tenant.tenant_slug,
+                        "credential_id": authenticated_tenant.credential_id,
+                    },
+                )
             raise RuntimeError("Hosted tenant runtime is unavailable.") from exc
 
     def create_client(self, runtime: TenantRuntime) -> FollowUpBossClientProtocol:

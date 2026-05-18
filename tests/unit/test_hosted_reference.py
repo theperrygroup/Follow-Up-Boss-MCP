@@ -1201,8 +1201,27 @@ async def test_postgres_aws_tenant_store_refreshes_oauth_credentials() -> None:
 
 
 @pytest.mark.asyncio
-async def test_postgres_aws_tenant_store_uses_current_oauth_on_refresh_failure() -> None:
+async def test_postgres_aws_tenant_store_uses_current_oauth_on_refresh_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A failed proactive OAuth refresh should not block tenant credential resolution."""
+    captured: list[tuple[Exception, Mapping[str, object] | None, Mapping[str, object] | None]] = []
+
+    def fake_capture_sentry_exception(
+        exc: Exception,
+        *,
+        tags: Mapping[str, object] | None = None,
+        extras: Mapping[str, object] | None = None,
+    ) -> str:
+        """Record captured refresh failures."""
+        captured.append((exc, tags, extras))
+        return "event-id"
+
+    monkeypatch.setattr(
+        hosted_reference,
+        "capture_sentry_exception",
+        fake_capture_sentry_exception,
+    )
 
     class FailingOAuthRefresher:
         """OAuth refresher that simulates a transient upstream refresh failure."""
@@ -1261,6 +1280,12 @@ async def test_postgres_aws_tenant_store_uses_current_oauth_on_refresh_failure()
     assert resolved.credential.access_token is not None
     assert resolved.credential.access_token.get_secret_value() == "current-token"
     assert oauth_refresher.secret_refs == ["followupboss/prod/tenants/tenant-2/credential-2"]
+    assert len(captured) == 1
+    assert captured[0][1] == {
+        "component": "hosted_reference",
+        "oauth_phase": "refresh",
+    }
+    assert captured[0][2] == {"credential_id": "credential-2", "tenant_id": "tenant-2"}
 
 
 @pytest.mark.asyncio

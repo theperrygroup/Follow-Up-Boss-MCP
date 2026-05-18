@@ -9,7 +9,15 @@ from pydantic import ValidationError
 
 from followupboss_mcp import observability
 from followupboss_mcp.config import SentrySettings
-from followupboss_mcp.observability import before_send, configure_sentry, sanitize_sentry_event
+from followupboss_mcp.observability import (
+    before_send,
+    capture_sentry_exception,
+    capture_sentry_message,
+    configure_sentry,
+    flush_sentry,
+    sanitize_sentry_event,
+    set_sentry_tags,
+)
 
 _SENTRY_ENV_KEYS = (
     "SENTRY_DSN",
@@ -238,6 +246,7 @@ def test_configure_sentry_initializes_once_and_sets_safe_options(
     assert tag_calls == [
         ("entrypoint", "followupboss-mcp-hosted"),
         ("transport", "streamable-http"),
+        ("entrypoint", "ignored"),
     ]
 
 
@@ -269,6 +278,173 @@ def test_configure_sentry_allows_missing_transport_tag(
         is True
     )
     assert tag_calls == [("entrypoint", "custom-entrypoint")]
+
+
+def test_sentry_capture_helpers_noop_when_sentry_is_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Explicit Sentry helpers should avoid SDK imports until Sentry is initialized."""
+    observability._SENTRY_INITIALIZED = False
+
+    def fail_load_sentry_sdk() -> object:
+        """Fail if disabled helper calls import the SDK."""
+        raise AssertionError("Sentry SDK should not be imported while disabled.")
+
+    monkeypatch.setattr(observability, "_load_sentry_sdk", fail_load_sentry_sdk)
+
+    assert set_sentry_tags({"route": "/mcp"}) is False
+    assert capture_sentry_exception(RuntimeError("boom")) is None
+    assert capture_sentry_message("hosted runtime failed") is None
+    assert flush_sentry() is False
+
+
+def test_sentry_capture_helpers_attach_sanitized_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Explicit Sentry captures should use scoped, redacted metadata."""
+    observability._SENTRY_INITIALIZED = True
+    scopes: list[FakeScope] = []
+    captured_exceptions: list[BaseException] = []
+    captured_messages: list[tuple[str, str | None]] = []
+    tag_calls: list[tuple[str, str]] = []
+    flush_calls: list[float | None] = []
+
+    class FakeScope:
+        """Sentry event scope stand-in that records metadata."""
+
+        def __init__(self) -> None:
+            """Initialize empty scope metadata."""
+            self.tags: list[tuple[str, str]] = []
+            self.extras: list[tuple[str, object]] = []
+
+        def set_tag(self, key: str, value: str) -> None:
+            """Record one event-local tag."""
+            self.tags.append((key, value))
+
+        def set_extra(self, key: str, value: object) -> None:
+            """Record one event-local extra field."""
+            self.extras.append((key, value))
+
+    class FakeScopeContext:
+        """Context manager that yields a fake Sentry scope."""
+
+        def __init__(self) -> None:
+            """Create a scope for one capture."""
+            self.scope = FakeScope()
+            scopes.append(self.scope)
+
+        def __enter__(self) -> FakeScope:
+            """Return the event-local fake scope."""
+            return self.scope
+
+        def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+            """Accept context manager exit metadata."""
+            del exc_type, exc, traceback
+
+    class FakeSentrySdk:
+        """Sentry SDK stand-in for explicit capture helpers."""
+
+        def capture_exception(self, error: BaseException) -> str:
+            """Record one captured exception."""
+            captured_exceptions.append(error)
+            return "exception-event-id"
+
+        def capture_message(self, message: str, level: str | None = None) -> str:
+            """Record one captured message."""
+            captured_messages.append((message, level))
+            return "message-event-id"
+
+        def flush(self, timeout: float | None = None) -> None:
+            """Record one flush call."""
+            flush_calls.append(timeout)
+
+        def init(self, **kwargs: object) -> object:
+            """Accept initialization options."""
+            return kwargs
+
+        def new_scope(self) -> FakeScopeContext:
+            """Return a fake scoped capture context."""
+            return FakeScopeContext()
+
+        def set_tag(self, key: str, value: str) -> None:
+            """Record one global tag."""
+            tag_calls.append((key, value))
+
+    monkeypatch.setattr(observability, "_load_sentry_sdk", FakeSentrySdk)
+    error = RuntimeError("Hosted runtime failed token=super-secret-token")
+
+    assert (
+        capture_sentry_exception(
+            error,
+            tags={"route": "/oauth/token", "retryable": True, "omitted": None},
+            extras={
+                "Authorization": "Bearer oauth-secret",
+                "payload": {"email": "person@example.com"},
+            },
+        )
+        == "exception-event-id"
+    )
+    assert (
+        capture_sentry_message(
+            "hosted_rate_limit_backend_failed",
+            level="warning",
+            tags={"failure_mode": "open"},
+            extras={"api_key": "secret-key"},
+        )
+        == "message-event-id"
+    )
+    assert set_sentry_tags({"entrypoint": "hosted", "enabled": True, "omitted": None}) is True
+    assert flush_sentry(timeout=0.5) is True
+
+    assert captured_exceptions == [error]
+    assert captured_messages == [("hosted_rate_limit_backend_failed", "warning")]
+    assert scopes[0].tags == [("route", "/oauth/token"), ("retryable", "true")]
+    assert scopes[0].extras == [
+        ("Authorization", "***redacted***"),
+        ("payload", {"email": "***redacted***"}),
+    ]
+    assert scopes[1].tags == [("failure_mode", "open")]
+    assert scopes[1].extras == [("api_key", "***redacted***")]
+    assert tag_calls == [("entrypoint", "hosted"), ("enabled", "true")]
+    assert flush_calls == [0.5]
+
+
+def test_sentry_scope_metadata_falls_back_to_value_redaction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Scoped metadata should still redact values if event sanitization is unavailable."""
+
+    class FakeScope:
+        """Sentry scope stand-in for direct metadata helper coverage."""
+
+        def __init__(self) -> None:
+            """Initialize recorded extra fields."""
+            self.extras: list[tuple[str, object]] = []
+
+        def set_extra(self, key: str, value: object) -> None:
+            """Record one extra field."""
+            self.extras.append((key, value))
+
+        def set_tag(self, key: str, value: str) -> None:
+            """Accept unused tag metadata."""
+            del key, value
+
+    def sanitize_without_extra(event: dict[str, object]) -> dict[str, object]:
+        """Return no sanitized extra payload to exercise fallback redaction."""
+        del event
+        return {}
+
+    scope = FakeScope()
+    monkeypatch.setattr(observability, "sanitize_sentry_event", sanitize_without_extra)
+
+    observability._set_sentry_scope_metadata(scope, tags=None, extras=None)
+    observability._set_sentry_scope_metadata(
+        scope,
+        tags=None,
+        extras={"failure": "Runtime failed with Bearer oauth-secret"},
+    )
+
+    assert scope.extras == [("failure", "Runtime failed with Bearer ***redacted***")]
 
 
 def test_load_sentry_sdk_imports_real_module() -> None:

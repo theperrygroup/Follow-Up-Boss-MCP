@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Protocol, cast
+from contextlib import AbstractContextManager
+from typing import Literal, Protocol, cast
 
 from followupboss_mcp.config import SentrySettings, TransportMode
 from followupboss_mcp.logging import redact_value
@@ -34,14 +35,39 @@ _SENTRY_REDACTED_KEYS = {
 }
 
 type SentryEvent = dict[str, object]
+type SentryExtra = Mapping[str, object]
 type SentryHint = Mapping[str, object]
+type SentryMessageLevel = Literal["fatal", "critical", "error", "warning", "info", "debug"]
+type SentryTags = Mapping[str, str | int | float | bool | None]
+
+
+class SentryScope(Protocol):
+    """Protocol for the Sentry scope methods used by scoped captures."""
+
+    def set_extra(self, key: str, value: object) -> None:
+        """Attach sanitized extra data to the scoped event."""
+
+    def set_tag(self, key: str, value: str) -> None:
+        """Attach a tag to the scoped event."""
 
 
 class SentrySdkModule(Protocol):
     """Protocol for the subset of the Sentry SDK used by this project."""
 
+    def capture_exception(self, error: BaseException) -> str | None:
+        """Capture one exception event."""
+
+    def capture_message(self, message: str, level: SentryMessageLevel | None = None) -> str | None:
+        """Capture one message event."""
+
+    def flush(self, timeout: float | None = None) -> None:
+        """Flush queued Sentry events."""
+
     def init(self, **kwargs: object) -> object:
         """Initialize the Sentry SDK."""
+
+    def new_scope(self) -> AbstractContextManager[SentryScope]:
+        """Return an isolated scope for one explicit event capture."""
 
     def set_tag(self, key: str, value: str) -> None:
         """Attach a global tag to future events."""
@@ -123,6 +149,145 @@ def before_send(event: SentryEvent, hint: SentryHint) -> SentryEvent | None:
     return sanitize_sentry_event(event)
 
 
+def _stringify_sentry_tag(value: str | int | float | bool | None) -> str | None:
+    """Return a stable Sentry tag value, or `None` when the tag should be skipped.
+
+    Args:
+        value: Raw tag value supplied by an instrumentation call.
+
+    Returns:
+        String tag value accepted by Sentry, or `None` for omitted tags.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return str(value).lower()
+    return str(value)
+
+
+def _set_sentry_tags(sentry_sdk: SentrySdkModule, tags: SentryTags) -> None:
+    """Attach global Sentry tags when Sentry is enabled.
+
+    Args:
+        sentry_sdk: Imported Sentry SDK module.
+        tags: Tag names and values to attach.
+    """
+    for key, value in tags.items():
+        tag_value = _stringify_sentry_tag(value)
+        if tag_value is not None:
+            sentry_sdk.set_tag(key, tag_value)
+
+
+def _set_sentry_scope_metadata(
+    scope: SentryScope,
+    *,
+    tags: SentryTags | None,
+    extras: SentryExtra | None,
+) -> None:
+    """Attach sanitized metadata to one Sentry event scope.
+
+    Args:
+        scope: The event-local Sentry scope.
+        tags: Optional event tags.
+        extras: Optional extra event fields.
+    """
+    if tags is not None:
+        for key, value in tags.items():
+            tag_value = _stringify_sentry_tag(value)
+            if tag_value is not None:
+                scope.set_tag(key, tag_value)
+    if extras is not None:
+        sanitized_extras = sanitize_sentry_event({"extra": dict(extras)}).get("extra", {})
+        for key, extra_value in extras.items():
+            if isinstance(sanitized_extras, dict) and key in sanitized_extras:
+                scope.set_extra(key, sanitized_extras[key])
+            else:
+                scope.set_extra(key, redact_value(extra_value))
+
+
+def set_sentry_tags(tags: SentryTags) -> bool:
+    """Attach global Sentry tags if Sentry has been initialized.
+
+    Args:
+        tags: Tag names and values to attach to future events.
+
+    Returns:
+        `True` when tags were attached, otherwise `False` because Sentry is
+        disabled in the current process.
+    """
+    if not _SENTRY_INITIALIZED:
+        return False
+    _set_sentry_tags(_load_sentry_sdk(), tags)
+    return True
+
+
+def capture_sentry_exception(
+    exc: BaseException,
+    *,
+    tags: SentryTags | None = None,
+    extras: SentryExtra | None = None,
+) -> str | None:
+    """Capture a handled exception with sanitized, event-local metadata.
+
+    Args:
+        exc: The handled exception to report.
+        tags: Optional safe tags for grouping and filtering.
+        extras: Optional extra metadata. Values are redacted before capture.
+
+    Returns:
+        The Sentry event identifier when Sentry accepted the event, otherwise
+        `None` when Sentry is disabled.
+    """
+    if not _SENTRY_INITIALIZED:
+        return None
+    sentry_sdk = _load_sentry_sdk()
+    with sentry_sdk.new_scope() as scope:
+        _set_sentry_scope_metadata(scope, tags=tags, extras=extras)
+        return sentry_sdk.capture_exception(exc)
+
+
+def capture_sentry_message(
+    message: str,
+    *,
+    level: SentryMessageLevel = "error",
+    tags: SentryTags | None = None,
+    extras: SentryExtra | None = None,
+) -> str | None:
+    """Capture an operational Sentry message with sanitized metadata.
+
+    Args:
+        message: Stable message text for the event.
+        level: Sentry severity level.
+        tags: Optional safe tags for grouping and filtering.
+        extras: Optional extra metadata. Values are redacted before capture.
+
+    Returns:
+        The Sentry event identifier when Sentry accepted the event, otherwise
+        `None` when Sentry is disabled.
+    """
+    if not _SENTRY_INITIALIZED:
+        return None
+    sentry_sdk = _load_sentry_sdk()
+    with sentry_sdk.new_scope() as scope:
+        _set_sentry_scope_metadata(scope, tags=tags, extras=extras)
+        return sentry_sdk.capture_message(message, level)
+
+
+def flush_sentry(*, timeout: float | None = 2.0) -> bool:
+    """Flush queued Sentry events if Sentry has been initialized.
+
+    Args:
+        timeout: Optional maximum seconds to wait for queued events.
+
+    Returns:
+        `True` when Sentry was initialized and flushed, otherwise `False`.
+    """
+    if not _SENTRY_INITIALIZED:
+        return False
+    _load_sentry_sdk().flush(timeout=timeout)
+    return True
+
+
 def configure_sentry(
     settings: SentrySettings | None = None,
     *,
@@ -146,7 +311,11 @@ def configure_sentry(
     resolved_settings = settings or SentrySettings()
     if not resolved_settings.enabled:
         return False
+    sentry_tags: dict[str, str] = {"entrypoint": entrypoint}
+    if transport is not None:
+        sentry_tags["transport"] = transport
     if _SENTRY_INITIALIZED:
+        _set_sentry_tags(_load_sentry_sdk(), sentry_tags)
         return True
 
     sentry_sdk = _load_sentry_sdk()
@@ -165,8 +334,6 @@ def configure_sentry(
         before_send=before_send,
         in_app_include=["followupboss_mcp"],
     )
-    sentry_sdk.set_tag("entrypoint", entrypoint)
-    if transport is not None:
-        sentry_sdk.set_tag("transport", transport)
+    _set_sentry_tags(sentry_sdk, sentry_tags)
     _SENTRY_INITIALIZED = True
     return True

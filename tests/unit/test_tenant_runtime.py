@@ -302,6 +302,18 @@ async def test_tenant_runtime_factory_rejects_unavailable_secret_store(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Unavailable tenant secret storage should fail closed with a safe error."""
+    captured: list[tuple[Exception, dict[str, object] | None, dict[str, object] | None]] = []
+
+    def fake_capture_sentry_exception(
+        exc: Exception,
+        *,
+        tags: dict[str, object] | None = None,
+        extras: dict[str, object] | None = None,
+    ) -> str:
+        """Record captured tenant-runtime failures."""
+        captured.append((exc, tags, extras))
+        return "event-id"
+
     authenticated_tenant = HostedAuthenticatedTenant.model_validate(
         {
             "tenant_id": "tenant-1",
@@ -314,6 +326,10 @@ async def test_tenant_runtime_factory_rejects_unavailable_secret_store(
         "followupboss_mcp.tenant_runtime.get_hosted_authenticated_tenant",
         lambda: authenticated_tenant,
     )
+    monkeypatch.setattr(
+        "followupboss_mcp.tenant_runtime.capture_sentry_exception",
+        fake_capture_sentry_exception,
+    )
     factory = TenantRuntimeFactory(
         default_settings=FollowUpBossTenantRuntimeDefaults.model_validate({}),
         tenant_store=UnavailableSecretStore(),
@@ -323,6 +339,64 @@ async def test_tenant_runtime_factory_rejects_unavailable_secret_store(
         await factory.runtime_for_current_tenant()
 
     assert "secret backend unavailable" not in str(exc_info.value)
+    assert len(captured) == 1
+    assert captured[0][1] == {
+        "component": "tenant_runtime",
+        "tenant_runtime_phase": "resolve_current_tenant",
+    }
+    assert captured[0][2] == {
+        "tenant_id": "tenant-1",
+        "tenant_slug": "tenant-one",
+        "credential_id": "credential-1",
+    }
+
+
+@pytest.mark.asyncio
+async def test_tenant_runtime_factory_does_not_report_expected_resolution_denials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Expected tenant resolution denials should stay out of Sentry."""
+    captured: list[Exception] = []
+    authenticated_tenant = HostedAuthenticatedTenant.model_validate(
+        {
+            "tenant_id": "tenant-1",
+            "tenant_slug": "tenant-one",
+            "display_name": "Tenant One",
+            "credential_id": "missing-credential",
+        }
+    )
+
+    def fake_capture_sentry_exception(
+        exc: Exception,
+        *,
+        tags: dict[str, object] | None = None,
+        extras: dict[str, object] | None = None,
+    ) -> str:
+        """Record unexpected Sentry captures."""
+        del tags, extras
+        captured.append(exc)
+        return "event-id"
+
+    monkeypatch.setattr(
+        "followupboss_mcp.tenant_runtime.get_hosted_authenticated_tenant",
+        lambda: authenticated_tenant,
+    )
+    monkeypatch.setattr(
+        "followupboss_mcp.tenant_runtime.capture_sentry_exception",
+        fake_capture_sentry_exception,
+    )
+    factory = TenantRuntimeFactory(
+        default_settings=FollowUpBossTenantRuntimeDefaults.model_validate({}),
+        tenant_store=DevelopmentTenantStore(
+            tenants=[_tenant_record()],
+            credentials=[_credential_record()],
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="Hosted tenant runtime is unavailable."):
+        await factory.runtime_for_current_tenant()
+
+    assert captured == []
 
 
 def test_tenant_runtime_factory_accepts_tenant_settings_defaults() -> None:

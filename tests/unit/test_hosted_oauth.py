@@ -138,6 +138,7 @@ class FakeTenantProvisioner:
     def __init__(self) -> None:
         """Initialize the provisioner stub."""
         self.calls: list[tuple[FollowUpBossOAuthIdentity, FollowUpBossOAuthTokenPayload]] = []
+        self.provision_error: Exception | None = None
         self.closed = False
 
     async def provision_tenant(
@@ -147,6 +148,8 @@ class FakeTenantProvisioner:
         token_payload: FollowUpBossOAuthTokenPayload,
     ) -> ProvisionedHostedTenant:
         """Return a provisioned tenant derived from the FUB identity."""
+        if self.provision_error is not None:
+            raise self.provision_error
         self.calls.append((identity, token_payload))
         return ProvisionedHostedTenant.model_validate(
             {
@@ -167,6 +170,7 @@ class FakeFubOAuthClient:
     def __init__(self) -> None:
         """Initialize the fake FUB OAuth client."""
         self.exchange_error: Exception | None = None
+        self.identity_error: Exception | None = None
         self.closed = False
 
     def build_authorize_url(self, *, fub_state: str) -> str:
@@ -193,6 +197,8 @@ class FakeFubOAuthClient:
 
     async def get_identity(self, *, access_token: str) -> FollowUpBossOAuthIdentity:
         """Return fake FUB identity metadata."""
+        if self.identity_error is not None:
+            raise self.identity_error
         assert access_token.startswith("fub-access-")
         return FollowUpBossOAuthIdentity.model_validate(
             {
@@ -286,6 +292,49 @@ def test_settings_and_metadata_validation() -> None:
     assert favicon_response.headers["content-type"] == "image/x-icon"
     assert favicon_response.headers["cache-control"] == "public, max-age=300, must-revalidate"
     assert favicon_response.content.startswith(b"\x00\x00\x01\x00")
+
+
+def test_callback_configuration_mismatch_reports_to_sentry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Callback URL mismatches should fail fast with a Sentry message."""
+    captured_messages: list[
+        tuple[str, Mapping[str, object] | None, Mapping[str, object] | None]
+    ] = []
+
+    def fake_capture_sentry_message(
+        message: str,
+        *,
+        level: str = "error",
+        tags: Mapping[str, object] | None = None,
+        extras: Mapping[str, object] | None = None,
+    ) -> str:
+        """Record captured callback configuration messages."""
+        assert level == "error"
+        captured_messages.append((message, tags, extras))
+        return "event-id"
+
+    monkeypatch.setattr(hosted_oauth, "capture_sentry_message", fake_capture_sentry_message)
+    settings = _settings().model_copy(
+        update={"fub_callback_url": "https://other.example.com/oauth/follow-up-boss/callback"}
+    )
+
+    with pytest.raises(ValueError, match="fub_callback_url must match"):
+        hosted_oauth.validate_fub_callback_configuration(settings)
+
+    assert captured_messages == [
+        (
+            "hosted_oauth_callback_url_mismatch",
+            {
+                "route": "/oauth/follow-up-boss/callback",
+                "oauth_phase": "configuration",
+            },
+            {
+                "expected_callback_url": "https://mcp.example.com/oauth/follow-up-boss/callback",
+                "actual_callback_url": "https://other.example.com/oauth/follow-up-boss/callback",
+            },
+        )
+    ]
 
 
 def test_dynamic_client_validation_rejects_bad_redirect_shapes() -> None:
@@ -561,8 +610,23 @@ def test_callback_rejects_invalid_or_denied_fub_results(
         assert parse_qs(urlparse(response.headers["location"]).query)["error"] == [expected]
 
 
-def test_callback_rejects_expired_state_and_exchange_failures() -> None:
+def test_callback_rejects_expired_state_and_exchange_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Redirect OAuth errors for expired state and FUB exchange failures."""
+    captured: list[tuple[Exception, Mapping[str, object] | None, Mapping[str, object] | None]] = []
+
+    def fake_capture_sentry_exception(
+        exc: Exception,
+        *,
+        tags: Mapping[str, object] | None = None,
+        extras: Mapping[str, object] | None = None,
+    ) -> str:
+        """Record captured callback exceptions."""
+        captured.append((exc, tags, extras))
+        return "event-id"
+
+    monkeypatch.setattr(hosted_oauth, "capture_sentry_exception", fake_capture_sentry_exception)
     client, store, _, fub_client = _app(now=2000)
     store.pending["expired"] = HostedOAuthPendingAuthorization.model_validate(
         {
@@ -600,6 +664,86 @@ def test_callback_rejects_expired_state_and_exchange_failures() -> None:
         follow_redirects=False,
     )
     assert parse_qs(urlparse(failed.headers["location"]).query)["error"] == ["server_error"]
+    assert len(captured) == 1
+    assert isinstance(captured[0][0], RuntimeError)
+    assert captured[0][1] == {
+        "route": "/oauth/follow-up-boss/callback",
+        "oauth_phase": "fub_token_exchange",
+    }
+    assert captured[0][2] == {
+        "client_id": "client-1",
+        "has_client_state": False,
+        "requested_scopes": ["followupboss:mcp"],
+        "resource": None,
+    }
+
+
+def test_callback_captures_identity_and_provisioning_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Redirect and report operational callback failures after token exchange."""
+    captured_phases: list[str] = []
+
+    def fake_capture_sentry_exception(
+        exc: Exception,
+        *,
+        tags: Mapping[str, object] | None = None,
+        extras: Mapping[str, object] | None = None,
+    ) -> str:
+        """Record captured callback phases."""
+        del exc, extras
+        assert tags is not None
+        captured_phases.append(str(tags["oauth_phase"]))
+        return "event-id"
+
+    monkeypatch.setattr(hosted_oauth, "capture_sentry_exception", fake_capture_sentry_exception)
+
+    client, store, _, fub_client = _app(now=2000)
+    fub_client.identity_error = RuntimeError("identity unavailable")
+    store.pending["state-identity"] = HostedOAuthPendingAuthorization.model_validate(
+        {
+            "fub_state": "state-identity",
+            "client_id": "client-1",
+            "redirect_uri": "http://127.0.0.1/callback",
+            "code_challenge": "challenge",
+            "code_challenge_method": "plain",
+            "scopes": "followupboss:mcp",
+            "expires_at": 2060,
+        }
+    )
+
+    identity_failed = client.get(
+        "/oauth/follow-up-boss/callback",
+        params={"state": "state-identity", "response": "approved", "code": "fub-code"},
+        follow_redirects=False,
+    )
+    assert parse_qs(urlparse(identity_failed.headers["location"]).query)["error"] == [
+        "server_error"
+    ]
+
+    client, store, provisioner, _ = _app(now=2000)
+    provisioner.provision_error = RuntimeError("provisioning unavailable")
+    store.pending["state-provision"] = HostedOAuthPendingAuthorization.model_validate(
+        {
+            "fub_state": "state-provision",
+            "client_id": "client-1",
+            "redirect_uri": "http://127.0.0.1/callback",
+            "code_challenge": "challenge",
+            "code_challenge_method": "plain",
+            "scopes": "followupboss:mcp",
+            "expires_at": 2060,
+        }
+    )
+
+    provision_failed = client.get(
+        "/oauth/follow-up-boss/callback",
+        params={"state": "state-provision", "response": "approved", "code": "fub-code"},
+        follow_redirects=False,
+    )
+    assert parse_qs(urlparse(provision_failed.headers["location"]).query)["error"] == [
+        "server_error"
+    ]
+    assert captured_phases == ["fub_identity_lookup", "tenant_provisioning"]
 
 
 def test_callback_success_without_client_state_preserves_existing_query() -> None:

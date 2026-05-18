@@ -16,8 +16,14 @@ from pydantic import (
     model_validator,
 )
 
-from followupboss_mcp.errors import TenantCredentialNotFoundError, TenantStoreError
+from followupboss_mcp.errors import (
+    TenantCredentialNotFoundError,
+    TenantSecretStoreUnavailableError,
+    TenantStoreError,
+    TenantStoreUnavailableError,
+)
 from followupboss_mcp.logging import emit_audit_event, tenant_store_error_reason
+from followupboss_mcp.observability import capture_sentry_exception
 from followupboss_mcp.tenant_store import ResolvedTenantCredentials, TenantStore
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.provider import AccessToken, TokenVerifier
@@ -129,6 +135,19 @@ def _identity_audit_fields(identity: HostedVerifiedIdentity) -> dict[str, object
     if identity.scopes:
         fields["scopes"] = identity.scopes
     return fields
+
+
+def _tenant_store_failure_is_operational(exc: TenantStoreError) -> bool:
+    """Return whether a tenant-store failure should be reported to Sentry.
+
+    Args:
+        exc: Tenant-store failure raised during hosted auth.
+
+    Returns:
+        `True` for infrastructure/backend unavailability, otherwise `False` for
+        expected authorization denials such as missing or revoked tenants.
+    """
+    return isinstance(exc, TenantStoreUnavailableError | TenantSecretStoreUnavailableError)
 
 
 def _tenant_audit_fields(tenant: HostedAuthenticatedTenant) -> dict[str, object]:
@@ -553,6 +572,13 @@ class HostedTenantTokenVerifier(TokenVerifier):
         try:
             identity = await self._identity_verifier.verify_token(token)
         except Exception as exc:
+            capture_sentry_exception(
+                exc,
+                tags={
+                    "component": "hosted_auth",
+                    "hosted_auth_phase": "token_verifier",
+                },
+            )
             emit_audit_event(
                 self._logger,
                 event="hosted_auth_failed",
@@ -600,6 +626,16 @@ class HostedTenantTokenVerifier(TokenVerifier):
                 and identity.credential_id is not None
             ):
                 failure_reason = "credential_binding_mismatch"
+            if _tenant_store_failure_is_operational(exc):
+                capture_sentry_exception(
+                    exc,
+                    tags={
+                        "component": "hosted_auth",
+                        "hosted_auth_phase": "tenant_resolution",
+                        "tenant_resolution_reason": failure_reason,
+                    },
+                    extras=_identity_audit_fields(identity),
+                )
             emit_audit_event(
                 self._logger,
                 event="tenant_resolution_failed",

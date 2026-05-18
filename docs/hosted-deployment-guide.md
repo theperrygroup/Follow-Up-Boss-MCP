@@ -237,7 +237,7 @@ reference contract for that hosted wrapper:
 | `FOLLOWUPBOSS_HOSTED_OAUTH_ENABLED` | Set `true` to expose MCP OAuth authorization-server routes for Cursor and other remote MCP clients. |
 | `FOLLOWUPBOSS_FUB_OAUTH_CLIENT_ID` | Follow Up Boss OAuth client id for delegated user consent. |
 | `FOLLOWUPBOSS_FUB_OAUTH_CLIENT_SECRET` | Follow Up Boss OAuth client secret, loaded from Secrets Manager in ECS. |
-| `FOLLOWUPBOSS_FUB_OAUTH_CALLBACK_URL` | Public callback URL registered with Follow Up Boss, such as `https://mcp.example.com/oauth/follow-up-boss/callback`. |
+| `FOLLOWUPBOSS_FUB_OAUTH_CALLBACK_URL` | Public callback URL registered with Follow Up Boss, such as `https://mcp.example.com/oauth/follow-up-boss/callback`. It must match the hosted OAuth callback route derived from `FOLLOWUPBOSS_HOSTED_ISSUER_URL`; startup fails fast when those values disagree. |
 | `FOLLOWUPBOSS_FUB_OAUTH_SYSTEM_NAME` | Registered Follow Up Boss system name stored on OAuth-created tenant credentials. |
 | `FOLLOWUPBOSS_FUB_OAUTH_SYSTEM_KEY` | Registered Follow Up Boss system key stored with OAuth-created tenant secrets. |
 
@@ -423,6 +423,21 @@ authorization server advertised by FastMCP protected-resource metadata:
 The bearer token used against `/mcp` is still an MCP-scoped hosted token, not the raw Follow Up
 Boss access token. This keeps revocation, tenant binding, rate limiting, and MCP scopes under the
 hosted deployment's control.
+
+### Follow Up Boss Redirect Preflight
+
+The hosted server can report callback, token exchange, identity lookup, and tenant provisioning
+failures to Sentry because those requests return to this process. A Follow Up Boss
+`invalid_redirect_uri` page can happen earlier, immediately after step 4, while the browser is on
+Follow Up Boss infrastructure. That page may never call our callback route, so it will not naturally
+produce a server exception in this project.
+
+Before enabling hosted OAuth for staging or production, confirm that
+`FOLLOWUPBOSS_FUB_OAUTH_CALLBACK_URL` exactly matches the redirect URI registered on the Follow Up
+Boss OAuth application, including scheme, host, path, and trailing slash behavior. Then run one
+browser login smoke from Cursor and confirm the browser reaches
+`/oauth/follow-up-boss/callback` rather than stopping on a Follow Up Boss `invalid_redirect_uri`
+screen.
 
 ## Tenant Store And Secret Store Expectations
 
@@ -654,6 +669,8 @@ Do not widen rollout until every check below passes:
 - logs do not show `hosted_rate_limit_backend_failed`
 - when `SENTRY_DSN` is configured, a sanitized staged exception appears in the expected Sentry
   project, environment, and release without Follow Up Boss secrets or customer payloads
+- hosted OAuth browser login reaches `/oauth/follow-up-boss/callback`; a Follow Up Boss
+  `invalid_redirect_uri` page means the FUB OAuth app registration must be fixed before rollout
 - a no-downtime Follow Up Boss credential rotation succeeds for one tenant without impacting the
   other tenant
 - a hosted bearer-token rotation succeeds, and the revoked token fails closed on the next request
@@ -668,6 +685,7 @@ Use this table to capture rollout evidence:
 | Cross-tenant fixture isolation | | |
 | Resource and prompt auth boundary | | |
 | Sentry sanitized exception smoke | | |
+| Hosted OAuth callback redirect smoke | | |
 | Tenant B credential rotation | | |
 | Tenant A bearer-token rotation | | |
 | Hosted rate-limit backend healthy | | |

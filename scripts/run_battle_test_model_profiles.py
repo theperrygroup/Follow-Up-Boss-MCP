@@ -16,7 +16,11 @@ from followupboss_mcp.battle_test_ai import (
     run_ai_model_profile_battle_tests,
     run_ai_model_profile_conversation_battle_tests,
 )
-from followupboss_mcp.battle_tests import BattleTestConversationKind, ReadOnlyBattleTestOracle
+from followupboss_mcp.battle_tests import (
+    BattleTestConversationKind,
+    BattleTestRunArtifact,
+    ReadOnlyBattleTestOracle,
+)
 from followupboss_mcp.config import FollowUpBossSettings
 from followupboss_mcp.http_client import FollowUpBossAsyncClient
 from followupboss_mcp.mcp_server import create_server
@@ -205,7 +209,7 @@ async def run(argv: Sequence[str] | None = None) -> int:
         server = create_server(settings, client=client)
         mcp_client = FastMcpBattleTestClient(server)
         oracle = ReadOnlyBattleTestOracle(services)
-        artifacts = []
+        artifacts: list[BattleTestRunArtifact] = []
         if args.corpus in {"read-only", "all"}:
             artifacts.extend(
                 await run_ai_model_profile_battle_tests(

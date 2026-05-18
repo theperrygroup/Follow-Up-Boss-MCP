@@ -92,8 +92,26 @@ def test_surface_context_renderers_include_hosted_runtime_details() -> None:
 
 
 @pytest.mark.asyncio
-async def test_resolve_surface_runtime_handles_disabled_public_and_failure_paths() -> None:
+async def test_resolve_surface_runtime_handles_disabled_public_and_failure_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Surface runtime resolution should fail closed with MCP-safe errors."""
+    captured: list[tuple[Exception, dict[str, object] | None, dict[str, object] | None]] = []
+
+    def fake_capture_sentry_exception(
+        exc: Exception,
+        *,
+        tags: dict[str, object] | None = None,
+        extras: dict[str, object] | None = None,
+    ) -> str:
+        """Record captured surface-runtime failures."""
+        captured.append((exc, tags, extras))
+        return "event-id"
+
+    monkeypatch.setattr(
+        "followupboss_mcp.mcp_registration.capture_sentry_exception",
+        fake_capture_sentry_exception,
+    )
 
     class StaticRuntimeFactory:
         """Return one fixed runtime for every hosted surface request."""
@@ -141,6 +159,12 @@ async def test_resolve_surface_runtime_handles_disabled_public_and_failure_paths
         )
     assert "super-secret-token" not in str(exc_info.value)
     assert exc_info.value.__cause__ is None
+    assert len(captured) == 1
+    assert captured[0][1] == {
+        "component": "mcp_registration",
+        "surface_runtime_phase": "resolve_surface_runtime",
+    }
+    assert captured[0][2] == {"surface_name": "followupboss://private"}
 
 
 def test_tool_adapter_requires_active_runtime_for_resolver_backed_services() -> None:
