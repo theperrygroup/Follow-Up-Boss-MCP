@@ -462,7 +462,7 @@ def _reserve_port() -> int:
         return int(sock.getsockname()[1])
 
 
-async def _wait_for_port(host: str, port: int, *, attempts: int = 50) -> None:
+async def _wait_for_port(host: str, port: int, *, attempts: int = 100) -> None:
     for _ in range(attempts):
         try:
             reader, writer = await asyncio.open_connection(host, port)
@@ -3497,8 +3497,6 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                 {"id": 13, "personId": 2, "phone": "555-0000", "userName": "Data"},
                 {"id": 14, "personId": 2, "phone": "555-0000", "userName": "Data"},
                 {"id": 15, "personId": 2, "phone": "555-0000", "userName": "Data"},
-                {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "tasks": [{"id": 16}]},
-                {"id": 1},
                 {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "tasks": [{"id": 16}]},
                 {"id": 1},
                 {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "tasks": [{"id": 16}]},

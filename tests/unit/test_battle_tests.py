@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import time, timedelta
+from datetime import datetime, time, timedelta
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -65,9 +67,17 @@ def _tasks_page(*tasks: TaskRecord) -> PageResult[TaskRecord]:
 
 
 def test_upcoming_task_due_start_is_shared_by_oracle_and_tool_adapter() -> None:
-    due_start = battle_tests_module._upcoming_task_due_start()
+    battle_due_start = cast(
+        "Callable[[], datetime]",
+        getattr(battle_tests_module, "_upcoming_task_due_start"),  # noqa: B009
+    )
+    tool_due_start = cast(
+        "Callable[[], datetime]",
+        getattr(mcp_tools_module, "_upcoming_task_due_start"),  # noqa: B009
+    )
+    due_start = battle_due_start()
 
-    assert battle_tests_module._upcoming_task_due_start is mcp_tools_module._upcoming_task_due_start
+    assert battle_due_start is tool_due_start
     assert due_start.utcoffset() == timedelta(0)
     assert due_start.time() == time.min
 
