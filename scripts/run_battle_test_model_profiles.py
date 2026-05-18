@@ -14,8 +14,9 @@ from followupboss_mcp.battle_test_ai import (
     battle_test_ai_selectors_from_env,
     load_env_file,
     run_ai_model_profile_battle_tests,
+    run_ai_model_profile_conversation_battle_tests,
 )
-from followupboss_mcp.battle_tests import ReadOnlyBattleTestOracle
+from followupboss_mcp.battle_tests import BattleTestConversationKind, ReadOnlyBattleTestOracle
 from followupboss_mcp.config import FollowUpBossSettings
 from followupboss_mcp.http_client import FollowUpBossAsyncClient
 from followupboss_mcp.mcp_server import create_server
@@ -149,6 +150,35 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Run every prompt variant as a separate evaluated scenario case.",
     )
+    parser.add_argument(
+        "--corpus",
+        choices=("read-only", "chains", "multi-ask", "all"),
+        default="read-only",
+        help="Corpus tier to run. Defaults to the original read-only single-turn corpus.",
+    )
+    parser.add_argument(
+        "--max-cases",
+        default=None,
+        type=int,
+        help="Deterministically cap the number of scenario or conversation cases.",
+    )
+    parser.add_argument(
+        "--sample-seed",
+        default=0,
+        type=int,
+        help="Seed used when --max-cases samples a corpus.",
+    )
+    parser.add_argument(
+        "--chain-depth",
+        default=None,
+        type=int,
+        help="Maximum number of turns to keep per chained conversation.",
+    )
+    parser.add_argument(
+        "--all-variation-families",
+        action="store_true",
+        help="Alias for running every read-only prompt variation family.",
+    )
     return parser
 
 
@@ -167,25 +197,64 @@ async def run(argv: Sequence[str] | None = None) -> int:
     selectors = battle_test_ai_selectors_from_env()
     settings = FollowUpBossSettings()
     started_at = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    run_id_prefix = (
-        args.run_id_prefix or f"read-only-{started_at.replace(':', '').replace('-', '')}"
+    base_run_id_prefix = (
+        args.run_id_prefix or f"{args.corpus}-{started_at.replace(':', '').replace('-', '')}"
     )
     async with FollowUpBossAsyncClient(settings) as client:
         services = build_service_bundle(client)
         server = create_server(settings, client=client)
-        artifacts = await run_ai_model_profile_battle_tests(
-            mcp_client=FastMcpBattleTestClient(server),
-            oracle=ReadOnlyBattleTestOracle(services),
-            selectors=selectors,
-            run_id_prefix=run_id_prefix,
-            client=args.client_label,
-            artifact_directory=args.artifact_dir,
-            prompt_variant_index=args.prompt_variant_index,
-            all_prompt_variants=args.all_prompt_variants,
-            environment=args.environment,
-            started_at=started_at,
-            notes=("read-only", "ai-selected-tools"),
-        )
+        mcp_client = FastMcpBattleTestClient(server)
+        oracle = ReadOnlyBattleTestOracle(services)
+        artifacts = []
+        if args.corpus in {"read-only", "all"}:
+            artifacts.extend(
+                await run_ai_model_profile_battle_tests(
+                    mcp_client=mcp_client,
+                    oracle=oracle,
+                    selectors=selectors,
+                    run_id_prefix=(
+                        base_run_id_prefix
+                        if args.corpus == "read-only"
+                        else f"{base_run_id_prefix}-read-only"
+                    ),
+                    client=args.client_label,
+                    artifact_directory=args.artifact_dir,
+                    prompt_variant_index=args.prompt_variant_index,
+                    all_prompt_variants=args.all_prompt_variants or args.all_variation_families,
+                    max_cases=args.max_cases,
+                    sample_seed=args.sample_seed,
+                    environment=args.environment,
+                    started_at=started_at,
+                    notes=("read-only", "ai-selected-tools"),
+                )
+            )
+        if args.corpus in {"chains", "multi-ask", "all"}:
+            kind = None
+            if args.corpus == "chains":
+                kind = BattleTestConversationKind.MULTI_TURN
+            elif args.corpus == "multi-ask":
+                kind = BattleTestConversationKind.MULTI_ASK
+            artifacts.extend(
+                await run_ai_model_profile_conversation_battle_tests(
+                    mcp_client=mcp_client,
+                    oracle=oracle,
+                    selectors=selectors,
+                    run_id_prefix=(
+                        base_run_id_prefix
+                        if args.corpus in {"chains", "multi-ask"}
+                        else f"{base_run_id_prefix}-conversations"
+                    ),
+                    client=args.client_label,
+                    kind=kind,
+                    artifact_directory=args.artifact_dir,
+                    max_cases=args.max_cases,
+                    sample_seed=args.sample_seed,
+                    chain_depth=args.chain_depth,
+                    environment=args.environment,
+                    started_at=started_at,
+                    notes=(args.corpus, "ai-selected-tools", "chained"),
+                )
+            )
     for artifact in artifacts:
         profile_id = (
             artifact.metadata.model_profile.id if artifact.metadata.model_profile else "unknown"

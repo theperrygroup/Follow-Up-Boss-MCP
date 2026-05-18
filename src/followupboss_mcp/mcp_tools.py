@@ -166,6 +166,19 @@ _ACTIVE_SERVICE_BUNDLE: ContextVar[ServiceBundle | None] = ContextVar(
     "followupboss_active_service_bundle",
     default=None,
 )
+_LATEST_LEAD_RESPONSE_FIELDS = frozenset(
+    {
+        "id",
+        "name",
+        "firstName",
+        "lastName",
+        "created",
+        "assignedUserId",
+        "stage",
+        "source",
+        "lastActivity",
+    }
+)
 _TASK_INTENT_RESPONSE_FIELDS = frozenset(
     {
         "id",
@@ -189,6 +202,32 @@ class GetLatestLeadToolInput(RequestModel):
     """Tool input for fetching the authenticated user's latest assigned lead."""
 
     fields: list[str] | None = None
+
+    @field_validator("fields")
+    @classmethod
+    def _validate_fields(cls, value: list[str] | None) -> list[str] | None:
+        """Validate person projection fields for the latest-lead helper.
+
+        Args:
+            value: Optional field names requested by the MCP caller.
+
+        Returns:
+            The original field list when every field is supported.
+
+        Raises:
+            ValueError: If any requested field is not supported by the narrow
+                latest-lead helper.
+        """
+        if value is None:
+            return None
+        invalid_fields = sorted(set(value) - _LATEST_LEAD_RESPONSE_FIELDS)
+        if invalid_fields:
+            allowed_fields = ", ".join(sorted(_LATEST_LEAD_RESPONSE_FIELDS))
+            invalid = ", ".join(invalid_fields)
+            raise ValueError(
+                f"Unsupported latest-lead fields: {invalid}. Allowed fields: {allowed_fields}."
+            )
+        return value
 
 
 class ListMyTaskIntentToolInput(RequestModel):

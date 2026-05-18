@@ -68,6 +68,7 @@ class FakeOAuthStore:
         """Initialize empty in-memory stores."""
         self.clients: dict[str, HostedOAuthDynamicClient] = {}
         self.pending: dict[str, HostedOAuthPendingAuthorization] = {}
+        self.consumed_pending_states: list[str] = []
         self.codes: dict[str, HostedOAuthAuthorizationCode] = {}
         self.access_tokens: list[HostedOAuthAccessTokenMetadata] = []
         self.refresh_tokens: dict[str, HostedOAuthRefreshToken] = {}
@@ -94,6 +95,7 @@ class FakeOAuthStore:
         fub_state: str,
     ) -> HostedOAuthPendingAuthorization | None:
         """Consume pending authorization state."""
+        self.consumed_pending_states.append(fub_state)
         return self.pending.pop(fub_state, None)
 
     async def save_authorization_code(self, code: HostedOAuthAuthorizationCode) -> None:
@@ -524,6 +526,7 @@ def test_authorize_uses_default_scopes_when_scope_is_omitted() -> None:
 @pytest.mark.parametrize(
     ("query", "status_code", "expected"),
     [
+        ({}, 400, "Missing OAuth state."),
         ({"state": "missing"}, 400, "Invalid or expired OAuth state."),
         ({"state": "state-1", "response": "denied"}, 302, "access_denied"),
         ({"state": "state-1", "response": "approved"}, 302, "invalid_request"),
@@ -552,6 +555,8 @@ def test_callback_rejects_invalid_or_denied_fub_results(
     assert response.status_code == status_code
     if status_code == 400:
         assert response.text == expected
+        if "state" not in query:
+            assert store.consumed_pending_states == []
     else:
         assert parse_qs(urlparse(response.headers["location"]).query)["error"] == [expected]
 

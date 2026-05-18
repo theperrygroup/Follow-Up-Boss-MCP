@@ -20,12 +20,16 @@ from followupboss_mcp.battle_test_ai import (
     _json_value,
     battle_test_ai_selectors_from_env,
     battle_test_selection_instructions,
+    capture_ai_selected_conversation_transcript,
+    capture_ai_selected_multi_call_transcript,
     capture_ai_selected_transcript,
     load_env_file,
     read_only_battle_test_ai_tool_specs,
     run_ai_model_profile_battle_tests,
+    run_ai_model_profile_conversation_battle_tests,
 )
 from followupboss_mcp.battle_tests import (
+    BattleTestConversationKind,
     BattleTestModelProfile,
     BattleTestModelProvider,
     BattleTestScenario,
@@ -33,6 +37,7 @@ from followupboss_mcp.battle_tests import (
     ReadOnlyBattleTestOracle,
     battle_test_model_profile_by_id,
     mcp_tool_result_to_json,
+    read_only_battle_test_conversations,
     scenario_by_id,
 )
 from followupboss_mcp.models.common import JsonValue
@@ -61,6 +66,39 @@ class StubAiSelector:
         if isinstance(decision, Exception):
             raise decision
         return decision
+
+
+@dataclass
+class StubMultiAiSelector:
+    """Selector test double returning queued decision batches."""
+
+    decision_batches: list[tuple[BattleTestModelDecision, ...]]
+    prompts: list[str] = field(default_factory=list)
+
+    async def select_tool(
+        self,
+        *,
+        profile: BattleTestModelProfile,
+        scenario: BattleTestScenario,
+        prompt: str,
+        tools: tuple[BattleTestAiToolSpec, ...],
+    ) -> BattleTestModelDecision:
+        """Return the first decision from the next queued batch."""
+        return (
+            await self.select_tools(profile=profile, scenario=scenario, prompt=prompt, tools=tools)
+        )[0]
+
+    async def select_tools(
+        self,
+        *,
+        profile: BattleTestModelProfile,
+        scenario: BattleTestScenario,
+        prompt: str,
+        tools: tuple[BattleTestAiToolSpec, ...],
+    ) -> tuple[BattleTestModelDecision, ...]:
+        """Return the next queued decision batch."""
+        self.prompts.append(prompt)
+        return self.decision_batches.pop(0)
 
 
 @dataclass
@@ -218,6 +256,33 @@ def test_read_only_tool_specs_constrain_owned_task_fields() -> None:
     }
 
 
+def test_read_only_tool_specs_constrain_latest_lead_fields() -> None:
+    specs = {tool.name: tool for tool in read_only_battle_test_ai_tool_specs()}
+    latest_lead_schema = cast(
+        dict[str, object],
+        specs["followupboss_get_latest_lead"].input_schema["properties"],
+    )
+
+    assert latest_lead_schema["fields"] == {
+        "type": "array",
+        "description": "Optional latest-lead person response fields to request.",
+        "items": {
+            "type": "string",
+            "enum": [
+                "id",
+                "name",
+                "firstName",
+                "lastName",
+                "created",
+                "assignedUserId",
+                "stage",
+                "source",
+                "lastActivity",
+            ],
+        },
+    }
+
+
 def test_read_only_tool_specs_steer_notes_to_unsupported_sentinel() -> None:
     specs = {tool.name: tool for tool in read_only_battle_test_ai_tool_specs()}
 
@@ -301,6 +366,50 @@ async def test_openai_selector_parses_clarification_sentinel_without_message() -
     assert decision.selected_tool is None
     assert decision.clarified is True
     assert decision.assistant_message == "Which lead do you mean?"
+    await selector.aclose()
+
+
+@pytest.mark.asyncio
+async def test_openai_selector_parses_multiple_function_calls_in_order() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "output_text": "I'll check both.",
+                "output": [
+                    {
+                        "type": "function_call",
+                        "name": "followupboss_get_latest_lead",
+                        "arguments": '{"fields":["id"]}',
+                    },
+                    {
+                        "type": "function_call",
+                        "name": "followupboss_list_my_overdue_tasks",
+                        "arguments": '{"limit":5}',
+                    },
+                ],
+            },
+        )
+
+    selector = OpenAiBattleTestModelSelector(
+        "openai-key",
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+    scenario = scenario_by_id("BT-READ-001")
+
+    decisions = await selector.select_tools(
+        profile=battle_test_model_profile_by_id("gpt-5.5-low-reasoning"),
+        scenario=scenario,
+        prompt="Show my latest lead and what I am late on.",
+        tools=read_only_battle_test_ai_tool_specs(),
+    )
+
+    assert [decision.selected_tool for decision in decisions] == [
+        "followupboss_get_latest_lead",
+        "followupboss_list_my_overdue_tasks",
+    ]
+    assert decisions[0].arguments == {"fields": ["id"]}
+    assert decisions[1].arguments == {"limit": 5}
     await selector.aclose()
 
 
@@ -410,6 +519,50 @@ async def test_anthropic_selector_parses_unsupported_tool_use() -> None:
     assert decision.selected_tool is None
     assert decision.unsupported_explained is True
     assert decision.assistant_message == "Note search by person ID is unsupported."
+    await selector.aclose()
+
+
+@pytest.mark.asyncio
+async def test_anthropic_selector_parses_multiple_tool_uses_in_order() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "content": [
+                    {"type": "text", "text": "I'll check both."},
+                    {
+                        "type": "tool_use",
+                        "name": "followupboss_list_my_tasks_due_today",
+                        "input": {"limit": 3},
+                    },
+                    {
+                        "type": "tool_use",
+                        "name": "followupboss_list_my_upcoming_tasks",
+                        "input": {"fields": ["id", "dueDate"]},
+                    },
+                ]
+            },
+        )
+
+    selector = AnthropicBattleTestModelSelector(
+        "anthropic-key",
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+    scenario = scenario_by_id("BT-READ-003")
+
+    decisions = await selector.select_tools(
+        profile=battle_test_model_profile_by_id("sonnet-4.6"),
+        scenario=scenario,
+        prompt="Show today's tasks and upcoming tasks.",
+        tools=read_only_battle_test_ai_tool_specs(),
+    )
+
+    assert [decision.selected_tool for decision in decisions] == [
+        "followupboss_list_my_tasks_due_today",
+        "followupboss_list_my_upcoming_tasks",
+    ]
+    assert decisions[0].arguments == {"limit": 3}
+    assert decisions[1].arguments == {"fields": ["id", "dueDate"]}
     await selector.aclose()
 
 
@@ -587,6 +740,87 @@ async def test_capture_ai_selected_transcript_records_model_selection_errors() -
 
 
 @pytest.mark.asyncio
+async def test_capture_ai_selected_multi_call_transcript_executes_ordered_calls() -> None:
+    conversation = read_only_battle_test_conversations(BattleTestConversationKind.MULTI_ASK)[0]
+    selector = StubMultiAiSelector(
+        decision_batches=[
+            (
+                BattleTestModelDecision(
+                    scenario_id=f"{conversation.id}-T01",
+                    prompt=conversation.prompt or "",
+                    selected_tool="followupboss_get_latest_lead",
+                    arguments={"fields": ["id"]},
+                ),
+                BattleTestModelDecision(
+                    scenario_id=f"{conversation.id}-T02",
+                    prompt=conversation.prompt or "",
+                    selected_tool="followupboss_list_my_tasks_due_today",
+                    arguments={"limit": 5},
+                ),
+            )
+        ]
+    )
+    client = StubMcpClient(results=[{"person": {"id": 42}}, {"tasks": []}])
+
+    transcript = await capture_ai_selected_multi_call_transcript(
+        selector=selector,
+        profile=battle_test_model_profile_by_id("gpt-5.5-low-reasoning"),
+        conversation=conversation,
+        mcp_client=client,
+    )
+
+    assert transcript.scenario_id == conversation.id
+    assert [item.scenario_id for item in transcript.transcripts] == [
+        f"{conversation.id}-T01",
+        f"{conversation.id}-T02",
+    ]
+    assert client.calls == [
+        ("followupboss_get_latest_lead", {"fields": ["id"]}),
+        ("followupboss_list_my_tasks_due_today", {"limit": 5}),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_capture_ai_selected_conversation_transcript_passes_history() -> None:
+    conversation = read_only_battle_test_conversations(BattleTestConversationKind.MULTI_TURN)[0]
+    selector = StubMultiAiSelector(
+        decision_batches=[
+            (
+                BattleTestModelDecision(
+                    scenario_id="BT-CHAIN-001-T01",
+                    prompt=conversation.turns[0].prompt,
+                    selected_tool="followupboss_get_latest_lead",
+                ),
+            ),
+            (
+                BattleTestModelDecision(
+                    scenario_id="BT-CHAIN-001-T02",
+                    prompt=conversation.turns[1].prompt,
+                    selected_tool="followupboss_list_my_tasks_due_today",
+                ),
+            ),
+        ]
+    )
+    client = StubMcpClient(results=[{"person": {"id": 42}}, {"tasks": []}])
+
+    transcript = await capture_ai_selected_conversation_transcript(
+        selector=selector,
+        profile=battle_test_model_profile_by_id("gpt-5.5-low-reasoning"),
+        conversation=conversation,
+        mcp_client=client,
+    )
+
+    assert transcript.conversation_id == "BT-CHAIN-001"
+    assert [item.scenario_id for item in transcript.turn_transcripts] == [
+        "BT-CHAIN-001-T01",
+        "BT-CHAIN-001-T02",
+    ]
+    assert selector.prompts[0] == "Show my latest lead"
+    assert "Previous conversation context:" in selector.prompts[1]
+    assert "called followupboss_get_latest_lead" in selector.prompts[1]
+
+
+@pytest.mark.asyncio
 async def test_run_ai_model_profile_battle_tests_writes_separate_artifacts(tmp_path: Path) -> None:
     scenario = scenario_by_id("BT-READ-005")
     gpt_profile = battle_test_model_profile_by_id("gpt-5.5-low-reasoning")
@@ -630,6 +864,46 @@ async def test_run_ai_model_profile_battle_tests_writes_separate_artifacts(tmp_p
     assert [artifact.summary.overall_passed for artifact in artifacts] == [True, True]
     assert (tmp_path / "read-only-unit-gpt-5.5-low-reasoning.json").exists()
     assert (tmp_path / "read-only-unit-sonnet-4.6.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_run_ai_model_profile_conversation_battle_tests_writes_chain_summary(
+    tmp_path: Path,
+) -> None:
+    conversation = read_only_battle_test_conversations(BattleTestConversationKind.MULTI_ASK)[0]
+    profile = battle_test_model_profile_by_id("gpt-5.5-low-reasoning")
+    selector = StubMultiAiSelector(
+        decision_batches=[
+            (
+                BattleTestModelDecision(
+                    scenario_id=f"{conversation.id}-T01",
+                    prompt=conversation.prompt or "",
+                    selected_tool="followupboss_get_latest_lead",
+                ),
+                BattleTestModelDecision(
+                    scenario_id=f"{conversation.id}-T02",
+                    prompt=conversation.prompt or "",
+                    selected_tool="followupboss_list_my_tasks_due_today",
+                ),
+            )
+        ]
+    )
+
+    artifacts = await run_ai_model_profile_conversation_battle_tests(
+        mcp_client=StubMcpClient(results=[{"person": {"id": 42}}, {"tasks": []}]),
+        oracle=ReadOnlyBattleTestOracle(StubBattleTestServices()),
+        selectors={BattleTestModelProvider.OPENAI: selector},
+        run_id_prefix="chains-unit",
+        client="unit",
+        profiles=(profile,),
+        conversations=(conversation,),
+        artifact_directory=tmp_path,
+        max_cases=1,
+    )
+
+    assert artifacts[0].summary.overall_passed is True
+    assert artifacts[0].conversation_evaluations[0].passed is True
+    assert (tmp_path / "chains-unit-gpt-5.5-low-reasoning.json").exists()
 
 
 def test_load_env_file_preserves_existing_values_and_strips_quotes(

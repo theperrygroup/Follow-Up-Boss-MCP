@@ -2055,6 +2055,13 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert stub.people_search_requests[-1].assigned_user_id == 1
     assert stub.people_search_requests[-1].limit == 1
     assert stub.people_search_requests[-1].sort == "-created"
+    assert GetLatestLeadToolInput(fields=["id", "name", "created"]).fields == [
+        "id",
+        "name",
+        "created",
+    ]
+    with pytest.raises(ValidationError, match="Unsupported latest-lead fields"):
+        GetLatestLeadToolInput(fields=["id", "createdAt"])
     assert (await adapter.search_people(PeopleSearchRequest(include_ponds=True)))["people"][0][
         "id"
     ] == 2

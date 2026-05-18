@@ -14,6 +14,10 @@ import followupboss_mcp.battle_tests as battle_tests_module
 import followupboss_mcp.mcp_tools as mcp_tools_module
 from followupboss_mcp.battle_tests import (
     ApiOracleSpec,
+    BattleTestConversationKind,
+    BattleTestConversationScenario,
+    BattleTestConversationTranscript,
+    BattleTestConversationTurn,
     BattleTestEvaluation,
     BattleTestGrade,
     BattleTestModelProfile,
@@ -31,13 +35,19 @@ from followupboss_mcp.battle_tests import (
     build_model_profile_run_metadata,
     capture_mcp_tool_transcript,
     capture_mcp_tool_transcripts,
+    conversation_turn_to_scenario,
+    evaluate_battle_test_conversation,
     evaluate_battle_test_run,
     evaluate_model_profile_battle_test_runs,
     evaluate_transcript_route,
     expand_battle_test_prompt_variants,
+    flatten_battle_test_conversations,
     mcp_tool_result_to_json,
+    read_only_battle_test_conversations,
     read_only_battle_test_scenarios,
     run_battle_test_tool_calls,
+    sample_battle_test_conversations,
+    sample_battle_test_scenarios,
     scenario_by_id,
     write_battle_test_run_artifact,
 )
@@ -199,7 +209,7 @@ def test_read_only_scenario_corpus_is_stable() -> None:
         "BT-READ-004",
         "BT-READ-005",
     ]
-    assert all(len(scenario.prompt_variants) == 20 for scenario in scenarios)
+    assert all(len(scenario.prompt_variants) == 100 for scenario in scenarios)
     assert scenario_by_id("BT-READ-001").expected_mcp.allowed_tools == (
         "followupboss_get_latest_lead",
     )
@@ -210,6 +220,49 @@ def test_read_only_scenario_corpus_is_stable() -> None:
     assert scenario_by_id("BT-READ-004").api_oracle.kind is BattleTestOracleKind.MY_UPCOMING_TASKS
     with pytest.raises(KeyError):
         scenario_by_id("BT-READ-999")
+
+
+def test_read_only_conversation_corpus_has_stable_ids_and_turns() -> None:
+    conversations = read_only_battle_test_conversations()
+
+    assert len(conversations) == 50
+    assert conversations[0].id == "BT-CHAIN-001"
+    assert conversations[0].kind is BattleTestConversationKind.MULTI_TURN
+    assert conversations[-1].kind is BattleTestConversationKind.MULTI_ASK
+    flattened = flatten_battle_test_conversations((conversations[0],))
+
+    assert [scenario.id for scenario in flattened] == ["BT-CHAIN-001-T01", "BT-CHAIN-001-T02"]
+    assert flattened[0].expected_mcp.allowed_tools == ("followupboss_get_latest_lead",)
+
+
+def test_conversation_turn_conversion_preserves_oracle_contract() -> None:
+    conversation = read_only_battle_test_conversations()[0]
+
+    scenario = conversation_turn_to_scenario(conversation, conversation.turns[0])
+
+    assert scenario.id == "BT-CHAIN-001-T01"
+    assert scenario.prompt_variants == ("Show my latest lead",)
+    assert scenario.api_oracle.kind is BattleTestOracleKind.LATEST_ASSIGNED_LEAD
+
+
+def test_sampling_helpers_are_deterministic_and_keep_order() -> None:
+    scenarios = expand_battle_test_prompt_variants((scenario_by_id("BT-READ-005"),))
+    conversations = read_only_battle_test_conversations()
+
+    first_scenario_sample = sample_battle_test_scenarios(scenarios, max_cases=5, sample_seed=17)
+    second_scenario_sample = sample_battle_test_scenarios(scenarios, max_cases=5, sample_seed=17)
+    conversation_sample = sample_battle_test_conversations(
+        conversations, max_cases=3, sample_seed=7
+    )
+
+    assert [scenario.id for scenario in first_scenario_sample] == [
+        scenario.id for scenario in second_scenario_sample
+    ]
+    assert [scenario.id for scenario in first_scenario_sample] == sorted(
+        scenario.id for scenario in first_scenario_sample
+    )
+    assert len(conversation_sample) == 3
+    assert sample_battle_test_scenarios(scenarios, max_cases=0) == ()
 
 
 def test_prompt_variant_expansion_creates_stable_cases() -> None:
@@ -242,6 +295,33 @@ def test_scenario_requires_non_empty_prompt_variants() -> None:
                 kind=BattleTestOracleKind.UNSUPPORTED_NOTE_SEARCH,
                 description="Test-only oracle.",
             ),
+        )
+
+
+def test_conversation_scenario_validates_turn_shape() -> None:
+    turn = BattleTestConversationTurn(
+        id="T01",
+        prompt="Show my latest lead",
+        grade=BattleTestGrade.MUST_ROUTE,
+        expected_mcp=ExpectedMcpRoute(allowed_tools=("followupboss_get_latest_lead",)),
+        api_oracle=ApiOracleSpec(
+            kind=BattleTestOracleKind.LATEST_ASSIGNED_LEAD,
+            description="Latest lead.",
+        ),
+    )
+
+    with pytest.raises(ValueError, match="turn IDs"):
+        BattleTestConversationScenario(
+            id="BT-CHAIN-DUP",
+            kind=BattleTestConversationKind.MULTI_TURN,
+            turns=(turn, turn),
+        )
+
+    with pytest.raises(ValueError, match="multi-ask"):
+        BattleTestConversationScenario(
+            id="BT-CHAIN-NO-PROMPT",
+            kind=BattleTestConversationKind.MULTI_ASK,
+            turns=(turn,),
         )
 
 
@@ -722,6 +802,46 @@ async def test_route_only_pending_oracle_still_reports_incomplete_custom_scenari
     assert evaluation.oracle_passed is False
     assert evaluation.passed is False
     assert "does not have an automated API oracle yet" in evaluation.failures[0]
+
+
+@pytest.mark.asyncio
+async def test_conversation_evaluation_summarizes_per_turn_failures() -> None:
+    conversation = read_only_battle_test_conversations(BattleTestConversationKind.MULTI_TURN)[0]
+    services = _services(
+        people=_people_page(PersonRecord.model_validate({"id": 42, "assignedUserId": 7})),
+        tasks=_tasks_page(TaskRecord.model_validate({"id": 5})),
+    )
+    transcript = BattleTestConversationTranscript(
+        conversation_id=conversation.id,
+        kind=conversation.kind,
+        turn_transcripts=(
+            BattleTestTranscript(
+                scenario_id="BT-CHAIN-001-T01",
+                prompt="Show my latest lead",
+                selected_tool="followupboss_get_latest_lead",
+                response={"person": {"id": 42}},
+            ),
+            BattleTestTranscript(
+                scenario_id="BT-CHAIN-001-T02",
+                prompt="Now show what I need to do today",
+                selected_tool="followupboss_list_my_tasks_due_today",
+                response={"tasks": [{"id": 999}]},
+            ),
+        ),
+    )
+
+    evaluation = await evaluate_battle_test_conversation(
+        ReadOnlyBattleTestOracle(services),
+        conversation,
+        transcript,
+    )
+
+    assert evaluation.passed is False
+    assert [turn.scenario_id for turn in evaluation.turn_evaluations] == [
+        "BT-CHAIN-001-T01",
+        "BT-CHAIN-001-T02",
+    ]
+    assert any("Expected task ids" in failure for failure in evaluation.failures)
 
 
 @pytest.mark.asyncio

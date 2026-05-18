@@ -1038,6 +1038,8 @@ class HostedOAuthApplication:
             Redirect back to the original MCP client callback.
         """
         fub_state = str(request.query_params.get("state") or "")
+        if not fub_state:
+            return PlainTextResponse("Missing OAuth state.", status_code=400)
         pending = await self._store.consume_pending_authorization(fub_state)
         if pending is None:
             return PlainTextResponse("Invalid or expired OAuth state.", status_code=400)

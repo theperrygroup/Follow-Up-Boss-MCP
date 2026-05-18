@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -12,20 +12,33 @@ import httpx
 from pydantic import Field
 
 from followupboss_mcp.battle_tests import (
+    BattleTestConversationEvaluation,
+    BattleTestConversationKind,
+    BattleTestConversationScenario,
+    BattleTestConversationTranscript,
+    BattleTestGrade,
     BattleTestMcpClient,
     BattleTestModelProfile,
     BattleTestModelProvider,
+    BattleTestMultiCallTranscript,
     BattleTestRunArtifact,
     BattleTestScenario,
     BattleTestToolCall,
     BattleTestTranscript,
+    ExpectedMcpRoute,
     ReadOnlyBattleTestOracle,
     battle_test_model_profiles,
     build_model_profile_run_metadata,
     capture_mcp_tool_transcript,
+    conversation_turn_to_scenario,
+    evaluate_battle_test_conversation,
     evaluate_battle_test_run,
     expand_battle_test_prompt_variants,
+    flatten_battle_test_conversations,
+    read_only_battle_test_conversations,
     read_only_battle_test_scenarios,
+    sample_battle_test_conversations,
+    sample_battle_test_scenarios,
     write_battle_test_run_artifact,
 )
 from followupboss_mcp.models.common import JsonValue, RequestModel
@@ -37,6 +50,17 @@ _ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages"
 _ANTHROPIC_VERSION = "2023-06-01"
 _CLARIFY_TOOL = "battle_test_clarify"
 _UNSUPPORTED_TOOL = "battle_test_explain_unsupported"
+_LATEST_LEAD_RESPONSE_FIELDS = (
+    "id",
+    "name",
+    "firstName",
+    "lastName",
+    "created",
+    "assignedUserId",
+    "stage",
+    "source",
+    "lastActivity",
+)
 _TASK_INTENT_RESPONSE_FIELDS = (
     "id",
     "name",
@@ -95,7 +119,12 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
     """
     fields_schema: JsonObject = {
         "type": "object",
-        "properties": {"fields": _array_schema("Optional response fields to request.")},
+        "properties": {
+            "fields": _enum_array_schema(
+                "Optional latest-lead person response fields to request.",
+                _LATEST_LEAD_RESPONSE_FIELDS,
+            )
+        },
         "additionalProperties": False,
     }
     paginated_fields_schema: JsonObject = {
@@ -213,7 +242,9 @@ def battle_test_selection_instructions() -> str:
     """
     return (
         "You are selecting a Follow Up Boss MCP tool for a battle test. "
-        "Call exactly one tool when the user's prompt has a safe supported route. "
+        "Call exactly one tool when the user's prompt has one safe supported route. "
+        "When one prompt asks for multiple independent supported actions, call the needed "
+        "tools in the same order as the user asked. "
         f"Use {_CLARIFY_TOOL} when the prompt needs more information before any MCP call. "
         f"Use {_UNSUPPORTED_TOOL} when this MCP or the Follow Up Boss API does not support "
         "the requested capability. Note history and notes by person, lead, or contact are "
@@ -316,6 +347,23 @@ class OpenAiBattleTestModelSelector:
         tools: tuple[BattleTestAiToolSpec, ...],
     ) -> BattleTestModelDecision:
         """Select a route with the OpenAI Responses API."""
+        decisions = await self.select_tools(
+            profile=profile,
+            scenario=scenario,
+            prompt=prompt,
+            tools=tools,
+        )
+        return decisions[0]
+
+    async def select_tools(
+        self,
+        *,
+        profile: BattleTestModelProfile,
+        scenario: BattleTestScenario,
+        prompt: str,
+        tools: tuple[BattleTestAiToolSpec, ...],
+    ) -> tuple[BattleTestModelDecision, ...]:
+        """Select one or more routes with the OpenAI Responses API."""
         payload: dict[str, object] = {
             "model": profile.model,
             "instructions": battle_test_selection_instructions(),
@@ -334,7 +382,7 @@ class OpenAiBattleTestModelSelector:
         data: object = response.json()
         if not isinstance(data, dict):
             raise ValueError("OpenAI route-selection response must be an object.")
-        return _openai_decision_from_response(
+        return _openai_decisions_from_response(
             scenario=scenario,
             prompt=prompt,
             payload=cast(Mapping[str, object], data),
@@ -375,6 +423,23 @@ class AnthropicBattleTestModelSelector:
         tools: tuple[BattleTestAiToolSpec, ...],
     ) -> BattleTestModelDecision:
         """Select a route with the Anthropic Messages API."""
+        decisions = await self.select_tools(
+            profile=profile,
+            scenario=scenario,
+            prompt=prompt,
+            tools=tools,
+        )
+        return decisions[0]
+
+    async def select_tools(
+        self,
+        *,
+        profile: BattleTestModelProfile,
+        scenario: BattleTestScenario,
+        prompt: str,
+        tools: tuple[BattleTestAiToolSpec, ...],
+    ) -> tuple[BattleTestModelDecision, ...]:
+        """Select one or more routes with the Anthropic Messages API."""
         response = await self._http_client.post(
             self._messages_url,
             headers={
@@ -394,7 +459,7 @@ class AnthropicBattleTestModelSelector:
         data: object = response.json()
         if not isinstance(data, dict):
             raise ValueError("Anthropic route-selection response must be an object.")
-        return _anthropic_decision_from_response(
+        return _anthropic_decisions_from_response(
             scenario=scenario,
             prompt=prompt,
             payload=cast(Mapping[str, object], data),
@@ -465,6 +530,278 @@ async def capture_ai_selected_transcript(
         )
 
 
+async def capture_ai_selected_multi_call_transcript(
+    *,
+    selector: BattleTestModelSelector,
+    profile: BattleTestModelProfile,
+    conversation: BattleTestConversationScenario,
+    mcp_client: BattleTestMcpClient,
+    tools: tuple[BattleTestAiToolSpec, ...] | None = None,
+) -> BattleTestMultiCallTranscript:
+    """Ask an AI model for multiple routes from one multi-ask prompt.
+
+    Args:
+        selector: Provider selector used to choose routes.
+        profile: Model profile being evaluated.
+        conversation: Multi-ask conversation contract.
+        mcp_client: MCP client used to execute selected real tools.
+        tools: Optional tool specs. Defaults to read-only battle-test specs.
+
+    Returns:
+        Ordered multi-call transcript for the single user prompt.
+
+    Raises:
+        ValueError: If `conversation` is not a multi-ask scenario.
+    """
+    if conversation.kind is not BattleTestConversationKind.MULTI_ASK:
+        raise ValueError("Multi-call transcript capture requires a multi-ask conversation.")
+    prompt = conversation.prompt or conversation.turns[0].prompt
+    expected_scenarios = tuple(
+        conversation_turn_to_scenario(conversation, turn) for turn in conversation.turns
+    )
+    decisions = await _select_tool_decisions(
+        selector=selector,
+        profile=profile,
+        scenario=expected_scenarios[0],
+        prompt=prompt,
+        tools=tools or read_only_battle_test_ai_tool_specs(),
+    )
+    transcripts: list[BattleTestTranscript] = []
+    for index, expected_scenario in enumerate(expected_scenarios):
+        decision = (
+            decisions[index]
+            if index < len(decisions)
+            else _empty_decision(expected_scenario, prompt)
+        )
+        transcripts.append(
+            await _capture_decision_transcript(
+                mcp_client=mcp_client,
+                scenario=expected_scenario,
+                prompt=prompt,
+                decision=decision,
+            )
+        )
+    for index, decision in enumerate(decisions[len(expected_scenarios) :], start=1):
+        extra_scenario = BattleTestScenario(
+            id=f"{conversation.id}-EXTRA-{index:02d}",
+            grade=BattleTestGrade.MAY_ROUTE,
+            prompt_variants=(prompt,),
+            expected_mcp=ExpectedMcpRoute(),
+            api_oracle=expected_scenarios[0].api_oracle,
+        )
+        transcripts.append(
+            await _capture_decision_transcript(
+                mcp_client=mcp_client,
+                scenario=extra_scenario,
+                prompt=prompt,
+                decision=decision,
+            )
+        )
+    return BattleTestMultiCallTranscript(
+        scenario_id=conversation.id,
+        prompt=prompt,
+        transcripts=tuple(transcripts),
+        assistant_message=decisions[0].assistant_message if decisions else None,
+    )
+
+
+async def capture_ai_selected_conversation_transcript(
+    *,
+    selector: BattleTestModelSelector,
+    profile: BattleTestModelProfile,
+    conversation: BattleTestConversationScenario,
+    mcp_client: BattleTestMcpClient,
+    tools: tuple[BattleTestAiToolSpec, ...] | None = None,
+) -> BattleTestConversationTranscript:
+    """Capture one true multi-turn or single-message multi-ask conversation.
+
+    Args:
+        selector: Provider selector used to choose routes.
+        profile: Model profile being evaluated.
+        conversation: Conversation contract to execute.
+        mcp_client: MCP client used to execute selected real tools.
+        tools: Optional tool specs. Defaults to read-only battle-test specs.
+
+    Returns:
+        Captured conversation transcript.
+    """
+    if conversation.kind is BattleTestConversationKind.MULTI_ASK:
+        multi_call = await capture_ai_selected_multi_call_transcript(
+            selector=selector,
+            profile=profile,
+            conversation=conversation,
+            mcp_client=mcp_client,
+            tools=tools,
+        )
+        return BattleTestConversationTranscript(
+            conversation_id=conversation.id,
+            kind=conversation.kind,
+            turn_transcripts=multi_call.transcripts,
+            prompt=multi_call.prompt,
+        )
+
+    history: list[BattleTestTranscript] = []
+    turn_transcripts: list[BattleTestTranscript] = []
+    for turn in conversation.turns:
+        scenario = conversation_turn_to_scenario(conversation, turn)
+        prompt = _conversation_prompt(turn.prompt, tuple(history))
+        try:
+            decision = await _select_tool_decisions(
+                selector=selector,
+                profile=profile,
+                scenario=scenario,
+                prompt=prompt,
+                tools=tools or read_only_battle_test_ai_tool_specs(),
+            )
+        except Exception as exc:
+            transcript = BattleTestTranscript(
+                scenario_id=scenario.id,
+                prompt=turn.prompt,
+                response={"error": f"AI route selection failed: {exc}"},
+                assistant_message=str(exc),
+            )
+        else:
+            transcript = await _capture_decision_transcript(
+                mcp_client=mcp_client,
+                scenario=scenario,
+                prompt=turn.prompt,
+                decision=decision[0],
+            )
+        history.append(transcript)
+        turn_transcripts.append(transcript)
+    return BattleTestConversationTranscript(
+        conversation_id=conversation.id,
+        kind=conversation.kind,
+        turn_transcripts=tuple(turn_transcripts),
+    )
+
+
+async def _select_tool_decisions(
+    *,
+    selector: BattleTestModelSelector,
+    profile: BattleTestModelProfile,
+    scenario: BattleTestScenario,
+    prompt: str,
+    tools: tuple[BattleTestAiToolSpec, ...],
+) -> tuple[BattleTestModelDecision, ...]:
+    """Select one or more tool decisions through a compatible selector.
+
+    Args:
+        selector: Provider selector or test double.
+        profile: Model profile being evaluated.
+        scenario: Scenario contract used for prompt context.
+        prompt: Prompt sent to the model.
+        tools: Tool specs exposed to the model.
+
+    Returns:
+        One or more normalized model decisions.
+    """
+    select_tools = getattr(selector, "select_tools", None)
+    if callable(select_tools):
+        multi_selector = cast(
+            Callable[
+                ...,
+                Awaitable[tuple[BattleTestModelDecision, ...]],
+            ],
+            select_tools,
+        )
+        return await multi_selector(
+            profile=profile,
+            scenario=scenario,
+            prompt=prompt,
+            tools=tools,
+        )
+    return (
+        await selector.select_tool(
+            profile=profile,
+            scenario=scenario,
+            prompt=prompt,
+            tools=tools,
+        ),
+    )
+
+
+def _empty_decision(scenario: BattleTestScenario, prompt: str) -> BattleTestModelDecision:
+    """Return an empty decision for a missing expected multi-call route."""
+    return BattleTestModelDecision(scenario_id=scenario.id, prompt=prompt)
+
+
+async def _capture_decision_transcript(
+    *,
+    mcp_client: BattleTestMcpClient,
+    scenario: BattleTestScenario,
+    prompt: str,
+    decision: BattleTestModelDecision,
+) -> BattleTestTranscript:
+    """Capture a transcript from a preselected model decision.
+
+    Args:
+        mcp_client: MCP client used to execute real tool calls.
+        scenario: Expected scenario for the captured transcript.
+        prompt: User prompt to record.
+        decision: Model-selected route or sentinel decision.
+
+    Returns:
+        A battle-test transcript.
+    """
+    if decision.selected_tool is None:
+        return BattleTestTranscript(
+            scenario_id=scenario.id,
+            prompt=prompt,
+            assistant_message=decision.assistant_message,
+            clarified=decision.clarified,
+            unsupported_explained=decision.unsupported_explained,
+        )
+    tool_call = BattleTestToolCall(
+        scenario_id=scenario.id,
+        prompt=prompt,
+        tool_name=decision.selected_tool,
+        arguments=decision.arguments,
+        assistant_message=decision.assistant_message,
+    )
+    try:
+        return await capture_mcp_tool_transcript(mcp_client, tool_call)
+    except Exception as exc:
+        return BattleTestTranscript(
+            scenario_id=scenario.id,
+            prompt=prompt,
+            selected_tool=decision.selected_tool,
+            arguments=decision.arguments,
+            response={"error": str(exc)},
+            assistant_message=decision.assistant_message,
+        )
+
+
+def _conversation_prompt(
+    current_prompt: str,
+    history: tuple[BattleTestTranscript, ...],
+) -> str:
+    """Render prior turns into a deterministic selector prompt.
+
+    Args:
+        current_prompt: Current user turn.
+        history: Captured prior turns.
+
+    Returns:
+        Prompt string containing prior user prompts and assistant/tool outcomes.
+    """
+    if not history:
+        return current_prompt
+    lines = ["Previous conversation context:"]
+    for transcript in history:
+        lines.append(f"User: {transcript.prompt}")
+        if transcript.selected_tool is not None:
+            lines.append(f"Assistant/tool: called {transcript.selected_tool}")
+        elif transcript.unsupported_explained:
+            lines.append("Assistant/tool: explained unsupported capability")
+        elif transcript.clarified:
+            lines.append("Assistant/tool: asked for clarification")
+        elif transcript.assistant_message:
+            lines.append(f"Assistant: {transcript.assistant_message}")
+    lines.append(f"Current user: {current_prompt}")
+    return "\n".join(lines)
+
+
 async def run_ai_model_profile_battle_tests(
     *,
     mcp_client: BattleTestMcpClient,
@@ -477,6 +814,8 @@ async def run_ai_model_profile_battle_tests(
     artifact_directory: Path | None = None,
     prompt_variant_index: int = 0,
     all_prompt_variants: bool = False,
+    max_cases: int | None = None,
+    sample_seed: int = 0,
     environment: str | None = None,
     started_at: str | None = None,
     notes: tuple[str, ...] = (),
@@ -496,6 +835,8 @@ async def run_ai_model_profile_battle_tests(
         prompt_variant_index: Prompt variant index to run for each scenario.
         all_prompt_variants: Whether to expand every scenario prompt variant
             into a separately evaluated case.
+        max_cases: Optional deterministic cap on evaluated cases.
+        sample_seed: Seed used when sampling with `max_cases`.
         environment: Optional target environment label.
         started_at: Optional ISO-like run timestamp.
         notes: Optional notes stored in each artifact.
@@ -503,9 +844,13 @@ async def run_ai_model_profile_battle_tests(
     Returns:
         One run artifact per model profile.
     """
-    scenario_corpus = _resolve_prompt_variant_corpus(
-        scenarios=scenarios,
-        all_prompt_variants=all_prompt_variants,
+    scenario_corpus = sample_battle_test_scenarios(
+        _resolve_prompt_variant_corpus(
+            scenarios=scenarios,
+            all_prompt_variants=all_prompt_variants,
+        ),
+        max_cases=max_cases,
+        sample_seed=sample_seed,
     )
     artifacts: list[BattleTestRunArtifact] = []
     for profile in profiles or battle_test_model_profiles():
@@ -552,6 +897,134 @@ async def run_ai_model_profile_battle_tests(
     return tuple(artifacts)
 
 
+async def run_ai_model_profile_conversation_battle_tests(
+    *,
+    mcp_client: BattleTestMcpClient,
+    oracle: ReadOnlyBattleTestOracle,
+    selectors: SelectorMap,
+    run_id_prefix: str,
+    client: str,
+    profiles: tuple[BattleTestModelProfile, ...] | None = None,
+    conversations: tuple[BattleTestConversationScenario, ...] | None = None,
+    kind: BattleTestConversationKind | None = None,
+    artifact_directory: Path | None = None,
+    max_cases: int | None = None,
+    sample_seed: int = 0,
+    chain_depth: int | None = None,
+    environment: str | None = None,
+    started_at: str | None = None,
+    notes: tuple[str, ...] = (),
+) -> tuple[BattleTestRunArtifact, ...]:
+    """Run chained or multi-ask battle tests for each model profile.
+
+    Args:
+        mcp_client: MCP client used to execute model-selected tools.
+        oracle: Direct API oracle used to evaluate MCP responses.
+        selectors: Provider-specific AI selectors.
+        run_id_prefix: Shared run prefix for sibling profile artifacts.
+        client: Client or harness label.
+        profiles: Optional profile list. Defaults to the standard model set.
+        conversations: Optional conversation corpus. Defaults to read-only
+            chained scenarios.
+        kind: Optional conversation kind filter.
+        artifact_directory: Optional output directory for JSON artifacts.
+        max_cases: Optional deterministic cap on conversation cases.
+        sample_seed: Seed used when sampling with `max_cases`.
+        chain_depth: Optional max number of turns kept per conversation.
+        environment: Optional target environment label.
+        started_at: Optional ISO-like run timestamp.
+        notes: Optional notes stored in each artifact.
+
+    Returns:
+        One run artifact per model profile, with turn-level and chain-level
+        evaluations.
+    """
+    conversation_corpus = conversations or read_only_battle_test_conversations(kind)
+    if chain_depth is not None:
+        conversation_corpus = tuple(
+            conversation.model_copy(update={"turns": conversation.turns[:chain_depth]})
+            for conversation in conversation_corpus
+        )
+    conversation_corpus = sample_battle_test_conversations(
+        conversation_corpus,
+        max_cases=max_cases,
+        sample_seed=sample_seed,
+    )
+    scenario_corpus = flatten_battle_test_conversations(conversation_corpus)
+    artifacts: list[BattleTestRunArtifact] = []
+    for profile in profiles or battle_test_model_profiles():
+        selector = selectors.get(profile.provider)
+        if selector is None:
+            raise RuntimeError(
+                f"No battle-test selector configured for provider {profile.provider}."
+            )
+        conversation_transcripts = tuple(
+            [
+                await capture_ai_selected_conversation_transcript(
+                    selector=selector,
+                    profile=profile,
+                    conversation=conversation,
+                    mcp_client=mcp_client,
+                )
+                for conversation in conversation_corpus
+            ]
+        )
+        turn_transcripts = tuple(
+            transcript
+            for conversation_transcript in conversation_transcripts
+            for transcript in conversation_transcript.turn_transcripts
+        )
+        metadata = build_model_profile_run_metadata(
+            run_id_prefix=run_id_prefix,
+            client=client,
+            model_profile=profile,
+            environment=environment,
+            started_at=started_at,
+            notes=notes,
+        )
+        artifact = await evaluate_battle_test_run(
+            oracle,
+            turn_transcripts,
+            metadata=metadata,
+            scenarios=scenario_corpus,
+        )
+        conversation_evaluations = tuple(
+            [
+                await _evaluate_captured_conversation(
+                    oracle=oracle,
+                    conversation=conversation,
+                    transcripts=conversation_transcripts,
+                )
+                for conversation in conversation_corpus
+            ]
+        )
+        artifact = artifact.model_copy(
+            update={"conversation_evaluations": conversation_evaluations}
+        )
+        if artifact_directory is not None:
+            write_battle_test_run_artifact(
+                artifact,
+                artifact_directory / f"{metadata.run_id}.json",
+            )
+        artifacts.append(artifact)
+    return tuple(artifacts)
+
+
+async def _evaluate_captured_conversation(
+    *,
+    oracle: ReadOnlyBattleTestOracle,
+    conversation: BattleTestConversationScenario,
+    transcripts: tuple[BattleTestConversationTranscript, ...],
+) -> BattleTestConversationEvaluation:
+    """Evaluate one captured conversation from a transcript tuple."""
+    transcript_by_id = {transcript.conversation_id: transcript for transcript in transcripts}
+    return await evaluate_battle_test_conversation(
+        oracle,
+        conversation,
+        transcript_by_id[conversation.id],
+    )
+
+
 def _resolve_prompt_variant_corpus(
     *,
     scenarios: tuple[BattleTestScenario, ...] | None,
@@ -595,15 +1068,6 @@ def _string_schema(description: str) -> JsonObject:
 def _integer_schema(description: str) -> JsonObject:
     """Return a JSON schema integer property."""
     return {"type": "integer", "description": description}
-
-
-def _array_schema(description: str) -> JsonObject:
-    """Return a JSON schema string-array property."""
-    return {
-        "type": "array",
-        "description": description,
-        "items": {"type": "string"},
-    }
 
 
 def _enum_array_schema(description: str, allowed_values: tuple[str, ...]) -> JsonObject:
@@ -659,23 +1123,44 @@ def _openai_decision_from_response(
     payload: Mapping[str, object],
 ) -> BattleTestModelDecision:
     """Parse an OpenAI Responses route-selection response."""
+    return _openai_decisions_from_response(
+        scenario=scenario,
+        prompt=prompt,
+        payload=payload,
+    )[0]
+
+
+def _openai_decisions_from_response(
+    *,
+    scenario: BattleTestScenario,
+    prompt: str,
+    payload: Mapping[str, object],
+) -> tuple[BattleTestModelDecision, ...]:
+    """Parse all OpenAI Responses route-selection tool calls."""
     output = payload.get("output")
+    decisions: list[BattleTestModelDecision] = []
     if isinstance(output, list):
         for item in output:
             if isinstance(item, Mapping) and item.get("type") == "function_call":
                 name = item.get("name")
                 if isinstance(name, str):
-                    return _decision_from_tool_call(
-                        scenario=scenario,
-                        prompt=prompt,
-                        tool_name=name,
-                        raw_arguments=item.get("arguments"),
-                        fallback_message=_openai_text(payload),
+                    decisions.append(
+                        _decision_from_tool_call(
+                            scenario=scenario,
+                            prompt=prompt,
+                            tool_name=name,
+                            raw_arguments=item.get("arguments"),
+                            fallback_message=_openai_text(payload),
+                        )
                     )
-    return BattleTestModelDecision(
-        scenario_id=scenario.id,
-        prompt=prompt,
-        assistant_message=_openai_text(payload),
+    if decisions:
+        return tuple(decisions)
+    return (
+        BattleTestModelDecision(
+            scenario_id=scenario.id,
+            prompt=prompt,
+            assistant_message=_openai_text(payload),
+        ),
     )
 
 
@@ -686,24 +1171,45 @@ def _anthropic_decision_from_response(
     payload: Mapping[str, object],
 ) -> BattleTestModelDecision:
     """Parse an Anthropic Messages route-selection response."""
+    return _anthropic_decisions_from_response(
+        scenario=scenario,
+        prompt=prompt,
+        payload=payload,
+    )[0]
+
+
+def _anthropic_decisions_from_response(
+    *,
+    scenario: BattleTestScenario,
+    prompt: str,
+    payload: Mapping[str, object],
+) -> tuple[BattleTestModelDecision, ...]:
+    """Parse all Anthropic Messages route-selection tool calls."""
     content = payload.get("content")
     text = _anthropic_text(payload)
+    decisions: list[BattleTestModelDecision] = []
     if isinstance(content, list):
         for item in content:
             if isinstance(item, Mapping) and item.get("type") == "tool_use":
                 name = item.get("name")
                 if isinstance(name, str):
-                    return _decision_from_tool_call(
-                        scenario=scenario,
-                        prompt=prompt,
-                        tool_name=name,
-                        raw_arguments=item.get("input"),
-                        fallback_message=text,
+                    decisions.append(
+                        _decision_from_tool_call(
+                            scenario=scenario,
+                            prompt=prompt,
+                            tool_name=name,
+                            raw_arguments=item.get("input"),
+                            fallback_message=text,
+                        )
                     )
-    return BattleTestModelDecision(
-        scenario_id=scenario.id,
-        prompt=prompt,
-        assistant_message=text,
+    if decisions:
+        return tuple(decisions)
+    return (
+        BattleTestModelDecision(
+            scenario_id=scenario.id,
+            prompt=prompt,
+            assistant_message=text,
+        ),
     )
 
 

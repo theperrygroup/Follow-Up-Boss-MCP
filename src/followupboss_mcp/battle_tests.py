@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from enum import StrEnum
 from pathlib import Path
+from random import Random
 from typing import Protocol
 
 from pydantic import Field, model_validator
@@ -38,6 +39,13 @@ class BattleTestOracleKind(StrEnum):
     MY_UPCOMING_TASKS = "my_upcoming_tasks"
     ROUTE_ONLY_PENDING = "route_only_pending"
     UNSUPPORTED_NOTE_SEARCH = "unsupported_note_search"
+
+
+class BattleTestConversationKind(StrEnum):
+    """Supported chained battle-test conversation shapes."""
+
+    MULTI_TURN = "multi_turn"
+    MULTI_ASK = "multi_ask"
 
 
 class BattleTestModelProvider(StrEnum):
@@ -114,6 +122,64 @@ class BattleTestScenario(RequestModel):
         return self
 
 
+class BattleTestConversationTurn(RequestModel):
+    """Expected behavior for one turn inside a chained battle-test scenario."""
+
+    id: str
+    prompt: str
+    grade: BattleTestGrade
+    expected_mcp: ExpectedMcpRoute
+    api_oracle: ApiOracleSpec
+    response_assertions: tuple[str, ...] = ()
+    cleanup: str = "none"
+
+    @model_validator(mode="after")
+    def _require_non_empty_strings(self) -> BattleTestConversationTurn:
+        """Require stable turn identifiers and prompts.
+
+        Returns:
+            The validated turn.
+
+        Raises:
+            ValueError: If the turn ID or prompt is blank.
+        """
+        if not self.id.strip() or not self.prompt.strip():
+            raise ValueError("Battle-test conversation turns need non-empty IDs and prompts.")
+        return self
+
+
+class BattleTestConversationScenario(RequestModel):
+    """Machine-readable chained or multi-ask battle-test scenario."""
+
+    id: str
+    kind: BattleTestConversationKind
+    turns: tuple[BattleTestConversationTurn, ...]
+    prompt: str | None = None
+    description: str = ""
+
+    @model_validator(mode="after")
+    def _require_valid_conversation(self) -> BattleTestConversationScenario:
+        """Validate conversation identity, turns, and prompt shape.
+
+        Returns:
+            The validated conversation scenario.
+
+        Raises:
+            ValueError: If the scenario ID, turn set, turn IDs, or multi-ask
+                prompt are invalid.
+        """
+        if not self.id.strip():
+            raise ValueError("Battle-test conversation scenarios need non-empty IDs.")
+        if not self.turns:
+            raise ValueError("Battle-test conversation scenarios need at least one turn.")
+        turn_ids = [turn.id for turn in self.turns]
+        if len(set(turn_ids)) != len(turn_ids):
+            raise ValueError("Battle-test conversation turn IDs must be unique.")
+        if self.kind is BattleTestConversationKind.MULTI_ASK and not (self.prompt or "").strip():
+            raise ValueError("Multi-ask battle-test scenarios need a non-empty prompt.")
+        return self
+
+
 class BattleTestTranscript(RequestModel):
     """Captured chatbot interaction for one battle-test prompt."""
 
@@ -125,6 +191,24 @@ class BattleTestTranscript(RequestModel):
     assistant_message: str | None = None
     clarified: bool = False
     unsupported_explained: bool = False
+
+
+class BattleTestMultiCallTranscript(RequestModel):
+    """Captured ordered tool calls for one single-message multi-ask prompt."""
+
+    scenario_id: str
+    prompt: str
+    transcripts: tuple[BattleTestTranscript, ...]
+    assistant_message: str | None = None
+
+
+class BattleTestConversationTranscript(RequestModel):
+    """Captured transcript bundle for one chained conversation scenario."""
+
+    conversation_id: str
+    kind: BattleTestConversationKind
+    turn_transcripts: tuple[BattleTestTranscript, ...]
+    prompt: str | None = None
 
 
 class BattleTestToolCall(RequestModel):
@@ -169,6 +253,16 @@ class BattleTestEvaluation(ResponseModel):
     oracle_snapshot: BattleTestOracleSnapshot | None = None
 
 
+class BattleTestConversationEvaluation(ResponseModel):
+    """Aggregate evaluation for one chained conversation scenario."""
+
+    conversation_id: str
+    kind: BattleTestConversationKind
+    passed: bool
+    turn_evaluations: tuple[BattleTestEvaluation, ...]
+    failures: tuple[str, ...] = ()
+
+
 class BattleTestRunMetadata(RequestModel):
     """Metadata describing one battle-test execution."""
 
@@ -200,6 +294,7 @@ class BattleTestRunArtifact(ResponseModel):
     evaluations: tuple[BattleTestEvaluation, ...]
     missing_scenario_ids: tuple[str, ...] = ()
     unknown_transcript_scenario_ids: tuple[str, ...] = ()
+    conversation_evaluations: tuple[BattleTestConversationEvaluation, ...] = ()
 
 
 class IdentityOracleService(Protocol):
@@ -335,6 +430,25 @@ def read_only_battle_test_scenarios() -> tuple[BattleTestScenario, ...]:
     return _READ_ONLY_SCENARIOS
 
 
+def read_only_battle_test_conversations(
+    kind: BattleTestConversationKind | None = None,
+) -> tuple[BattleTestConversationScenario, ...]:
+    """Return the read-only chained and multi-ask battle-test corpus.
+
+    Args:
+        kind: Optional conversation kind to filter by.
+
+    Returns:
+        Chained battle-test scenarios. When `kind` is provided, only
+        conversations of that kind are returned.
+    """
+    if kind is None:
+        return _READ_ONLY_CONVERSATIONS
+    return tuple(
+        conversation for conversation in _READ_ONLY_CONVERSATIONS if conversation.kind is kind
+    )
+
+
 def expand_battle_test_prompt_variants(
     scenarios: tuple[BattleTestScenario, ...] | None = None,
 ) -> tuple[BattleTestScenario, ...]:
@@ -363,6 +477,106 @@ def expand_battle_test_prompt_variants(
                 )
             )
     return tuple(expanded)
+
+
+def sample_battle_test_scenarios(
+    scenarios: tuple[BattleTestScenario, ...],
+    *,
+    max_cases: int | None = None,
+    sample_seed: int = 0,
+) -> tuple[BattleTestScenario, ...]:
+    """Return a deterministic sample from a scenario corpus.
+
+    Args:
+        scenarios: Scenario corpus to sample.
+        max_cases: Optional maximum number of cases to return. `None` keeps the
+            full corpus.
+        sample_seed: Seed used when sampling a subset.
+
+    Returns:
+        A deterministic, original-order subset of scenarios.
+    """
+    if max_cases is None or max_cases >= len(scenarios):
+        return scenarios
+    if max_cases <= 0:
+        return ()
+    rng = Random(sample_seed)
+    selected_indexes = set(rng.sample(range(len(scenarios)), max_cases))
+    return tuple(scenario for index, scenario in enumerate(scenarios) if index in selected_indexes)
+
+
+def sample_battle_test_conversations(
+    conversations: tuple[BattleTestConversationScenario, ...],
+    *,
+    max_cases: int | None = None,
+    sample_seed: int = 0,
+) -> tuple[BattleTestConversationScenario, ...]:
+    """Return a deterministic sample from a chained conversation corpus.
+
+    Args:
+        conversations: Conversation corpus to sample.
+        max_cases: Optional maximum number of conversations to return. `None`
+            keeps the full corpus.
+        sample_seed: Seed used when sampling a subset.
+
+    Returns:
+        A deterministic, original-order subset of conversations.
+    """
+    if max_cases is None or max_cases >= len(conversations):
+        return conversations
+    if max_cases <= 0:
+        return ()
+    rng = Random(sample_seed)
+    selected_indexes = set(rng.sample(range(len(conversations)), max_cases))
+    return tuple(
+        conversation
+        for index, conversation in enumerate(conversations)
+        if index in selected_indexes
+    )
+
+
+def conversation_turn_to_scenario(
+    conversation: BattleTestConversationScenario,
+    turn: BattleTestConversationTurn,
+) -> BattleTestScenario:
+    """Convert one conversation turn into an evaluatable single-turn scenario.
+
+    Args:
+        conversation: Parent conversation scenario.
+        turn: Turn contract to convert.
+
+    Returns:
+        A single-turn scenario with a stable composite ID.
+    """
+    return BattleTestScenario(
+        id=f"{conversation.id}-{turn.id}",
+        grade=turn.grade,
+        prompt_variants=(turn.prompt,),
+        expected_mcp=turn.expected_mcp,
+        api_oracle=turn.api_oracle,
+        response_assertions=turn.response_assertions,
+        cleanup=turn.cleanup,
+    )
+
+
+def flatten_battle_test_conversations(
+    conversations: tuple[BattleTestConversationScenario, ...] | None = None,
+) -> tuple[BattleTestScenario, ...]:
+    """Flatten chained conversations into turn-level scenarios.
+
+    Args:
+        conversations: Optional conversation corpus. Defaults to the read-only
+            chained battle-test corpus.
+
+    Returns:
+        Single-turn scenario contracts for every conversation turn.
+    """
+    flattened: list[BattleTestScenario] = []
+    for conversation in conversations or read_only_battle_test_conversations():
+        flattened.extend(
+            conversation_turn_to_scenario(conversation, turn) for turn in conversation.turns
+        )
+    return tuple(flattened)
 
 
 def scenario_by_id(scenario_id: str) -> BattleTestScenario:
@@ -592,6 +806,96 @@ async def evaluate_battle_test_run(
     )
 
 
+async def evaluate_battle_test_conversation(
+    oracle: ReadOnlyBattleTestOracle,
+    conversation: BattleTestConversationScenario,
+    transcript: BattleTestConversationTranscript,
+) -> BattleTestConversationEvaluation:
+    """Evaluate one captured chained conversation.
+
+    Args:
+        oracle: Read-only oracle used for each turn evaluation.
+        conversation: Expected conversation contract.
+        transcript: Captured turn transcripts for the conversation.
+
+    Returns:
+        Conversation-level pass/fail result with per-turn evaluations.
+    """
+    failures: list[str] = []
+    if transcript.conversation_id != conversation.id:
+        failures.append(
+            f"Conversation transcript {transcript.conversation_id!r} does not match "
+            f"{conversation.id!r}."
+        )
+    if transcript.kind is not conversation.kind:
+        failures.append(
+            f"Conversation transcript kind {transcript.kind!r} does not match "
+            f"{conversation.kind!r}."
+        )
+    expected_scenarios = tuple(
+        conversation_turn_to_scenario(conversation, turn) for turn in conversation.turns
+    )
+    transcript_by_id = {
+        turn_transcript.scenario_id: turn_transcript
+        for turn_transcript in transcript.turn_transcripts
+    }
+    evaluations: list[BattleTestEvaluation] = []
+    for scenario in expected_scenarios:
+        turn_transcript = transcript_by_id.get(scenario.id)
+        if turn_transcript is None:
+            failures.append(f"Missing transcript for conversation turn {scenario.id!r}.")
+            continue
+        evaluations.append(await oracle.evaluate(scenario, turn_transcript))
+    for turn_transcript in transcript.turn_transcripts:
+        if turn_transcript.scenario_id not in {scenario.id for scenario in expected_scenarios}:
+            failures.append(
+                f"Unexpected transcript for conversation turn {turn_transcript.scenario_id!r}."
+            )
+    failures.extend(
+        f"{evaluation.scenario_id}: {failure}"
+        for evaluation in evaluations
+        for failure in evaluation.failures
+    )
+    return BattleTestConversationEvaluation(
+        conversation_id=conversation.id,
+        kind=conversation.kind,
+        passed=not failures,
+        turn_evaluations=tuple(evaluations),
+        failures=tuple(failures),
+    )
+
+
+async def evaluate_battle_test_conversations(
+    oracle: ReadOnlyBattleTestOracle,
+    transcripts: tuple[BattleTestConversationTranscript, ...],
+    *,
+    conversations: tuple[BattleTestConversationScenario, ...] | None = None,
+) -> tuple[BattleTestConversationEvaluation, ...]:
+    """Evaluate multiple captured chained conversations.
+
+    Args:
+        oracle: Read-only oracle used for each turn evaluation.
+        transcripts: Captured conversation transcripts.
+        conversations: Optional expected conversation corpus.
+
+    Returns:
+        Conversation evaluations in corpus order for captured conversations.
+    """
+    conversation_corpus = conversations or read_only_battle_test_conversations()
+    transcript_by_id = {transcript.conversation_id: transcript for transcript in transcripts}
+    return tuple(
+        [
+            await evaluate_battle_test_conversation(
+                oracle,
+                conversation,
+                transcript_by_id[conversation.id],
+            )
+            for conversation in conversation_corpus
+            if conversation.id in transcript_by_id
+        ]
+    )
+
+
 def build_battle_test_run_artifact(
     *,
     metadata: BattleTestRunMetadata,
@@ -599,6 +903,7 @@ def build_battle_test_run_artifact(
     total_scenarios: int,
     missing_scenario_ids: tuple[str, ...] = (),
     unknown_transcript_scenario_ids: tuple[str, ...] = (),
+    conversation_evaluations: tuple[BattleTestConversationEvaluation, ...] = (),
 ) -> BattleTestRunArtifact:
     """Build a serializable battle-test run artifact.
 
@@ -609,6 +914,7 @@ def build_battle_test_run_artifact(
         missing_scenario_ids: Scenario IDs that did not have transcripts.
         unknown_transcript_scenario_ids: Transcript scenario IDs outside the
             expected scenario corpus.
+        conversation_evaluations: Optional chain-level evaluations.
 
     Returns:
         A run artifact with computed summary counts.
@@ -631,6 +937,7 @@ def build_battle_test_run_artifact(
         evaluations=evaluations,
         missing_scenario_ids=missing_scenario_ids,
         unknown_transcript_scenario_ids=unknown_transcript_scenario_ids,
+        conversation_evaluations=conversation_evaluations,
     )
 
 
@@ -1090,31 +1397,58 @@ def _optional_string_list(value: JsonValue) -> list[str] | None:
     return strings if len(strings) == len(value) else None
 
 
+_PROMPT_VARIATION_WRAPPERS = (
+    "{prompt}",
+    "Please help with this: {prompt}",
+    "Quick CRM check: {prompt}",
+    "In Follow Up Boss, {prompt}",
+    "Could you handle this for me: {prompt}",
+)
+
+
+def _expand_prompt_families(base_prompts: tuple[str, ...]) -> tuple[str, ...]:
+    """Expand seed prompts through deterministic phrasing families.
+
+    Args:
+        base_prompts: Seed prompts that preserve the canonical intent.
+
+    Returns:
+        Seed prompts multiplied across stable phrasing wrappers.
+    """
+    return tuple(
+        wrapper.format(prompt=prompt)
+        for wrapper in _PROMPT_VARIATION_WRAPPERS
+        for prompt in base_prompts
+    )
+
+
 _READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
     BattleTestScenario(
         id="BT-READ-001",
         grade=BattleTestGrade.MUST_ROUTE,
-        prompt_variants=(
-            "What is my latest lead?",
-            "Who was the newest lead I got?",
-            "Show me the most recent lead assigned to me",
-            "Pull up my newest person",
-            "Anything new for me?",
-            "Did I get any new leads?",
-            "Who is the latest person assigned to me?",
-            "Bring up the newest lead in my name",
-            "Show the last lead that came to me",
-            "What lead just landed in my account?",
-            "Open my freshest lead",
-            "Who is my newest assigned contact?",
-            "What is the most recent person I should follow up with?",
-            "Show the newest record owned by me",
-            "Any fresh leads assigned to me today?",
-            "Find my most recently created lead",
-            "Who did I most recently receive?",
-            "Pull my latest incoming prospect",
-            "Show my newest FUB person",
-            "What new person is waiting for me?",
+        prompt_variants=_expand_prompt_families(
+            (
+                "What is my latest lead?",
+                "Who was the newest lead I got?",
+                "Show me the most recent lead assigned to me",
+                "Pull up my newest person",
+                "Anything new for me?",
+                "Did I get any new leads?",
+                "Who is the latest person assigned to me?",
+                "Bring up the newest lead in my name",
+                "Show the last lead that came to me",
+                "What lead just landed in my account?",
+                "Open my freshest lead",
+                "Who is my newest assigned contact?",
+                "What is the most recent person I should follow up with?",
+                "Show the newest record owned by me",
+                "Any fresh leads assigned to me today?",
+                "Find my most recently created lead",
+                "Who did I most recently receive?",
+                "Pull my latest incoming prospect",
+                "Show my newest FUB person",
+                "What new person is waiting for me?",
+            )
         ),
         expected_mcp=ExpectedMcpRoute(
             allowed_tools=("followupboss_get_latest_lead",),
@@ -1129,27 +1463,29 @@ _READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
     BattleTestScenario(
         id="BT-READ-002",
         grade=BattleTestGrade.MUST_ROUTE,
-        prompt_variants=(
-            "What am I late on?",
-            "Show my overdue tasks",
-            "Which follow-ups did I miss?",
-            "What tasks are past due for me?",
-            "Anything I should have done already?",
-            "What follow-ups are overdue for me?",
-            "Do I have any late to-dos?",
-            "Show the tasks I missed",
-            "What did I forget to complete?",
-            "Which of my tasks are behind schedule?",
-            "List my overdue follow-ups",
-            "What should I have handled already?",
-            "Any past-due reminders assigned to me?",
-            "Show what is late under my name",
-            "What tasks are overdue on my plate?",
-            "Give me my missed follow-up list",
-            "What FUB tasks did I let slip?",
-            "Anything overdue that I own?",
-            "Which assigned tasks are already late?",
-            "Show my stale tasks",
+        prompt_variants=_expand_prompt_families(
+            (
+                "What am I late on?",
+                "Show my overdue tasks",
+                "Which follow-ups did I miss?",
+                "What tasks are past due for me?",
+                "Anything I should have done already?",
+                "What follow-ups are overdue for me?",
+                "Do I have any late to-dos?",
+                "Show the tasks I missed",
+                "What did I forget to complete?",
+                "Which of my tasks are behind schedule?",
+                "List my overdue follow-ups",
+                "What should I have handled already?",
+                "Any past-due reminders assigned to me?",
+                "Show what is late under my name",
+                "What tasks are overdue on my plate?",
+                "Give me my missed follow-up list",
+                "What FUB tasks did I let slip?",
+                "Anything overdue that I own?",
+                "Which assigned tasks are already late?",
+                "Show my stale tasks",
+            )
         ),
         expected_mcp=ExpectedMcpRoute(
             allowed_tools=("followupboss_list_my_overdue_tasks",),
@@ -1166,27 +1502,29 @@ _READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
     BattleTestScenario(
         id="BT-READ-003",
         grade=BattleTestGrade.MUST_ROUTE,
-        prompt_variants=(
-            "What do I need to do today?",
-            "Show my tasks today",
-            "What's on deck for me today?",
-            "Any follow-ups due today?",
-            "Give me today's to-do list",
-            "What follow-ups are due for me today?",
-            "Show today's tasks assigned to me",
-            "What should I work on today?",
-            "Any reminders for me today?",
-            "List my due-today FUB tasks",
-            "What is on my calendar of tasks today?",
-            "Show the follow-ups I owe today",
-            "Anything I need to complete before end of day?",
-            "What tasks are assigned to me for today?",
-            "Give me my daily follow-up list",
-            "What is due now for me?",
-            "Any current-day tasks in my queue?",
-            "Show my action items due today",
-            "What should I not miss today?",
-            "Which incomplete tasks are due today under my name?",
+        prompt_variants=_expand_prompt_families(
+            (
+                "What do I need to do today?",
+                "Show my tasks today",
+                "What's on deck for me today?",
+                "Any follow-ups due today?",
+                "Give me today's to-do list",
+                "What follow-ups are due for me today?",
+                "Show today's tasks assigned to me",
+                "What should I work on today?",
+                "Any reminders for me today?",
+                "List my due-today FUB tasks",
+                "What is on my calendar of tasks today?",
+                "Show the follow-ups I owe today",
+                "Anything I need to complete before end of day?",
+                "What tasks are assigned to me for today?",
+                "Give me my daily follow-up list",
+                "What is due now for me?",
+                "Any current-day tasks in my queue?",
+                "Show my action items due today",
+                "What should I not miss today?",
+                "Which incomplete tasks are due today under my name?",
+            )
         ),
         expected_mcp=ExpectedMcpRoute(
             allowed_tools=("followupboss_list_my_tasks_due_today",),
@@ -1203,27 +1541,29 @@ _READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
     BattleTestScenario(
         id="BT-READ-004",
         grade=BattleTestGrade.MUST_ROUTE,
-        prompt_variants=(
-            "What do I have coming up?",
-            "Show my next tasks",
-            "What's due later this week?",
-            "Any follow-ups after today?",
-            "What should I prep for next?",
-            "What follow-ups are coming soon?",
-            "Show my upcoming tasks",
-            "What is due after today?",
-            "Anything on my plate later?",
-            "What tasks should I plan for?",
-            "Give me my future to-do list",
-            "Which follow-ups are next for me?",
-            "What should I get ready for this week?",
-            "Show tasks that are not due yet",
-            "Any incomplete tasks coming up?",
-            "What reminders are scheduled ahead?",
-            "What do I have after today in FUB?",
-            "List upcoming follow-ups assigned to me",
-            "What is next on my CRM task list?",
-            "Show later tasks I should be aware of",
+        prompt_variants=_expand_prompt_families(
+            (
+                "What do I have coming up?",
+                "Show my next tasks",
+                "What's due later this week?",
+                "Any follow-ups after today?",
+                "What should I prep for next?",
+                "What follow-ups are coming soon?",
+                "Show my upcoming tasks",
+                "What is due after today?",
+                "Anything on my plate later?",
+                "What tasks should I plan for?",
+                "Give me my future to-do list",
+                "Which follow-ups are next for me?",
+                "What should I get ready for this week?",
+                "Show tasks that are not due yet",
+                "Any incomplete tasks coming up?",
+                "What reminders are scheduled ahead?",
+                "What do I have after today in FUB?",
+                "List upcoming follow-ups assigned to me",
+                "What is next on my CRM task list?",
+                "Show later tasks I should be aware of",
+            )
         ),
         expected_mcp=ExpectedMcpRoute(
             allowed_tools=("followupboss_list_my_upcoming_tasks",),
@@ -1241,27 +1581,29 @@ _READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
     BattleTestScenario(
         id="BT-READ-005",
         grade=BattleTestGrade.MUST_EXPLAIN_UNSUPPORTED,
-        prompt_variants=(
-            "Show notes for lead 123",
-            "What notes are on this person?",
-            "Find all notes for this FUB lead",
-            "Search notes by person ID",
-            "Do they have any notes?",
-            "Pull up the notes for this lead",
-            "Can you search notes attached to person 123?",
-            "Show every note on that contact",
-            "Look through this person's notes",
-            "Find notes for the buyer",
-            "What note history does this lead have?",
-            "Search all notes for that FUB person",
-            "Do we have notes saved on this contact?",
-            "Open the note thread for this lead",
-            "Find lead notes by contact ID",
-            "Show me notes related to this person record",
-            "Can you list notes for lead ID 123?",
-            "What has been noted on this person?",
-            "Search the notes field for this lead",
-            "Pull notes connected to this contact",
+        prompt_variants=_expand_prompt_families(
+            (
+                "Show notes for lead 123",
+                "What notes are on this person?",
+                "Find all notes for this FUB lead",
+                "Search notes by person ID",
+                "Do they have any notes?",
+                "Pull up the notes for this lead",
+                "Can you search notes attached to person 123?",
+                "Show every note on that contact",
+                "Look through this person's notes",
+                "Find notes for the buyer",
+                "What note history does this lead have?",
+                "Search all notes for that FUB person",
+                "Do we have notes saved on this contact?",
+                "Open the note thread for this lead",
+                "Find lead notes by contact ID",
+                "Show me notes related to this person record",
+                "Can you list notes for lead ID 123?",
+                "What has been noted on this person?",
+                "Search the notes field for this lead",
+                "Pull notes connected to this contact",
+            )
         ),
         expected_mcp=ExpectedMcpRoute(
             allowed_tools=(),
@@ -1274,3 +1616,165 @@ _READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
         response_assertions=("unsupported_explained is true", "selected_tool is None"),
     ),
 )
+
+
+def _base_scenario(scenario_id: str) -> BattleTestScenario:
+    """Return one base read-only scenario for corpus construction."""
+    return {scenario.id: scenario for scenario in _READ_ONLY_SCENARIOS}[scenario_id]
+
+
+def _conversation_turn(
+    turn_id: str,
+    scenario_id: str,
+    prompt: str,
+) -> BattleTestConversationTurn:
+    """Build a chained turn from an existing read-only scenario contract."""
+    scenario = _base_scenario(scenario_id)
+    return BattleTestConversationTurn(
+        id=turn_id,
+        prompt=prompt,
+        grade=scenario.grade,
+        expected_mcp=scenario.expected_mcp,
+        api_oracle=scenario.api_oracle,
+        response_assertions=scenario.response_assertions,
+        cleanup=scenario.cleanup,
+    )
+
+
+_CHAIN_STYLE_PREFIXES = (
+    "",
+    "Please keep this in FUB: ",
+    "Quick CRM workflow: ",
+    "Before I start calls: ",
+    "For my follow-up block: ",
+)
+
+_CHAIN_BLUEPRINTS: tuple[
+    tuple[
+        BattleTestConversationKind,
+        str,
+        tuple[tuple[str, str], ...],
+    ],
+    ...,
+] = (
+    (
+        BattleTestConversationKind.MULTI_TURN,
+        "",
+        (
+            ("BT-READ-001", "Show my latest lead"),
+            ("BT-READ-003", "Now show what I need to do today"),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_TURN,
+        "",
+        (
+            ("BT-READ-002", "What am I late on?"),
+            ("BT-READ-004", "What should I prep for after today?"),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_TURN,
+        "",
+        (
+            ("BT-READ-003", "Show today's work"),
+            ("BT-READ-002", "Now show anything overdue"),
+            ("BT-READ-004", "Then show what is coming up next"),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_TURN,
+        "",
+        (
+            ("BT-READ-001", "Pull my newest lead"),
+            ("BT-READ-005", "Can you show notes for that lead?"),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_TURN,
+        "",
+        (
+            ("BT-READ-004", "What do I have coming up?"),
+            ("BT-READ-003", "What about today?"),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_ASK,
+        "Show my latest lead and what I need to do today.",
+        (
+            ("BT-READ-001", "Show my latest lead and what I need to do today."),
+            ("BT-READ-003", "Show my latest lead and what I need to do today."),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_ASK,
+        "What am I late on, and what is coming up after today?",
+        (
+            ("BT-READ-002", "What am I late on, and what is coming up after today?"),
+            ("BT-READ-004", "What am I late on, and what is coming up after today?"),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_ASK,
+        "Show today's tasks, upcoming tasks, and overdue tasks for me.",
+        (
+            ("BT-READ-003", "Show today's tasks, upcoming tasks, and overdue tasks for me."),
+            ("BT-READ-004", "Show today's tasks, upcoming tasks, and overdue tasks for me."),
+            ("BT-READ-002", "Show today's tasks, upcoming tasks, and overdue tasks for me."),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_ASK,
+        "Pull my newest lead and tell me whether you can search that lead's notes.",
+        (
+            (
+                "BT-READ-001",
+                "Pull my newest lead and tell me whether you can search that lead's notes.",
+            ),
+            (
+                "BT-READ-005",
+                "Pull my newest lead and tell me whether you can search that lead's notes.",
+            ),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_ASK,
+        "Check my CRM queue: overdue, today, and later follow-ups.",
+        (
+            ("BT-READ-002", "Check my CRM queue: overdue, today, and later follow-ups."),
+            ("BT-READ-003", "Check my CRM queue: overdue, today, and later follow-ups."),
+            ("BT-READ-004", "Check my CRM queue: overdue, today, and later follow-ups."),
+        ),
+    ),
+)
+
+
+def _build_read_only_conversations() -> tuple[BattleTestConversationScenario, ...]:
+    """Build deterministic multi-turn and multi-ask read-only conversations."""
+    conversations: list[BattleTestConversationScenario] = []
+    sequence = 1
+    for style_prefix in _CHAIN_STYLE_PREFIXES:
+        for kind, multi_ask_prompt, turns in _CHAIN_BLUEPRINTS:
+            prompt = f"{style_prefix}{multi_ask_prompt}" if multi_ask_prompt else None
+            turn_models = tuple(
+                _conversation_turn(
+                    f"T{turn_index:02d}",
+                    scenario_id,
+                    f"{style_prefix}{turn_prompt}",
+                )
+                for turn_index, (scenario_id, turn_prompt) in enumerate(turns, start=1)
+            )
+            conversations.append(
+                BattleTestConversationScenario(
+                    id=f"BT-CHAIN-{sequence:03d}",
+                    kind=kind,
+                    prompt=prompt,
+                    turns=turn_models,
+                    description="Read-only chained prompt routing coverage.",
+                )
+            )
+            sequence += 1
+    return tuple(conversations)
+
+
+_READ_ONLY_CONVERSATIONS = _build_read_only_conversations()
