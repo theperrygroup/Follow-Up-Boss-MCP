@@ -9,7 +9,7 @@ description = "Production-grade Follow Up Boss MCP server and typed Python SDK."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
-authors = [{ name = "OpenAI Codex" }]
+authors = [{ name = "John Perry" }]
 dependencies = [
   "beautifulsoup4>=4.12.3,<5",
   "boto3>=1.42.78",

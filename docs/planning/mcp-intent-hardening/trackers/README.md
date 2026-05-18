@@ -7,6 +7,7 @@ This folder holds current readiness scoreboards for MCP intent hardening.
 1. `readiness-overview.md`
 2. `intent-routing-readiness.md`
 3. `safety-validation-readiness.md`
+4. `battle-test-readiness.md`
 
 ## Grade Rules
 
@@ -24,3 +25,5 @@ This folder holds current readiness scoreboards for MCP intent hardening.
 - Update `execution/execution-plan.md` after the readiness state changes.
 - Do not mark live-account validation complete until the offline contract is
   already checked in.
+- Do not mark battle-test readiness complete until prompt transcripts, selected
+  MCP tool paths, direct API oracles, and cleanup evidence are recorded.

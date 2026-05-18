@@ -7,7 +7,7 @@ tool path.
 
 ## Current Snapshot
 
-Snapshot date: `2026-05-08`
+Snapshot date: `2026-05-18`
 
 | Intent family | Current state | Required next proof |
 | --- | --- | --- |
@@ -17,6 +17,7 @@ Snapshot date: `2026-05-08`
 | "Count people in smart list" | Planned | Existing broad-search wording hints at smart-list counting; needs explicit routing proof or a deliberate non-helper decision. |
 | "Find or update a specific record" | Planned | Need rules for when broad search is acceptable versus when a get/update/delete requires explicit IDs. |
 | "Create or mutate from vague intent" | Planned | Need mutation safety wording and tests that tool schemas require typed payloads or explicit identifiers. |
+| Vague chatbot prompt corpus | In progress | `src/followupboss_mcp/battle_tests.py` now encodes the first `BT-READ-*` corpus and route assertions; additional prompt batches remain planned. |
 
 ## Routing Rules To Preserve
 
@@ -28,6 +29,8 @@ Snapshot date: `2026-05-08`
   boundary, not by asking the client to infer a user ID.
 - A future helper should be added only when it removes meaningful ambiguity or
   enforces a safer default.
+- Vague prompt variants should be tested as prompt-to-tool-to-oracle scenarios,
+  not just as isolated tool calls.
 
 ## Open Questions
 
@@ -38,10 +41,13 @@ Snapshot date: `2026-05-08`
   sufficient?
 - Should destructive operations include stronger description text that forbids
   inferred IDs from prior ambiguous search results?
+- Which battle-test client should be canonical for observed tool selection:
+  Cursor, MCP Inspector, a local harness, or multiple clients?
 
 ## Current Conclusion
 
 - Routing is partially hardened for newest assigned lead and two task due
-  buckets, including registered metadata tests and first-pass public docs. The
-  broader intent map remains planned and should be implemented incrementally
-  with tests before public docs claim full coverage.
+  buckets, including registered metadata tests, first-pass public docs, and a
+  read-only battle-test evaluator. The broader intent map and non-read-only
+  prompt batches remain planned and should be implemented incrementally with
+  tests before public docs claim full coverage.

@@ -13,7 +13,7 @@ runtime" interpretation.
 
 ## Current Snapshot
 
-Snapshot date: `2026-05-08`
+Snapshot date: `2026-05-18`
 
 | Slice | Status | Current answer |
 | --- | --- | --- |
@@ -23,6 +23,7 @@ Snapshot date: `2026-05-08`
 | Runtime hardening | In progress | Latest-lead and task due-bucket helpers exist, and first-pass description hardening has landed for people and tasks. Additional intent categories and wider safety wording remain planned. |
 | Offline validation | In progress | Tests assert existing helpers and the first registered metadata hardening slice, but planned routing taxonomy and docs drift checks are not complete. |
 | Public docs and live validation | In progress | `docs/mcp-usage.md` and `docs/mcp-validation-checklist.md` now include first-pass intent guidance; live validation remains planned. |
+| Vague-prompt battle testing | In progress | Read-only scenario schema, `BT-READ-001` through `BT-READ-005`, route grading, and typed oracle helpers are checked in; real client transcript capture, fixture graph, mutation batches, and live runs remain planned. |
 
 ## Broad Blockers Before Intent-Hardening Readiness
 
@@ -33,6 +34,8 @@ Snapshot date: `2026-05-08`
   complete intent-routing guide for the full MCP surface.
 - Live validation should wait until the offline contract names the intended
   helper behavior.
+- Vague-prompt battle testing still needs real client transcript capture before
+  the checked-in oracle helpers can prove chatbot behavior.
 
 ## Focused Tracker Snapshot
 
@@ -40,9 +43,12 @@ Snapshot date: `2026-05-08`
 | --- | --- | --- |
 | `intent-routing-readiness.md` | In progress | Existing helper anchors and first-pass description redirects are present, but the full routing taxonomy is planned. |
 | `safety-validation-readiness.md` | In progress | Identity fail-closed behavior and explicit-ID wording for people/tasks have some proof, but broader mutation wording and live validation remain planned. |
+| `battle-test-readiness.md` | In progress | The first read-only corpus and oracle evaluator are checked in, but real transcript capture and run artifacts do not exist yet. |
 
 ## Current Conclusion
 
 - The initiative is planned and partially grounded in checked-in helper anchors.
-  It is not yet complete, because taxonomy, safety wording, docs, and broader
-  validation proof remain open.
+  It now has a battle-test plan and first read-only evaluator for vague chatbot
+  prompts, but it is not yet complete because taxonomy, safety wording, real
+  transcript capture, mutation scenarios, and broader validation proof remain
+  open.

@@ -34,6 +34,7 @@ intent-hardened.
 | Mutations | Side-effecting tools require explicit IDs or typed payloads and do not claim to infer destructive intent. |
 | Identity failures | Helpers that need authenticated-user identity fail closed before broad upstream requests. |
 | Validation | Offline tests prove request shape and registration; live checks follow only after that proof lands. |
+| Battle testing | Vague chatbot prompts are evaluated by observed MCP routing plus direct Follow Up Boss API oracle checks. |
 | Docs | `docs/mcp-usage.md` and `docs/mcp-validation-checklist.md` describe the current checked-in helper contract. |
 
 ## 4. Phase Plan
@@ -120,6 +121,24 @@ Acceptance criteria:
   are release evidence
 - no planning doc claims a helper is live without matching code and proof
 
+### Phase F - Battle Test Vague Chatbot Prompts
+
+Deliverables:
+
+- encode the scenario grades and prompt corpus from `intent-battle-test-plan.md`
+- capture chatbot-selected MCP tools, arguments, responses, and failures
+- verify each scenario through a direct Follow Up Boss API or typed-client oracle
+- record dated run evidence outside reusable checklist files
+
+Acceptance criteria:
+
+- common "my" prompts route to existing narrow helpers
+- vague destructive prompts require explicit IDs or clarification before
+  side effects
+- unsupported API capabilities are explained honestly without false fallback
+  tool calls
+- read-only batches pass before mutation and destructive batches run
+
 ## 5. Implementation Guardrails
 
 - Keep behavior in typed adapter or service methods, not ad hoc registration
@@ -140,5 +159,7 @@ The next slice should be Phase A plus the smallest part of Phase B:
 2. Identify descriptions that need explicit helper redirection.
 3. Update only the highest-confidence description wording first.
 4. Add focused tests for the changed registered surface.
-5. Refresh `trackers/readiness-overview.md` and `execution-plan.md` with the
+5. Encode the first read-only battle-test scenarios only after the expected
+   helper route and API oracle are clear.
+6. Refresh `trackers/readiness-overview.md` and `execution-plan.md` with the
    checked-in proof.

@@ -8,13 +8,20 @@ import hmac
 import secrets
 import time
 from collections.abc import Mapping, Sequence
+from importlib import resources
 from typing import Any, Protocol, Self, cast
 from urllib.parse import parse_qs, urlencode
 
 import httpx
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, SecretStr, field_validator
 from starlette.requests import Request
-from starlette.responses import JSONResponse, PlainTextResponse, RedirectResponse, Response
+from starlette.responses import (
+    FileResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+)
 from starlette.routing import Route
 
 from followupboss_mcp.config import FollowUpBossTenantRuntimeDefaults
@@ -25,6 +32,9 @@ _DEFAULT_AUTHORIZATION_CODE_SECONDS = 300
 _DEFAULT_REFRESH_TOKEN_SECONDS = 60 * 60 * 24 * 30
 _DEFAULT_STATE_SECONDS = 600
 _DEFAULT_TOKEN_BYTES = 32
+_LOGO_ASSET_PACKAGE = "followupboss_mcp.assets"
+_LOGO_ASSET_NAME = "follow-up-boss-logo.png"
+_LOGO_ROUTE_PATH = f"/assets/{_LOGO_ASSET_NAME}"
 _SUPPORTED_CODE_CHALLENGE_METHODS = ("S256", "plain")
 
 
@@ -844,6 +854,7 @@ class HostedOAuthApplication:
         return (
             Route("/.well-known/oauth-authorization-server", self.authorization_server_metadata),
             Route("/.well-known/openid-configuration", self.authorization_server_metadata),
+            Route(_LOGO_ROUTE_PATH, self.logo),
             Route("/oauth/register", self.register_client, methods=["POST"]),
             Route("/oauth/authorize", self.authorize),
             Route("/oauth/follow-up-boss/callback", self.follow_up_boss_callback),
@@ -879,8 +890,25 @@ class HostedOAuthApplication:
                 "code_challenge_methods_supported": list(_SUPPORTED_CODE_CHALLENGE_METHODS),
                 "token_endpoint_auth_methods_supported": ["none"],
                 "scopes_supported": list(self._settings.required_scopes),
+                "logo_uri": self._settings.endpoint_url(_LOGO_ROUTE_PATH),
             },
             headers={"Cache-Control": "public, max-age=3600"},
+        )
+
+    async def logo(self, _: Request) -> FileResponse:
+        """Return the packaged Follow Up Boss logo for MCP client branding.
+
+        Args:
+            _: Incoming request.
+
+        Returns:
+            PNG logo response with long-lived static-asset cache headers.
+        """
+        logo_path = resources.files(_LOGO_ASSET_PACKAGE).joinpath(_LOGO_ASSET_NAME)
+        return FileResponse(
+            str(logo_path),
+            media_type="image/png",
+            headers={"Cache-Control": "public, max-age=604800, immutable"},
         )
 
     async def register_client(self, request: Request) -> JSONResponse:

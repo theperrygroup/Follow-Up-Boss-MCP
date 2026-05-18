@@ -15,6 +15,8 @@ status, use `execution-plan.md` plus the focused trackers.
   - `tests/mcp/test_mcp_tools_server_cli.py`
   - `docs/mcp-usage.md`
   - `docs/mcp-validation-checklist.md`
+  - `docs/planning/mcp-intent-hardening/foundation/battle-test-verification-adr.md`
+  - `docs/planning/mcp-intent-hardening/execution/intent-battle-test-plan.md`
 - Primary code or doc anchors:
   - `followupboss_get_latest_lead`
   - `followupboss_list_my_overdue_tasks`
@@ -30,7 +32,9 @@ status, use `execution-plan.md` plus the focused trackers.
 
 - Planning scaffold exists.
 - Runtime has initial intent helper anchors.
-- Full taxonomy, docs, safety wording, and validation remain open.
+- First read-only battle-test schema and oracle evaluator exists.
+- Full taxonomy, docs, safety wording, encoded vague-prompt scenarios,
+  API-oracle harnessing, and validation remain open.
 
 ## Harsh Sequencing Rule
 
@@ -38,6 +42,8 @@ status, use `execution-plan.md` plus the focused trackers.
   helper behavior.
 - Do not add more helpers until the existing helper taxonomy and generic-tool
   descriptions are inventoried.
+- Do not run mutation battle-test prompts until read-only prompt routing,
+  transcript capture, API oracle checks, and cleanup rules are working.
 
 ## Phase 0 - Inventory And Classification
 
@@ -178,3 +184,55 @@ status, use `execution-plan.md` plus the focused trackers.
   mutation-safety scenario.
 - What could break if this task is skipped: The release can claim a safety
   posture that has not been exercised.
+
+## Phase 4 - Vague Prompt Battle Testing
+
+### P4-001 - Encode Scenario Schema And Read-Only Prompt Corpus
+
+- Why this task exists: The user-facing risk lives in vague chatbot prompts, not
+  just direct MCP tool calls.
+- Exact files or modules affected: future scenario corpus, battle-test harness,
+  `docs/planning/mcp-intent-hardening/execution/intent-battle-test-plan.md`.
+- Dependency prerequisites: P0-001, P1-001, battle-test verification ADR.
+- Severity: High.
+- Estimated complexity: Medium.
+- Feature domain: MCP validation and test harness.
+- Whether this is: implementation and docs.
+- Acceptance criteria: Scenario grades, prompt variants, expected tools,
+  forbidden tools, and API oracle assertions are machine-readable for the first
+  read-only batch.
+- What could break if this task is skipped: The project can validate hand-picked
+  tool calls while missing chatbot routing failures.
+
+### P4-002 - Build Transcript Capture And API Oracle Harness
+
+- Why this task exists: Correctness must be verified by observed tool selection
+  and Follow Up Boss API truth.
+- Exact files or modules affected: future battle-test runner, typed client or
+  service oracle helpers, dated run artifacts.
+- Dependency prerequisites: P4-001.
+- Severity: High.
+- Estimated complexity: High.
+- Feature domain: live validation harness.
+- Whether this is: implementation and tests.
+- Acceptance criteria: The runner records prompt, tool name, arguments, MCP
+  result, direct API oracle result, pass/fail reason, and cleanup status.
+- What could break if this task is skipped: A chatbot answer can look plausible
+  while using the wrong tool, wrong scope, or stale data.
+
+### P4-003 - Add Mutation, Safety, And Boundary Prompt Batches
+
+- Why this task exists: The highest-risk failures are unsafe side effects,
+  inferred IDs, and invented unsupported behavior.
+- Exact files or modules affected: future scenario corpus, fixture setup and
+  cleanup helpers, validation reports.
+- Dependency prerequisites: P4-001, P4-002, read-only batch passing.
+- Severity: High.
+- Estimated complexity: High.
+- Feature domain: safety validation.
+- Whether this is: implementation and live validation.
+- Acceptance criteria: Vague destructive prompts clarify or require explicit
+  IDs, disposable fixture mutations are reconciled through direct API checks,
+  unsupported prompts avoid side effects, and cleanup evidence is recorded.
+- What could break if this task is skipped: The MCP can pass read-only checks
+  while still taking unsafe action on vague chatbot requests.
