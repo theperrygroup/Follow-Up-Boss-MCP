@@ -42,7 +42,7 @@ def _reserve_port() -> int:
         return int(sock.getsockname()[1])
 
 
-async def _wait_for_port(host: str, port: int, *, attempts: int = 100) -> None:
+async def _wait_for_port(host: str, port: int, *, attempts: int = 300) -> None:
     """Wait until one TCP port accepts connections.
 
     Args:
