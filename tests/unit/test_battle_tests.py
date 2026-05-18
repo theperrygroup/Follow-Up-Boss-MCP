@@ -19,10 +19,12 @@ from followupboss_mcp.battle_tests import (
     BattleTestConversationTranscript,
     BattleTestConversationTurn,
     BattleTestEvaluation,
+    BattleTestFailureCategory,
     BattleTestGrade,
     BattleTestModelProfile,
     BattleTestModelProvider,
     BattleTestOracleKind,
+    BattleTestRunArtifact,
     BattleTestRunMetadata,
     BattleTestScenario,
     BattleTestToolCall,
@@ -35,6 +37,8 @@ from followupboss_mcp.battle_tests import (
     build_model_profile_run_metadata,
     capture_mcp_tool_transcript,
     capture_mcp_tool_transcripts,
+    categorize_battle_test_failure,
+    categorize_battle_test_failures,
     conversation_turn_to_scenario,
     evaluate_battle_test_conversation,
     evaluate_battle_test_conversations,
@@ -975,6 +979,45 @@ async def test_oracle_requires_authenticated_user_id() -> None:
     ]
 
 
+def test_failure_category_derivation_covers_common_drift_modes() -> None:
+    assert (
+        categorize_battle_test_failure(
+            "Expected one of ('followupboss_list_my_upcoming_tasks',), got None."
+        )
+        is BattleTestFailureCategory.ROUTE_NO_CALL
+    )
+    assert (
+        categorize_battle_test_failure(
+            "Expected one of ('followupboss_list_my_upcoming_tasks',), "
+            "got 'followupboss_list_my_tasks_due_today'."
+        )
+        is BattleTestFailureCategory.ROUTE_WRONG_TOOL
+    )
+    assert (
+        categorize_battle_test_failure(
+            "Expected the assistant to explain the unsupported API capability."
+        )
+        is BattleTestFailureCategory.UNSUPPORTED_NOT_EXPLAINED
+    )
+    assert (
+        categorize_battle_test_failure(
+            "API oracle failed: Transport error while calling Follow Up Boss."
+        )
+        is BattleTestFailureCategory.ORACLE_TRANSPORT_ERROR
+    )
+    assert (
+        categorize_battle_test_failure("Expected task ids [1], got [2].")
+        is BattleTestFailureCategory.ORACLE_RESPONSE_MISMATCH
+    )
+    assert categorize_battle_test_failure("surprising failure") is BattleTestFailureCategory.UNKNOWN
+    assert categorize_battle_test_failures(
+        (
+            "Expected one of ('safe',), got None.",
+            "Expected one of ('safe',), got None.",
+        )
+    ) == (BattleTestFailureCategory.ROUTE_NO_CALL,)
+
+
 def test_build_battle_test_run_artifact_summarizes_results() -> None:
     metadata = BattleTestRunMetadata(run_id="run-1", client="unit")
     artifact = build_battle_test_run_artifact(
@@ -993,7 +1036,7 @@ def test_build_battle_test_run_artifact_summarizes_results() -> None:
                 route_passed=True,
                 oracle_passed=False,
                 passed=False,
-                failures=["oracle mismatch"],
+                failures=["Expected task ids [1], got [2]."],
             ),
         ),
         total_scenarios=4,
@@ -1008,7 +1051,37 @@ def test_build_battle_test_run_artifact_summarizes_results() -> None:
     assert artifact.summary.failed_scenarios == 1
     assert artifact.summary.missing_scenarios == 1
     assert artifact.summary.unknown_transcripts == 1
+    assert artifact.summary.failure_category_counts == {"oracle_response_mismatch": 1}
     assert artifact.summary.overall_passed is False
+
+
+def test_battle_test_run_artifact_loads_without_failure_summary() -> None:
+    artifact = BattleTestRunArtifact.model_validate(
+        {
+            "metadata": {"run_id": "legacy-run", "client": "unit"},
+            "summary": {
+                "total_scenarios": 1,
+                "evaluated_scenarios": 1,
+                "passed_scenarios": 1,
+                "failed_scenarios": 0,
+                "missing_scenarios": 0,
+                "unknown_transcripts": 0,
+                "overall_passed": True,
+            },
+            "evaluations": [
+                {
+                    "scenario_id": "BT-READ-001",
+                    "grade": "MUST_ROUTE",
+                    "route_passed": True,
+                    "oracle_passed": True,
+                    "passed": True,
+                }
+            ],
+        }
+    )
+
+    assert artifact.summary.failure_category_counts == {}
+    assert artifact.evaluations[0].failure_categories == ()
 
 
 def test_write_battle_test_run_artifact_creates_parent_directories(tmp_path: Path) -> None:

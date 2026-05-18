@@ -264,11 +264,28 @@ async def run(argv: Sequence[str] | None = None) -> int:
             artifact.metadata.model_profile.id if artifact.metadata.model_profile else "unknown"
         )
         status = "PASS" if artifact.summary.overall_passed else "FAIL"
+        breakdown = _format_failure_breakdown(artifact.summary.failure_category_counts)
         print(
             f"{profile_id}: {status} ({artifact.summary.passed_scenarios}/"
-            f"{artifact.summary.total_scenarios} passed)"
+            f"{artifact.summary.total_scenarios} passed){breakdown}"
         )
     return 0 if all(artifact.summary.overall_passed for artifact in artifacts) else 1
+
+
+def _format_failure_breakdown(counts: Mapping[str, int]) -> str:
+    """Format compact failure category counts for command output.
+
+    Args:
+        counts: Failure category counts from a run artifact summary.
+
+    Returns:
+        Empty string when no failures were categorized, otherwise a compact
+        parenthesized breakdown.
+    """
+    if not counts:
+        return ""
+    parts = [f"{category}={count}" for category, count in sorted(counts.items())]
+    return f" [{', '.join(parts)}]"
 
 
 def main(argv: Sequence[str] | None = None) -> int:

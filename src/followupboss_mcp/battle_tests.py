@@ -48,6 +48,17 @@ class BattleTestConversationKind(StrEnum):
     MULTI_ASK = "multi_ask"
 
 
+class BattleTestFailureCategory(StrEnum):
+    """Coarse failure categories for battle-test triage summaries."""
+
+    ORACLE_RESPONSE_MISMATCH = "oracle_response_mismatch"
+    ORACLE_TRANSPORT_ERROR = "oracle_transport_error"
+    ROUTE_NO_CALL = "route_no_call"
+    ROUTE_WRONG_TOOL = "route_wrong_tool"
+    UNKNOWN = "unknown"
+    UNSUPPORTED_NOT_EXPLAINED = "unsupported_not_explained"
+
+
 class BattleTestModelProvider(StrEnum):
     """Supported model-provider labels for battle-test run artifacts."""
 
@@ -250,6 +261,7 @@ class BattleTestEvaluation(ResponseModel):
     oracle_passed: bool
     passed: bool
     failures: list[str] = Field(default_factory=list)
+    failure_categories: tuple[BattleTestFailureCategory, ...] = ()
     oracle_snapshot: BattleTestOracleSnapshot | None = None
 
 
@@ -283,6 +295,7 @@ class BattleTestRunSummary(ResponseModel):
     failed_scenarios: int
     missing_scenarios: int
     unknown_transcripts: int
+    failure_category_counts: dict[str, int] = Field(default_factory=dict)
     overall_passed: bool
 
 
@@ -923,6 +936,7 @@ def build_battle_test_run_artifact(
     failed_count = sum(1 for evaluation in evaluations if not evaluation.passed)
     missing_count = len(missing_scenario_ids)
     unknown_count = len(unknown_transcript_scenario_ids)
+    failure_category_counts = summarize_failure_categories(evaluations)
     return BattleTestRunArtifact(
         metadata=metadata,
         summary=BattleTestRunSummary(
@@ -932,6 +946,7 @@ def build_battle_test_run_artifact(
             failed_scenarios=failed_count,
             missing_scenarios=missing_count,
             unknown_transcripts=unknown_count,
+            failure_category_counts=failure_category_counts,
             overall_passed=failed_count == 0 and missing_count == 0 and unknown_count == 0,
         ),
         evaluations=evaluations,
@@ -939,6 +954,72 @@ def build_battle_test_run_artifact(
         unknown_transcript_scenario_ids=unknown_transcript_scenario_ids,
         conversation_evaluations=conversation_evaluations,
     )
+
+
+def summarize_failure_categories(
+    evaluations: tuple[BattleTestEvaluation, ...],
+) -> dict[str, int]:
+    """Count failure categories across evaluated scenarios.
+
+    Args:
+        evaluations: Evaluations to summarize.
+
+    Returns:
+        Category counts keyed by stable category string.
+    """
+    counts: dict[str, int] = {}
+    for evaluation in evaluations:
+        categories = evaluation.failure_categories or categorize_battle_test_failures(
+            evaluation.failures
+        )
+        for category in categories:
+            counts[category.value] = counts.get(category.value, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def categorize_battle_test_failures(
+    failures: Sequence[str],
+) -> tuple[BattleTestFailureCategory, ...]:
+    """Derive coarse triage categories from failure messages.
+
+    Args:
+        failures: Human-readable failure messages from one evaluation.
+
+    Returns:
+        Stable failure categories, deduplicated in first-seen order.
+    """
+    categories: list[BattleTestFailureCategory] = []
+    for failure in failures:
+        category = categorize_battle_test_failure(failure)
+        if category not in categories:
+            categories.append(category)
+    return tuple(categories)
+
+
+def categorize_battle_test_failure(failure: str) -> BattleTestFailureCategory:
+    """Derive one coarse triage category from a failure message.
+
+    Args:
+        failure: Human-readable failure message from one evaluation.
+
+    Returns:
+        The best-effort failure category.
+    """
+    if "API oracle failed: Transport error while calling Follow Up Boss" in failure:
+        return BattleTestFailureCategory.ORACLE_TRANSPORT_ERROR
+    if "Expected one of" in failure and "got None" in failure:
+        return BattleTestFailureCategory.ROUTE_NO_CALL
+    if (
+        "Expected one of" in failure
+        or "Selected forbidden tool" in failure
+        or "Expected an allowed safe route" in failure
+    ):
+        return BattleTestFailureCategory.ROUTE_WRONG_TOOL
+    if "Expected the assistant to explain the unsupported API capability" in failure:
+        return BattleTestFailureCategory.UNSUPPORTED_NOT_EXPLAINED
+    if failure.startswith("Expected ") or "API oracle failed:" in failure:
+        return BattleTestFailureCategory.ORACLE_RESPONSE_MISMATCH
+    return BattleTestFailureCategory.UNKNOWN
 
 
 def write_battle_test_run_artifact(
@@ -1099,6 +1180,7 @@ class ReadOnlyBattleTestOracle:
             oracle_passed=oracle_passed,
             passed=route_result.passed and oracle_passed,
             failures=failures,
+            failure_categories=categorize_battle_test_failures(failures),
             oracle_snapshot=oracle_snapshot,
         )
 

@@ -304,6 +304,13 @@ def test_selection_instructions_explain_unsupported_note_search() -> None:
     assert "notes by person, lead, or contact" in instructions
     assert "explicit note ID" in instructions
     assert "battle_test_explain_unsupported" in instructions
+    assert "late, overdue, past due, behind" in instructions
+    assert "followupboss_list_my_overdue_tasks" in instructions
+    assert "today, due today, or not miss today" in instructions
+    assert "followupboss_list_my_tasks_due_today" in instructions
+    assert "coming up, upcoming, later, after today" in instructions
+    assert "followupboss_list_my_upcoming_tasks" in instructions
+    assert "route the current user turn independently" in instructions
 
 
 @pytest.mark.asyncio
