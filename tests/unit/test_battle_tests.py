@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -20,10 +20,12 @@ from followupboss_mcp.battle_tests import (
     BattleTestConversationTurn,
     BattleTestEvaluation,
     BattleTestFailureCategory,
+    BattleTestFixtureKind,
     BattleTestGrade,
     BattleTestModelProfile,
     BattleTestModelProvider,
     BattleTestOracleKind,
+    BattleTestOracleSnapshot,
     BattleTestRunArtifact,
     BattleTestRunMetadata,
     BattleTestScenario,
@@ -34,6 +36,7 @@ from followupboss_mcp.battle_tests import (
     battle_test_model_profile_by_id,
     battle_test_model_profiles,
     build_battle_test_run_artifact,
+    build_disposable_fixture_plan,
     build_model_profile_run_metadata,
     capture_mcp_tool_transcript,
     capture_mcp_tool_transcripts,
@@ -46,6 +49,8 @@ from followupboss_mcp.battle_tests import (
     evaluate_model_profile_battle_test_runs,
     evaluate_transcript_route,
     expand_battle_test_prompt_variants,
+    expanded_battle_test_conversations,
+    expanded_read_only_battle_test_scenarios,
     flatten_battle_test_conversations,
     mcp_tool_result_to_json,
     read_only_battle_test_conversations,
@@ -56,9 +61,27 @@ from followupboss_mcp.battle_tests import (
     scenario_by_id,
     write_battle_test_run_artifact,
 )
+from followupboss_mcp.models.appointments import AppointmentListRequest, AppointmentRecord
+from followupboss_mcp.models.calls import CallListRequest, CallRecord
+from followupboss_mcp.models.common import JsonValue
 from followupboss_mcp.models.identity import IdentityResponse
-from followupboss_mcp.models.people import PeopleSearchRequest, PersonRecord
+from followupboss_mcp.models.notes import NoteRecord
+from followupboss_mcp.models.people import (
+    PeopleSearchRequest,
+    PersonDuplicateCheckRecord,
+    PersonDuplicateCheckRequest,
+    PersonRecord,
+    UnclaimedPeopleListRequest,
+)
+from followupboss_mcp.models.smart_lists import SmartListListRequest, SmartListRecord
 from followupboss_mcp.models.tasks import TaskListRequest, TaskRecord
+from followupboss_mcp.models.templates import TemplateListRequest, TemplateRecord
+from followupboss_mcp.models.text_messages import (
+    TextMessageListRequest,
+    TextMessageRecord,
+    TextMessageTemplateListRequest,
+    TextMessageTemplateRecord,
+)
 from followupboss_mcp.pagination import PageResult, PaginationMetadata
 
 
@@ -79,6 +102,32 @@ def _people_page(*people: PersonRecord) -> PageResult[PersonRecord]:
 
 def _tasks_page(*tasks: TaskRecord) -> PageResult[TaskRecord]:
     return PageResult(items=list(tasks), metadata=_metadata(len(tasks)))
+
+
+def _smart_lists_page(*smart_lists: SmartListRecord) -> PageResult[SmartListRecord]:
+    return PageResult(items=list(smart_lists), metadata=_metadata(len(smart_lists)))
+
+
+def _appointments_page(*appointments: AppointmentRecord) -> PageResult[AppointmentRecord]:
+    return PageResult(items=list(appointments), metadata=_metadata(len(appointments)))
+
+
+def _calls_page(*calls: CallRecord) -> PageResult[CallRecord]:
+    return PageResult(items=list(calls), metadata=_metadata(len(calls)))
+
+
+def _text_messages_page(*messages: TextMessageRecord) -> PageResult[TextMessageRecord]:
+    return PageResult(items=list(messages), metadata=_metadata(len(messages)))
+
+
+def _templates_page(*templates: TemplateRecord) -> PageResult[TemplateRecord]:
+    return PageResult(items=list(templates), metadata=_metadata(len(templates)))
+
+
+def _text_templates_page(
+    *templates: TextMessageTemplateRecord,
+) -> PageResult[TextMessageTemplateRecord]:
+    return PageResult(items=list(templates), metadata=_metadata(len(templates)))
 
 
 def test_upcoming_task_due_start_is_shared_by_oracle_and_tool_adapter() -> None:
@@ -108,13 +157,31 @@ class StubIdentityService:
 @dataclass
 class StubPeopleService:
     page: PageResult[PersonRecord]
+    duplicate: PersonDuplicateCheckRecord = field(
+        default_factory=lambda: PersonDuplicateCheckRecord(found=False)
+    )
+    unclaimed_page: PageResult[PersonRecord] = field(default_factory=_people_page)
     requests: list[PeopleSearchRequest] = field(default_factory=list)
+    duplicate_requests: list[PersonDuplicateCheckRequest] = field(default_factory=list)
+    unclaimed_requests: list[UnclaimedPeopleListRequest] = field(default_factory=list)
 
     async def search_people(
         self, request: PeopleSearchRequest | None = None
     ) -> PageResult[PersonRecord]:
         self.requests.append(request or PeopleSearchRequest())
         return self.page
+
+    async def check_duplicate_person(
+        self, request: PersonDuplicateCheckRequest
+    ) -> PersonDuplicateCheckRecord:
+        self.duplicate_requests.append(request)
+        return self.duplicate
+
+    async def list_unclaimed_people(
+        self, request: UnclaimedPeopleListRequest | None = None
+    ) -> PageResult[PersonRecord]:
+        self.unclaimed_requests.append(request or UnclaimedPeopleListRequest())
+        return self.unclaimed_page
 
 
 @dataclass
@@ -125,6 +192,86 @@ class StubTasksService:
     async def list_tasks(self, request: TaskListRequest | None = None) -> PageResult[TaskRecord]:
         self.requests.append(request or TaskListRequest())
         return self.page
+
+
+@dataclass
+class StubSmartListsService:
+    page: PageResult[SmartListRecord] = field(default_factory=_smart_lists_page)
+    requests: list[SmartListListRequest] = field(default_factory=list)
+
+    async def list_smart_lists(
+        self, request: SmartListListRequest | None = None
+    ) -> PageResult[SmartListRecord]:
+        self.requests.append(request or SmartListListRequest())
+        return self.page
+
+
+@dataclass
+class StubAppointmentsService:
+    page: PageResult[AppointmentRecord] = field(default_factory=_appointments_page)
+    requests: list[AppointmentListRequest] = field(default_factory=list)
+
+    async def list_appointments(
+        self, request: AppointmentListRequest | None = None
+    ) -> PageResult[AppointmentRecord]:
+        self.requests.append(request or AppointmentListRequest())
+        return self.page
+
+
+@dataclass
+class StubCallsService:
+    page: PageResult[CallRecord] = field(default_factory=_calls_page)
+    requests: list[CallListRequest] = field(default_factory=list)
+
+    async def list_calls(self, request: CallListRequest | None = None) -> PageResult[CallRecord]:
+        self.requests.append(request or CallListRequest())
+        return self.page
+
+
+@dataclass
+class StubTextMessagesService:
+    page: PageResult[TextMessageRecord] = field(default_factory=_text_messages_page)
+    requests: list[TextMessageListRequest] = field(default_factory=list)
+
+    async def list_text_messages(
+        self, request: TextMessageListRequest | None = None
+    ) -> PageResult[TextMessageRecord]:
+        self.requests.append(request or TextMessageListRequest())
+        return self.page
+
+
+@dataclass
+class StubTemplatesService:
+    page: PageResult[TemplateRecord] = field(default_factory=_templates_page)
+    requests: list[TemplateListRequest] = field(default_factory=list)
+
+    async def list_templates(
+        self, request: TemplateListRequest | None = None
+    ) -> PageResult[TemplateRecord]:
+        self.requests.append(request or TemplateListRequest())
+        return self.page
+
+
+@dataclass
+class StubTextMessageTemplatesService:
+    page: PageResult[TextMessageTemplateRecord] = field(default_factory=_text_templates_page)
+    requests: list[TextMessageTemplateListRequest] = field(default_factory=list)
+
+    async def list_text_message_templates(
+        self, request: TextMessageTemplateListRequest | None = None
+    ) -> PageResult[TextMessageTemplateRecord]:
+        self.requests.append(request or TextMessageTemplateListRequest())
+        return self.page
+
+
+@dataclass
+class StubNotesService:
+    note: NoteRecord = field(default_factory=lambda: NoteRecord.model_validate({"id": 1}))
+    requests: list[int] = field(default_factory=list)
+
+    async def get_note(self, note_id: int) -> NoteRecord:
+        self.requests.append(note_id)
+        return self.note
 
 
 @dataclass
@@ -139,6 +286,15 @@ class StubBattleTestServices:
     identity: StubIdentityService
     people: StubPeopleService
     tasks: StubTasksService
+    smart_lists: StubSmartListsService = field(default_factory=StubSmartListsService)
+    appointments: StubAppointmentsService = field(default_factory=StubAppointmentsService)
+    calls: StubCallsService = field(default_factory=StubCallsService)
+    text_messages: StubTextMessagesService = field(default_factory=StubTextMessagesService)
+    templates: StubTemplatesService = field(default_factory=StubTemplatesService)
+    text_message_templates: StubTextMessageTemplatesService = field(
+        default_factory=StubTextMessageTemplatesService
+    )
+    notes: StubNotesService = field(default_factory=StubNotesService)
 
 
 @dataclass
@@ -146,6 +302,15 @@ class FailingTaskBattleTestServices:
     identity: StubIdentityService
     people: StubPeopleService
     tasks: FailingTasksService
+    smart_lists: StubSmartListsService = field(default_factory=StubSmartListsService)
+    appointments: StubAppointmentsService = field(default_factory=StubAppointmentsService)
+    calls: StubCallsService = field(default_factory=StubCallsService)
+    text_messages: StubTextMessagesService = field(default_factory=StubTextMessagesService)
+    templates: StubTemplatesService = field(default_factory=StubTemplatesService)
+    text_message_templates: StubTextMessageTemplatesService = field(
+        default_factory=StubTextMessageTemplatesService
+    )
+    notes: StubNotesService = field(default_factory=StubNotesService)
 
 
 @dataclass
@@ -179,11 +344,25 @@ def _services(
     user_id: int | None = 7,
     people: PageResult[PersonRecord] | None = None,
     tasks: PageResult[TaskRecord] | None = None,
+    smart_lists: PageResult[SmartListRecord] | None = None,
+    appointments: PageResult[AppointmentRecord] | None = None,
+    calls: PageResult[CallRecord] | None = None,
+    text_messages: PageResult[TextMessageRecord] | None = None,
+    templates: PageResult[TemplateRecord] | None = None,
+    text_templates: PageResult[TextMessageTemplateRecord] | None = None,
 ) -> StubBattleTestServices:
     return StubBattleTestServices(
         identity=StubIdentityService(user_id),
         people=StubPeopleService(people or _people_page()),
         tasks=StubTasksService(tasks or _tasks_page()),
+        smart_lists=StubSmartListsService(smart_lists or _smart_lists_page()),
+        appointments=StubAppointmentsService(appointments or _appointments_page()),
+        calls=StubCallsService(calls or _calls_page()),
+        text_messages=StubTextMessagesService(text_messages or _text_messages_page()),
+        templates=StubTemplatesService(templates or _templates_page()),
+        text_message_templates=StubTextMessageTemplatesService(
+            text_templates or _text_templates_page()
+        ),
     )
 
 
@@ -225,6 +404,63 @@ def test_read_only_scenario_corpus_is_stable() -> None:
     assert scenario_by_id("BT-READ-004").api_oracle.kind is BattleTestOracleKind.MY_UPCOMING_TASKS
     with pytest.raises(KeyError):
         scenario_by_id("BT-READ-999")
+
+
+def test_expanded_read_only_scenario_corpus_adds_api_surfaces() -> None:
+    scenarios = expanded_read_only_battle_test_scenarios()
+    expanded_ids = [scenario.id for scenario in scenarios if scenario.id >= "BT-READ-006"]
+
+    assert expanded_ids == [
+        "BT-READ-006",
+        "BT-READ-007",
+        "BT-READ-008",
+        "BT-READ-009",
+        "BT-READ-010",
+        "BT-READ-011",
+        "BT-READ-012",
+        "BT-READ-013",
+        "BT-READ-014",
+        "BT-READ-015",
+    ]
+    assert all(len(scenario.prompt_variants) == 50 for scenario in scenarios[5:])
+    assert scenario_by_id("BT-READ-008").expected_mcp.required_argument_keys == ("email",)
+    assert scenario_by_id("BT-READ-015").api_oracle.kind is BattleTestOracleKind.EXPLICIT_NOTE
+
+
+def test_expanded_conversation_corpus_adds_cross_surface_prompts() -> None:
+    conversations = expanded_battle_test_conversations()
+    multi_ask = expanded_battle_test_conversations(BattleTestConversationKind.MULTI_ASK)
+
+    assert len(conversations) > len(read_only_battle_test_conversations())
+    assert all(
+        conversation.kind is BattleTestConversationKind.MULTI_ASK for conversation in multi_ask
+    )
+    assert any(conversation.id.startswith("BT-CHAIN-X") for conversation in conversations)
+    assert any(
+        turn.api_oracle.kind is BattleTestOracleKind.TEXT_MESSAGES
+        for conversation in conversations
+        for turn in conversation.turns
+    )
+
+
+def test_disposable_fixture_plan_orders_cleanup_safely() -> None:
+    plan = build_disposable_fixture_plan(run_prefix="MCP Battle Test 20260519")
+
+    assert plan.fixture_kinds == (
+        BattleTestFixtureKind.PERSON,
+        BattleTestFixtureKind.TASK,
+        BattleTestFixtureKind.NOTE,
+        BattleTestFixtureKind.APPOINTMENT,
+    )
+    assert [action.fixture_kind for action in plan.cleanup_actions] == [
+        BattleTestFixtureKind.APPOINTMENT,
+        BattleTestFixtureKind.NOTE,
+        BattleTestFixtureKind.TASK,
+        BattleTestFixtureKind.PERSON,
+    ]
+    assert plan.cleanup_actions[-1].tool_name == "followupboss_delete_person"
+    with pytest.raises(ValueError, match="non-empty run prefix"):
+        build_disposable_fixture_plan(run_prefix=" ")
 
 
 def test_read_only_conversation_corpus_has_stable_ids_and_turns() -> None:
@@ -521,6 +757,17 @@ def test_build_model_profile_run_metadata_suffixes_run_id() -> None:
             BattleTestTranscript(
                 scenario_id="TEST-MUST_REQUIRE_ID",
                 prompt="Do the thing",
+                arguments={"record_id": 123},
+                selected_tool="other_tool",
+            ),
+            False,
+            "Expected one of",
+        ),
+        (
+            BattleTestGrade.MUST_REQUIRE_ID,
+            BattleTestTranscript(
+                scenario_id="TEST-MUST_REQUIRE_ID",
+                prompt="Do the thing",
                 clarified=True,
             ),
             True,
@@ -810,6 +1057,252 @@ async def test_upcoming_task_oracle_matches_future_task_ids() -> None:
 
 
 @pytest.mark.asyncio
+async def test_expanded_page_oracles_compare_response_ids() -> None:
+    scenario = scenario_by_id("BT-READ-006")
+    services = _services(
+        smart_lists=_smart_lists_page(SmartListRecord.model_validate({"id": 3, "name": "Hot"}))
+    )
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        selected_tool="followupboss_list_smart_lists",
+        arguments={"include_all": True},
+        response={"smartlists": [{"id": 3, "name": "Hot"}]},
+    )
+
+    evaluation = await ReadOnlyBattleTestOracle(services).evaluate(scenario, transcript)
+
+    assert evaluation.passed is True
+    assert evaluation.oracle_snapshot is not None
+    assert evaluation.oracle_snapshot.expected["smart_list_ids"] == [3]
+    assert services.smart_lists.requests[0].include_all is True
+
+
+@pytest.mark.asyncio
+async def test_people_search_oracle_uses_required_smart_list_id() -> None:
+    scenario = scenario_by_id("BT-READ-007")
+    services = _services(
+        people=_people_page(PersonRecord.model_validate({"id": 8, "assignedUserId": 7}))
+    )
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        selected_tool="followupboss_search_people",
+        arguments={"smart_list_id": 1},
+        response={"people": [{"id": 8}]},
+    )
+
+    evaluation = await ReadOnlyBattleTestOracle(services).evaluate(scenario, transcript)
+
+    assert evaluation.passed is True
+    assert services.people.requests[0].smart_list_id == 1
+
+
+@pytest.mark.asyncio
+async def test_duplicate_and_explicit_note_oracles_compare_single_responses() -> None:
+    duplicate_scenario = scenario_by_id("BT-READ-008")
+    duplicate_services = _services()
+    duplicate_services.people.duplicate = PersonDuplicateCheckRecord(
+        found=True,
+        matchedBy="email",
+    )
+    duplicate_transcript = BattleTestTranscript(
+        scenario_id=duplicate_scenario.id,
+        prompt=duplicate_scenario.prompt_variants[0],
+        selected_tool="followupboss_check_duplicate_person",
+        arguments={"email": "alex@example.com"},
+        response={"found": True, "matchedBy": "email"},
+    )
+
+    duplicate_evaluation = await ReadOnlyBattleTestOracle(duplicate_services).evaluate(
+        duplicate_scenario,
+        duplicate_transcript,
+    )
+
+    assert duplicate_evaluation.passed is True
+    assert duplicate_services.people.duplicate_requests[0].email == "alex@example.com"
+
+    note_scenario = scenario_by_id("BT-READ-015")
+    note_services = _services()
+    note_services.notes.note = NoteRecord.model_validate({"id": 12, "body": "ok"})
+    note_transcript = BattleTestTranscript(
+        scenario_id=note_scenario.id,
+        prompt=note_scenario.prompt_variants[0],
+        selected_tool="followupboss_get_note",
+        arguments={"note_id": 12},
+        response={"id": 12, "body": "ok"},
+    )
+
+    note_evaluation = await ReadOnlyBattleTestOracle(note_services).evaluate(
+        note_scenario,
+        note_transcript,
+    )
+
+    assert note_evaluation.passed is True
+    assert note_services.notes.requests == [12]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("scenario_id", "selected_tool", "response_key", "record_id"),
+    [
+        ("BT-READ-009", "followupboss_list_unclaimed_people", "people", 9),
+        ("BT-READ-010", "followupboss_list_appointments", "appointments", 10),
+        ("BT-READ-011", "followupboss_list_calls", "calls", 11),
+        ("BT-READ-012", "followupboss_list_text_messages", "textmessages", 12),
+        ("BT-READ-013", "followupboss_list_templates", "templates", 13),
+        (
+            "BT-READ-014",
+            "followupboss_list_text_message_templates",
+            "textmessagetemplates",
+            14,
+        ),
+    ],
+)
+async def test_expanded_list_oracles_cover_all_page_surfaces(
+    scenario_id: str,
+    selected_tool: str,
+    response_key: str,
+    record_id: int,
+) -> None:
+    services = _services()
+    services.people.unclaimed_page = _people_page(PersonRecord.model_validate({"id": 9}))
+    services.appointments.page = _appointments_page(AppointmentRecord.model_validate({"id": 10}))
+    services.calls.page = _calls_page(CallRecord.model_validate({"id": 11}))
+    services.text_messages.page = _text_messages_page(TextMessageRecord.model_validate({"id": 12}))
+    services.templates.page = _templates_page(TemplateRecord.model_validate({"id": 13}))
+    services.text_message_templates.page = _text_templates_page(
+        TextMessageTemplateRecord.model_validate({"id": 14})
+    )
+    scenario = scenario_by_id(scenario_id)
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        selected_tool=selected_tool,
+        response={response_key: [{"id": record_id}]},
+    )
+
+    evaluation = await ReadOnlyBattleTestOracle(services).evaluate(scenario, transcript)
+
+    assert evaluation.passed is True
+
+
+def test_expanded_page_comparison_reports_shape_mismatches() -> None:
+    compare_page = cast(
+        "Callable[[BattleTestTranscript, BattleTestOracleSnapshot], list[str]]",
+        getattr(battle_tests_module, "_compare_page_response"),  # noqa: B009
+    )
+    snapshot = BattleTestOracleSnapshot(
+        scenario_id="TEST",
+        kind=BattleTestOracleKind.SMART_LISTS,
+        automated=True,
+        expected={"response_key": "smartlists", "smart_list_ids": [1]},
+    )
+
+    assert compare_page(
+        BattleTestTranscript(scenario_id="TEST", prompt="p", response=[]),
+        snapshot,
+    ) == ["Expected paginated MCP response to be an object."]
+    assert compare_page(
+        BattleTestTranscript(scenario_id="TEST", prompt="p", response={"smartlists": []}),
+        snapshot.model_copy(update={"expected": {}}),
+    ) == ["Expected page oracle snapshot to include a response key."]
+    assert compare_page(
+        BattleTestTranscript(scenario_id="TEST", prompt="p", response={"smartlists": {}}),
+        snapshot,
+    ) == ["Expected MCP response to include a 'smartlists' list."]
+    assert compare_page(
+        BattleTestTranscript(scenario_id="TEST", prompt="p", response={"smartlists": [{"id": 2}]}),
+        snapshot,
+    ) == ["Expected smartlists ids [1], got [2]."]
+    assert compare_page(
+        BattleTestTranscript(scenario_id="TEST", prompt="p", response={"smartlists": []}),
+        snapshot.model_copy(update={"expected": {"response_key": "smartlists"}}),
+    ) == ["Expected smartlists ids None, got []."]
+
+
+def test_expanded_single_response_comparisons_report_mismatches() -> None:
+    compare_duplicate = cast(
+        "Callable[[BattleTestTranscript, BattleTestOracleSnapshot], list[str]]",
+        getattr(battle_tests_module, "_compare_duplicate_response"),  # noqa: B009
+    )
+    compare_single = cast(
+        Any,
+        getattr(battle_tests_module, "_compare_single_id_response"),  # noqa: B009
+    )
+    duplicate_snapshot = BattleTestOracleSnapshot(
+        scenario_id="TEST",
+        kind=BattleTestOracleKind.PERSON_DUPLICATE_CHECK,
+        automated=True,
+        expected={"found": True, "matched_by": "email"},
+    )
+    note_snapshot = BattleTestOracleSnapshot(
+        scenario_id="TEST",
+        kind=BattleTestOracleKind.EXPLICIT_NOTE,
+        automated=True,
+        expected={"note_id": 5},
+    )
+
+    assert compare_duplicate(
+        BattleTestTranscript(scenario_id="TEST", prompt="p", response=[]),
+        duplicate_snapshot,
+    ) == ["Expected duplicate-check MCP response to be an object."]
+    assert compare_duplicate(
+        BattleTestTranscript(
+            scenario_id="TEST",
+            prompt="p",
+            response={"found": False, "matchedBy": "phone"},
+        ),
+        duplicate_snapshot,
+    ) == [
+        "Expected duplicate found=True, got False.",
+        "Expected duplicate matchedBy='email', got 'phone'.",
+    ]
+    assert compare_single(
+        BattleTestTranscript(scenario_id="TEST", prompt="p", response=[]),
+        note_snapshot,
+        expected_key="note_id",
+    ) == ["Expected single-object MCP response to be an object."]
+    assert compare_single(
+        BattleTestTranscript(scenario_id="TEST", prompt="p", response={"id": 6}),
+        note_snapshot,
+        expected_key="note_id",
+    ) == ["Expected response id 5, got 6."]
+
+
+def test_expanded_oracle_private_coercion_helpers_cover_edge_shapes() -> None:
+    optional_bool = cast(
+        "Callable[[JsonValue], bool | None]",
+        getattr(battle_tests_module, "_optional_bool"),  # noqa: B009
+    )
+    record_id = cast(
+        "Callable[[object], JsonValue]",
+        getattr(battle_tests_module, "_record_id"),  # noqa: B009
+    )
+
+    assert optional_bool("true") is None
+    assert record_id({"id": 99}) == 99
+
+
+@pytest.mark.asyncio
+async def test_explicit_note_oracle_requires_note_id_argument() -> None:
+    scenario = scenario_by_id("BT-READ-015")
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        selected_tool="followupboss_get_note",
+        response={"id": 1},
+    )
+
+    evaluation = await ReadOnlyBattleTestOracle(_services()).evaluate(scenario, transcript)
+
+    assert evaluation.passed is False
+    assert any("without required arguments" in failure for failure in evaluation.failures)
+    with pytest.raises(RuntimeError, match="requires a note_id argument"):
+        await ReadOnlyBattleTestOracle(_services()).snapshot(scenario, transcript)
+
+
+@pytest.mark.asyncio
 async def test_route_only_pending_oracle_still_reports_incomplete_custom_scenario() -> None:
     scenario = BattleTestScenario(
         id="BT-READ-CUSTOM",
@@ -834,6 +1327,31 @@ async def test_route_only_pending_oracle_still_reports_incomplete_custom_scenari
     assert evaluation.oracle_passed is False
     assert evaluation.passed is False
     assert "does not have an automated API oracle yet" in evaluation.failures[0]
+
+
+@pytest.mark.asyncio
+async def test_route_only_pending_oracle_passes_safety_grades() -> None:
+    scenario = BattleTestScenario(
+        id="BT-READ-CLARIFY",
+        grade=BattleTestGrade.MUST_CLARIFY,
+        prompt_variants=("Which one?",),
+        expected_mcp=ExpectedMcpRoute(),
+        api_oracle=ApiOracleSpec(
+            kind=BattleTestOracleKind.ROUTE_ONLY_PENDING,
+            description="Route-only safety check.",
+        ),
+    )
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        clarified=True,
+    )
+
+    evaluation = await ReadOnlyBattleTestOracle(_services()).evaluate(scenario, transcript)
+
+    assert evaluation.passed is True
+    assert evaluation.oracle_snapshot is not None
+    assert evaluation.oracle_snapshot.expected == {"route_only": True}
 
 
 @pytest.mark.asyncio

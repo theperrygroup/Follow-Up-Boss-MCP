@@ -20,6 +20,9 @@ from followupboss_mcp.battle_tests import (
     BattleTestConversationKind,
     BattleTestRunArtifact,
     ReadOnlyBattleTestOracle,
+    battle_test_model_profile_by_id,
+    expanded_battle_test_conversations,
+    expanded_read_only_battle_test_scenarios,
 )
 from followupboss_mcp.config import FollowUpBossSettings
 from followupboss_mcp.http_client import FollowUpBossAsyncClient
@@ -156,7 +159,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--corpus",
-        choices=("read-only", "chains", "multi-ask", "all"),
+        choices=(
+            "read-only",
+            "read-expanded",
+            "chains",
+            "chains-expanded",
+            "multi-ask",
+            "multi-ask-expanded",
+            "all",
+            "all-expanded",
+            "mutation-safe",
+            "boundary",
+        ),
         default="read-only",
         help="Corpus tier to run. Defaults to the original read-only single-turn corpus.",
     )
@@ -183,6 +197,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Alias for running every read-only prompt variation family.",
     )
+    parser.add_argument(
+        "--profile",
+        action="append",
+        choices=("gpt-5.5-low-reasoning", "sonnet-4.6"),
+        help="Model profile ID to run. Repeat to run multiple profiles; defaults to both.",
+    )
     return parser
 
 
@@ -199,6 +219,11 @@ async def run(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     load_env_file(args.env_file)
     selectors = battle_test_ai_selectors_from_env()
+    profiles = (
+        tuple(battle_test_model_profile_by_id(profile_id) for profile_id in args.profile)
+        if args.profile
+        else None
+    )
     settings = FollowUpBossSettings()
     started_at = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     base_run_id_prefix = (
@@ -210,7 +235,8 @@ async def run(argv: Sequence[str] | None = None) -> int:
         mcp_client = FastMcpBattleTestClient(server)
         oracle = ReadOnlyBattleTestOracle(services)
         artifacts: list[BattleTestRunArtifact] = []
-        if args.corpus in {"read-only", "all"}:
+        if args.corpus in {"read-only", "read-expanded", "all", "all-expanded"}:
+            read_expanded = args.corpus in {"read-expanded", "all-expanded"}
             artifacts.extend(
                 await run_ai_model_profile_battle_tests(
                     mcp_client=mcp_client,
@@ -218,10 +244,11 @@ async def run(argv: Sequence[str] | None = None) -> int:
                     selectors=selectors,
                     run_id_prefix=(
                         base_run_id_prefix
-                        if args.corpus == "read-only"
+                        if args.corpus in {"read-only", "read-expanded"}
                         else f"{base_run_id_prefix}-read-only"
                     ),
                     client=args.client_label,
+                    profiles=profiles,
                     artifact_directory=args.artifact_dir,
                     prompt_variant_index=args.prompt_variant_index,
                     all_prompt_variants=args.all_prompt_variants or args.all_variation_families,
@@ -229,15 +256,33 @@ async def run(argv: Sequence[str] | None = None) -> int:
                     sample_seed=args.sample_seed,
                     environment=args.environment,
                     started_at=started_at,
-                    notes=("read-only", "ai-selected-tools"),
+                    notes=(
+                        ("read-expanded" if read_expanded else "read-only"),
+                        "ai-selected-tools",
+                    ),
+                    scenarios=(
+                        expanded_read_only_battle_test_scenarios() if read_expanded else None
+                    ),
                 )
             )
-        if args.corpus in {"chains", "multi-ask", "all"}:
+        if args.corpus in {
+            "chains",
+            "chains-expanded",
+            "multi-ask",
+            "multi-ask-expanded",
+            "all",
+            "all-expanded",
+        }:
             kind = None
-            if args.corpus == "chains":
+            if args.corpus in {"chains", "chains-expanded"}:
                 kind = BattleTestConversationKind.MULTI_TURN
-            elif args.corpus == "multi-ask":
+            elif args.corpus in {"multi-ask", "multi-ask-expanded"}:
                 kind = BattleTestConversationKind.MULTI_ASK
+            conversations = (
+                expanded_battle_test_conversations(kind)
+                if args.corpus in {"chains-expanded", "multi-ask-expanded", "all-expanded"}
+                else None
+            )
             artifacts.extend(
                 await run_ai_model_profile_conversation_battle_tests(
                     mcp_client=mcp_client,
@@ -245,11 +290,14 @@ async def run(argv: Sequence[str] | None = None) -> int:
                     selectors=selectors,
                     run_id_prefix=(
                         base_run_id_prefix
-                        if args.corpus in {"chains", "multi-ask"}
+                        if args.corpus
+                        in {"chains", "chains-expanded", "multi-ask", "multi-ask-expanded"}
                         else f"{base_run_id_prefix}-conversations"
                     ),
                     client=args.client_label,
+                    profiles=profiles,
                     kind=kind,
+                    conversations=conversations,
                     artifact_directory=args.artifact_dir,
                     max_cases=args.max_cases,
                     sample_seed=args.sample_seed,
@@ -259,6 +307,8 @@ async def run(argv: Sequence[str] | None = None) -> int:
                     notes=(args.corpus, "ai-selected-tools", "chained"),
                 )
             )
+        if args.corpus in {"mutation-safe", "boundary"}:
+            print(f"{args.corpus}: SKIP (no live runnable corpus is encoded for this tier yet)")
     for artifact in artifacts:
         profile_id = (
             artifact.metadata.model_profile.id if artifact.metadata.model_profile else "unknown"

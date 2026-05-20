@@ -6,7 +6,7 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import httpx
 import pytest
@@ -43,10 +43,27 @@ from followupboss_mcp.battle_tests import (
     read_only_battle_test_conversations,
     scenario_by_id,
 )
+from followupboss_mcp.models.appointments import AppointmentListRequest, AppointmentRecord
+from followupboss_mcp.models.calls import CallListRequest, CallRecord
 from followupboss_mcp.models.common import JsonValue
 from followupboss_mcp.models.identity import IdentityResponse
-from followupboss_mcp.models.people import PeopleSearchRequest, PersonRecord
+from followupboss_mcp.models.notes import NoteRecord
+from followupboss_mcp.models.people import (
+    PeopleSearchRequest,
+    PersonDuplicateCheckRecord,
+    PersonDuplicateCheckRequest,
+    PersonRecord,
+    UnclaimedPeopleListRequest,
+)
+from followupboss_mcp.models.smart_lists import SmartListListRequest, SmartListRecord
 from followupboss_mcp.models.tasks import TaskListRequest, TaskRecord
+from followupboss_mcp.models.templates import TemplateListRequest, TemplateRecord
+from followupboss_mcp.models.text_messages import (
+    TextMessageListRequest,
+    TextMessageRecord,
+    TextMessageTemplateListRequest,
+    TextMessageTemplateRecord,
+)
 from followupboss_mcp.pagination import PageResult, PaginationMetadata
 
 
@@ -150,6 +167,18 @@ class StubPeopleService:
             metadata=metadata,
         )
 
+    async def check_duplicate_person(
+        self, request: PersonDuplicateCheckRequest
+    ) -> PersonDuplicateCheckRecord:
+        """Return a duplicate-check miss."""
+        return PersonDuplicateCheckRecord(found=False)
+
+    async def list_unclaimed_people(
+        self, request: UnclaimedPeopleListRequest | None = None
+    ) -> PageResult[PersonRecord]:
+        """Return no unclaimed people."""
+        return _empty_page()
+
 
 @dataclass
 class StubTasksService:
@@ -168,6 +197,92 @@ class StubTasksService:
         return PageResult(items=[], metadata=metadata)
 
 
+def _empty_page() -> PageResult[Any]:
+    """Return an empty page result for expanded service doubles."""
+    metadata = PaginationMetadata(
+        count=0,
+        limit=0,
+        next_token=None,
+        next_link=None,
+        offset=0,
+        total=0,
+    )
+    return PageResult(items=[], metadata=metadata)
+
+
+@dataclass
+class StubSmartListsService:
+    """Smart-list service test double."""
+
+    async def list_smart_lists(
+        self, request: SmartListListRequest | None = None
+    ) -> PageResult[SmartListRecord]:
+        """Return no smart lists."""
+        return _empty_page()
+
+
+@dataclass
+class StubAppointmentsService:
+    """Appointments service test double."""
+
+    async def list_appointments(
+        self, request: AppointmentListRequest | None = None
+    ) -> PageResult[AppointmentRecord]:
+        """Return no appointments."""
+        return _empty_page()
+
+
+@dataclass
+class StubCallsService:
+    """Calls service test double."""
+
+    async def list_calls(self, request: CallListRequest | None = None) -> PageResult[CallRecord]:
+        """Return no calls."""
+        return _empty_page()
+
+
+@dataclass
+class StubTextMessagesService:
+    """Text-message service test double."""
+
+    async def list_text_messages(
+        self, request: TextMessageListRequest | None = None
+    ) -> PageResult[TextMessageRecord]:
+        """Return no text messages."""
+        return _empty_page()
+
+
+@dataclass
+class StubTemplatesService:
+    """Templates service test double."""
+
+    async def list_templates(
+        self, request: TemplateListRequest | None = None
+    ) -> PageResult[TemplateRecord]:
+        """Return no templates."""
+        return _empty_page()
+
+
+@dataclass
+class StubTextMessageTemplatesService:
+    """Text-message-template service test double."""
+
+    async def list_text_message_templates(
+        self, request: TextMessageTemplateListRequest | None = None
+    ) -> PageResult[TextMessageTemplateRecord]:
+        """Return no text-message templates."""
+        return _empty_page()
+
+
+@dataclass
+class StubNotesService:
+    """Notes service test double."""
+
+    async def get_note(self, note_id: int) -> NoteRecord:
+        """Return a note with the requested ID."""
+        return NoteRecord.model_validate({"id": note_id})
+
+
 @dataclass
 class StubBattleTestServices:
     """Read-only battle-test service bundle test double."""
@@ -175,6 +290,15 @@ class StubBattleTestServices:
     identity: StubIdentityService = field(default_factory=StubIdentityService)
     people: StubPeopleService = field(default_factory=StubPeopleService)
     tasks: StubTasksService = field(default_factory=StubTasksService)
+    smart_lists: StubSmartListsService = field(default_factory=StubSmartListsService)
+    appointments: StubAppointmentsService = field(default_factory=StubAppointmentsService)
+    calls: StubCallsService = field(default_factory=StubCallsService)
+    text_messages: StubTextMessagesService = field(default_factory=StubTextMessagesService)
+    templates: StubTemplatesService = field(default_factory=StubTemplatesService)
+    text_message_templates: StubTextMessageTemplatesService = field(
+        default_factory=StubTextMessageTemplatesService
+    )
+    notes: StubNotesService = field(default_factory=StubNotesService)
 
 
 @pytest.mark.asyncio
@@ -296,11 +420,47 @@ def test_read_only_tool_specs_steer_notes_to_unsupported_sentinel() -> None:
     assert (
         "notes by person, lead, or contact" in specs["battle_test_explain_unsupported"].description
     )
+    assert "multi-action prompts" in specs["battle_test_explain_unsupported"].description
+    assert "whether notes can be searched" in specs["battle_test_explain_unsupported"].description
+
+
+def test_read_only_tool_specs_include_expanded_read_surfaces() -> None:
+    specs = {tool.name: tool for tool in read_only_battle_test_ai_tool_specs()}
+
+    for name in (
+        "followupboss_list_smart_lists",
+        "followupboss_check_duplicate_person",
+        "followupboss_list_unclaimed_people",
+        "followupboss_list_appointments",
+        "followupboss_list_calls",
+        "followupboss_list_text_messages",
+        "followupboss_list_templates",
+        "followupboss_list_text_message_templates",
+    ):
+        assert name in specs
+        assert specs[name].input_schema["additionalProperties"] is False
+
+    duplicate_properties = cast(
+        dict[str, object],
+        specs["followupboss_check_duplicate_person"].input_schema["properties"],
+    )
+    people_properties = cast(
+        dict[str, object],
+        specs["followupboss_search_people"].input_schema["properties"],
+    )
+
+    assert set(duplicate_properties) == {"email", "phone"}
+    assert "smart_list_id" in people_properties
 
 
 def test_selection_instructions_explain_unsupported_note_search() -> None:
     instructions = battle_test_selection_instructions()
 
+    assert "Do not answer with plain text only" in instructions
+    assert "mixes supported actions with unsupported actions" in instructions
+    assert (
+        "followupboss_get_latest_lead followed by battle_test_explain_unsupported" in instructions
+    )
     assert "notes by person, lead, or contact" in instructions
     assert "explicit note ID" in instructions
     assert "battle_test_explain_unsupported" in instructions
@@ -310,7 +470,52 @@ def test_selection_instructions_explain_unsupported_note_search() -> None:
     assert "followupboss_list_my_tasks_due_today" in instructions
     assert "coming up, upcoming, later, after today" in instructions
     assert "followupboss_list_my_upcoming_tasks" in instructions
+    assert "followupboss_list_smart_lists" in instructions
+    assert (
+        "followupboss_check_duplicate_person only when an email or phone is provided"
+        in instructions
+    )
     assert "route the current user turn independently" in instructions
+
+
+def test_openai_text_only_unsupported_explanation_is_normalized() -> None:
+    scenario = scenario_by_id("BT-READ-005")
+
+    decision = _openai_decision_from_response(
+        scenario=scenario,
+        prompt=scenario.prompt_variants[0],
+        payload={
+            "output_text": "I can't search notes by lead because this MCP API does not expose it.",
+            "output": [],
+        },
+    )
+
+    assert decision.selected_tool is None
+    assert decision.unsupported_explained is True
+    assert "can't search notes" in (decision.assistant_message or "")
+
+
+def test_anthropic_text_only_unsupported_explanation_is_normalized() -> None:
+    scenario = scenario_by_id("BT-READ-005")
+
+    decision = _anthropic_decision_from_response(
+        scenario=scenario,
+        prompt=scenario.prompt_variants[0],
+        payload={
+            "content": [
+                {
+                    "type": "text",
+                    "text": (
+                        "The Follow Up Boss API does not support searching note history by lead."
+                    ),
+                }
+            ]
+        },
+    )
+
+    assert decision.selected_tool is None
+    assert decision.unsupported_explained is True
+    assert "note history" in (decision.assistant_message or "")
 
 
 @pytest.mark.asyncio
@@ -820,6 +1025,8 @@ async def test_capture_ai_selected_multi_call_transcript_executes_ordered_calls(
     )
 
     assert transcript.scenario_id == conversation.id
+    assert selector.prompts[0].startswith(conversation.prompt or "")
+    assert "exactly 2 ordered tool or sentinel calls" in selector.prompts[0]
     assert [item.scenario_id for item in transcript.transcripts] == [
         f"{conversation.id}-T01",
         f"{conversation.id}-T02",
@@ -894,6 +1101,43 @@ async def test_capture_ai_selected_multi_call_transcript_records_missing_calls()
 
     assert transcript.transcripts[1].selected_tool is None
     assert transcript.transcripts[1].assistant_message is None
+
+
+@pytest.mark.asyncio
+async def test_capture_ai_selected_multi_call_transcript_reuses_unsupported_text() -> None:
+    conversation = next(
+        item
+        for item in read_only_battle_test_conversations(BattleTestConversationKind.MULTI_ASK)
+        if "notes" in (item.prompt or "")
+    )
+    prompt = conversation.prompt or ""
+    selector = StubMultiAiSelector(
+        decision_batches=[
+            (
+                BattleTestModelDecision(
+                    scenario_id=f"{conversation.id}-T01",
+                    prompt=prompt,
+                    selected_tool="followupboss_get_latest_lead",
+                    assistant_message=(
+                        "I can pull the latest lead, but I can't search that lead's notes "
+                        "because the MCP API does not expose note search by lead."
+                    ),
+                ),
+            )
+        ]
+    )
+
+    transcript = await capture_ai_selected_multi_call_transcript(
+        selector=selector,
+        profile=battle_test_model_profile_by_id("gpt-5.5-low-reasoning"),
+        conversation=conversation,
+        mcp_client=StubMcpClient(results=[{"person": {"id": 42}}]),
+    )
+
+    assert transcript.transcripts[0].selected_tool == "followupboss_get_latest_lead"
+    assert transcript.transcripts[1].selected_tool is None
+    assert transcript.transcripts[1].unsupported_explained is True
+    assert "can't search" in (transcript.transcripts[1].assistant_message or "")
 
 
 @pytest.mark.asyncio

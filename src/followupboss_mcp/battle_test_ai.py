@@ -151,7 +151,8 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
             name="followupboss_search_people",
             description=(
                 "Broad people search. Do not use for latest-owned-lead intent when "
-                "followupboss_get_latest_lead applies."
+                "followupboss_get_latest_lead applies. Use for explicit name, email, phone, "
+                "or smart_list_id people searches."
             ),
             input_schema={
                 "type": "object",
@@ -198,6 +199,127 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
             },
         ),
         BattleTestAiToolSpec(
+            name="followupboss_list_smart_lists",
+            description=(
+                "List available Follow Up Boss smart lists. Use before searching a named "
+                "list when no smart_list_id is known."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "include_all": {"type": "boolean"},
+                    "limit": _integer_schema("Optional page size."),
+                    "offset": _integer_schema("Optional offset."),
+                },
+                "additionalProperties": False,
+            },
+        ),
+        BattleTestAiToolSpec(
+            name="followupboss_check_duplicate_person",
+            description=(
+                "Check whether a person already exists when the prompt provides an "
+                "explicit email or phone."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "email": _string_schema("Email address to duplicate-check."),
+                    "phone": _string_schema("Phone number to duplicate-check."),
+                },
+                "additionalProperties": False,
+            },
+        ),
+        BattleTestAiToolSpec(
+            name="followupboss_list_unclaimed_people",
+            description=(
+                "List unclaimed people or lead offers available to claim. Do not claim "
+                "or ignore them."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "limit": _integer_schema("Optional page size."),
+                    "offset": _integer_schema("Optional offset."),
+                },
+                "additionalProperties": False,
+            },
+        ),
+        BattleTestAiToolSpec(
+            name="followupboss_list_appointments",
+            description=(
+                "List appointment records. Use safe filters when a person_id or user_id "
+                "is explicitly provided; otherwise list safely."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "person_id": _integer_schema("Explicit person ID filter."),
+                    "user_id": _integer_schema("Explicit user ID filter."),
+                    "limit": _integer_schema("Optional page size."),
+                    "offset": _integer_schema("Optional offset."),
+                },
+                "additionalProperties": False,
+            },
+        ),
+        BattleTestAiToolSpec(
+            name="followupboss_list_calls",
+            description=(
+                "List call records. Use explicit person_id or phone filters when "
+                "provided; otherwise list safely."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "person_id": _integer_schema("Explicit person ID filter."),
+                    "phone": _string_schema("Explicit phone filter."),
+                    "limit": _integer_schema("Optional page size."),
+                    "offset": _integer_schema("Optional offset."),
+                },
+                "additionalProperties": False,
+            },
+        ),
+        BattleTestAiToolSpec(
+            name="followupboss_list_text_messages",
+            description="List recorded text-message logs. This does not send a live SMS.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "person_id": _integer_schema("Explicit person ID filter."),
+                },
+                "additionalProperties": False,
+            },
+        ),
+        BattleTestAiToolSpec(
+            name="followupboss_list_templates",
+            description=(
+                "List saved email templates. Use merge tools only when explicit template "
+                "and recipient details are provided."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "limit": _integer_schema("Optional page size."),
+                    "offset": _integer_schema("Optional offset."),
+                },
+                "additionalProperties": False,
+            },
+        ),
+        BattleTestAiToolSpec(
+            name="followupboss_list_text_message_templates",
+            description=(
+                "List saved text-message templates. Use merge tools only when explicit "
+                "template and recipient details are provided."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "limit": _integer_schema("Optional page size."),
+                    "offset": _integer_schema("Optional offset."),
+                },
+                "additionalProperties": False,
+            },
+        ),
+        BattleTestAiToolSpec(
             name="followupboss_search_events",
             description=(
                 "Search events. Do not use as a substitute for notes by person, lead, "
@@ -227,7 +349,10 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
             name=_UNSUPPORTED_TOOL,
             description=(
                 "Use when Follow Up Boss or this MCP does not support the requested action, "
-                "including note history or notes by person, lead, or contact."
+                "including note history or notes by person, lead, or contact. In multi-action "
+                "prompts, call this as one ordered action for the unsupported portion while "
+                "still calling supported tools for the supported portions. This includes "
+                "questions asking whether notes can be searched by lead or contact."
             ),
             input_schema=message_schema,
         ),
@@ -242,13 +367,25 @@ def battle_test_selection_instructions() -> str:
     """
     return (
         "You are selecting a Follow Up Boss MCP tool for a battle test. "
+        "Do not answer with plain text only when any safe supported or sentinel route applies. "
         "Call exactly one tool when the user's prompt has one safe supported route. "
         "When one prompt asks for multiple independent supported actions, call the needed "
-        "tools in the same order as the user asked. "
+        "tools in the same order as the user asked. If a prompt mixes supported actions with "
+        "unsupported actions, call the supported tools and also call the unsupported sentinel "
+        "for the unsupported part, preserving the user's order. "
+        "For example, 'pull my newest lead and tell me whether you can search that lead's "
+        "notes' requires followupboss_get_latest_lead followed by "
+        f"{_UNSUPPORTED_TOOL}. "
         "Route temporal task requests by the user's words: late, overdue, past due, behind, "
         "or missed means followupboss_list_my_overdue_tasks; today, due today, or not miss "
         "today means followupboss_list_my_tasks_due_today; coming up, upcoming, later, after "
         "today, next, future, or ahead means followupboss_list_my_upcoming_tasks. "
+        "Use followupboss_list_smart_lists for listing saved lists, followupboss_search_people "
+        "when a people search includes an explicit name, email, phone, or smart_list_id, and "
+        "followupboss_check_duplicate_person only when an email or phone is provided. "
+        "Use list tools for appointments, calls, text-message logs, email templates, and "
+        "text-message templates; these are read-only listing intents. "
+        "Fetch notes only with an explicit note ID. "
         "For multi-turn prompts, route the current user turn independently; use prior turns "
         "only to resolve references such as that lead or this contact. "
         f"Use {_CLARIFY_TOOL} when the prompt needs more information before any MCP call. "
@@ -565,12 +702,13 @@ async def capture_ai_selected_multi_call_transcript(
     expected_scenarios = tuple(
         conversation_turn_to_scenario(conversation, turn) for turn in conversation.turns
     )
+    selector_prompt = _multi_call_prompt(prompt, expected_count=len(expected_scenarios))
     try:
         decisions = await _select_tool_decisions(
             selector=selector,
             profile=profile,
             scenario=expected_scenarios[0],
-            prompt=prompt,
+            prompt=selector_prompt,
             tools=tools or read_only_battle_test_ai_tool_specs(),
         )
     except Exception as exc:
@@ -593,7 +731,11 @@ async def capture_ai_selected_multi_call_transcript(
         decision = (
             decisions[index]
             if index < len(decisions)
-            else _empty_decision(expected_scenario, prompt)
+            else _empty_decision(
+                expected_scenario,
+                prompt,
+                assistant_message=_first_assistant_message(decisions),
+            )
         )
         transcripts.append(
             await _capture_decision_transcript(
@@ -743,9 +885,57 @@ async def _select_tool_decisions(
     )
 
 
-def _empty_decision(scenario: BattleTestScenario, prompt: str) -> BattleTestModelDecision:
+def _empty_decision(
+    scenario: BattleTestScenario,
+    prompt: str,
+    *,
+    assistant_message: str | None = None,
+) -> BattleTestModelDecision:
     """Return an empty decision for a missing expected multi-call route."""
-    return BattleTestModelDecision(scenario_id=scenario.id, prompt=prompt)
+    return BattleTestModelDecision(
+        scenario_id=scenario.id,
+        prompt=prompt,
+        assistant_message=assistant_message,
+        unsupported_explained=(
+            scenario.grade is BattleTestGrade.MUST_EXPLAIN_UNSUPPORTED
+            and _text_explains_unsupported_capability(assistant_message)
+        ),
+    )
+
+
+def _first_assistant_message(decisions: tuple[BattleTestModelDecision, ...]) -> str | None:
+    """Return the first non-empty assistant message from model decisions.
+
+    Args:
+        decisions: Normalized tool-selection decisions.
+
+    Returns:
+        First assistant message, if the provider returned one.
+    """
+    for decision in decisions:
+        if decision.assistant_message:
+            return decision.assistant_message
+    return None
+
+
+def _multi_call_prompt(prompt: str, *, expected_count: int) -> str:
+    """Render a single-message multi-ask prompt with routing-count guidance.
+
+    Args:
+        prompt: Original user prompt.
+        expected_count: Number of independent route decisions expected.
+
+    Returns:
+        Prompt text for the selector. The guidance gives the model the expected
+        number of ordered decisions without revealing the intended tools.
+    """
+    return (
+        f"{prompt}\n\n"
+        "Battle-test routing requirement: this single user message contains "
+        f"{expected_count} independent requested actions. Return exactly "
+        f"{expected_count} ordered tool or sentinel calls, one per requested action. "
+        "Do not answer in plain text only."
+    )
 
 
 async def _capture_decision_transcript(
@@ -1177,11 +1367,16 @@ def _openai_decisions_from_response(
                     )
     if decisions:
         return tuple(decisions)
+    message = _openai_text(payload)
     return (
         BattleTestModelDecision(
             scenario_id=scenario.id,
             prompt=prompt,
-            assistant_message=_openai_text(payload),
+            assistant_message=message,
+            unsupported_explained=(
+                scenario.grade is BattleTestGrade.MUST_EXPLAIN_UNSUPPORTED
+                and _text_explains_unsupported_capability(message)
+            ),
         ),
     )
 
@@ -1231,6 +1426,10 @@ def _anthropic_decisions_from_response(
             scenario_id=scenario.id,
             prompt=prompt,
             assistant_message=text,
+            unsupported_explained=(
+                scenario.grade is BattleTestGrade.MUST_EXPLAIN_UNSUPPORTED
+                and _text_explains_unsupported_capability(text)
+            ),
         ),
     )
 
@@ -1302,6 +1501,36 @@ def _message_argument(arguments: Mapping[str, JsonValue]) -> str | None:
     """Return the sentinel message argument when present."""
     message = arguments.get("message")
     return message if isinstance(message, str) else None
+
+
+def _text_explains_unsupported_capability(message: str | None) -> bool:
+    """Return whether assistant text explains an unsupported capability.
+
+    Args:
+        message: Provider text response to inspect.
+
+    Returns:
+        `True` when the text appears to explain that notes or another capability
+        cannot be served by the current MCP/API surface.
+    """
+    if not message:
+        return False
+    lowered = message.lower()
+    unsupported_phrases = (
+        "not support",
+        "doesn't support",
+        "does not support",
+        "unsupported",
+        "can't",
+        "cannot",
+        "not able",
+        "does not expose",
+        "don't have access",
+    )
+    capability_terms = ("note", "api", "mcp", "capability")
+    return any(phrase in lowered for phrase in unsupported_phrases) and any(
+        term in lowered for term in capability_terms
+    )
 
 
 def _openai_text(payload: Mapping[str, object]) -> str | None:

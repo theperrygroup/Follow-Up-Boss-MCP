@@ -6,14 +6,31 @@ from collections.abc import Callable, Mapping, Sequence
 from enum import StrEnum
 from pathlib import Path
 from random import Random
-from typing import Protocol
+from typing import Any, Protocol
 
 from pydantic import Field, model_validator
 
+from followupboss_mcp.models.appointments import AppointmentListRequest, AppointmentRecord
+from followupboss_mcp.models.calls import CallListRequest, CallRecord
 from followupboss_mcp.models.common import JsonValue, RequestModel, ResponseModel
 from followupboss_mcp.models.identity import IdentityResponse
-from followupboss_mcp.models.people import PeopleSearchRequest, PersonRecord
+from followupboss_mcp.models.notes import NoteRecord
+from followupboss_mcp.models.people import (
+    PeopleSearchRequest,
+    PersonDuplicateCheckRecord,
+    PersonDuplicateCheckRequest,
+    PersonRecord,
+    UnclaimedPeopleListRequest,
+)
+from followupboss_mcp.models.smart_lists import SmartListListRequest, SmartListRecord
 from followupboss_mcp.models.tasks import TaskListRequest, TaskRecord
+from followupboss_mcp.models.templates import TemplateListRequest, TemplateRecord
+from followupboss_mcp.models.text_messages import (
+    TextMessageListRequest,
+    TextMessageRecord,
+    TextMessageTemplateListRequest,
+    TextMessageTemplateRecord,
+)
 from followupboss_mcp.pagination import PageResult
 from followupboss_mcp.task_intents import upcoming_task_due_start as _upcoming_task_due_start
 
@@ -33,11 +50,21 @@ class BattleTestGrade(StrEnum):
 class BattleTestOracleKind(StrEnum):
     """Supported API-oracle families for read-only battle-test scenarios."""
 
+    APPOINTMENTS = "appointments"
+    CALLS = "calls"
+    EXPLICIT_NOTE = "explicit_note"
     LATEST_ASSIGNED_LEAD = "latest_assigned_lead"
     MY_OVERDUE_TASKS = "my_overdue_tasks"
     MY_TASKS_DUE_TODAY = "my_tasks_due_today"
     MY_UPCOMING_TASKS = "my_upcoming_tasks"
+    PEOPLE_SEARCH = "people_search"
+    PERSON_DUPLICATE_CHECK = "person_duplicate_check"
     ROUTE_ONLY_PENDING = "route_only_pending"
+    SMART_LISTS = "smart_lists"
+    TEMPLATES = "templates"
+    TEXT_MESSAGE_TEMPLATES = "text_message_templates"
+    TEXT_MESSAGES = "text_messages"
+    UNCLAIMED_PEOPLE = "unclaimed_people"
     UNSUPPORTED_NOTE_SEARCH = "unsupported_note_search"
 
 
@@ -57,6 +84,15 @@ class BattleTestFailureCategory(StrEnum):
     ROUTE_WRONG_TOOL = "route_wrong_tool"
     UNKNOWN = "unknown"
     UNSUPPORTED_NOT_EXPLAINED = "unsupported_not_explained"
+
+
+class BattleTestFixtureKind(StrEnum):
+    """Disposable fixture domains supported by mutation battle-test planning."""
+
+    APPOINTMENT = "appointment"
+    NOTE = "note"
+    PERSON = "person"
+    TASK = "task"
 
 
 class BattleTestModelProvider(StrEnum):
@@ -310,6 +346,25 @@ class BattleTestRunArtifact(ResponseModel):
     conversation_evaluations: tuple[BattleTestConversationEvaluation, ...] = ()
 
 
+class BattleTestFixtureCleanupAction(RequestModel):
+    """Cleanup action required for one disposable battle-test fixture."""
+
+    fixture_kind: BattleTestFixtureKind
+    tool_name: str
+    identifier_key: str
+    created_id: int | None = None
+    notes: str = ""
+
+
+class BattleTestFixturePlan(RequestModel):
+    """Plan for disposable mutation fixtures and cleanup proof."""
+
+    run_prefix: str
+    fixture_kinds: tuple[BattleTestFixtureKind, ...]
+    cleanup_actions: tuple[BattleTestFixtureCleanupAction, ...]
+    skip_reasons: tuple[str, ...] = ()
+
+
 class IdentityOracleService(Protocol):
     """Minimal identity service needed by read-only oracle checks."""
 
@@ -325,12 +380,81 @@ class PeopleOracleService(Protocol):
     ) -> PageResult[PersonRecord]:
         """Search people for direct API oracle comparison."""
 
+    async def check_duplicate_person(
+        self, request: PersonDuplicateCheckRequest
+    ) -> PersonDuplicateCheckRecord:
+        """Check duplicate person identity for direct API oracle comparison."""
+
+    async def list_unclaimed_people(
+        self, request: UnclaimedPeopleListRequest | None = None
+    ) -> PageResult[PersonRecord]:
+        """List unclaimed people for direct API oracle comparison."""
+
+
+class SmartListsOracleService(Protocol):
+    """Minimal smart-list service needed by read-only oracle checks."""
+
+    async def list_smart_lists(
+        self, request: SmartListListRequest | None = None
+    ) -> PageResult[SmartListRecord]:
+        """List smart lists for direct API oracle comparison."""
+
 
 class TasksOracleService(Protocol):
     """Minimal tasks service needed by read-only oracle checks."""
 
     async def list_tasks(self, request: TaskListRequest | None = None) -> PageResult[TaskRecord]:
         """List tasks for direct API oracle comparison."""
+
+
+class AppointmentsOracleService(Protocol):
+    """Minimal appointment service needed by read-only oracle checks."""
+
+    async def list_appointments(
+        self, request: AppointmentListRequest | None = None
+    ) -> PageResult[AppointmentRecord]:
+        """List appointments for direct API oracle comparison."""
+
+
+class CallsOracleService(Protocol):
+    """Minimal call service needed by read-only oracle checks."""
+
+    async def list_calls(self, request: CallListRequest | None = None) -> PageResult[CallRecord]:
+        """List calls for direct API oracle comparison."""
+
+
+class TextMessagesOracleService(Protocol):
+    """Minimal text-message service needed by read-only oracle checks."""
+
+    async def list_text_messages(
+        self, request: TextMessageListRequest | None = None
+    ) -> PageResult[TextMessageRecord]:
+        """List text message logs for direct API oracle comparison."""
+
+
+class TemplatesOracleService(Protocol):
+    """Minimal email-template service needed by read-only oracle checks."""
+
+    async def list_templates(
+        self, request: TemplateListRequest | None = None
+    ) -> PageResult[TemplateRecord]:
+        """List email templates for direct API oracle comparison."""
+
+
+class TextMessageTemplatesOracleService(Protocol):
+    """Minimal text-template service needed by read-only oracle checks."""
+
+    async def list_text_message_templates(
+        self, request: TextMessageTemplateListRequest | None = None
+    ) -> PageResult[TextMessageTemplateRecord]:
+        """List text message templates for direct API oracle comparison."""
+
+
+class NotesOracleService(Protocol):
+    """Minimal note service needed by explicit-ID oracle checks."""
+
+    async def get_note(self, note_id: int) -> NoteRecord:
+        """Fetch one note by ID for direct API oracle comparison."""
 
 
 class ReadOnlyBattleTestServices(Protocol):
@@ -347,6 +471,34 @@ class ReadOnlyBattleTestServices(Protocol):
     @property
     def tasks(self) -> TasksOracleService:
         """Return the tasks service used for oracle checks."""
+
+    @property
+    def smart_lists(self) -> SmartListsOracleService:
+        """Return the smart-list service used for oracle checks."""
+
+    @property
+    def appointments(self) -> AppointmentsOracleService:
+        """Return the appointment service used for oracle checks."""
+
+    @property
+    def calls(self) -> CallsOracleService:
+        """Return the call service used for oracle checks."""
+
+    @property
+    def text_messages(self) -> TextMessagesOracleService:
+        """Return the text-message service used for oracle checks."""
+
+    @property
+    def templates(self) -> TemplatesOracleService:
+        """Return the template service used for oracle checks."""
+
+    @property
+    def text_message_templates(self) -> TextMessageTemplatesOracleService:
+        """Return the text-message-template service used for oracle checks."""
+
+    @property
+    def notes(self) -> NotesOracleService:
+        """Return the note service used for oracle checks."""
 
 
 class BattleTestMcpClient(Protocol):
@@ -402,6 +554,74 @@ def battle_test_model_profile_by_id(profile_id: str) -> BattleTestModelProfile:
     return profiles[profile_id]
 
 
+def build_disposable_fixture_plan(
+    *,
+    run_prefix: str,
+    fixture_kinds: tuple[BattleTestFixtureKind, ...] = (
+        BattleTestFixtureKind.PERSON,
+        BattleTestFixtureKind.TASK,
+        BattleTestFixtureKind.NOTE,
+        BattleTestFixtureKind.APPOINTMENT,
+    ),
+) -> BattleTestFixturePlan:
+    """Build the disposable fixture cleanup plan for mutation battle tests.
+
+    Args:
+        run_prefix: Unique prefix to apply to created fixture names.
+        fixture_kinds: Fixture domains to prepare.
+
+    Returns:
+        A fixture plan with cleanup actions ordered from dependent resources to
+        parent resources.
+
+    Raises:
+        ValueError: If `run_prefix` is blank.
+    """
+    if not run_prefix.strip():
+        raise ValueError("Battle-test fixture plans require a non-empty run prefix.")
+    cleanup_by_kind = {
+        BattleTestFixtureKind.APPOINTMENT: BattleTestFixtureCleanupAction(
+            fixture_kind=BattleTestFixtureKind.APPOINTMENT,
+            tool_name="followupboss_delete_appointment",
+            identifier_key="appointment_id",
+            notes="Delete appointment fixtures before deleting linked people.",
+        ),
+        BattleTestFixtureKind.NOTE: BattleTestFixtureCleanupAction(
+            fixture_kind=BattleTestFixtureKind.NOTE,
+            tool_name="followupboss_delete_note",
+            identifier_key="note_id",
+            notes="Delete note fixtures before deleting linked people.",
+        ),
+        BattleTestFixtureKind.TASK: BattleTestFixtureCleanupAction(
+            fixture_kind=BattleTestFixtureKind.TASK,
+            tool_name="followupboss_delete_task",
+            identifier_key="task_id",
+            notes="Delete task fixtures before deleting linked people.",
+        ),
+        BattleTestFixtureKind.PERSON: BattleTestFixtureCleanupAction(
+            fixture_kind=BattleTestFixtureKind.PERSON,
+            tool_name="followupboss_delete_person",
+            identifier_key="person_id",
+            notes="Delete disposable person fixtures last.",
+        ),
+    }
+    cleanup_order = (
+        BattleTestFixtureKind.APPOINTMENT,
+        BattleTestFixtureKind.NOTE,
+        BattleTestFixtureKind.TASK,
+        BattleTestFixtureKind.PERSON,
+    )
+    requested = set(fixture_kinds)
+    return BattleTestFixturePlan(
+        run_prefix=run_prefix,
+        fixture_kinds=fixture_kinds,
+        cleanup_actions=tuple(cleanup_by_kind[kind] for kind in cleanup_order if kind in requested),
+        skip_reasons=(
+            "Mutation scenarios must be skipped unless every cleanup action receives a created ID.",
+        ),
+    )
+
+
 def build_model_profile_run_metadata(
     *,
     run_id_prefix: str,
@@ -443,6 +663,16 @@ def read_only_battle_test_scenarios() -> tuple[BattleTestScenario, ...]:
     return _READ_ONLY_SCENARIOS
 
 
+def expanded_read_only_battle_test_scenarios() -> tuple[BattleTestScenario, ...]:
+    """Return the expanded read-only battle-test scenario corpus.
+
+    Returns:
+        The original focused read-only corpus plus broader read-only API
+        surfaces that can be checked against direct Follow Up Boss API truth.
+    """
+    return _READ_ONLY_SCENARIOS + _EXPANDED_READ_ONLY_SCENARIOS
+
+
 def read_only_battle_test_conversations(
     kind: BattleTestConversationKind | None = None,
 ) -> tuple[BattleTestConversationScenario, ...]:
@@ -460,6 +690,23 @@ def read_only_battle_test_conversations(
     return tuple(
         conversation for conversation in _READ_ONLY_CONVERSATIONS if conversation.kind is kind
     )
+
+
+def expanded_battle_test_conversations(
+    kind: BattleTestConversationKind | None = None,
+) -> tuple[BattleTestConversationScenario, ...]:
+    """Return the expanded chained and multi-ask battle-test corpus.
+
+    Args:
+        kind: Optional conversation kind to filter by.
+
+    Returns:
+        Original chained scenarios plus broader cross-surface conversations.
+    """
+    conversations = _READ_ONLY_CONVERSATIONS + _EXPANDED_CONVERSATIONS
+    if kind is None:
+        return conversations
+    return tuple(conversation for conversation in conversations if conversation.kind is kind)
 
 
 def expand_battle_test_prompt_variants(
@@ -604,7 +851,7 @@ def scenario_by_id(scenario_id: str) -> BattleTestScenario:
     Raises:
         KeyError: If `scenario_id` is not part of the read-only corpus.
     """
-    scenarios = {scenario.id: scenario for scenario in _READ_ONLY_SCENARIOS}
+    scenarios = {scenario.id: scenario for scenario in expanded_read_only_battle_test_scenarios()}
     return scenarios[scenario_id]
 
 
@@ -1061,7 +1308,7 @@ def evaluate_transcript_route(
     route_checks: dict[BattleTestGrade, Callable[[], None]] = {
         BattleTestGrade.MUST_ROUTE: lambda: _check_required_route(
             scenario,
-            selected_tool,
+            transcript,
             failures,
         ),
         BattleTestGrade.MAY_ROUTE: lambda: _check_optional_route(scenario, transcript, failures),
@@ -1126,6 +1373,113 @@ class ReadOnlyBattleTestOracle:
             return await self._owned_task_snapshot(scenario, transcript, due="today")
         if scenario.api_oracle.kind is BattleTestOracleKind.MY_UPCOMING_TASKS:
             return await self._upcoming_task_snapshot(scenario, transcript)
+        if scenario.api_oracle.kind is BattleTestOracleKind.SMART_LISTS:
+            return await self._page_snapshot(
+                scenario,
+                await self._services.smart_lists.list_smart_lists(
+                    SmartListListRequest(
+                        include_all=_optional_bool(transcript.arguments.get("include_all")),
+                        limit=_optional_int(transcript.arguments.get("limit")),
+                        offset=_optional_int(transcript.arguments.get("offset")),
+                    )
+                ),
+                response_key="smartlists",
+                expected_key="smart_list_ids",
+            )
+        if scenario.api_oracle.kind is BattleTestOracleKind.PEOPLE_SEARCH:
+            return await self._page_snapshot(
+                scenario,
+                await self._services.people.search_people(
+                    PeopleSearchRequest(
+                        email=_optional_string(transcript.arguments.get("email")),
+                        limit=_optional_int(transcript.arguments.get("limit")),
+                        name=_optional_string(transcript.arguments.get("name")),
+                        phone=_optional_string(transcript.arguments.get("phone")),
+                        smart_list_id=_optional_int(transcript.arguments.get("smart_list_id")),
+                    )
+                ),
+                response_key="people",
+                expected_key="person_ids",
+            )
+        if scenario.api_oracle.kind is BattleTestOracleKind.PERSON_DUPLICATE_CHECK:
+            return await self._duplicate_person_snapshot(scenario, transcript)
+        if scenario.api_oracle.kind is BattleTestOracleKind.UNCLAIMED_PEOPLE:
+            return await self._page_snapshot(
+                scenario,
+                await self._services.people.list_unclaimed_people(
+                    UnclaimedPeopleListRequest(
+                        limit=_optional_int(transcript.arguments.get("limit")),
+                        offset=_optional_int(transcript.arguments.get("offset")),
+                    )
+                ),
+                response_key="people",
+                expected_key="person_ids",
+            )
+        if scenario.api_oracle.kind is BattleTestOracleKind.APPOINTMENTS:
+            return await self._page_snapshot(
+                scenario,
+                await self._services.appointments.list_appointments(
+                    AppointmentListRequest(
+                        limit=_optional_int(transcript.arguments.get("limit")),
+                        offset=_optional_int(transcript.arguments.get("offset")),
+                        person_id=_optional_int(transcript.arguments.get("person_id")),
+                        user_id=_optional_int(transcript.arguments.get("user_id")),
+                    )
+                ),
+                response_key="appointments",
+                expected_key="appointment_ids",
+            )
+        if scenario.api_oracle.kind is BattleTestOracleKind.CALLS:
+            return await self._page_snapshot(
+                scenario,
+                await self._services.calls.list_calls(
+                    CallListRequest(
+                        limit=_optional_int(transcript.arguments.get("limit")),
+                        offset=_optional_int(transcript.arguments.get("offset")),
+                        person_id=_optional_int(transcript.arguments.get("person_id")),
+                        phone=_optional_string(transcript.arguments.get("phone")),
+                    )
+                ),
+                response_key="calls",
+                expected_key="call_ids",
+            )
+        if scenario.api_oracle.kind is BattleTestOracleKind.TEXT_MESSAGES:
+            return await self._page_snapshot(
+                scenario,
+                await self._services.text_messages.list_text_messages(
+                    TextMessageListRequest(
+                        person_id=_optional_int(transcript.arguments.get("person_id")),
+                    )
+                ),
+                response_key="textmessages",
+                expected_key="text_message_ids",
+            )
+        if scenario.api_oracle.kind is BattleTestOracleKind.TEMPLATES:
+            return await self._page_snapshot(
+                scenario,
+                await self._services.templates.list_templates(
+                    TemplateListRequest(
+                        limit=_optional_int(transcript.arguments.get("limit")),
+                        offset=_optional_int(transcript.arguments.get("offset")),
+                    )
+                ),
+                response_key="templates",
+                expected_key="template_ids",
+            )
+        if scenario.api_oracle.kind is BattleTestOracleKind.TEXT_MESSAGE_TEMPLATES:
+            return await self._page_snapshot(
+                scenario,
+                await self._services.text_message_templates.list_text_message_templates(
+                    TextMessageTemplateListRequest(
+                        limit=_optional_int(transcript.arguments.get("limit")),
+                        offset=_optional_int(transcript.arguments.get("offset")),
+                    )
+                ),
+                response_key="textmessagetemplates",
+                expected_key="template_ids",
+            )
+        if scenario.api_oracle.kind is BattleTestOracleKind.EXPLICIT_NOTE:
+            return await self._explicit_note_snapshot(scenario, transcript)
         if scenario.api_oracle.kind is BattleTestOracleKind.UNSUPPORTED_NOTE_SEARCH:
             return BattleTestOracleSnapshot(
                 scenario_id=scenario.id,
@@ -1135,6 +1489,21 @@ class ReadOnlyBattleTestOracle:
                 notes=(
                     "Follow Up Boss does not expose note search by person ID through this MCP.",
                 ),
+            )
+        if (
+            scenario.api_oracle.kind is BattleTestOracleKind.ROUTE_ONLY_PENDING
+            and scenario.grade
+            in {
+                BattleTestGrade.MUST_CLARIFY,
+                BattleTestGrade.MUST_REQUIRE_ID,
+            }
+        ):
+            return BattleTestOracleSnapshot(
+                scenario_id=scenario.id,
+                kind=scenario.api_oracle.kind,
+                automated=True,
+                expected={"route_only": True},
+                notes=("Route-only safety scenario passed its route-level contract.",),
             )
         return BattleTestOracleSnapshot(
             scenario_id=scenario.id,
@@ -1287,13 +1656,82 @@ class ReadOnlyBattleTestOracle:
             },
         )
 
+    async def _page_snapshot(
+        self,
+        scenario: BattleTestScenario,
+        page: PageResult[Any],
+        *,
+        response_key: str,
+        expected_key: str,
+    ) -> BattleTestOracleSnapshot:
+        """Build direct API truth for a generic paginated read-only response.
+
+        Args:
+            scenario: Scenario contract being checked.
+            page: Direct API page result.
+            response_key: MCP response key containing records.
+            expected_key: Snapshot key used for expected record IDs.
+
+        Returns:
+            A stable snapshot containing expected IDs and response-key metadata.
+        """
+        return BattleTestOracleSnapshot(
+            scenario_id=scenario.id,
+            kind=scenario.api_oracle.kind,
+            automated=True,
+            expected={
+                "response_key": response_key,
+                expected_key: [_record_id(item) for item in page.items],
+            },
+        )
+
+    async def _duplicate_person_snapshot(
+        self,
+        scenario: BattleTestScenario,
+        transcript: BattleTestTranscript,
+    ) -> BattleTestOracleSnapshot:
+        """Build direct API truth for a duplicate-person check."""
+        duplicate = await self._services.people.check_duplicate_person(
+            PersonDuplicateCheckRequest(
+                email=_optional_string(transcript.arguments.get("email")),
+                phone=_optional_string(transcript.arguments.get("phone")),
+            )
+        )
+        return BattleTestOracleSnapshot(
+            scenario_id=scenario.id,
+            kind=scenario.api_oracle.kind,
+            automated=True,
+            expected={
+                "found": duplicate.found,
+                "matched_by": duplicate.matched_by,
+            },
+        )
+
+    async def _explicit_note_snapshot(
+        self,
+        scenario: BattleTestScenario,
+        transcript: BattleTestTranscript,
+    ) -> BattleTestOracleSnapshot:
+        """Build direct API truth for an explicit note lookup."""
+        note_id = _optional_int(transcript.arguments.get("note_id"))
+        if note_id is None:
+            raise RuntimeError("Explicit note oracle requires a note_id argument.")
+        note = await self._services.notes.get_note(note_id)
+        return BattleTestOracleSnapshot(
+            scenario_id=scenario.id,
+            kind=scenario.api_oracle.kind,
+            automated=True,
+            expected={"note_id": note.id},
+        )
+
 
 def _check_required_route(
     scenario: BattleTestScenario,
-    selected_tool: str | None,
+    transcript: BattleTestTranscript,
     failures: list[str],
 ) -> None:
     """Append failures for a required-route scenario."""
+    selected_tool = transcript.selected_tool
     if selected_tool not in scenario.expected_mcp.allowed_tools:
         failures.append(
             f"Expected one of {scenario.expected_mcp.allowed_tools!r}, got {selected_tool!r}."
@@ -1339,6 +1777,14 @@ def _check_required_arguments(
         for key in scenario.expected_mcp.required_argument_keys
         if key not in transcript.arguments
     ]
+    if (
+        transcript.selected_tool is not None
+        and transcript.selected_tool not in scenario.expected_mcp.allowed_tools
+    ):
+        failures.append(
+            f"Expected one of {scenario.expected_mcp.allowed_tools!r}, "
+            f"got {transcript.selected_tool!r}."
+        )
     if missing and not transcript.clarified:
         failures.append(
             f"Expected explicit arguments or clarification for missing keys {missing!r}."
@@ -1378,6 +1824,21 @@ def _compare_transcript_to_oracle(
         BattleTestOracleKind.MY_UPCOMING_TASKS,
     }:
         return _compare_task_response(transcript, snapshot)
+    if snapshot.kind in {
+        BattleTestOracleKind.APPOINTMENTS,
+        BattleTestOracleKind.CALLS,
+        BattleTestOracleKind.PEOPLE_SEARCH,
+        BattleTestOracleKind.SMART_LISTS,
+        BattleTestOracleKind.TEMPLATES,
+        BattleTestOracleKind.TEXT_MESSAGE_TEMPLATES,
+        BattleTestOracleKind.TEXT_MESSAGES,
+        BattleTestOracleKind.UNCLAIMED_PEOPLE,
+    }:
+        return _compare_page_response(transcript, snapshot)
+    if snapshot.kind is BattleTestOracleKind.PERSON_DUPLICATE_CHECK:
+        return _compare_duplicate_response(transcript, snapshot)
+    if snapshot.kind is BattleTestOracleKind.EXPLICIT_NOTE:
+        return _compare_single_id_response(transcript, snapshot, expected_key="note_id")
     return []
 
 
@@ -1419,6 +1880,74 @@ def _compare_task_response(
     if actual_ids != expected_ids:
         return [f"Expected task ids {expected_ids!r}, got {actual_ids!r}."]
     return []
+
+
+def _compare_page_response(
+    transcript: BattleTestTranscript,
+    snapshot: BattleTestOracleSnapshot,
+) -> list[str]:
+    """Compare a generic paginated MCP response to API truth."""
+    response = _mapping_or_none(transcript.response)
+    if response is None:
+        return ["Expected paginated MCP response to be an object."]
+    response_key = snapshot.expected.get("response_key")
+    if not isinstance(response_key, str):
+        return ["Expected page oracle snapshot to include a response key."]
+    records = response.get(response_key)
+    if not isinstance(records, list):
+        return [f"Expected MCP response to include a {response_key!r} list."]
+    actual_ids = [item.get("id") for item in records if isinstance(item, dict)]
+    expected_ids = _first_expected_id_list(snapshot)
+    if actual_ids != expected_ids:
+        return [f"Expected {response_key} ids {expected_ids!r}, got {actual_ids!r}."]
+    return []
+
+
+def _compare_duplicate_response(
+    transcript: BattleTestTranscript,
+    snapshot: BattleTestOracleSnapshot,
+) -> list[str]:
+    """Compare a duplicate-check MCP response to API truth."""
+    response = _mapping_or_none(transcript.response)
+    if response is None:
+        return ["Expected duplicate-check MCP response to be an object."]
+    failures: list[str] = []
+    if response.get("found") != snapshot.expected.get("found"):
+        failures.append(
+            f"Expected duplicate found={snapshot.expected.get('found')!r}, "
+            f"got {response.get('found')!r}."
+        )
+    if response.get("matchedBy") != snapshot.expected.get("matched_by"):
+        failures.append(
+            f"Expected duplicate matchedBy={snapshot.expected.get('matched_by')!r}, "
+            f"got {response.get('matchedBy')!r}."
+        )
+    return failures
+
+
+def _compare_single_id_response(
+    transcript: BattleTestTranscript,
+    snapshot: BattleTestOracleSnapshot,
+    *,
+    expected_key: str,
+) -> list[str]:
+    """Compare a single-object MCP response ID to API truth."""
+    response = _mapping_or_none(transcript.response)
+    if response is None:
+        return ["Expected single-object MCP response to be an object."]
+    expected_id = snapshot.expected.get(expected_key)
+    actual_id = response.get("id")
+    if actual_id != expected_id:
+        return [f"Expected response id {expected_id!r}, got {actual_id!r}."]
+    return []
+
+
+def _first_expected_id_list(snapshot: BattleTestOracleSnapshot) -> list[JsonValue] | None:
+    """Return the first ID-list value from an oracle snapshot."""
+    for key, value in snapshot.expected.items():
+        if key.endswith("_ids") and isinstance(value, list):
+            return value
+    return None
 
 
 def _mapping_or_none(value: JsonValue) -> Mapping[str, JsonValue] | None:
@@ -1477,6 +2006,21 @@ def _optional_string_list(value: JsonValue) -> list[str] | None:
         return None
     strings = [item for item in value if isinstance(item, str)]
     return strings if len(strings) == len(value) else None
+
+
+def _optional_bool(value: JsonValue) -> bool | None:
+    """Return an optional boolean transcript argument."""
+    if isinstance(value, bool):
+        return value
+    return None
+
+
+def _record_id(value: object) -> JsonValue:
+    """Return a record ID from a typed response model or mapping."""
+    if isinstance(value, Mapping):
+        item = value.get("id")
+        return _coerce_json_value(item)
+    return _coerce_json_value(getattr(value, "id", None))
 
 
 _PROMPT_VARIATION_WRAPPERS = (
@@ -1700,9 +2244,264 @@ _READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
 )
 
 
+_EXPANDED_READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
+    BattleTestScenario(
+        id="BT-READ-006",
+        grade=BattleTestGrade.MUST_ROUTE,
+        prompt_variants=_expand_prompt_families(
+            (
+                "Show my smart lists",
+                "List the smart lists in FUB",
+                "What saved lists are available?",
+                "Pull up the available smart lists",
+                "Show CRM smart lists",
+                "What smart lists can I use?",
+                "List my FUB saved people lists",
+                "Show available lead lists",
+                "What lists can I filter people by?",
+                "Display smart list options",
+            )
+        ),
+        expected_mcp=ExpectedMcpRoute(allowed_tools=("followupboss_list_smart_lists",)),
+        api_oracle=ApiOracleSpec(
+            kind=BattleTestOracleKind.SMART_LISTS,
+            description="Direct smart-list query for available Follow Up Boss smart lists.",
+        ),
+        response_assertions=("response.smartlists[*].id == api_oracle.smart_list_ids",),
+    ),
+    BattleTestScenario(
+        id="BT-READ-007",
+        grade=BattleTestGrade.MUST_REQUIRE_ID,
+        prompt_variants=_expand_prompt_families(
+            (
+                "Show people in smart list 1",
+                "Pull smart list ID 1 people",
+                "Search people from smart list 1",
+                "List contacts in smart list 1",
+                "Show the first people in saved list 1",
+                "Open smart list 1 contacts",
+                "Find leads in smart list 1",
+                "Use smart list 1 for a people search",
+                "Show buyers from smart list ID 1",
+                "List records filtered by smart list 1",
+            )
+        ),
+        expected_mcp=ExpectedMcpRoute(
+            allowed_tools=("followupboss_search_people",),
+            required_argument_keys=("smart_list_id",),
+        ),
+        api_oracle=ApiOracleSpec(
+            kind=BattleTestOracleKind.PEOPLE_SEARCH,
+            description="Direct people query filtered by the selected smart-list ID.",
+        ),
+        response_assertions=("response.people[*].id == api_oracle.person_ids",),
+    ),
+    BattleTestScenario(
+        id="BT-READ-008",
+        grade=BattleTestGrade.MUST_REQUIRE_ID,
+        prompt_variants=_expand_prompt_families(
+            (
+                "Check whether alex@example.com is already in FUB",
+                "Do we already have alex@example.com?",
+                "Look for duplicate email alex@example.com",
+                "Can I add alex@example.com or is it a duplicate?",
+                "Check duplicate person by alex@example.com",
+                "Has alex@example.com been seen before?",
+                "Search duplicate record for alex@example.com",
+                "Would alex@example.com create a duplicate?",
+                "Verify if alex@example.com exists",
+                "Duplicate check alex@example.com",
+            )
+        ),
+        expected_mcp=ExpectedMcpRoute(
+            allowed_tools=("followupboss_check_duplicate_person",),
+            required_argument_keys=("email",),
+        ),
+        api_oracle=ApiOracleSpec(
+            kind=BattleTestOracleKind.PERSON_DUPLICATE_CHECK,
+            description="Direct duplicate-check endpoint for the same email or phone.",
+        ),
+        response_assertions=("response.found == api_oracle.found",),
+    ),
+    BattleTestScenario(
+        id="BT-READ-009",
+        grade=BattleTestGrade.MUST_ROUTE,
+        prompt_variants=_expand_prompt_families(
+            (
+                "Show unclaimed leads",
+                "Any unclaimed people available?",
+                "What leads can I claim?",
+                "Show pond lead offers",
+                "List available unclaimed people",
+                "Are there new leads to claim?",
+                "Pull unclaimed person offers",
+                "Show available lead claims",
+                "List unclaimed FUB people",
+                "What unclaimed contacts are waiting?",
+            )
+        ),
+        expected_mcp=ExpectedMcpRoute(allowed_tools=("followupboss_list_unclaimed_people",)),
+        api_oracle=ApiOracleSpec(
+            kind=BattleTestOracleKind.UNCLAIMED_PEOPLE,
+            description="Direct unclaimed-people query for available claim offers.",
+        ),
+        response_assertions=("response.people[*].id == api_oracle.person_ids",),
+    ),
+    BattleTestScenario(
+        id="BT-READ-010",
+        grade=BattleTestGrade.MUST_ROUTE,
+        prompt_variants=_expand_prompt_families(
+            (
+                "Show appointments",
+                "List my FUB appointments",
+                "What appointments are in Follow Up Boss?",
+                "Pull upcoming appointments",
+                "Show calendar items from FUB",
+                "List appointment records",
+                "Any appointments in the CRM?",
+                "Show the appointment list",
+                "Pull appointment data",
+                "Display FUB appointments",
+            )
+        ),
+        expected_mcp=ExpectedMcpRoute(allowed_tools=("followupboss_list_appointments",)),
+        api_oracle=ApiOracleSpec(
+            kind=BattleTestOracleKind.APPOINTMENTS,
+            description="Direct appointment query with matching safe filters.",
+        ),
+        response_assertions=("response.appointments[*].id == api_oracle.appointment_ids",),
+    ),
+    BattleTestScenario(
+        id="BT-READ-011",
+        grade=BattleTestGrade.MUST_ROUTE,
+        prompt_variants=_expand_prompt_families(
+            (
+                "Show recent calls",
+                "List call logs",
+                "Pull FUB calls",
+                "Any calls recorded?",
+                "Show the call history list",
+                "List recent phone call records",
+                "Display calls from Follow Up Boss",
+                "What calls are logged?",
+                "Pull call records",
+                "Show CRM call activity",
+            )
+        ),
+        expected_mcp=ExpectedMcpRoute(allowed_tools=("followupboss_list_calls",)),
+        api_oracle=ApiOracleSpec(
+            kind=BattleTestOracleKind.CALLS,
+            description="Direct calls query with matching safe filters.",
+        ),
+        response_assertions=("response.calls[*].id == api_oracle.call_ids",),
+    ),
+    BattleTestScenario(
+        id="BT-READ-012",
+        grade=BattleTestGrade.MUST_ROUTE,
+        prompt_variants=_expand_prompt_families(
+            (
+                "Show text message logs",
+                "List SMS records",
+                "Pull recent text messages",
+                "What text messages are logged?",
+                "Show FUB text message history",
+                "List recorded texts",
+                "Display text message records",
+                "Any SMS logs in FUB?",
+                "Pull CRM text logs",
+                "Show text communications",
+            )
+        ),
+        expected_mcp=ExpectedMcpRoute(allowed_tools=("followupboss_list_text_messages",)),
+        api_oracle=ApiOracleSpec(
+            kind=BattleTestOracleKind.TEXT_MESSAGES,
+            description="Direct text-message query with matching safe filters.",
+        ),
+        response_assertions=("response.textmessages[*].id == api_oracle.text_message_ids",),
+    ),
+    BattleTestScenario(
+        id="BT-READ-013",
+        grade=BattleTestGrade.MUST_ROUTE,
+        prompt_variants=_expand_prompt_families(
+            (
+                "Show email templates",
+                "List templates",
+                "Pull FUB email templates",
+                "What message templates are available?",
+                "Display email template records",
+                "List saved email templates",
+                "Show available email templates",
+                "Pull template list",
+                "What templates can I use?",
+                "Show CRM templates",
+            )
+        ),
+        expected_mcp=ExpectedMcpRoute(allowed_tools=("followupboss_list_templates",)),
+        api_oracle=ApiOracleSpec(
+            kind=BattleTestOracleKind.TEMPLATES,
+            description="Direct email-template query with matching safe filters.",
+        ),
+        response_assertions=("response.templates[*].id == api_oracle.template_ids",),
+    ),
+    BattleTestScenario(
+        id="BT-READ-014",
+        grade=BattleTestGrade.MUST_ROUTE,
+        prompt_variants=_expand_prompt_families(
+            (
+                "Show text templates",
+                "List SMS templates",
+                "Pull text message templates",
+                "What text templates are available?",
+                "Display SMS template records",
+                "List saved text templates",
+                "Show available text message templates",
+                "Pull text template list",
+                "What SMS templates can I use?",
+                "Show CRM text templates",
+            )
+        ),
+        expected_mcp=ExpectedMcpRoute(allowed_tools=("followupboss_list_text_message_templates",)),
+        api_oracle=ApiOracleSpec(
+            kind=BattleTestOracleKind.TEXT_MESSAGE_TEMPLATES,
+            description="Direct text-template query with matching safe filters.",
+        ),
+        response_assertions=("response.textmessagetemplates[*].id == api_oracle.template_ids",),
+    ),
+    BattleTestScenario(
+        id="BT-READ-015",
+        grade=BattleTestGrade.MUST_REQUIRE_ID,
+        prompt_variants=_expand_prompt_families(
+            (
+                "Fetch note ID 1",
+                "Open note 1",
+                "Get FUB note ID 1",
+                "Show note record 1",
+                "Pull note 1 by ID",
+                "Retrieve note ID 1",
+                "Display explicit note 1",
+                "Open the note with ID 1",
+                "Show FUB note 1",
+                "Get the note whose ID is 1",
+            )
+        ),
+        expected_mcp=ExpectedMcpRoute(
+            allowed_tools=("followupboss_get_note",),
+            required_argument_keys=("note_id",),
+        ),
+        api_oracle=ApiOracleSpec(
+            kind=BattleTestOracleKind.EXPLICIT_NOTE,
+            description="Direct note lookup for the same explicit note ID.",
+        ),
+        response_assertions=("response.id == api_oracle.note_id",),
+    ),
+)
+
+
 def _base_scenario(scenario_id: str) -> BattleTestScenario:
     """Return one base read-only scenario for corpus construction."""
-    return {scenario.id: scenario for scenario in _READ_ONLY_SCENARIOS}[scenario_id]
+    return {scenario.id: scenario for scenario in expanded_read_only_battle_test_scenarios()}[
+        scenario_id
+    ]
 
 
 def _conversation_turn(
@@ -1860,3 +2659,93 @@ def _build_read_only_conversations() -> tuple[BattleTestConversationScenario, ..
 
 
 _READ_ONLY_CONVERSATIONS = _build_read_only_conversations()
+
+
+_EXPANDED_CHAIN_BLUEPRINTS: tuple[
+    tuple[
+        BattleTestConversationKind,
+        str,
+        tuple[tuple[str, str], ...],
+    ],
+    ...,
+] = (
+    (
+        BattleTestConversationKind.MULTI_TURN,
+        "",
+        (
+            ("BT-READ-006", "Show my smart lists"),
+            ("BT-READ-007", "Now show people in smart list 1"),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_TURN,
+        "",
+        (
+            ("BT-READ-010", "Show appointments"),
+            ("BT-READ-011", "Then show recent calls"),
+            ("BT-READ-012", "Then show text message logs"),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_ASK,
+        "Check duplicate email alex@example.com and show unclaimed leads.",
+        (
+            (
+                "BT-READ-008",
+                "Check duplicate email alex@example.com and show unclaimed leads.",
+            ),
+            (
+                "BT-READ-009",
+                "Check duplicate email alex@example.com and show unclaimed leads.",
+            ),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_ASK,
+        "Show appointments, recent calls, and text message logs.",
+        (
+            ("BT-READ-010", "Show appointments, recent calls, and text message logs."),
+            ("BT-READ-011", "Show appointments, recent calls, and text message logs."),
+            ("BT-READ-012", "Show appointments, recent calls, and text message logs."),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_ASK,
+        "List email templates and text templates.",
+        (
+            ("BT-READ-013", "List email templates and text templates."),
+            ("BT-READ-014", "List email templates and text templates."),
+        ),
+    ),
+)
+
+
+def _build_expanded_conversations() -> tuple[BattleTestConversationScenario, ...]:
+    """Build deterministic expanded chained read-only conversations."""
+    conversations: list[BattleTestConversationScenario] = []
+    sequence = 1
+    for style_prefix in _CHAIN_STYLE_PREFIXES:
+        for kind, multi_ask_prompt, turns in _EXPANDED_CHAIN_BLUEPRINTS:
+            prompt = f"{style_prefix}{multi_ask_prompt}" if multi_ask_prompt else None
+            turn_models = tuple(
+                _conversation_turn(
+                    f"T{turn_index:02d}",
+                    scenario_id,
+                    f"{style_prefix}{turn_prompt}",
+                )
+                for turn_index, (scenario_id, turn_prompt) in enumerate(turns, start=1)
+            )
+            conversations.append(
+                BattleTestConversationScenario(
+                    id=f"BT-CHAIN-X{sequence:03d}",
+                    kind=kind,
+                    prompt=prompt,
+                    turns=turn_models,
+                    description="Expanded read-only chained prompt routing coverage.",
+                )
+            )
+            sequence += 1
+    return tuple(conversations)
+
+
+_EXPANDED_CONVERSATIONS = _build_expanded_conversations()
