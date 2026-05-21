@@ -92,6 +92,7 @@ from followupboss_mcp.mcp_tools import (
     ListInboxAppInstallationsToolInput,
     ListInboxAppParticipantsToolInput,
     ListMyTaskIntentToolInput,
+    SearchPeopleInSmartListToolInput,
     UpdateActionPlanPersonToolInput,
     UpdateAppointmentOutcomeToolInput,
     UpdateAppointmentToolInput,
@@ -417,6 +418,7 @@ EXPECTED_REGISTERED_TOOL_NAMES = [
     "followupboss_remove_inbox_app_participant",
     "followupboss_search_events",
     "followupboss_search_people",
+    "followupboss_search_people_in_smart_list",
     "followupboss_send_email_events",
     "followupboss_send_event",
     "followupboss_trigger_automation",
@@ -1453,7 +1455,7 @@ class StubBundle:
                 items=[
                     SmartListRecord(
                         id=74,
-                        name="Active Buyers",
+                        name="🚨 Active Buyers ✅",
                         description="All active buyers",
                         isFub2=True,
                     )
@@ -2078,6 +2080,110 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     ][0]["id"] == 2
     assert stub.people_search_requests[-1].assigned_user_id is None
     assert stub.people_search_requests[-1].smart_list_id == 74
+    smart_list_people = await adapter.search_people_in_smart_list(
+        SearchPeopleInSmartListToolInput(
+            smart_list_name=" active   buyers ",
+            source="Zillow",
+            limit=5,
+        )
+    )
+    assert smart_list_people["smartlist"] == {
+        "id": 74,
+        "description": "All active buyers",
+        "isFub2": True,
+        "name": "🚨 Active Buyers ✅",
+    }
+    assert smart_list_people["people"][0]["id"] == 2
+    assert stub.people_search_requests[-1].assigned_user_id is None
+    assert stub.people_search_requests[-1].smart_list_id == 74
+    assert stub.people_search_requests[-1].source == "Zillow"
+    assert stub.people_search_requests[-1].limit == 5
+    aliased_input = SearchPeopleInSmartListToolInput(
+        list_name="Active Buyers",
+        lead_source="Zillow",
+    )
+    assert aliased_input.resolved_smart_list_name() == "Active Buyers"
+    assert aliased_input.source == "Zillow"
+    with pytest.raises(RuntimeError, match="must be normalized"):
+        SearchPeopleInSmartListToolInput.model_construct(
+            smart_list_name=None,
+        ).resolved_smart_list_name()
+    with pytest.raises(ValidationError, match="smart_list_name must be non-empty"):
+        SearchPeopleInSmartListToolInput(smart_list_name=" ")
+    with pytest.raises(ValidationError, match="Conflicting values"):
+        SearchPeopleInSmartListToolInput(
+            smart_list_name="Active Buyers",
+            list_name="Seller Leads",
+        )
+    with pytest.raises(RuntimeError, match="Smart list named 'Missing List' was not found"):
+        await adapter.search_people_in_smart_list(
+            SearchPeopleInSmartListToolInput(smart_list_name="Missing List")
+        )
+    ambiguous_services = replace(
+        stub.bundle,
+        smart_lists=_service_stub(
+            list_smart_lists=lambda _request: asyncio.sleep(
+                0,
+                result=PageResult(
+                    items=[
+                        SmartListRecord(id=74, name="Active Buyers"),
+                        SmartListRecord(id=75, name=" active buyers "),
+                    ],
+                    metadata=_page_metadata(),
+                ),
+            ),
+            get_smart_list=stub.bundle.smart_lists.get_smart_list,
+        ),
+    )
+    ambiguous_adapter = FollowUpBossToolAdapter(ambiguous_services)
+    with pytest.raises(RuntimeError, match="ambiguous; matched IDs \\[74, 75\\]"):
+        await ambiguous_adapter.search_people_in_smart_list(
+            SearchPeopleInSmartListToolInput(smart_list_name="Active Buyers")
+        )
+    paginated_smart_list_requests: list[SmartListListRequest] = []
+
+    async def paginated_smart_lists_list(
+        request: SmartListListRequest,
+    ) -> PageResult[SmartListRecord]:
+        paginated_smart_list_requests.append(request)
+        if len(paginated_smart_list_requests) == 1:
+            return PageResult(
+                items=[SmartListRecord(id=73, name="First Page")],
+                metadata=PaginationMetadata(
+                    count=1,
+                    limit=1,
+                    next_token=None,
+                    next_link=None,
+                    offset=0,
+                    total=2,
+                ),
+            )
+        return PageResult(
+            items=[SmartListRecord(id=74, name="Active Buyers")],
+            metadata=PaginationMetadata(
+                count=1,
+                limit=1,
+                next_token=None,
+                next_link=None,
+                offset=1,
+                total=2,
+            ),
+        )
+
+    paginated_services = replace(
+        stub.bundle,
+        smart_lists=_service_stub(
+            list_smart_lists=paginated_smart_lists_list,
+            get_smart_list=stub.bundle.smart_lists.get_smart_list,
+        ),
+    )
+    paginated_adapter = FollowUpBossToolAdapter(paginated_services)
+    assert (
+        await paginated_adapter.search_people_in_smart_list(
+            SearchPeopleInSmartListToolInput(smart_list_name="Active Buyers")
+        )
+    )["smartlist"]["id"] == 74
+    assert [request.offset for request in paginated_smart_list_requests] == [0, 1]
     assert (await adapter.get_person(GetPersonToolInput(person_id=3)))["id"] == 3
     assert (await adapter.create_person(CreatePersonRequest(first_name="Tom")))["id"] == 3
     assert (await adapter.update_person(UpdatePersonToolInput(person_id=4)))["id"] == 4
@@ -2951,6 +3057,24 @@ async def test_latest_lead_returns_safe_runtime_error_for_follow_up_boss_failure
         await adapter.get_latest_lead(GetLatestLeadToolInput())
 
 
+@pytest.mark.asyncio
+async def test_smart_list_helper_returns_safe_runtime_error_for_follow_up_boss_failures() -> None:
+    """Smart-list helper should surface Follow Up Boss failures as safe runtime errors."""
+    stub = StubBundle()
+
+    async def failing_people_search(_: PeopleSearchRequest) -> PageResult[PersonRecord]:
+        """Raise a representative Follow Up Boss service failure."""
+        raise FollowUpBossError("upstream exploded")
+
+    services = replace(stub.bundle, people=_service_stub(search_people=failing_people_search))
+    adapter = FollowUpBossToolAdapter(services)
+
+    with pytest.raises(RuntimeError, match="upstream exploded"):
+        await adapter.search_people_in_smart_list(
+            SearchPeopleInSmartListToolInput(smart_list_name="Active Buyers")
+        )
+
+
 class QueueClient:
     """Queue-backed client for FastMCP server tests."""
 
@@ -3494,6 +3618,14 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                     "smartlists": [{"id": 76, "name": "Active Buyers"}],
                 },
                 {"id": 77, "name": "Active Buyers", "isFub2": True},
+                {
+                    "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                    "smartlists": [{"id": 76, "name": "Active Buyers"}],
+                },
+                {
+                    "_metadata": {"limit": 1, "offset": 0, "total": 1},
+                    "people": [{"id": 2, "firstName": "Will"}],
+                },
                 {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "stages": [{"id": 78}]},
                 {"id": 79, "name": "Prospect", "orderWeight": 1000, "isProtected": False},
                 {"id": 80, "name": "Qualified", "orderWeight": 2000, "isProtected": False},
@@ -3633,6 +3765,12 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     assert "Use this broad list only when the request provides explicit task filters" in (
         list_tasks_description
     )
+    helper_description = cast(
+        "str",
+        tools["followupboss_search_people_in_smart_list"].description,
+    )
+    assert "named Follow Up Boss smart list" in helper_description
+    assert "provenance" in helper_description
     assert "followupboss_list_my_overdue_tasks" in list_tasks_description
     assert "followupboss_list_my_tasks_due_today" in list_tasks_description
     assert "followupboss_list_my_upcoming_tasks" in list_tasks_description
@@ -3778,6 +3916,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_remove_inbox_app_participant",
         "followupboss_search_events",
         "followupboss_search_people",
+        "followupboss_search_people_in_smart_list",
         "followupboss_send_email_events",
         "followupboss_send_event",
         "followupboss_trigger_automation",
@@ -4381,6 +4520,15 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         )
     )["smartlists"][0]["id"] == 76
     assert (await _call_public_tool(server, tools, "followupboss_get_smart_list", 77))["id"] == 77
+    smart_list_people = await _call_public_tool(
+        server,
+        tools,
+        "followupboss_search_people_in_smart_list",
+        "Active Buyers",
+        limit=1,
+    )
+    assert smart_list_people["smartlist"]["id"] == 76
+    assert smart_list_people["people"][0]["id"] == 2
     assert (
         await _call_public_tool(
             server,

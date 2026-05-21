@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
 from pathlib import Path
@@ -59,6 +59,8 @@ from followupboss_mcp.battle_tests import (
     sample_battle_test_conversations,
     sample_battle_test_scenarios,
     scenario_by_id,
+    smart_list_grounding_battle_test_conversations,
+    smart_list_grounding_battle_test_scenarios,
     write_battle_test_run_artifact,
 )
 from followupboss_mcp.models.appointments import AppointmentListRequest, AppointmentRecord
@@ -204,6 +206,18 @@ class StubSmartListsService:
     ) -> PageResult[SmartListRecord]:
         self.requests.append(request or SmartListListRequest())
         return self.page
+
+
+@dataclass
+class PaginatedStubSmartListsService(StubSmartListsService):
+    pages: list[PageResult[SmartListRecord]] = field(default_factory=list)
+
+    async def list_smart_lists(
+        self, request: SmartListListRequest | None = None
+    ) -> PageResult[SmartListRecord]:
+        self.requests.append(request or SmartListListRequest())
+        page_index = min(len(self.requests) - 1, len(self.pages) - 1)
+        return self.pages[page_index]
 
 
 @dataclass
@@ -440,6 +454,47 @@ def test_expanded_conversation_corpus_adds_cross_surface_prompts() -> None:
         turn.api_oracle.kind is BattleTestOracleKind.TEXT_MESSAGES
         for conversation in conversations
         for turn in conversation.turns
+    )
+
+
+def test_smart_list_grounding_corpus_targets_zillow_regression() -> None:
+    scenarios = smart_list_grounding_battle_test_scenarios()
+    conversations = smart_list_grounding_battle_test_conversations()
+
+    assert [scenario.id for scenario in scenarios] == [
+        "BT-SMARTLIST-001",
+        "BT-SMARTLIST-002",
+        "BT-SMARTLIST-003",
+        "BT-SMARTLIST-004",
+    ]
+    assert not any("Zillow" in prompt for prompt in scenarios[0].prompt_variants)
+    assert not any("lead" in prompt.casefold() for prompt in scenarios[0].prompt_variants)
+    assert scenario_by_id("BT-SMARTLIST-002").api_oracle.kind is (
+        BattleTestOracleKind.NAMED_SMART_LIST_PEOPLE
+    )
+    assert scenario_by_id("BT-SMARTLIST-002").api_oracle.smart_list_name == (
+        "Eligible For Transfer"
+    )
+    assert scenario_by_id("BT-SMARTLIST-002").expected_mcp.allowed_tools == (
+        "followupboss_search_people_in_smart_list",
+    )
+    assert scenario_by_id("BT-SMARTLIST-002").expected_mcp.required_argument_keys == (
+        "smart_list_name",
+        "source",
+    )
+    assert len(scenario_by_id("BT-SMARTLIST-002").prompt_variants) == 20
+    assert scenario_by_id("BT-SMARTLIST-003").grade is BattleTestGrade.MUST_CLARIFY
+    assert [conversation.kind for conversation in conversations] == [
+        BattleTestConversationKind.MULTI_ASK,
+        BattleTestConversationKind.MULTI_TURN,
+        BattleTestConversationKind.MULTI_TURN,
+        BattleTestConversationKind.MULTI_TURN,
+    ]
+    assert (
+        smart_list_grounding_battle_test_conversations(BattleTestConversationKind.MULTI_ASK)[0]
+        .turns[1]
+        .api_oracle.kind
+        is BattleTestOracleKind.NAMED_SMART_LIST_PEOPLE
     )
 
 
@@ -1096,6 +1151,420 @@ async def test_people_search_oracle_uses_required_smart_list_id() -> None:
 
     assert evaluation.passed is True
     assert services.people.requests[0].smart_list_id == 1
+
+
+@pytest.mark.asyncio
+async def test_named_smart_list_grounding_resolves_exact_list_and_people() -> None:
+    scenario = scenario_by_id("BT-SMARTLIST-002")
+    services = _services(
+        smart_lists=_smart_lists_page(
+            SmartListRecord.model_validate({"id": 77, "name": "🚨 Eligible For Transfer ✅"})
+        ),
+        people=_people_page(
+            PersonRecord.model_validate(
+                {
+                    "id": 21,
+                    "name": "Jane Zillow",
+                    "phones": [{"value": "(555) 000-1111"}],
+                }
+            )
+        ),
+    )
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        selected_tool="followupboss_search_people_in_smart_list",
+        arguments={"smart_list_name": "Eligible For Transfer", "source": "Zillow", "limit": 10},
+        response={
+            "smartlist": {"id": 77, "name": "🚨 Eligible For Transfer ✅"},
+            "people": [{"id": 21, "name": "Jane Zillow"}],
+        },
+        assistant_message="Jane Zillow | (555) 000-1111",
+    )
+
+    evaluation = await ReadOnlyBattleTestOracle(services).evaluate(scenario, transcript)
+
+    assert evaluation.passed is True
+    assert services.smart_lists.requests[0].include_all is True
+    assert services.people.requests[0].smart_list_id == 77
+    assert services.people.requests[0].source == "Zillow"
+    assert services.people.requests[0].limit == 10
+    assert evaluation.oracle_snapshot is not None
+    assert evaluation.oracle_snapshot.expected["allowed_answer_phones"] == ["5550001111"]
+
+
+@pytest.mark.asyncio
+async def test_named_smart_list_grounding_resolves_list_from_later_page() -> None:
+    scenario = scenario_by_id("BT-SMARTLIST-002")
+    paginated_smart_lists = PaginatedStubSmartListsService(
+        pages=[
+            PageResult(
+                items=[SmartListRecord.model_validate({"id": 1, "name": "First Page"})],
+                metadata=PaginationMetadata(
+                    count=1,
+                    limit=1,
+                    next_token=None,
+                    next_link=None,
+                    offset=0,
+                    total=2,
+                ),
+            ),
+            PageResult(
+                items=[SmartListRecord.model_validate({"id": 77, "name": "Eligible For Transfer"})],
+                metadata=PaginationMetadata(
+                    count=1,
+                    limit=1,
+                    next_token=None,
+                    next_link=None,
+                    offset=1,
+                    total=2,
+                ),
+            ),
+        ]
+    )
+    services = StubBattleTestServices(
+        identity=StubIdentityService(7),
+        people=StubPeopleService(
+            _people_page(PersonRecord.model_validate({"id": 21, "name": "Jane Zillow"}))
+        ),
+        tasks=StubTasksService(_tasks_page()),
+        smart_lists=paginated_smart_lists,
+    )
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        selected_tool="followupboss_search_people_in_smart_list",
+        arguments={"smart_list_name": "Eligible For Transfer", "source": "Zillow"},
+        response={
+            "smartlist": {"id": 77, "name": "Eligible For Transfer"},
+            "people": [{"id": 21, "name": "Jane Zillow"}],
+        },
+    )
+
+    evaluation = await ReadOnlyBattleTestOracle(services).evaluate(scenario, transcript)
+
+    assert evaluation.passed is True
+    assert [request.offset for request in paginated_smart_lists.requests] == [0, 1]
+
+
+@pytest.mark.asyncio
+async def test_named_smart_list_grounding_rejects_off_list_response() -> None:
+    scenario = scenario_by_id("BT-SMARTLIST-002")
+    services = _services(
+        smart_lists=_smart_lists_page(
+            SmartListRecord.model_validate({"id": 77, "name": " Eligible   For Transfer "})
+        ),
+        people=_people_page(PersonRecord.model_validate({"id": 21, "name": "Jane Zillow"})),
+    )
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        selected_tool="followupboss_search_people_in_smart_list",
+        arguments={"smart_list_name": "Eligible For Transfer", "source": "Zillow"},
+        response={
+            "smartlist": {"id": 77, "name": "Eligible For Transfer"},
+            "people": [{"id": 999, "name": "Off List"}],
+        },
+    )
+
+    evaluation = await ReadOnlyBattleTestOracle(services).evaluate(scenario, transcript)
+
+    assert evaluation.passed is False
+    assert "Expected people ids [21], got [999]." in evaluation.failures
+
+
+@pytest.mark.asyncio
+async def test_named_smart_list_grounding_rejects_answer_leakage() -> None:
+    scenario = scenario_by_id("BT-SMARTLIST-002")
+    services = _services(
+        smart_lists=_smart_lists_page(
+            SmartListRecord.model_validate({"id": 77, "name": "Eligible For Transfer"})
+        ),
+        people=_people_page(
+            PersonRecord.model_validate(
+                {
+                    "id": 21,
+                    "name": "Jane Zillow",
+                    "phones": [{"value": "555-000-1111"}],
+                }
+            )
+        ),
+    )
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        selected_tool="followupboss_search_people_in_smart_list",
+        arguments={"smart_list_name": "Eligible For Transfer", "source": "Zillow"},
+        response={
+            "smartlist": {"id": 77, "name": "Eligible For Transfer"},
+            "people": [{"id": 21, "name": "Jane Zillow"}],
+        },
+        assistant_message="Jane Zillow | 555-000-1111\nOff List Lead | 555-999-0000",
+    )
+
+    evaluation = await ReadOnlyBattleTestOracle(services).evaluate(scenario, transcript)
+
+    assert evaluation.passed is False
+    assert any("off-list phone" in failure for failure in evaluation.failures)
+    assert any("off-list name" in failure for failure in evaluation.failures)
+
+
+@pytest.mark.asyncio
+async def test_named_smart_list_grounding_reports_wrong_helper_provenance() -> None:
+    base_scenario = scenario_by_id("BT-SMARTLIST-002")
+    scenario = base_scenario.model_copy(
+        update={
+            "api_oracle": ApiOracleSpec(
+                kind=BattleTestOracleKind.NAMED_SMART_LIST_PEOPLE,
+                description="No final-answer grounding for this shape.",
+                smart_list_name="Eligible For Transfer",
+                answer_must_be_grounded=False,
+            )
+        }
+    )
+    services = _services(
+        smart_lists=_smart_lists_page(
+            SmartListRecord.model_validate({"id": 77, "name": "Eligible For Transfer"})
+        ),
+        people=_people_page(PersonRecord.model_validate({"id": 21, "name": "Jane Zillow"})),
+    )
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        selected_tool="followupboss_search_people_in_smart_list",
+        arguments={"smart_list_name": "Eligible For Transfer", "source": "Zillow"},
+        response={
+            "smartlist": {"id": 78, "name": "Wrong List"},
+            "people": [{"id": 21, "name": "Jane Zillow"}],
+        },
+        assistant_message="Off List Lead | 555-999-0000",
+    )
+
+    evaluation = await ReadOnlyBattleTestOracle(services).evaluate(scenario, transcript)
+
+    assert evaluation.passed is False
+    assert evaluation.failures == ["Expected helper smartlist id 77, got 78."]
+
+
+@pytest.mark.asyncio
+async def test_named_smart_list_grounding_still_catches_broad_wrong_id_path() -> None:
+    base_scenario = scenario_by_id("BT-SMARTLIST-002")
+    scenario = base_scenario.model_copy(
+        update={
+            "expected_mcp": ExpectedMcpRoute(
+                allowed_tools=("followupboss_search_people",),
+                required_argument_keys=("smart_list_id",),
+            )
+        }
+    )
+    services = _services(
+        smart_lists=_smart_lists_page(
+            SmartListRecord.model_validate({"id": 77, "name": "Eligible For Transfer"})
+        ),
+        people=_people_page(PersonRecord.model_validate({"id": 21, "name": "Jane Zillow"})),
+    )
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        selected_tool="followupboss_search_people",
+        arguments={"smart_list_id": 78},
+        response={"people": [{"id": 21, "name": "Jane Zillow"}]},
+    )
+
+    evaluation = await ReadOnlyBattleTestOracle(services).evaluate(scenario, transcript)
+
+    assert evaluation.passed is False
+    assert evaluation.failures == [
+        "Expected named smart-list search to use smart_list_id 77, got 78."
+    ]
+
+
+@pytest.mark.asyncio
+async def test_named_smart_list_grounding_accepts_exact_id_fallback_path() -> None:
+    base_scenario = scenario_by_id("BT-SMARTLIST-002")
+    scenario = base_scenario.model_copy(
+        update={
+            "expected_mcp": ExpectedMcpRoute(
+                allowed_tools=("followupboss_search_people",),
+                required_argument_keys=("smart_list_id",),
+            )
+        }
+    )
+    services = _services(
+        smart_lists=_smart_lists_page(
+            SmartListRecord.model_validate({"id": 77, "name": "Eligible For Transfer"})
+        ),
+        people=_people_page(PersonRecord.model_validate({"id": 21, "name": "Jane Zillow"})),
+    )
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        selected_tool="followupboss_search_people",
+        arguments={"smart_list_id": 77},
+        response={"people": [{"id": 21, "name": "Jane Zillow"}]},
+    )
+
+    evaluation = await ReadOnlyBattleTestOracle(services).evaluate(scenario, transcript)
+
+    assert evaluation.passed is True
+
+
+@pytest.mark.asyncio
+async def test_named_smart_list_grounding_rejects_unexpected_tool_after_custom_route() -> None:
+    base_scenario = scenario_by_id("BT-SMARTLIST-002")
+    scenario = base_scenario.model_copy(
+        update={"expected_mcp": ExpectedMcpRoute(allowed_tools=("unexpected_tool",))}
+    )
+    services = _services(
+        smart_lists=_smart_lists_page(
+            SmartListRecord.model_validate({"id": 77, "name": "Eligible For Transfer"})
+        ),
+        people=_people_page(PersonRecord.model_validate({"id": 21, "name": "Jane Zillow"})),
+    )
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        selected_tool="unexpected_tool",
+        arguments={},
+        response={"people": [{"id": 21, "name": "Jane Zillow"}]},
+    )
+
+    evaluation = await ReadOnlyBattleTestOracle(services).evaluate(scenario, transcript)
+
+    assert evaluation.passed is False
+    assert (
+        "Expected named smart-list people scenario to use "
+        "followupboss_search_people_in_smart_list or followupboss_search_people."
+    ) in evaluation.failures
+
+
+def test_named_smart_list_helper_route_private_compare_failure_edges() -> None:
+    compare_helper = cast(
+        "Callable[..., list[str]]",
+        getattr(battle_tests_module, "_compare_named_smart_list_helper_route"),  # noqa: B009
+    )
+    transcript = BattleTestTranscript(
+        scenario_id="BT-SMARTLIST-PRIVATE",
+        prompt="Show Zillow leads in Eligible For Transfer",
+        selected_tool="followupboss_search_people_in_smart_list",
+        arguments={"smart_list_name": "Wrong List"},
+        response={},
+    )
+
+    wrong_name_failures = compare_helper(
+        transcript,
+        expected_smart_list_id=77,
+        expected_smart_list_name="Eligible For Transfer",
+    )
+    missing_expected_name_failures = compare_helper(
+        transcript,
+        expected_smart_list_id=77,
+        expected_smart_list_name=None,
+    )
+
+    assert "Expected helper smart_list_name 'Eligible For Transfer', got 'Wrong List'." in (
+        wrong_name_failures
+    )
+    assert "Expected helper response to include a smartlist object." in wrong_name_failures
+    assert (
+        "Expected named smart-list oracle snapshot to include a list name."
+        in missing_expected_name_failures
+    )
+
+
+@pytest.mark.asyncio
+async def test_named_smart_list_grounding_requires_configured_list_name() -> None:
+    base_scenario = scenario_by_id("BT-SMARTLIST-002")
+    scenario = base_scenario.model_copy(
+        update={
+            "api_oracle": ApiOracleSpec(
+                kind=BattleTestOracleKind.NAMED_SMART_LIST_PEOPLE,
+                description="Missing list name.",
+            )
+        }
+    )
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        selected_tool="followupboss_search_people_in_smart_list",
+        arguments={"smart_list_name": "Eligible For Transfer", "source": "Zillow"},
+        response={"smartlist": {"id": 77}, "people": []},
+    )
+
+    evaluation = await ReadOnlyBattleTestOracle(_services()).evaluate(scenario, transcript)
+
+    assert evaluation.passed is False
+    assert evaluation.failures == [
+        "API oracle failed: Named smart-list oracle requires a smart_list_name."
+    ]
+
+
+@pytest.mark.asyncio
+async def test_named_smart_list_grounding_fails_missing_or_ambiguous_list() -> None:
+    scenario = scenario_by_id("BT-SMARTLIST-002")
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        selected_tool="followupboss_search_people_in_smart_list",
+        arguments={"smart_list_name": "Eligible For Transfer", "source": "Zillow"},
+        response={"smartlist": {"id": 77}, "people": []},
+    )
+    missing_services = _services()
+    ambiguous_services = _services(
+        smart_lists=_smart_lists_page(
+            SmartListRecord.model_validate({"id": 77, "name": "Eligible For Transfer"}),
+            SmartListRecord.model_validate({"id": 78, "name": "eligible for transfer"}),
+        ),
+    )
+
+    missing = await ReadOnlyBattleTestOracle(missing_services).evaluate(scenario, transcript)
+    ambiguous = await ReadOnlyBattleTestOracle(ambiguous_services).evaluate(
+        scenario,
+        transcript,
+    )
+
+    assert missing.passed is False
+    assert missing.failures == [
+        "API oracle failed: Smart list named 'Eligible For Transfer' was not found."
+    ]
+    assert ambiguous.passed is False
+    assert ambiguous.failures == [
+        "API oracle failed: Smart list named 'Eligible For Transfer' is ambiguous; "
+        "matched IDs [77, 78]."
+    ]
+
+
+def test_named_smart_list_answer_private_extractors_cover_edge_shapes() -> None:
+    phone_tokens = cast(
+        "Callable[[str], tuple[str, ...]]",
+        getattr(battle_tests_module, "_phone_like_tokens"),  # noqa: B009
+    )
+    table_names = cast(
+        "Callable[[str], tuple[str, ...]]",
+        getattr(battle_tests_module, "_table_like_answer_names"),  # noqa: B009
+    )
+    person_phones = cast(
+        "Callable[[Sequence[PersonRecord]], list[JsonValue]]",
+        getattr(battle_tests_module, "_person_answer_phones"),  # noqa: B009
+    )
+    people = [
+        PersonRecord.model_validate(
+            {
+                "id": 1,
+                "phones": [
+                    {"value": "123"},
+                    {"value": "555-000-1111"},
+                    {"value": "(555) 000-1111"},
+                ],
+            }
+        )
+    ]
+
+    assert phone_tokens("Call abc 123 x 555-111-2222 and 999") == ("555-111-2222",)
+    assert table_names(
+        "\nName | Phone\n--- | ---\nNo pipe\n555 | Phone\nValid Person | 555-111-2222"
+    ) == ("Valid Person",)
+    assert person_phones(people) == ["5550001111"]
 
 
 @pytest.mark.asyncio

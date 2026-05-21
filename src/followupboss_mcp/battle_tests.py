@@ -57,6 +57,7 @@ class BattleTestOracleKind(StrEnum):
     MY_OVERDUE_TASKS = "my_overdue_tasks"
     MY_TASKS_DUE_TODAY = "my_tasks_due_today"
     MY_UPCOMING_TASKS = "my_upcoming_tasks"
+    NAMED_SMART_LIST_PEOPLE = "named_smart_list_people"
     PEOPLE_SEARCH = "people_search"
     PERSON_DUPLICATE_CHECK = "person_duplicate_check"
     ROUTE_ONLY_PENDING = "route_only_pending"
@@ -141,6 +142,8 @@ class ApiOracleSpec(RequestModel):
 
     kind: BattleTestOracleKind
     description: str
+    smart_list_name: str | None = None
+    answer_must_be_grounded: bool = False
 
 
 class BattleTestScenario(RequestModel):
@@ -673,6 +676,16 @@ def expanded_read_only_battle_test_scenarios() -> tuple[BattleTestScenario, ...]
     return _READ_ONLY_SCENARIOS + _EXPANDED_READ_ONLY_SCENARIOS
 
 
+def smart_list_grounding_battle_test_scenarios() -> tuple[BattleTestScenario, ...]:
+    """Return targeted named-smart-list grounding regression scenarios.
+
+    Returns:
+        Scenarios that encode the hard invariant that Zillow follow-up prompts
+        grounded to `Eligible For Transfer` must not return off-list people.
+    """
+    return _SMART_LIST_GROUNDING_SCENARIOS
+
+
 def read_only_battle_test_conversations(
     kind: BattleTestConversationKind | None = None,
 ) -> tuple[BattleTestConversationScenario, ...]:
@@ -707,6 +720,26 @@ def expanded_battle_test_conversations(
     if kind is None:
         return conversations
     return tuple(conversation for conversation in conversations if conversation.kind is kind)
+
+
+def smart_list_grounding_battle_test_conversations(
+    kind: BattleTestConversationKind | None = None,
+) -> tuple[BattleTestConversationScenario, ...]:
+    """Return targeted named-smart-list grounding conversations.
+
+    Args:
+        kind: Optional conversation kind to filter by.
+
+    Returns:
+        Conversations that exercise direct and memory-style named-list routing.
+    """
+    if kind is None:
+        return _SMART_LIST_GROUNDING_CONVERSATIONS
+    return tuple(
+        conversation
+        for conversation in _SMART_LIST_GROUNDING_CONVERSATIONS
+        if conversation.kind is kind
+    )
 
 
 def expand_battle_test_prompt_variants(
@@ -851,7 +884,13 @@ def scenario_by_id(scenario_id: str) -> BattleTestScenario:
     Raises:
         KeyError: If `scenario_id` is not part of the read-only corpus.
     """
-    scenarios = {scenario.id: scenario for scenario in expanded_read_only_battle_test_scenarios()}
+    scenarios = {
+        scenario.id: scenario
+        for scenario in (
+            expanded_read_only_battle_test_scenarios()
+            + smart_list_grounding_battle_test_scenarios()
+        )
+    }
     return scenarios[scenario_id]
 
 
@@ -1386,6 +1425,8 @@ class ReadOnlyBattleTestOracle:
                 response_key="smartlists",
                 expected_key="smart_list_ids",
             )
+        if scenario.api_oracle.kind is BattleTestOracleKind.NAMED_SMART_LIST_PEOPLE:
+            return await self._named_smart_list_people_snapshot(scenario, transcript)
         if scenario.api_oracle.kind is BattleTestOracleKind.PEOPLE_SEARCH:
             return await self._page_snapshot(
                 scenario,
@@ -1685,6 +1726,76 @@ class ReadOnlyBattleTestOracle:
             },
         )
 
+    async def _named_smart_list_people_snapshot(
+        self,
+        scenario: BattleTestScenario,
+        transcript: BattleTestTranscript,
+    ) -> BattleTestOracleSnapshot:
+        """Build direct API truth for people inside one named smart list.
+
+        Args:
+            scenario: Scenario contract with `api_oracle.smart_list_name`.
+            transcript: Captured people-search transcript whose `smart_list_id`
+                must match the resolved list.
+
+        Returns:
+            A stable snapshot containing resolved list identity and allowed
+            person identifiers for response and answer grounding.
+
+        Raises:
+            RuntimeError: If the scenario does not name a smart list, or if the
+                list name is missing or ambiguous in Follow Up Boss.
+        """
+        smart_list_name = scenario.api_oracle.smart_list_name
+        if smart_list_name is None:
+            raise RuntimeError("Named smart-list oracle requires a smart_list_name.")
+        smart_list = _resolve_named_smart_list(
+            await self._list_all_smart_lists(),
+            smart_list_name,
+        )
+        page = await self._services.people.search_people(
+            PeopleSearchRequest(
+                fields=_optional_string_list(transcript.arguments.get("fields")),
+                limit=_optional_int(transcript.arguments.get("limit")),
+                next_token=_optional_string(transcript.arguments.get("next_token")),
+                offset=_optional_int(transcript.arguments.get("offset")),
+                source=_optional_string(transcript.arguments.get("source")),
+                stage=_optional_string(transcript.arguments.get("stage")),
+                smart_list_id=smart_list.id,
+            )
+        )
+        return BattleTestOracleSnapshot(
+            scenario_id=scenario.id,
+            kind=scenario.api_oracle.kind,
+            automated=True,
+            expected={
+                "response_key": "people",
+                "smart_list_id": smart_list.id,
+                "smart_list_name": smart_list.name or smart_list_name,
+                "person_ids": [_record_id(person) for person in page.items],
+                "answer_must_be_grounded": scenario.api_oracle.answer_must_be_grounded,
+                "allowed_answer_names": _person_answer_names(page.items),
+                "allowed_answer_phones": _person_answer_phones(page.items),
+            },
+        )
+
+    async def _list_all_smart_lists(self) -> list[SmartListRecord]:
+        """List every visible smart list for named-list oracle resolution.
+
+        Returns:
+            Smart-list records across all available pages.
+        """
+        smart_lists: list[SmartListRecord] = []
+        offset = 0
+        while True:
+            page = await self._services.smart_lists.list_smart_lists(
+                SmartListListRequest(include_all=True, limit=100, offset=offset)
+            )
+            smart_lists.extend(page.items)
+            if not page.metadata.has_next() or page.metadata.count == 0:
+                return smart_lists
+            offset = page.metadata.offset + page.metadata.count
+
     async def _duplicate_person_snapshot(
         self,
         scenario: BattleTestScenario,
@@ -1827,7 +1938,6 @@ def _compare_transcript_to_oracle(
     if snapshot.kind in {
         BattleTestOracleKind.APPOINTMENTS,
         BattleTestOracleKind.CALLS,
-        BattleTestOracleKind.PEOPLE_SEARCH,
         BattleTestOracleKind.SMART_LISTS,
         BattleTestOracleKind.TEMPLATES,
         BattleTestOracleKind.TEXT_MESSAGE_TEMPLATES,
@@ -1835,6 +1945,10 @@ def _compare_transcript_to_oracle(
         BattleTestOracleKind.UNCLAIMED_PEOPLE,
     }:
         return _compare_page_response(transcript, snapshot)
+    if snapshot.kind is BattleTestOracleKind.PEOPLE_SEARCH:
+        return _compare_page_response(transcript, snapshot)
+    if snapshot.kind is BattleTestOracleKind.NAMED_SMART_LIST_PEOPLE:
+        return _compare_named_smart_list_people_response(transcript, snapshot)
     if snapshot.kind is BattleTestOracleKind.PERSON_DUPLICATE_CHECK:
         return _compare_duplicate_response(transcript, snapshot)
     if snapshot.kind is BattleTestOracleKind.EXPLICIT_NOTE:
@@ -1901,6 +2015,104 @@ def _compare_page_response(
     if actual_ids != expected_ids:
         return [f"Expected {response_key} ids {expected_ids!r}, got {actual_ids!r}."]
     return []
+
+
+def _compare_named_smart_list_people_response(
+    transcript: BattleTestTranscript,
+    snapshot: BattleTestOracleSnapshot,
+) -> list[str]:
+    """Compare a named-smart-list people response to resolved API truth."""
+    failures: list[str] = []
+    expected_smart_list_id = snapshot.expected.get("smart_list_id")
+    expected_smart_list_name = snapshot.expected.get("smart_list_name")
+    if transcript.selected_tool == "followupboss_search_people_in_smart_list":
+        failures.extend(
+            _compare_named_smart_list_helper_route(
+                transcript,
+                expected_smart_list_id=expected_smart_list_id,
+                expected_smart_list_name=expected_smart_list_name,
+            )
+        )
+    elif transcript.selected_tool == "followupboss_search_people":
+        actual_smart_list_id = _optional_int(transcript.arguments.get("smart_list_id"))
+        if actual_smart_list_id != expected_smart_list_id:
+            failures.append(
+                f"Expected named smart-list search to use smart_list_id "
+                f"{expected_smart_list_id!r}, got {actual_smart_list_id!r}."
+            )
+    else:
+        failures.append(
+            "Expected named smart-list people scenario to use "
+            "followupboss_search_people_in_smart_list or followupboss_search_people."
+        )
+    failures.extend(_compare_page_response(transcript, snapshot))
+    if snapshot.expected.get("answer_must_be_grounded") is True:
+        failures.extend(_compare_assistant_answer_grounding(transcript, snapshot))
+    return failures
+
+
+def _compare_named_smart_list_helper_route(
+    transcript: BattleTestTranscript,
+    *,
+    expected_smart_list_id: JsonValue,
+    expected_smart_list_name: JsonValue,
+) -> list[str]:
+    """Compare helper arguments and provenance for a named smart-list search."""
+    failures: list[str] = []
+    actual_name = _optional_string(transcript.arguments.get("smart_list_name"))
+    if not isinstance(expected_smart_list_name, str):
+        failures.append("Expected named smart-list oracle snapshot to include a list name.")
+    elif actual_name is None or _normalize_smart_list_name(
+        actual_name
+    ) != _normalize_smart_list_name(expected_smart_list_name):
+        failures.append(
+            f"Expected helper smart_list_name {expected_smart_list_name!r}, got {actual_name!r}."
+        )
+    response = _mapping_or_none(transcript.response)
+    smart_list = response.get("smartlist") if response is not None else None
+    if not isinstance(smart_list, dict):
+        failures.append("Expected helper response to include a smartlist object.")
+    elif smart_list.get("id") != expected_smart_list_id:
+        failures.append(
+            f"Expected helper smartlist id {expected_smart_list_id!r}, "
+            f"got {smart_list.get('id')!r}."
+        )
+    return failures
+
+
+def _compare_assistant_answer_grounding(
+    transcript: BattleTestTranscript,
+    snapshot: BattleTestOracleSnapshot,
+) -> list[str]:
+    """Verify assistant-visible answer identifiers are grounded in oracle people."""
+    message = transcript.assistant_message
+    if not message:
+        return []
+    allowed_phone_values = snapshot.expected.get("allowed_answer_phones")
+    allowed_name_values = snapshot.expected.get("allowed_answer_names")
+    allowed_phone_list = allowed_phone_values if isinstance(allowed_phone_values, list) else []
+    allowed_name_list = allowed_name_values if isinstance(allowed_name_values, list) else []
+    allowed_phones = {
+        str(phone) for phone in allowed_phone_list if isinstance(phone, str) and phone
+    }
+    allowed_names = {
+        str(name).casefold() for name in allowed_name_list if isinstance(name, str) and name
+    }
+    failures: list[str] = []
+    for phone in _phone_like_tokens(message):
+        normalized_phone = _normalize_phone(phone)
+        if normalized_phone and normalized_phone not in allowed_phones:
+            failures.append(
+                f"Assistant answer mentioned off-list phone {phone!r} for named smart-list "
+                "scenario."
+            )
+    for row_name in _table_like_answer_names(message):
+        if row_name.casefold() not in allowed_names:
+            failures.append(
+                f"Assistant answer mentioned off-list name {row_name!r} for named smart-list "
+                "scenario."
+            )
+    return failures
 
 
 def _compare_duplicate_response(
@@ -2012,6 +2224,124 @@ def _optional_bool(value: JsonValue) -> bool | None:
     """Return an optional boolean transcript argument."""
     if isinstance(value, bool):
         return value
+    return None
+
+
+def _resolve_named_smart_list(
+    smart_lists: Sequence[SmartListRecord],
+    smart_list_name: str,
+) -> SmartListRecord:
+    """Resolve a smart list by exact normalized name.
+
+    Args:
+        smart_lists: Candidate smart lists returned by Follow Up Boss.
+        smart_list_name: User-facing list name to resolve.
+
+    Returns:
+        The uniquely matching smart list.
+
+    Raises:
+        RuntimeError: If no list or more than one list matches the normalized
+            name.
+    """
+    target = _normalize_smart_list_name(smart_list_name)
+    matches = [
+        smart_list
+        for smart_list in smart_lists
+        if _normalize_smart_list_name(smart_list.name or "") == target
+    ]
+    if not matches:
+        raise RuntimeError(f"Smart list named {smart_list_name!r} was not found.")
+    if len(matches) > 1:
+        match_ids = [smart_list.id for smart_list in matches]
+        raise RuntimeError(
+            f"Smart list named {smart_list_name!r} is ambiguous; matched IDs {match_ids!r}."
+        )
+    return matches[0]
+
+
+def _normalize_smart_list_name(value: str) -> str:
+    """Normalize a smart-list name for exact matching."""
+    collapsed = " ".join(value.casefold().strip().split())
+    return _strip_decorative_smart_list_name_edges(collapsed)
+
+
+def _strip_decorative_smart_list_name_edges(value: str) -> str:
+    """Remove decorative symbols from the edges of a smart-list name."""
+    start = 0
+    end = len(value)
+    while start < end and not value[start].isalnum():
+        start += 1
+    while end > start and not value[end - 1].isalnum():
+        end -= 1
+    return value[start:end].strip()
+
+
+def _person_answer_names(people: Sequence[PersonRecord]) -> list[JsonValue]:
+    """Return person names allowed in a grounded assistant answer."""
+    names: list[JsonValue] = []
+    for person in people:
+        for name in (person.name, _join_person_name(person.first_name, person.last_name)):
+            if name and name not in names:
+                names.append(name)
+    return names
+
+
+def _person_answer_phones(people: Sequence[PersonRecord]) -> list[JsonValue]:
+    """Return normalized phone numbers allowed in a grounded assistant answer."""
+    phones: list[JsonValue] = []
+    for person in people:
+        for phone in person.phones:
+            normalized = _normalize_phone(phone.value)
+            if normalized and normalized not in phones:
+                phones.append(normalized)
+    return phones
+
+
+def _join_person_name(first_name: str | None, last_name: str | None) -> str | None:
+    """Join first and last names when either component is present."""
+    name = " ".join(part for part in (first_name, last_name) if part)
+    return name or None
+
+
+def _phone_like_tokens(value: str) -> tuple[str, ...]:
+    """Extract phone-like tokens from assistant text."""
+    tokens: list[str] = []
+    current: list[str] = []
+    for character in value:
+        if character.isdigit() or character in {"(", ")", "-", ".", " ", "+"}:
+            current.append(character)
+            continue
+        token = "".join(current).strip()
+        if _normalize_phone(token):
+            tokens.append(token)
+        current = []
+    token = "".join(current).strip()
+    if _normalize_phone(token):
+        tokens.append(token)
+    return tuple(tokens)
+
+
+def _table_like_answer_names(value: str) -> tuple[str, ...]:
+    """Extract likely table-row names from assistant answer text."""
+    names: list[str] = []
+    for raw_line in value.splitlines():
+        line = raw_line.strip()
+        if not line or "|" not in line:
+            continue
+        first_cell = line.split("|", 1)[0].strip()
+        if not first_cell or first_cell.casefold() in {"name", "---"}:
+            continue
+        if any(character.isalpha() for character in first_cell):
+            names.append(first_cell)
+    return tuple(names)
+
+
+def _normalize_phone(value: str) -> str | None:
+    """Normalize a phone string to digits for answer grounding."""
+    digits = "".join(character for character in value if character.isdigit())
+    if len(digits) >= 7:
+        return digits
     return None
 
 
@@ -2497,11 +2827,151 @@ _EXPANDED_READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
 )
 
 
+_SMART_LIST_GROUNDING_SCENARIOS: tuple[BattleTestScenario, ...] = (
+    BattleTestScenario(
+        id="BT-SMARTLIST-001",
+        grade=BattleTestGrade.MUST_ROUTE,
+        prompt_variants=(
+            "Show me the Eligible For Transfer smart-list metadata only.",
+            "List the saved smart list named Eligible For Transfer, not its people.",
+            "Look up available smart lists so I can confirm Eligible For Transfer exists.",
+            "Show smart-list names and IDs for Eligible For Transfer only.",
+            "Pull smart-list metadata for Eligible For Transfer without searching people.",
+        ),
+        expected_mcp=ExpectedMcpRoute(allowed_tools=("followupboss_list_smart_lists",)),
+        api_oracle=ApiOracleSpec(
+            kind=BattleTestOracleKind.SMART_LISTS,
+            description="Direct smart-list query used to resolve Eligible For Transfer.",
+        ),
+        response_assertions=("response.smartlists contains Eligible For Transfer",),
+    ),
+    BattleTestScenario(
+        id="BT-SMARTLIST-002",
+        grade=BattleTestGrade.MUST_REQUIRE_ID,
+        prompt_variants=(
+            "What Zillow leads do I need to follow up with in Eligible For Transfer?",
+            "Show only Zillow follow-up leads from the Eligible For Transfer smart list.",
+            "Which Eligible For Transfer Zillow leads need follow-up?",
+            "Pull Zillow leads to follow up with, but only from Eligible For Transfer.",
+            "Use the Eligible For Transfer smart list for Zillow leads I should call.",
+            "How many Zillow leads are in Eligible For Transfer?",
+            "Give me the people in Eligible For Transfer that came from Zillow.",
+            "List Eligible For Transfer leads from Zillow only.",
+            "Who should I work from Eligible For Transfer for Zillow?",
+            "Show Zillow source people scoped to Eligible For Transfer.",
+            "In the Eligible For Transfer smart list, which Zillow leads need attention?",
+            "Pull the Eligible For Transfer list and only show Zillow leads.",
+            "Eligible For Transfer Zillow follow-up queue please.",
+            "Find Zillow leads inside Eligible For Transfer, not outside it.",
+            "Show me Zillow contacts from the Eligible For Transfer list.",
+            "Which Zillow contacts in Eligible For Transfer need a call?",
+            "Use Eligible For Transfer as the boundary for Zillow follow-ups.",
+            "From Eligible For Transfer, show leads where source is Zillow.",
+            "For my Zillow follow-up block, use Eligible For Transfer only.",
+            "I need the Zillow leads within Eligible For Transfer.",
+        ),
+        expected_mcp=ExpectedMcpRoute(
+            allowed_tools=("followupboss_search_people_in_smart_list",),
+            forbidden_tools=(
+                "followupboss_get_latest_lead",
+                "followupboss_search_people",
+                "followupboss_list_smart_lists",
+            ),
+            required_argument_keys=("smart_list_name", "source"),
+        ),
+        api_oracle=ApiOracleSpec(
+            kind=BattleTestOracleKind.NAMED_SMART_LIST_PEOPLE,
+            description=(
+                "Resolve Eligible For Transfer by exact smart-list name and verify the "
+                "people response and visible answer are a subset of that list."
+            ),
+            smart_list_name="Eligible For Transfer",
+            answer_must_be_grounded=True,
+        ),
+        response_assertions=(
+            "request.smart_list_name == api_oracle.smart_list_name",
+            "response.smartlist.id == api_oracle.smart_list_id",
+            "response.people[*].id == api_oracle.person_ids",
+            "assistant_answer contains no off-list names or phones",
+        ),
+    ),
+    BattleTestScenario(
+        id="BT-SMARTLIST-003",
+        grade=BattleTestGrade.MUST_CLARIFY,
+        prompt_variants=(
+            "What Zillow leads do I need to follow up with?",
+            "Show Zillow leads I should work next.",
+            "Which Zillow leads need follow-up?",
+            "Pull my Zillow follow-up list.",
+            "Any Zillow leads I should call?",
+        ),
+        expected_mcp=ExpectedMcpRoute(
+            forbidden_tools=(
+                "followupboss_search_people_in_smart_list",
+                "followupboss_search_people",
+                "followupboss_get_latest_lead",
+            )
+        ),
+        api_oracle=ApiOracleSpec(
+            kind=BattleTestOracleKind.ROUTE_ONLY_PENDING,
+            description=(
+                "Without prior context or an explicit smart-list name, Zillow follow-up "
+                "requests must clarify instead of returning a broad people search."
+            ),
+        ),
+        response_assertions=("selected_tool is None", "clarified is true"),
+    ),
+    BattleTestScenario(
+        id="BT-SMARTLIST-004",
+        grade=BattleTestGrade.MUST_REQUIRE_ID,
+        prompt_variants=(
+            "Show people in eligible   for transfer from Zillow.",
+            "Pull Zillow leads in eligible for transfer.",
+            "Use ELIGIBLE FOR TRANSFER for Zillow lead follow-up.",
+            "From Eligible    For    Transfer, show Zillow leads.",
+            "List Zillow contacts in the eligible for transfer smart list.",
+            "Search the Eligible For Transfer smart list for Zillow leads.",
+            "Only use the eligible for transfer list for Zillow follow-ups.",
+            "Can you count Zillow leads in ELIGIBLE FOR TRANSFER?",
+            "Find source Zillow inside eligible for transfer.",
+            "Show me Eligible For Transfer members where the source is Zillow.",
+        ),
+        expected_mcp=ExpectedMcpRoute(
+            allowed_tools=("followupboss_search_people_in_smart_list",),
+            forbidden_tools=(
+                "followupboss_get_latest_lead",
+                "followupboss_search_people",
+                "followupboss_list_smart_lists",
+            ),
+            required_argument_keys=("smart_list_name", "source"),
+        ),
+        api_oracle=ApiOracleSpec(
+            kind=BattleTestOracleKind.NAMED_SMART_LIST_PEOPLE,
+            description=(
+                "Resolve Eligible For Transfer despite casing and whitespace variation and "
+                "verify the scoped people response cannot leak off-list identifiers."
+            ),
+            smart_list_name="Eligible For Transfer",
+            answer_must_be_grounded=True,
+        ),
+        response_assertions=(
+            "request.smart_list_name normalizes to api_oracle.smart_list_name",
+            "response.smartlist.id == api_oracle.smart_list_id",
+            "assistant_answer contains no off-list names or phones",
+        ),
+    ),
+)
+
+
 def _base_scenario(scenario_id: str) -> BattleTestScenario:
     """Return one base read-only scenario for corpus construction."""
-    return {scenario.id: scenario for scenario in expanded_read_only_battle_test_scenarios()}[
-        scenario_id
-    ]
+    return {
+        scenario.id: scenario
+        for scenario in (
+            expanded_read_only_battle_test_scenarios()
+            + smart_list_grounding_battle_test_scenarios()
+        )
+    }[scenario_id]
 
 
 def _conversation_turn(
@@ -2749,3 +3219,88 @@ def _build_expanded_conversations() -> tuple[BattleTestConversationScenario, ...
 
 
 _EXPANDED_CONVERSATIONS = _build_expanded_conversations()
+
+
+_SMART_LIST_GROUNDING_BLUEPRINTS: tuple[
+    tuple[
+        BattleTestConversationKind,
+        str | None,
+        tuple[tuple[str, str], ...],
+    ],
+    ...,
+] = (
+    (
+        BattleTestConversationKind.MULTI_ASK,
+        "Show my smart lists, then show Zillow leads in Eligible For Transfer.",
+        (
+            (
+                "BT-SMARTLIST-001",
+                "Show my smart lists, then show Zillow leads in Eligible For Transfer.",
+            ),
+            (
+                "BT-SMARTLIST-002",
+                "Show my smart lists, then show Zillow leads in Eligible For Transfer.",
+            ),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_TURN,
+        None,
+        (
+            (
+                "BT-SMARTLIST-001",
+                "Show me the Eligible For Transfer smart list.",
+            ),
+            (
+                "BT-SMARTLIST-002",
+                "What Zillow leads do I need to follow up with?",
+            ),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_TURN,
+        None,
+        (
+            (
+                "BT-SMARTLIST-003",
+                "What Zillow leads do I need to follow up with?",
+            ),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_TURN,
+        None,
+        (
+            (
+                "BT-SMARTLIST-001",
+                "Pull the Eligible For Transfer list before my Zillow calls.",
+            ),
+            (
+                "BT-SMARTLIST-004",
+                "Now show Zillow leads from that list.",
+            ),
+        ),
+    ),
+)
+
+
+def _build_smart_list_grounding_conversations() -> tuple[BattleTestConversationScenario, ...]:
+    """Build targeted named-smart-list grounding conversations."""
+    conversations: list[BattleTestConversationScenario] = []
+    for index, (kind, prompt, turns) in enumerate(_SMART_LIST_GROUNDING_BLUEPRINTS, start=1):
+        conversations.append(
+            BattleTestConversationScenario(
+                id=f"BT-SMARTLIST-CHAIN-{index:03d}",
+                kind=kind,
+                prompt=prompt,
+                turns=tuple(
+                    _conversation_turn(f"T{turn_index:02d}", scenario_id, turn_prompt)
+                    for turn_index, (scenario_id, turn_prompt) in enumerate(turns, start=1)
+                ),
+                description="Named smart-list grounding regression coverage.",
+            )
+        )
+    return tuple(conversations)
+
+
+_SMART_LIST_GROUNDING_CONVERSATIONS = _build_smart_list_grounding_conversations()

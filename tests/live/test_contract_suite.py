@@ -14,7 +14,7 @@ import pytest
 from followupboss_mcp.config import FollowUpBossSettings
 from followupboss_mcp.errors import FollowUpBossForbiddenError, FollowUpBossNotFoundError
 from followupboss_mcp.http_client import FollowUpBossAsyncClient
-from followupboss_mcp.mcp_tools import FollowUpBossToolAdapter
+from followupboss_mcp.mcp_tools import FollowUpBossToolAdapter, SearchPeopleInSmartListToolInput
 from followupboss_mcp.models.appointments import (
     AppointmentInviteeInput,
     AppointmentRecord,
@@ -36,6 +36,7 @@ from followupboss_mcp.models.people import (
     UpdatePersonRequest,
 )
 from followupboss_mcp.models.reactions import CreateReactionRequest, DeleteReactionRequest
+from followupboss_mcp.models.smart_lists import SmartListListRequest
 from followupboss_mcp.models.tasks import CreateTaskRequest, TaskRecord, UpdateTaskRequest
 from followupboss_mcp.models.timeframes import TimeframeListRequest
 from followupboss_mcp.models.users import CurrentUserRecord, UserListRequest
@@ -75,6 +76,25 @@ async def _live_bundle(
     async with FollowUpBossAsyncClient(resolved_settings) as client:
         services = build_service_bundle(client)
         yield services, FollowUpBossToolAdapter(services)
+
+
+def _normalize_live_smart_list_name(value: str) -> str:
+    """Normalize a live smart-list name for test comparisons.
+
+    Args:
+        value: Raw smart-list name.
+
+    Returns:
+        Case-folded text with repeated whitespace collapsed.
+    """
+    collapsed = " ".join(value.casefold().strip().split())
+    start = 0
+    end = len(collapsed)
+    while start < end and not collapsed[start].isalnum():
+        start += 1
+    while end > start and not collapsed[end - 1].isalnum():
+        end -= 1
+    return collapsed[start:end].strip()
 
 
 def _env_override_value(*names: str) -> str | None:
@@ -757,6 +777,75 @@ async def test_live_people_timeframe_and_duplicate_contracts() -> None:
         assert fetched_person_id > 0
     if positive_duplicate is not None:
         assert positive_duplicate.found is True
+
+
+@pytest.mark.asyncio
+async def test_live_smart_list_helper_contracts() -> None:
+    """Validate live smart-list list/get/search helper contracts when configured."""
+    smart_list_name = _env_override_value(
+        "FOLLOWUPBOSS_LIVE_SMART_LIST_NAME",
+        "FOLLOW_UP_BOSS_LIVE_SMART_LIST_NAME",
+    )
+    smart_list_id_value = _env_override_value(
+        "FOLLOWUPBOSS_LIVE_SMART_LIST_ID",
+        "FOLLOW_UP_BOSS_LIVE_SMART_LIST_ID",
+    )
+
+    async with _live_bundle() as (services, adapter):
+        smart_lists_page = await services.smart_lists.list_smart_lists(
+            SmartListListRequest(include_all=True, limit=100)
+        )
+        assert smart_lists_page.metadata.count >= 0
+        if smart_lists_page.metadata.total is not None:
+            assert smart_lists_page.metadata.total >= 0
+
+        resolved_name = smart_list_name
+        resolved_id: int | None = None
+        if smart_list_id_value is not None:
+            resolved_id = int(smart_list_id_value)
+            smart_list = await services.smart_lists.get_smart_list(resolved_id)
+            resolved_name = resolved_name or smart_list.name
+        if resolved_name is None:
+            normalized_counts: dict[str, int] = {}
+            for smart_list in smart_lists_page.items:
+                if smart_list.name:
+                    normalized_name = _normalize_live_smart_list_name(smart_list.name)
+                    normalized_counts[normalized_name] = (
+                        normalized_counts.get(normalized_name, 0) + 1
+                    )
+            for smart_list in smart_lists_page.items:
+                if smart_list.name is None:
+                    continue
+                normalized_name = _normalize_live_smart_list_name(smart_list.name)
+                if normalized_counts[normalized_name] == 1:
+                    resolved_id = smart_list.id
+                    resolved_name = smart_list.name
+                    break
+            if resolved_name is None:
+                pytest.skip(
+                    "Set FOLLOWUPBOSS_LIVE_SMART_LIST_NAME or FOLLOWUPBOSS_LIVE_SMART_LIST_ID "
+                    "to run live smart-list helper contracts."
+                )
+
+        helper_payload = await adapter.search_people_in_smart_list(
+            SearchPeopleInSmartListToolInput(
+                smart_list_name=resolved_name,
+                limit=1,
+            )
+        )
+
+    helper_smart_list = helper_payload["smartlist"]
+    assert isinstance(helper_smart_list, dict)
+    assert _normalize_live_smart_list_name(str(helper_smart_list["name"])) == (
+        _normalize_live_smart_list_name(resolved_name)
+    )
+    if resolved_id is not None:
+        assert helper_smart_list["id"] == resolved_id
+    _assert_page_payload_contract(
+        helper_payload,
+        collection_key="people",
+        limit_upper_bound=1,
+    )
 
 
 @pytest.mark.asyncio

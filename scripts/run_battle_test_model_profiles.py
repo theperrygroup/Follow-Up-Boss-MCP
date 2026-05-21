@@ -23,6 +23,8 @@ from followupboss_mcp.battle_tests import (
     battle_test_model_profile_by_id,
     expanded_battle_test_conversations,
     expanded_read_only_battle_test_scenarios,
+    smart_list_grounding_battle_test_conversations,
+    smart_list_grounding_battle_test_scenarios,
 )
 from followupboss_mcp.config import FollowUpBossSettings
 from followupboss_mcp.http_client import FollowUpBossAsyncClient
@@ -168,6 +170,7 @@ def build_parser() -> argparse.ArgumentParser:
             "multi-ask-expanded",
             "all",
             "all-expanded",
+            "smart-list-grounding",
             "mutation-safe",
             "boundary",
         ),
@@ -263,6 +266,44 @@ async def run(argv: Sequence[str] | None = None) -> int:
                     scenarios=(
                         expanded_read_only_battle_test_scenarios() if read_expanded else None
                     ),
+                )
+            )
+        if args.corpus == "smart-list-grounding":
+            artifacts.extend(
+                await run_ai_model_profile_battle_tests(
+                    mcp_client=mcp_client,
+                    oracle=oracle,
+                    selectors=selectors,
+                    run_id_prefix=f"{base_run_id_prefix}-single-turn",
+                    client=args.client_label,
+                    profiles=profiles,
+                    artifact_directory=args.artifact_dir,
+                    prompt_variant_index=args.prompt_variant_index,
+                    all_prompt_variants=args.all_prompt_variants or args.all_variation_families,
+                    max_cases=args.max_cases,
+                    sample_seed=args.sample_seed,
+                    environment=args.environment,
+                    started_at=started_at,
+                    notes=("smart-list-grounding", "single-turn"),
+                    scenarios=smart_list_grounding_battle_test_scenarios(),
+                )
+            )
+            artifacts.extend(
+                await run_ai_model_profile_conversation_battle_tests(
+                    mcp_client=mcp_client,
+                    oracle=oracle,
+                    selectors=selectors,
+                    run_id_prefix=f"{base_run_id_prefix}-conversations",
+                    client=args.client_label,
+                    profiles=profiles,
+                    conversations=smart_list_grounding_battle_test_conversations(),
+                    artifact_directory=args.artifact_dir,
+                    max_cases=args.max_cases,
+                    sample_seed=args.sample_seed,
+                    chain_depth=args.chain_depth,
+                    environment=args.environment,
+                    started_at=started_at,
+                    notes=("smart-list-grounding", "conversations"),
                 )
             )
         if args.corpus in {

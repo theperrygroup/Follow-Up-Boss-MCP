@@ -72,6 +72,7 @@ from followupboss_mcp.mcp_tools import (
     ListInboxAppInstallationsToolInput,
     ListInboxAppParticipantsToolInput,
     ListMyTaskIntentToolInput,
+    SearchPeopleInSmartListToolInput,
     UpdateActionPlanPersonToolInput,
     UpdateAppointmentOutcomeToolInput,
     UpdateAppointmentToolInput,
@@ -436,10 +437,10 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
             "and pagination metadata. By default this searches the authenticated "
             "user's assigned leads; set include_ponds=true to include pond/shared "
             "leads visible to the authenticated user. Use this broad search for "
-            "explicit person filters or smart-list counts. To answer questions about "
-            "a named smart list, call followupboss_list_smart_lists to resolve the "
-            "list ID, then call this tool with smart_list_id and a small limit; "
-            "use _metadata.total as the count. Do not use this broad search for "
+            "explicit person filters or known smart_list_id searches. Do not use "
+            "this broad search for named smart-list people prompts; use "
+            "followupboss_search_people_in_smart_list so the list name is resolved "
+            "inside the MCP boundary. Do not use this broad search for "
             "'my latest lead', 'newest lead', or 'most recent lead I received'; "
             "use followupboss_get_latest_lead so the authenticated user is resolved "
             "internally."
@@ -471,6 +472,36 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
     ) -> dict[str, object]:
         tool_input = _validated_request(PeopleSearchRequest, locals())
         return await adapter.search_people(tool_input)
+
+    @mcp.tool(
+        name="followupboss_search_people_in_smart_list",
+        description=(
+            "Search people inside an exact named Follow Up Boss smart list. Use this "
+            "for prompts such as 'Zillow leads in Eligible For Transfer' or any "
+            "request where the user names a smart list instead of providing a numeric "
+            "smart_list_id. The tool resolves the smart-list name with "
+            "include_all=true, fails on missing or ambiguous names, then searches "
+            "people only with the resolved smart_list_id and returns smart-list "
+            "provenance. Do not include people outside the returned people list in "
+            "the answer."
+        ),
+    )
+    async def followupboss_search_people_in_smart_list(
+        smart_list_name: str | None = None,
+        *,
+        fields: list[str] | None = None,
+        smart_list: str | None = None,
+        list_name: str | None = None,
+        limit: int | None = None,
+        lead_source: str | None = None,
+        next_token: str | None = None,
+        offset: int | None = None,
+        source: str | None = None,
+        source_name: str | None = None,
+        stage: str | None = None,
+    ) -> dict[str, object]:
+        tool_input = _validated_request(SearchPeopleInSmartListToolInput, locals())
+        return await adapter.search_people_in_smart_list(tool_input)
 
     @mcp.tool(
         name="followupboss_get_latest_lead",

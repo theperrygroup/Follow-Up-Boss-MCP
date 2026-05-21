@@ -151,7 +151,8 @@ or list calls when the intent is already clear.
 | "my overdue tasks" or "what am I late on?" | `followupboss_list_my_overdue_tasks` | A broad task list without authenticated-user and incomplete-task scope. |
 | "my tasks today" or "what do I need to do today?" | `followupboss_list_my_tasks_due_today` | A broad task list without authenticated-user and incomplete-task scope. |
 | "my upcoming tasks" or "what do I have coming up?" | `followupboss_list_my_upcoming_tasks` | A broad task list without authenticated-user and incomplete-task scope. |
-| A named smart-list count | `followupboss_list_smart_lists`, then `followupboss_search_people` with `smart_list_id` and a small `limit` | Inferring the smart-list ID from the name alone. |
+| A named smart-list people search, such as "Zillow leads in Eligible For Transfer" | `followupboss_search_people_in_smart_list` with `smart_list_name` and any explicit safe filters such as `source` | Broad people search by source without the resolved smart-list boundary. |
+| A named smart-list count | `followupboss_search_people_in_smart_list` with `smart_list_name` and a small `limit`, then read `_metadata.total` | Inferring the smart-list ID from the name alone. |
 | Notes for a lead/person ID | No tool; Follow Up Boss has not made note search by FUB person ID available via the API. Tell the user to ask `support@followupboss.com` to make that search possible. | `followupboss_search_events` or claiming no notes exist from an empty event search. |
 | Updating or deleting people and tasks | The explicit-ID mutation tool such as `followupboss_update_person`, `followupboss_delete_person`, `followupboss_update_task`, or `followupboss_delete_task` | Inferring IDs from vague natural-language intent. |
 
@@ -160,6 +161,7 @@ or list calls when the intent is already clear.
 | `followupboss_get_identity` | Return identity information for the authenticated Follow Up Boss account and user. |
 | `followupboss_get_me` | Retrieve the current Follow Up Boss user profile with sensitive keys redacted. |
 | `followupboss_search_people` | Search people with documented filters and pagination metadata; use `followupboss_get_latest_lead` for latest-owned-lead intent. |
+| `followupboss_search_people_in_smart_list` | Resolve one exact smart-list name internally, search people only with the resolved `smart_list_id`, and return smart-list provenance. |
 | `followupboss_get_latest_lead` | Retrieve the newest lead assigned to the authenticated user. |
 | `followupboss_get_person` | Retrieve one person by ID. |
 | `followupboss_create_person` | Create a person directly. |

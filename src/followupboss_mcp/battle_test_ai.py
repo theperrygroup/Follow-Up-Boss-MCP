@@ -152,7 +152,8 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
             description=(
                 "Broad people search. Do not use for latest-owned-lead intent when "
                 "followupboss_get_latest_lead applies. Use for explicit name, email, phone, "
-                "or smart_list_id people searches."
+                "or known numeric smart_list_id people searches. Do not use this for named "
+                "smart-list people prompts; use followupboss_search_people_in_smart_list."
             ),
             input_schema={
                 "type": "object",
@@ -161,6 +162,34 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
                     "smart_list_id": _integer_schema("Resolved smart list ID."),
                     "limit": _integer_schema("Optional page size."),
                 },
+                "additionalProperties": False,
+            },
+        ),
+        BattleTestAiToolSpec(
+            name="followupboss_search_people_in_smart_list",
+            description=(
+                "Search people inside one exact named smart list. Use this for named "
+                "smart-list prompts such as Zillow leads in Eligible For Transfer. This "
+                "tool resolves the list name internally, searches only inside that "
+                "smart-list ID, and returns smart-list provenance. Do not include people "
+                "absent from this tool result in the answer. When the prompt says Zillow "
+                "leads, include source='Zillow'."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "smart_list_name": _string_schema("Exact Follow Up Boss smart-list name."),
+                    "fields": _enum_array_schema(
+                        "Optional person response fields to request.",
+                        _LATEST_LEAD_RESPONSE_FIELDS,
+                    ),
+                    "limit": _integer_schema("Optional page size."),
+                    "next_token": _string_schema("Optional next page token."),
+                    "offset": _integer_schema("Optional offset."),
+                    "source": _string_schema("Optional source filter, such as Zillow."),
+                    "stage": _string_schema("Optional stage filter."),
+                },
+                "required": ["smart_list_name", "source"],
                 "additionalProperties": False,
             },
         ),
@@ -202,7 +231,9 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
             name="followupboss_list_smart_lists",
             description=(
                 "List available Follow Up Boss smart lists. Use before searching a named "
-                "list when no smart_list_id is known."
+                "list when no smart_list_id is known, then search people only with the "
+                "resolved ID. For prompts like Zillow leads in Eligible For Transfer, this "
+                "resolution step is mandatory."
             ),
             input_schema={
                 "type": "object",
@@ -380,9 +411,20 @@ def battle_test_selection_instructions() -> str:
         "or missed means followupboss_list_my_overdue_tasks; today, due today, or not miss "
         "today means followupboss_list_my_tasks_due_today; coming up, upcoming, later, after "
         "today, next, future, or ahead means followupboss_list_my_upcoming_tasks. "
-        "Use followupboss_list_smart_lists for listing saved lists, followupboss_search_people "
-        "when a people search includes an explicit name, email, phone, or smart_list_id, and "
+        "Use followupboss_search_people_in_smart_list for named smart-list people prompts; "
+        "pass the exact smart_list_name, such as Eligible For Transfer, and optional safe "
+        "filters such as source='Zillow'. When the prompt says Zillow leads, include "
+        "source='Zillow'. The final answer must not include any person "
+        "absent from that smart-list-scoped tool result. Use followupboss_list_smart_lists "
+        "only when the user is asking to list or inspect saved lists, not as the final route "
+        "for a named-list people search. Use followupboss_search_people when a people search "
+        "includes an explicit name, email, phone, or known numeric smart_list_id, and "
         "followupboss_check_duplicate_person only when an email or phone is provided. "
+        "If the prompt says Zillow leads and the current or prior context maps Zillow leads "
+        "to Eligible For Transfer, call followupboss_search_people_in_smart_list with "
+        "smart_list_name='Eligible For Transfer' before any broad people search. If Zillow "
+        "leads has no current or prior smart-list context, ask a clarification question "
+        "instead of broad-searching. "
         "Use list tools for appointments, calls, text-message logs, email templates, and "
         "text-message templates; these are read-only listing intents. "
         "Fetch notes only with an explicit note ID. "
@@ -512,7 +554,7 @@ class OpenAiBattleTestModelSelector:
             "instructions": battle_test_selection_instructions(),
             "input": prompt,
             "tools": [_openai_tool_spec(tool) for tool in tools],
-            "tool_choice": "auto",
+            "tool_choice": "required",
         }
         if profile.reasoning_effort is not None:
             payload["reasoning"] = {"effort": profile.reasoning_effort}
@@ -595,7 +637,7 @@ class AnthropicBattleTestModelSelector:
                 "system": battle_test_selection_instructions(),
                 "messages": [{"role": "user", "content": prompt}],
                 "tools": [_anthropic_tool_spec(tool) for tool in tools],
-                "tool_choice": {"type": "auto"},
+                "tool_choice": {"type": "any"},
             },
         )
         response.raise_for_status()
@@ -931,8 +973,8 @@ def _multi_call_prompt(prompt: str, *, expected_count: int) -> str:
     """
     return (
         f"{prompt}\n\n"
-        "Battle-test routing requirement: this single user message contains "
-        f"{expected_count} independent requested actions. Return exactly "
+        "Battle-test routing requirement: this single user message requires "
+        f"{expected_count} ordered routing decisions. Return exactly "
         f"{expected_count} ordered tool or sentinel calls, one per requested action. "
         "Do not answer in plain text only."
     )
@@ -1004,6 +1046,9 @@ def _conversation_prompt(
         lines.append(f"User: {transcript.prompt}")
         if transcript.selected_tool is not None:
             lines.append(f"Assistant/tool: called {transcript.selected_tool}")
+            response_summary = _history_response_summary(transcript.response)
+            if response_summary is not None:
+                lines.append(f"Tool response: {response_summary}")
         elif transcript.unsupported_explained:
             lines.append("Assistant/tool: explained unsupported capability")
         elif transcript.clarified:
@@ -1012,6 +1057,23 @@ def _conversation_prompt(
             lines.append(f"Assistant: {transcript.assistant_message}")
     lines.append(f"Current user: {current_prompt}")
     return "\n".join(lines)
+
+
+def _history_response_summary(response: JsonValue) -> str | None:
+    """Return a compact JSON summary for prior tool results in selector prompts.
+
+    Args:
+        response: Captured MCP response from a previous turn.
+
+    Returns:
+        A truncated JSON string, or `None` when there is no response to expose.
+    """
+    if response is None:
+        return None
+    summary = json.dumps(response, sort_keys=True)
+    if len(summary) <= 1200:
+        return summary
+    return f"{summary[:1197]}..."
 
 
 async def run_ai_model_profile_battle_tests(

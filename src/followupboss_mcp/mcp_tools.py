@@ -7,7 +7,7 @@ from contextvars import ContextVar
 from dataclasses import asdict
 from typing import Any, cast
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 
 from followupboss_mcp.errors import FollowUpBossError, FollowUpBossRateLimitError
 from followupboss_mcp.models.action_plans import (
@@ -116,7 +116,7 @@ from followupboss_mcp.models.reactions import (
     DeleteReactionRequest,
     ReactionRefType,
 )
-from followupboss_mcp.models.smart_lists import SmartListListRequest
+from followupboss_mcp.models.smart_lists import SmartListListRequest, SmartListRecord
 from followupboss_mcp.models.stages import (
     CreateStageRequest,
     DeleteStageRequest,
@@ -228,6 +228,65 @@ class GetLatestLeadToolInput(RequestModel):
                 f"Unsupported latest-lead fields: {invalid}. Allowed fields: {allowed_fields}."
             )
         return value
+
+
+class SearchPeopleInSmartListToolInput(RequestModel):
+    """Tool input for searching people inside one named smart list."""
+
+    smart_list_name: str | None = None
+    smart_list: str | None = None
+    list_name: str | None = None
+    fields: list[str] | None = None
+    limit: int | None = None
+    lead_source: str | None = None
+    next_token: str | None = None
+    offset: int | None = None
+    source: str | None = None
+    source_name: str | None = None
+    stage: str | None = None
+
+    @model_validator(mode="after")
+    def _normalize_aliases(self) -> SearchPeopleInSmartListToolInput:
+        """Normalize smart-list and source aliases.
+
+        Returns:
+            The validated helper input.
+
+        Raises:
+            ValueError: If no smart-list name is provided, or if aliases provide
+                conflicting values.
+        """
+        self.smart_list_name = _coalesce_text_aliases(
+            (
+                ("smart_list_name", self.smart_list_name),
+                ("smart_list", self.smart_list),
+                ("list_name", self.list_name),
+            ),
+            required_name="smart_list_name",
+        )
+        self.source = _coalesce_text_aliases(
+            (
+                ("source", self.source),
+                ("lead_source", self.lead_source),
+                ("source_name", self.source_name),
+            ),
+            required_name=None,
+        )
+        return self
+
+    def resolved_smart_list_name(self) -> str:
+        """Return the normalized smart-list name after validation.
+
+        Returns:
+            The smart-list name used for helper resolution.
+
+        Raises:
+            RuntimeError: If the model was somehow used before validation
+                normalized the smart-list name.
+        """
+        if self.smart_list_name is None:
+            raise RuntimeError("smart_list_name must be normalized before helper execution.")
+        return self.smart_list_name
 
 
 class ListMyTaskIntentToolInput(RequestModel):
@@ -1072,6 +1131,72 @@ class FollowUpBossToolAdapter:
             lambda: self._search_people_with_default_scope(tool_input),
             key="people",
         )
+
+    async def search_people_in_smart_list(
+        self,
+        tool_input: SearchPeopleInSmartListToolInput,
+    ) -> dict[str, Any]:
+        """Search people inside an exact named smart list.
+
+        Args:
+            tool_input: Named smart-list people-search input.
+
+        Returns:
+            A structured payload containing the resolved smart-list provenance,
+            pagination metadata, and scoped people records.
+        """
+        try:
+            smart_list = _resolve_smart_list_by_name(
+                await self._list_all_smart_lists(),
+                tool_input.resolved_smart_list_name(),
+            )
+            page = await self._execute_with_services(
+                lambda: self._services.people.search_people(
+                    PeopleSearchRequest(
+                        fields=tool_input.fields,
+                        limit=tool_input.limit,
+                        next_token=tool_input.next_token,
+                        offset=tool_input.offset,
+                        source=tool_input.source,
+                        stage=tool_input.stage,
+                        smart_list_id=smart_list.id,
+                    )
+                )
+            )
+        except FollowUpBossError as exc:
+            raise RuntimeError(_mcp_safe_error(exc)) from exc
+        return {
+            "_metadata": asdict(page.metadata),
+            "smartlist": smart_list.model_dump(
+                mode="json",
+                by_alias=True,
+                exclude_defaults=True,
+                exclude_none=True,
+            ),
+            "people": [item.model_dump(mode="json", by_alias=True) for item in page.items],
+        }
+
+    async def _list_all_smart_lists(self) -> list[SmartListRecord]:
+        """List every visible smart list for exact-name helper resolution.
+
+        Returns:
+            Smart-list records across all available pages.
+        """
+        smart_lists: list[SmartListRecord] = []
+        offset = 0
+        while True:
+
+            async def list_page(page_offset: int = offset) -> PageResult[SmartListRecord]:
+                """List one smart-list page at the current offset."""
+                return await self._services.smart_lists.list_smart_lists(
+                    SmartListListRequest(include_all=True, limit=100, offset=page_offset)
+                )
+
+            page = cast(PageResult[SmartListRecord], await self._execute_with_services(list_page))
+            smart_lists.extend(page.items)
+            if not page.metadata.has_next() or page.metadata.count == 0:
+                return smart_lists
+            offset = page.metadata.offset + page.metadata.count
 
     async def get_latest_lead(self, tool_input: GetLatestLeadToolInput) -> dict[str, Any]:
         """Return the newest lead assigned to the authenticated user.
@@ -2427,3 +2552,98 @@ def _mcp_safe_error(exc: FollowUpBossError) -> str:
     if isinstance(exc, FollowUpBossRateLimitError) and exc.retry_after_seconds is not None:
         return f"{exc} Retry after {exc.retry_after_seconds:.0f} seconds."
     return str(exc)
+
+
+def _coalesce_text_aliases(
+    aliases: tuple[tuple[str, str | None], ...],
+    *,
+    required_name: str | None,
+) -> str | None:
+    """Return one normalized value from a set of text aliases.
+
+    Args:
+        aliases: Pairs of field names and candidate values.
+        required_name: Public field name to report when no value is present.
+
+    Returns:
+        The unique normalized value, or `None` when the alias group is optional
+        and absent.
+
+    Raises:
+        ValueError: If required text is missing or aliases conflict.
+    """
+    populated = [
+        (name, value.strip()) for name, value in aliases if isinstance(value, str) and value.strip()
+    ]
+    if not populated:
+        if required_name is None:
+            return None
+        raise ValueError(f"{required_name} must be non-empty.")
+    normalized_values = {value.casefold() for _, value in populated}
+    if len(normalized_values) > 1:
+        names = ", ".join(name for name, _ in populated)
+        raise ValueError(f"Conflicting values provided for {names}.")
+    return populated[0][1]
+
+
+def _resolve_smart_list_by_name(
+    smart_lists: list[SmartListRecord],
+    smart_list_name: str,
+) -> SmartListRecord:
+    """Resolve one smart list by exact normalized name.
+
+    Args:
+        smart_lists: Smart-list records available to the authenticated user.
+        smart_list_name: User-provided smart-list name.
+
+    Returns:
+        The uniquely matching smart list.
+
+    Raises:
+        RuntimeError: If the normalized smart-list name is missing or ambiguous.
+    """
+    normalized_name = _normalize_smart_list_name(smart_list_name)
+    matches = [
+        smart_list
+        for smart_list in smart_lists
+        if _normalize_smart_list_name(smart_list.name or "") == normalized_name
+    ]
+    if not matches:
+        raise RuntimeError(f"Smart list named {smart_list_name!r} was not found.")
+    if len(matches) > 1:
+        match_ids = [smart_list.id for smart_list in matches]
+        raise RuntimeError(
+            f"Smart list named {smart_list_name!r} is ambiguous; matched IDs {match_ids!r}."
+        )
+    return matches[0]
+
+
+def _normalize_smart_list_name(value: str) -> str:
+    """Normalize a smart-list name for exact matching.
+
+    Args:
+        value: Raw smart-list name.
+
+    Returns:
+        Lowercased text with decorative edge symbols and repeated whitespace removed.
+    """
+    collapsed = " ".join(value.casefold().strip().split())
+    return _strip_decorative_name_edges(collapsed)
+
+
+def _strip_decorative_name_edges(value: str) -> str:
+    """Remove decorative symbols from the edges of a smart-list name.
+
+    Args:
+        value: Whitespace-normalized smart-list name.
+
+    Returns:
+        The value with leading and trailing non-alphanumeric decorations removed.
+    """
+    start = 0
+    end = len(value)
+    while start < end and not value[start].isalnum():
+        start += 1
+    while end > start and not value[end - 1].isalnum():
+        end -= 1
+    return value[start:end].strip()

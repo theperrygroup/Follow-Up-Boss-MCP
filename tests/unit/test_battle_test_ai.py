@@ -338,6 +338,7 @@ async def test_openai_selector_sends_low_reasoning_and_parses_tool_call() -> Non
 
     assert requests[0]["model"] == "gpt-5.5"
     assert requests[0]["reasoning"] == {"effort": "low"}
+    assert requests[0]["tool_choice"] == "required"
     assert decision.selected_tool == "followupboss_get_latest_lead"
     assert decision.arguments == {"fields": ["id"]}
     assert decision.assistant_message == "Using the latest lead helper."
@@ -428,6 +429,7 @@ def test_read_only_tool_specs_include_expanded_read_surfaces() -> None:
     specs = {tool.name: tool for tool in read_only_battle_test_ai_tool_specs()}
 
     for name in (
+        "followupboss_search_people_in_smart_list",
         "followupboss_list_smart_lists",
         "followupboss_check_duplicate_person",
         "followupboss_list_unclaimed_people",
@@ -448,9 +450,25 @@ def test_read_only_tool_specs_include_expanded_read_surfaces() -> None:
         dict[str, object],
         specs["followupboss_search_people"].input_schema["properties"],
     )
+    helper_properties = cast(
+        dict[str, object],
+        specs["followupboss_search_people_in_smart_list"].input_schema["properties"],
+    )
 
     assert set(duplicate_properties) == {"email", "phone"}
     assert "smart_list_id" in people_properties
+    assert "Do not use this for named smart-list" in (
+        specs["followupboss_search_people"].description
+    )
+    assert {"smart_list_name", "source", "stage"}.issubset(helper_properties)
+    assert specs["followupboss_search_people_in_smart_list"].input_schema["required"] == [
+        "smart_list_name",
+        "source",
+    ]
+    assert "Zillow leads in Eligible For Transfer" in (
+        specs["followupboss_search_people_in_smart_list"].description
+    )
+    assert "source='Zillow'" in specs["followupboss_search_people_in_smart_list"].description
 
 
 def test_selection_instructions_explain_unsupported_note_search() -> None:
@@ -471,6 +489,11 @@ def test_selection_instructions_explain_unsupported_note_search() -> None:
     assert "coming up, upcoming, later, after today" in instructions
     assert "followupboss_list_my_upcoming_tasks" in instructions
     assert "followupboss_list_smart_lists" in instructions
+    assert "Use followupboss_search_people_in_smart_list" in instructions
+    assert "When the prompt says Zillow leads, include source='Zillow'" in instructions
+    assert "absent from that smart-list-scoped tool result" in instructions
+    assert "smart_list_name='Eligible For Transfer'" in instructions
+    assert "ask a clarification question instead of broad-searching" in instructions
     assert (
         "followupboss_check_duplicate_person only when an email or phone is provided"
         in instructions
@@ -750,6 +773,7 @@ async def test_anthropic_selector_parses_unsupported_tool_use() -> None:
     )
 
     assert requests[0]["model"] == "claude-sonnet-4-6"
+    assert requests[0]["tool_choice"] == {"type": "any"}
     assert "reasoning" not in requests[0]
     assert decision.selected_tool is None
     assert decision.unsupported_explained is True
@@ -1252,12 +1276,32 @@ def test_conversation_prompt_renders_non_tool_history_branches() -> None:
                 scenario_id="D",
                 prompt="No visible action",
             ),
+            BattleTestTranscript(
+                scenario_id="E",
+                prompt="Resolve the list",
+                selected_tool="followupboss_list_smart_lists",
+                response={"smartlists": [{"id": 77, "name": "Eligible For Transfer"}]},
+            ),
+            BattleTestTranscript(
+                scenario_id="F",
+                prompt="Call a tool without a response",
+                selected_tool="followupboss_search_people",
+            ),
+            BattleTestTranscript(
+                scenario_id="G",
+                prompt="Summarize a large response",
+                selected_tool="followupboss_search_people",
+                response={"people": [{"id": 1, "notes": "x" * 1300}]},
+            ),
         ),
     )
 
     assert "explained unsupported capability" in prompt
     assert "asked for clarification" in prompt
     assert "Assistant: I can help." in prompt
+    assert "Tool response:" in prompt
+    assert "Eligible For Transfer" in prompt
+    assert "..." in prompt
 
 
 @pytest.mark.asyncio
