@@ -506,6 +506,7 @@ def test_read_only_tool_specs_include_expanded_read_surfaces() -> None:
     assert {"smart_list_name", "source", "stage", "mine", "assigned_user_id"}.issubset(
         helper_properties
     )
+    assert cast(dict[str, object], helper_properties["assigned_user_id"])["minimum"] == 1
     assert specs["followupboss_search_people_in_smart_list"].input_schema["required"] == [
         "smart_list_name",
         "source",

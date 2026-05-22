@@ -247,6 +247,24 @@ class SearchPeopleInSmartListToolInput(RequestModel):
     source_name: str | None = None
     stage: str | None = None
 
+    @field_validator("assigned_user_id")
+    @classmethod
+    def _validate_assigned_user_id(cls, value: int | None) -> int | None:
+        """Require explicit owner IDs to be positive when supplied.
+
+        Args:
+            value: Candidate Follow Up Boss user ID.
+
+        Returns:
+            The validated user ID or `None`.
+
+        Raises:
+            ValueError: If the user ID is not positive.
+        """
+        if value is not None and value <= 0:
+            raise ValueError("assigned_user_id must be a positive Follow Up Boss user ID.")
+        return value
+
     @model_validator(mode="after")
     def _normalize_aliases(self) -> SearchPeopleInSmartListToolInput:
         """Normalize smart-list and source aliases.

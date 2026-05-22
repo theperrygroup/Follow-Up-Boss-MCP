@@ -1481,7 +1481,15 @@ async def test_named_smart_list_grounding_rejects_unowned_my_followup_route() ->
 
 @pytest.mark.asyncio
 async def test_named_smart_list_grounding_rejects_broad_search_owner_bypass() -> None:
-    scenario = scenario_by_id("BT-SMARTLIST-002")
+    base_scenario = scenario_by_id("BT-SMARTLIST-002")
+    scenario = base_scenario.model_copy(
+        update={
+            "expected_mcp": ExpectedMcpRoute(
+                allowed_tools=("followupboss_search_people",),
+                required_argument_keys=("smart_list_id", "source"),
+            )
+        }
+    )
     services = _services(
         user_id=7,
         smart_lists=_smart_lists_page(
@@ -1506,7 +1514,6 @@ async def test_named_smart_list_grounding_rejects_broad_search_owner_bypass() ->
     evaluation = await ReadOnlyBattleTestOracle(services).evaluate(scenario, transcript)
 
     assert evaluation.passed is False
-    assert any("got 'followupboss_search_people'." in failure for failure in evaluation.failures)
     assert "Expected people ids [21], got [999]." in evaluation.failures
     assert (
         "Expected all returned people to match assigned_user_id 7; off-owner ids: [999]."
@@ -1867,6 +1874,34 @@ def test_named_smart_list_helper_route_private_compare_failure_edges() -> None:
     )
     assert "Expected helper route to include owner scope 101, got None." in missing_owner_failures
     assert non_list_owner_failures == []
+
+
+def test_named_smart_list_owner_private_compare_skip_edges() -> None:
+    compare_owner = cast(
+        "Callable[[BattleTestTranscript, BattleTestOracleSnapshot], list[str]]",
+        getattr(battle_tests_module, "_compare_named_smart_list_owner_response"),  # noqa: B009
+    )
+    transcript = BattleTestTranscript(
+        scenario_id="BT-SMARTLIST-PRIVATE",
+        prompt="Show Zillow leads in Eligible For Transfer",
+        response={"people": [{"id": 21, "assignedUserId": 101}]},
+    )
+    unowned_snapshot = BattleTestOracleSnapshot(
+        scenario_id="BT-SMARTLIST-PRIVATE",
+        kind=BattleTestOracleKind.NAMED_SMART_LIST_PEOPLE,
+        automated=True,
+        expected={"person_ids": [21]},
+    )
+    non_list_snapshot = unowned_snapshot.model_copy(update={"expected": {"assigned_user_id": 101}})
+
+    assert compare_owner(transcript, unowned_snapshot) == []
+    assert (
+        compare_owner(
+            transcript.model_copy(update={"response": {"people": None}}),
+            non_list_snapshot,
+        )
+        == []
+    )
 
 
 @pytest.mark.asyncio

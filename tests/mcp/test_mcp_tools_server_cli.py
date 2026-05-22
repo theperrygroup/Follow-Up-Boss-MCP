@@ -2174,6 +2174,8 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         ).resolved_smart_list_name()
     with pytest.raises(ValidationError, match="smart_list_name must be non-empty"):
         SearchPeopleInSmartListToolInput(smart_list_name=" ")
+    with pytest.raises(ValidationError, match="assigned_user_id must be a positive"):
+        SearchPeopleInSmartListToolInput(smart_list_name="Active Buyers", assigned_user_id=0)
     with pytest.raises(ValidationError, match="Conflicting values"):
         SearchPeopleInSmartListToolInput(
             smart_list_name="Active Buyers",
@@ -3101,6 +3103,12 @@ async def test_search_people_requires_identity_id_for_default_scope() -> None:
 
     with pytest.raises(RuntimeError, match="Authenticated Follow Up Boss user id is unavailable"):
         await adapter.search_people(PeopleSearchRequest())
+    with pytest.raises(RuntimeError, match="Authenticated Follow Up Boss user id is unavailable"):
+        await adapter.search_people(PeopleSearchRequest(smart_list_id=74, source="Zillow"))
+    with pytest.raises(ValidationError, match="People search IDs must be positive"):
+        PeopleSearchRequest(smart_list_id=0)
+    with pytest.raises(ValidationError, match="People search IDs must be positive"):
+        PeopleSearchRequest(assigned_user_id=0)
     with pytest.raises(RuntimeError, match="Authenticated Follow Up Boss user id is unavailable"):
         await adapter.get_latest_lead(GetLatestLeadToolInput())
     with pytest.raises(RuntimeError, match="Authenticated Follow Up Boss user id is unavailable"):

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from followupboss_mcp.models.common import (
     CommonListQuery,
@@ -37,6 +37,24 @@ class PeopleSearchRequest(CommonListQuery):
     stage: str | None = None
     updated_after: datetime | None = Field(default=None, serialization_alias="updatedAfter")
     updated_before: datetime | None = Field(default=None, serialization_alias="updatedBefore")
+
+    @field_validator("assigned_user_id", "smart_list_id")
+    @classmethod
+    def _validate_positive_ids(cls, value: int | None) -> int | None:
+        """Require positive search identifier filters when supplied.
+
+        Args:
+            value: Candidate Follow Up Boss identifier.
+
+        Returns:
+            The validated identifier or `None`.
+
+        Raises:
+            ValueError: If the identifier is not positive.
+        """
+        if value is not None and value <= 0:
+            raise ValueError("People search IDs must be positive.")
+        return value
 
 
 class PersonLookupRequest(QueryModel):

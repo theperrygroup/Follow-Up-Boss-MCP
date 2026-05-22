@@ -182,7 +182,9 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
                 "type": "object",
                 "properties": {
                     "smart_list_name": _string_schema("Exact Follow Up Boss smart-list name."),
-                    "assigned_user_id": _integer_schema("Explicit Follow Up Boss owner user ID."),
+                    "assigned_user_id": _positive_integer_schema(
+                        "Explicit positive Follow Up Boss owner user ID."
+                    ),
                     "fields": _enum_array_schema(
                         "Optional person response fields to request.",
                         _LATEST_LEAD_RESPONSE_FIELDS,
@@ -1416,6 +1418,11 @@ def _string_schema(description: str) -> JsonObject:
 def _integer_schema(description: str) -> JsonObject:
     """Return a JSON schema integer property."""
     return {"type": "integer", "description": description}
+
+
+def _positive_integer_schema(description: str) -> JsonObject:
+    """Return a JSON schema positive-integer property."""
+    return {"type": "integer", "minimum": 1, "description": description}
 
 
 def _enum_array_schema(description: str, allowed_values: tuple[str, ...]) -> JsonObject:
