@@ -3515,7 +3515,8 @@ _SMART_LIST_GROUNDING_BLUEPRINTS: tuple[
     (
         BattleTestConversationKind.MULTI_ASK,
         (
-            "Show saved smart-list metadata first, then show my Zillow leads in Eligible For Transfer."
+            "Show saved smart-list metadata first, then show my Zillow leads in "
+            "Eligible For Transfer."
         ),
         (
             (

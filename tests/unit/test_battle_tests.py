@@ -1785,6 +1785,30 @@ def test_named_smart_list_helper_route_private_compare_failure_edges() -> None:
         expected_smart_list_name=None,
         expected_assigned_user_id=None,
     )
+    missing_owner_failures = compare_helper(
+        BattleTestTranscript(
+            scenario_id="BT-SMARTLIST-PRIVATE",
+            prompt="Show Scott's Zillow leads in Eligible For Transfer",
+            selected_tool="followupboss_search_people_in_smart_list",
+            arguments={"smart_list_name": "Eligible For Transfer"},
+            response={"smartlist": {"id": 77}, "people": [{"id": 21, "assignedUserId": 102}]},
+        ),
+        expected_smart_list_id=77,
+        expected_smart_list_name="Eligible For Transfer",
+        expected_assigned_user_id=101,
+    )
+    non_list_owner_failures = compare_helper(
+        BattleTestTranscript(
+            scenario_id="BT-SMARTLIST-PRIVATE",
+            prompt="Show Scott's Zillow leads in Eligible For Transfer",
+            selected_tool="followupboss_search_people_in_smart_list",
+            arguments={"smart_list_name": "Eligible For Transfer", "assigned_user_id": 101},
+            response={"smartlist": {"id": 77}, "people": None},
+        ),
+        expected_smart_list_id=77,
+        expected_smart_list_name="Eligible For Transfer",
+        expected_assigned_user_id=101,
+    )
 
     assert "Expected helper smart_list_name 'Eligible For Transfer', got 'Wrong List'." in (
         wrong_name_failures
@@ -1794,6 +1818,12 @@ def test_named_smart_list_helper_route_private_compare_failure_edges() -> None:
         "Expected named smart-list oracle snapshot to include a list name."
         in missing_expected_name_failures
     )
+    assert "Expected helper route to include owner scope 101, got None." in missing_owner_failures
+    assert (
+        "Expected all returned people to match assigned_user_id 101; off-owner ids: [21]."
+        in missing_owner_failures
+    )
+    assert non_list_owner_failures == []
 
 
 @pytest.mark.asyncio
