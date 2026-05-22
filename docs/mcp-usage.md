@@ -163,7 +163,7 @@ or list calls when the intent is already clear.
 | --- | --- |
 | `followupboss_get_identity` | Return identity information for the authenticated Follow Up Boss account and user. |
 | `followupboss_get_me` | Retrieve the current Follow Up Boss user profile with sensitive keys redacted. |
-| `followupboss_search_people` | Search people with documented filters and pagination metadata; use `followupboss_get_latest_lead` for latest-owned-lead intent. |
+| `followupboss_search_people` | Search people with documented filters and pagination metadata; defaults to authenticated-user scope, including `smart_list_id` searches, unless `assigned_user_id` or `include_ponds=true` is explicit. Use `followupboss_get_latest_lead` for latest-owned-lead intent. |
 | `followupboss_search_people_in_smart_list` | Resolve one exact smart-list name internally, search people only with the resolved `smart_list_id`, default to authenticated-user scope, optionally apply explicit `assigned_user_id`, and return smart-list provenance. |
 | `followupboss_get_latest_lead` | Retrieve the newest lead assigned to the authenticated user. |
 | `followupboss_get_person` | Retrieve one person by ID. |

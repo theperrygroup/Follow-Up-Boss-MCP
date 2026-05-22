@@ -546,7 +546,7 @@ def test_smart_list_grounding_corpus_targets_zillow_regression() -> None:
     assert scenario_by_id("BT-SMARTLIST-002").expected_mcp.required_argument_values == {
         "mine": True
     }
-    assert len(scenario_by_id("BT-SMARTLIST-002").prompt_variants) == 20
+    assert len(scenario_by_id("BT-SMARTLIST-002").prompt_variants) == 45
     assert scenario_by_id("BT-SMARTLIST-004").expected_mcp.required_argument_values == {
         "mine": False
     }
@@ -556,6 +556,12 @@ def test_smart_list_grounding_corpus_targets_zillow_regression() -> None:
         BattleTestConversationKind.MULTI_TURN,
         BattleTestConversationKind.MULTI_TURN,
         BattleTestConversationKind.MULTI_TURN,
+        BattleTestConversationKind.MULTI_TURN,
+        BattleTestConversationKind.MULTI_TURN,
+        BattleTestConversationKind.MULTI_TURN,
+        BattleTestConversationKind.MULTI_TURN,
+        BattleTestConversationKind.MULTI_TURN,
+        BattleTestConversationKind.MULTI_ASK,
     ]
     assert (
         smart_list_grounding_battle_test_conversations(BattleTestConversationKind.MULTI_ASK)[0]
@@ -1474,6 +1480,41 @@ async def test_named_smart_list_grounding_rejects_unowned_my_followup_route() ->
 
 
 @pytest.mark.asyncio
+async def test_named_smart_list_grounding_rejects_broad_search_owner_bypass() -> None:
+    scenario = scenario_by_id("BT-SMARTLIST-002")
+    services = _services(
+        user_id=7,
+        smart_lists=_smart_lists_page(
+            SmartListRecord.model_validate({"id": 77, "name": "Eligible For Transfer"})
+        ),
+        people=_people_page(
+            PersonRecord.model_validate({"id": 21, "name": "Jane Zillow", "assignedUserId": 7})
+        ),
+    )
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        selected_tool="followupboss_search_people",
+        arguments={"smart_list_id": 77, "source": "Zillow"},
+        response={
+            "people": [
+                {"id": 999, "name": "Account Wide Lead", "assignedUserId": 102},
+            ],
+        },
+    )
+
+    evaluation = await ReadOnlyBattleTestOracle(services).evaluate(scenario, transcript)
+
+    assert evaluation.passed is False
+    assert any("got 'followupboss_search_people'." in failure for failure in evaluation.failures)
+    assert "Expected people ids [21], got [999]." in evaluation.failures
+    assert (
+        "Expected all returned people to match assigned_user_id 7; off-owner ids: [999]."
+        in evaluation.failures
+    )
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("mine_argument", [None, True])
 async def test_named_smart_list_grounding_accepts_explicit_assigned_user_scope(
     mine_argument: bool | None,
@@ -1496,7 +1537,7 @@ async def test_named_smart_list_grounding_accepts_explicit_assigned_user_scope(
             PersonRecord.model_validate({"id": 21, "name": "Jane Zillow", "assignedUserId": 101})
         ),
     )
-    arguments: dict[str, object] = {
+    arguments: dict[str, JsonValue] = {
         "smart_list_name": "Eligible For Transfer",
         "source": "Zillow",
         "assigned_user_id": 101,
@@ -1825,10 +1866,6 @@ def test_named_smart_list_helper_route_private_compare_failure_edges() -> None:
         in missing_expected_name_failures
     )
     assert "Expected helper route to include owner scope 101, got None." in missing_owner_failures
-    assert (
-        "Expected all returned people to match assigned_user_id 101; off-owner ids: [21]."
-        in missing_owner_failures
-    )
     assert non_list_owner_failures == []
 
 

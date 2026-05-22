@@ -1311,11 +1311,7 @@ class FollowUpBossToolAdapter:
         Returns:
             The paginated people search result.
         """
-        if (
-            tool_input.assigned_user_id is not None
-            or tool_input.include_ponds is True
-            or tool_input.smart_list_id is not None
-        ):
+        if tool_input.assigned_user_id is not None or tool_input.include_ponds is True:
             return await self._services.people.search_people(tool_input)
         identity = await self._services.identity.get_identity()
         if identity.id is None:

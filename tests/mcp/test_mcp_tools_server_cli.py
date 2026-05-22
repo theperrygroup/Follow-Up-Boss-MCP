@@ -2109,7 +2109,7 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert (await adapter.search_people(PeopleSearchRequest(smart_list_id=74)))["people"][0][
         "id"
     ] == 2
-    assert stub.people_search_requests[-1].assigned_user_id is None
+    assert stub.people_search_requests[-1].assigned_user_id == 1
     assert stub.people_search_requests[-1].include_ponds is None
     assert stub.people_search_requests[-1].smart_list_id == 74
     assert (await adapter.search_people(PeopleSearchRequest(include_ponds=True, smart_list_id=74)))[
@@ -4661,6 +4661,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_search_people_in_smart_list",
         "Active Buyers",
         limit=1,
+        mine=False,
     )
     assert smart_list_people["smartlist"]["id"] == 76
     assert smart_list_people["people"][0]["id"] == 2

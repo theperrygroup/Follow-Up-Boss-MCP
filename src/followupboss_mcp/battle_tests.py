@@ -2169,6 +2169,7 @@ def _compare_named_smart_list_people_response(
             "followupboss_search_people_in_smart_list or followupboss_search_people."
         )
     failures.extend(_compare_page_response(transcript, snapshot))
+    failures.extend(_compare_named_smart_list_owner_response(transcript, snapshot))
     if snapshot.expected.get("answer_must_be_grounded") is True:
         failures.extend(_compare_assistant_answer_grounding(transcript, snapshot))
     return failures
@@ -2210,22 +2211,42 @@ def _compare_named_smart_list_helper_route(
                 "Expected helper route to include owner scope "
                 f"{expected_assigned_user_id!r}, got {actual_assigned_user_id!r}."
             )
-        response = _mapping_or_none(transcript.response)
-        records = response.get("people") if response is not None else None
-        if isinstance(records, list):
-            wrong_owner_ids = [
-                record.get("id")
-                for record in records
-                if isinstance(record, dict)
-                and record.get("assignedUserId") is not None
-                and record.get("assignedUserId") != expected_assigned_user_id
-            ]
-            if wrong_owner_ids:
-                failures.append(
-                    "Expected all returned people to match assigned_user_id "
-                    f"{expected_assigned_user_id!r}; off-owner ids: {wrong_owner_ids!r}."
-                )
     return failures
+
+
+def _compare_named_smart_list_owner_response(
+    transcript: BattleTestTranscript,
+    snapshot: BattleTestOracleSnapshot,
+) -> list[str]:
+    """Compare returned people owner scope for named smart-list responses.
+
+    Args:
+        transcript: Captured MCP transcript to inspect.
+        snapshot: API oracle snapshot containing the expected owner, if any.
+
+    Returns:
+        Owner-scope failures for response records that expose `assignedUserId`.
+    """
+    expected_assigned_user_id = snapshot.expected.get("assigned_user_id")
+    if not isinstance(expected_assigned_user_id, int):
+        return []
+    response = _mapping_or_none(transcript.response)
+    records = response.get("people") if response is not None else None
+    if not isinstance(records, list):
+        return []
+    wrong_owner_ids = [
+        record.get("id")
+        for record in records
+        if isinstance(record, dict)
+        and record.get("assignedUserId") is not None
+        and record.get("assignedUserId") != expected_assigned_user_id
+    ]
+    if not wrong_owner_ids:
+        return []
+    return [
+        "Expected all returned people to match assigned_user_id "
+        f"{expected_assigned_user_id!r}; off-owner ids: {wrong_owner_ids!r}."
+    ]
 
 
 def _compare_person_activity_response(
@@ -3148,6 +3169,31 @@ _SMART_LIST_GROUNDING_SCENARIOS: tuple[BattleTestScenario, ...] = (
             "From Eligible For Transfer, show my leads where source is Zillow.",
             "For my Zillow follow-up block, use Eligible For Transfer only.",
             "I need the Zillow leads within Eligible For Transfer.",
+            "What zillow leads do i need to follow up with in Eligible For Transfer?",
+            "What Zillow people do I need to follow up with from Eligible For Transfer?",
+            "Which Zillow leads in Eligible For Transfer are mine to call?",
+            "Show the Zillow leads assigned to me in Eligible For Transfer.",
+            "Give me my Zillow call list from Eligible For Transfer.",
+            "Use Eligible For Transfer and tell me which Zillow leads I should call.",
+            "For me only, pull Zillow leads from Eligible For Transfer.",
+            "Which of my Eligible For Transfer people came from Zillow?",
+            "Show my transfer-eligible Zillow contacts.",
+            "Pull Zillow contacts in Eligible For Transfer for my follow-up block.",
+            "How many Zillow leads do I personally have in Eligible For Transfer?",
+            "List the Zillow leads I own in Eligible For Transfer.",
+            "Find my Zillow source contacts inside the transfer list.",
+            "Eligible For Transfer is the boundary; show my Zillow leads.",
+            "Only show Zillow leads assigned to me from Eligible For Transfer.",
+            "Who from Zillow should I follow up with in Eligible For Transfer?",
+            "Which Eligible For Transfer contacts from Zillow are assigned to me?",
+            "Show my Zillow follow-up queue from the transfer list.",
+            "Count my Zillow leads in Eligible For Transfer before listing them.",
+            "I need to call Zillow leads from Eligible For Transfer, but only mine.",
+            "What Zillow leads do I have in the Eligible For Transfer list?",
+            "Show Zillow leads from Eligible For Transfer using my owner scope.",
+            "For my calls today, pull Zillow leads from Eligible For Transfer.",
+            "Which Zillow transfers are assigned to me?",
+            "Pull my Zillow people from the eligible transfer smart list.",
         ),
         expected_mcp=ExpectedMcpRoute(
             allowed_tools=("followupboss_search_people_in_smart_list",),
@@ -3570,6 +3616,99 @@ _SMART_LIST_GROUNDING_BLUEPRINTS: tuple[
             (
                 "BT-SMARTLIST-002",
                 "Now show my Zillow leads from that list.",
+            ),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_TURN,
+        None,
+        (
+            (
+                "BT-SMARTLIST-001",
+                "Confirm Eligible For Transfer exists; use it as my Zillow follow-up list.",
+            ),
+            (
+                "BT-SMARTLIST-002",
+                "What zillow leads do i need to follow up with",
+            ),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_TURN,
+        None,
+        (
+            (
+                "BT-SMARTLIST-001",
+                "Before calls, check the saved smart-list named Eligible For Transfer.",
+            ),
+            (
+                "BT-SMARTLIST-002",
+                "Which Zillow leads do I need to call?",
+            ),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_TURN,
+        None,
+        (
+            (
+                "BT-SMARTLIST-001",
+                "Look up Eligible For Transfer so we can use that list for Zillow work.",
+            ),
+            (
+                "BT-SMARTLIST-002",
+                "Show the Zillow follow-up queue for me.",
+            ),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_TURN,
+        None,
+        (
+            (
+                "BT-SMARTLIST-001",
+                "Use Eligible For Transfer as the list boundary for my next Zillow ask.",
+            ),
+            (
+                "BT-SMARTLIST-002",
+                "Give me the Zillow leads I should follow up with.",
+            ),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_TURN,
+        None,
+        (
+            (
+                "BT-SMARTLIST-001",
+                "Check that Eligible For Transfer is the smart list for my Zillow block.",
+            ),
+            (
+                "BT-SMARTLIST-002",
+                "How many Zillow leads do I have to work?",
+            ),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_ASK,
+        (
+            "Use Eligible For Transfer as my Zillow follow-up boundary, then tell me "
+            "what Zillow leads I need to call."
+        ),
+        (
+            (
+                "BT-SMARTLIST-001",
+                (
+                    "Use Eligible For Transfer as my Zillow follow-up boundary, then tell me "
+                    "what Zillow leads I need to call."
+                ),
+            ),
+            (
+                "BT-SMARTLIST-002",
+                (
+                    "Use Eligible For Transfer as my Zillow follow-up boundary, then tell me "
+                    "what Zillow leads I need to call."
+                ),
             ),
         ),
     ),
