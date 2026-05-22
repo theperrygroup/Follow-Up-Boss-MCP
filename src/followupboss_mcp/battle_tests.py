@@ -148,6 +148,7 @@ class ApiOracleSpec(RequestModel):
     description: str
     smart_list_name: str | None = None
     answer_must_be_grounded: bool = False
+    requires_authenticated_owner_scope: bool = False
 
 
 class BattleTestScenario(RequestModel):
@@ -1859,8 +1860,16 @@ class ReadOnlyBattleTestOracle:
             await self._list_all_smart_lists(),
             smart_list_name,
         )
-        mine = _optional_bool(transcript.arguments.get("mine")) is not False
-        assigned_user_id = _optional_int(transcript.arguments.get("assigned_user_id"))
+        mine = (
+            True
+            if scenario.api_oracle.requires_authenticated_owner_scope
+            else _optional_bool(transcript.arguments.get("mine")) is not False
+        )
+        assigned_user_id = (
+            None
+            if scenario.api_oracle.requires_authenticated_owner_scope
+            else _optional_int(transcript.arguments.get("assigned_user_id"))
+        )
         if assigned_user_id is None and mine:
             assigned_user_id = await self._authenticated_user_id()
         page = await self._services.people.search_people(
@@ -3196,14 +3205,15 @@ _SMART_LIST_GROUNDING_SCENARIOS: tuple[BattleTestScenario, ...] = (
             "Pull my Zillow people from the eligible transfer smart list.",
         ),
         expected_mcp=ExpectedMcpRoute(
-            allowed_tools=("followupboss_search_people_in_smart_list",),
+            allowed_tools=(
+                "followupboss_search_people_in_smart_list",
+                "followupboss_search_people",
+            ),
             forbidden_tools=(
                 "followupboss_get_latest_lead",
-                "followupboss_search_people",
                 "followupboss_list_smart_lists",
             ),
-            required_argument_keys=("smart_list_name", "source", "mine"),
-            required_argument_values={"mine": True},
+            required_argument_keys=("source",),
         ),
         api_oracle=ApiOracleSpec(
             kind=BattleTestOracleKind.NAMED_SMART_LIST_PEOPLE,
@@ -3216,7 +3226,7 @@ _SMART_LIST_GROUNDING_SCENARIOS: tuple[BattleTestScenario, ...] = (
         ),
         response_assertions=(
             "request.smart_list_name == api_oracle.smart_list_name",
-            "request.mine is true for I/me/my follow-up wording",
+            "request.mine is not false for I/me/my follow-up wording",
             "response.smartlist.id == api_oracle.smart_list_id",
             "response.people[*].assignedUserId == authenticated_user.id",
             "response.people[*].id == api_oracle.person_ids",

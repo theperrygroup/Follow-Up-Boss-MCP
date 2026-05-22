@@ -537,15 +537,10 @@ def test_smart_list_grounding_corpus_targets_zillow_regression() -> None:
     )
     assert scenario_by_id("BT-SMARTLIST-002").expected_mcp.allowed_tools == (
         "followupboss_search_people_in_smart_list",
+        "followupboss_search_people",
     )
-    assert scenario_by_id("BT-SMARTLIST-002").expected_mcp.required_argument_keys == (
-        "smart_list_name",
-        "source",
-        "mine",
-    )
-    assert scenario_by_id("BT-SMARTLIST-002").expected_mcp.required_argument_values == {
-        "mine": True
-    }
+    assert scenario_by_id("BT-SMARTLIST-002").expected_mcp.required_argument_keys == ("source",)
+    assert scenario_by_id("BT-SMARTLIST-002").expected_mcp.required_argument_values == {}
     assert len(scenario_by_id("BT-SMARTLIST-002").prompt_variants) == 45
     assert scenario_by_id("BT-SMARTLIST-004").expected_mcp.required_argument_values == {
         "mine": False

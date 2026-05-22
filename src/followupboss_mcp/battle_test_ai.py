@@ -175,16 +175,12 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
                 "absent from this tool result in the answer. When the prompt says Zillow "
                 "leads, include source='Zillow'. The helper defaults to mine=true, so "
                 "omitted owner scope is authenticated-user scoped. Set mine=false only "
-                "for explicit everyone/account-wide prompts. For a named owner, pass "
-                "assigned_user_id only when the user ID is already known."
+                "for explicit everyone/account-wide prompts. Do not invent owner IDs."
             ),
             input_schema={
                 "type": "object",
                 "properties": {
                     "smart_list_name": _string_schema("Exact Follow Up Boss smart-list name."),
-                    "assigned_user_id": _positive_integer_schema(
-                        "Explicit positive Follow Up Boss owner user ID."
-                    ),
                     "fields": _enum_array_schema(
                         "Optional person response fields to request.",
                         _LATEST_LEAD_RESPONSE_FIELDS,
@@ -479,8 +475,8 @@ def battle_test_selection_instructions() -> str:
         "mine=true so the helper scopes to the authenticated user even when the credential "
         "is admin-visible. Set mine=false only when the prompt explicitly asks for everyone, "
         "all agents, account-wide, team-wide, or an overall count. For a named owner such as "
-        "Scott Willey, pass assigned_user_id only if the user ID is already known; otherwise "
-        "call battle_test_clarify instead of returning account-wide results. The final answer must "
+        "Scott Willey, do not invent owner IDs; call battle_test_clarify when the owner ID is "
+        "unknown instead of returning account-wide results. The final answer must "
         "not include any person absent from that smart-list-scoped tool result. Use "
         "followupboss_list_smart_lists "
         "only when the user is asking to list or inspect saved lists, not as the final route "
@@ -1418,11 +1414,6 @@ def _string_schema(description: str) -> JsonObject:
 def _integer_schema(description: str) -> JsonObject:
     """Return a JSON schema integer property."""
     return {"type": "integer", "description": description}
-
-
-def _positive_integer_schema(description: str) -> JsonObject:
-    """Return a JSON schema positive-integer property."""
-    return {"type": "integer", "minimum": 1, "description": description}
 
 
 def _enum_array_schema(description: str, allowed_values: tuple[str, ...]) -> JsonObject:

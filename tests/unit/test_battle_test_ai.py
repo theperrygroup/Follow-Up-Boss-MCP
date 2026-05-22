@@ -503,10 +503,8 @@ def test_read_only_tool_specs_include_expanded_read_surfaces() -> None:
     assert "Do not use this for named smart-list" in (
         specs["followupboss_search_people"].description
     )
-    assert {"smart_list_name", "source", "stage", "mine", "assigned_user_id"}.issubset(
-        helper_properties
-    )
-    assert cast(dict[str, object], helper_properties["assigned_user_id"])["minimum"] == 1
+    assert {"smart_list_name", "source", "stage", "mine"}.issubset(helper_properties)
+    assert "assigned_user_id" not in helper_properties
     assert specs["followupboss_search_people_in_smart_list"].input_schema["required"] == [
         "smart_list_name",
         "source",
@@ -556,7 +554,7 @@ def test_selection_instructions_explain_unsupported_note_search() -> None:
     assert "When the prompt says Zillow leads, include source='Zillow'" in instructions
     assert "set mine=true" in instructions
     assert "Set mine=false only when the prompt explicitly asks for everyone" in instructions
-    assert "pass assigned_user_id only if the user ID is already known" in instructions
+    assert "do not invent owner IDs" in instructions
     assert "came from Zillow" in instructions
     assert "boundary for Zillow follow-ups" in instructions
     assert "absent from that smart-list-scoped tool result" in instructions
