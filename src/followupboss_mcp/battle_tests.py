@@ -3223,6 +3223,7 @@ _SMART_LIST_GROUNDING_SCENARIOS: tuple[BattleTestScenario, ...] = (
             ),
             smart_list_name="Eligible For Transfer",
             answer_must_be_grounded=True,
+            requires_authenticated_owner_scope=True,
         ),
         response_assertions=(
             "request.smart_list_name == api_oracle.smart_list_name",

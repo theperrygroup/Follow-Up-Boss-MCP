@@ -931,6 +931,29 @@ def test_route_evaluation_grades(
         assert any(failure_substring in failure for failure in route_result.failures)
 
 
+def test_route_evaluation_rejects_wrong_required_argument_values() -> None:
+    scenario = _scenario(BattleTestGrade.MUST_REQUIRE_ID).model_copy(
+        update={
+            "expected_mcp": ExpectedMcpRoute(
+                allowed_tools=("safe_tool",),
+                required_argument_keys=("record_id", "mine"),
+                required_argument_values={"mine": False},
+            )
+        }
+    )
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        arguments={"record_id": 123, "mine": True},
+        selected_tool="safe_tool",
+    )
+
+    route_result = evaluate_transcript_route(scenario, transcript)
+
+    assert route_result.passed is False
+    assert any("Expected explicit argument values" in failure for failure in route_result.failures)
+
+
 @pytest.mark.asyncio
 async def test_latest_lead_oracle_matches_person_id_and_mirrors_fields() -> None:
     scenario = scenario_by_id("BT-READ-001")
@@ -1471,7 +1494,9 @@ async def test_named_smart_list_grounding_rejects_unowned_my_followup_route() ->
     evaluation = await ReadOnlyBattleTestOracle(services).evaluate(scenario, transcript)
 
     assert evaluation.passed is False
-    assert any("Expected explicit argument values" in failure for failure in evaluation.failures)
+    assert any(
+        "Expected helper route to include owner scope" in failure for failure in evaluation.failures
+    )
 
 
 @pytest.mark.asyncio
@@ -1528,7 +1553,10 @@ async def test_named_smart_list_grounding_accepts_explicit_assigned_user_scope(
                 allowed_tools=("followupboss_search_people_in_smart_list",),
                 required_argument_keys=("smart_list_name", "source", "assigned_user_id"),
                 required_argument_values={"assigned_user_id": 101},
-            )
+            ),
+            "api_oracle": base_scenario.api_oracle.model_copy(
+                update={"requires_authenticated_owner_scope": False}
+            ),
         }
     )
     services = _services(
