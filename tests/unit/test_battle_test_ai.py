@@ -491,9 +491,12 @@ def test_selection_instructions_explain_unsupported_note_search() -> None:
     assert "followupboss_list_smart_lists" in instructions
     assert "Use followupboss_search_people_in_smart_list" in instructions
     assert "When the prompt says Zillow leads, include source='Zillow'" in instructions
+    assert "came from Zillow" in instructions
+    assert "boundary for Zillow follow-ups" in instructions
     assert "absent from that smart-list-scoped tool result" in instructions
     assert "smart_list_name='Eligible For Transfer'" in instructions
-    assert "ask a clarification question instead of broad-searching" in instructions
+    assert "call battle_test_clarify and ask which smart list" in instructions
+    assert "Never default a bare Zillow-leads prompt" in instructions
     assert (
         "followupboss_check_duplicate_person only when an email or phone is provided"
         in instructions

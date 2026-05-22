@@ -2927,11 +2927,11 @@ _SMART_LIST_GROUNDING_SCENARIOS: tuple[BattleTestScenario, ...] = (
         prompt_variants=(
             "Show people in eligible   for transfer from Zillow.",
             "Pull Zillow leads in eligible for transfer.",
-            "Use ELIGIBLE FOR TRANSFER for Zillow lead follow-up.",
+            "Search ELIGIBLE FOR TRANSFER for Zillow leads.",
             "From Eligible    For    Transfer, show Zillow leads.",
             "List Zillow contacts in the eligible for transfer smart list.",
             "Search the Eligible For Transfer smart list for Zillow leads.",
-            "Only use the eligible for transfer list for Zillow follow-ups.",
+            "Search only the eligible for transfer smart list for Zillow follow-ups.",
             "Can you count Zillow leads in ELIGIBLE FOR TRANSFER?",
             "Find source Zillow inside eligible for transfer.",
             "Show me Eligible For Transfer members where the source is Zillow.",
@@ -3231,15 +3231,21 @@ _SMART_LIST_GROUNDING_BLUEPRINTS: tuple[
 ] = (
     (
         BattleTestConversationKind.MULTI_ASK,
-        "Show my smart lists, then show Zillow leads in Eligible For Transfer.",
+        ("Show saved smart-list metadata first, then show Zillow leads in Eligible For Transfer."),
         (
             (
                 "BT-SMARTLIST-001",
-                "Show my smart lists, then show Zillow leads in Eligible For Transfer.",
+                (
+                    "Show saved smart-list metadata first, then show Zillow leads in "
+                    "Eligible For Transfer."
+                ),
             ),
             (
                 "BT-SMARTLIST-002",
-                "Show my smart lists, then show Zillow leads in Eligible For Transfer.",
+                (
+                    "Show saved smart-list metadata first, then show Zillow leads in "
+                    "Eligible For Transfer."
+                ),
             ),
         ),
     ),
@@ -3249,7 +3255,7 @@ _SMART_LIST_GROUNDING_BLUEPRINTS: tuple[
         (
             (
                 "BT-SMARTLIST-001",
-                "Show me the Eligible For Transfer smart list.",
+                "Show me only metadata for the Eligible For Transfer smart list.",
             ),
             (
                 "BT-SMARTLIST-002",
@@ -3273,7 +3279,7 @@ _SMART_LIST_GROUNDING_BLUEPRINTS: tuple[
         (
             (
                 "BT-SMARTLIST-001",
-                "Pull the Eligible For Transfer list before my Zillow calls.",
+                "Pull only Eligible For Transfer smart-list metadata before my Zillow calls.",
             ),
             (
                 "BT-SMARTLIST-004",
