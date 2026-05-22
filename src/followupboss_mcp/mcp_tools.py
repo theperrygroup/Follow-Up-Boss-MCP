@@ -331,6 +331,41 @@ class ListActiveDealsForPersonToolInput(RequestModel):
     person_id: int
 
 
+class ListPersonActivityToolInput(RequestModel):
+    """Tool input for listing communication and activity records for one person."""
+
+    person_id: int
+    include_appointments: bool = True
+    include_calls: bool = True
+    include_email_events: bool = True
+    include_events: bool = True
+    include_text_messages: bool = True
+    limit: int | None = None
+    offset: int | None = None
+
+    @model_validator(mode="after")
+    def _require_one_activity_surface(self) -> ListPersonActivityToolInput:
+        """Require at least one activity surface to be selected.
+
+        Returns:
+            The validated tool input.
+
+        Raises:
+            ValueError: If all activity surfaces are disabled.
+        """
+        if not any(
+            (
+                self.include_appointments,
+                self.include_calls,
+                self.include_email_events,
+                self.include_events,
+                self.include_text_messages,
+            )
+        ):
+            raise ValueError("At least one person activity surface must be selected.")
+        return self
+
+
 class CheckDuplicatePersonToolInput(PersonDuplicateCheckRequest):
     """Tool input for checking whether a person already exists."""
 
@@ -1813,6 +1848,110 @@ class FollowUpBossToolAdapter:
             lambda: self._services.deals.list_deals(request),
             key="deals",
         )
+
+    async def list_person_activity(
+        self,
+        tool_input: ListPersonActivityToolInput,
+    ) -> dict[str, Any]:
+        """List communication and activity records for one explicit person.
+
+        Args:
+            tool_input: Person-scoped activity query controls.
+
+        Returns:
+            A structured payload containing person provenance, per-surface
+            pagination metadata, and only activity records queried with the
+            requested `person_id`.
+        """
+        try:
+            person = await self._execute_with_services(
+                lambda: self._services.people.get_person(tool_input.person_id)
+            )
+            metadata: dict[str, dict[str, Any]] = {}
+            result: dict[str, Any] = {
+                "person": person.model_dump(
+                    mode="json",
+                    by_alias=True,
+                    exclude_defaults=True,
+                    exclude_none=True,
+                )
+            }
+
+            if tool_input.include_calls:
+                calls = await self._execute_with_services(
+                    lambda: self._services.calls.list_calls(
+                        CallListRequest(
+                            limit=tool_input.limit,
+                            offset=tool_input.offset,
+                            person_id=tool_input.person_id,
+                        )
+                    )
+                )
+                metadata["calls"] = asdict(calls.metadata)
+                result["calls"] = [
+                    item.model_dump(mode="json", by_alias=True) for item in calls.items
+                ]
+
+            if tool_input.include_text_messages:
+                text_messages = await self._execute_with_services(
+                    lambda: self._services.text_messages.list_text_messages(
+                        TextMessageListRequest(person_id=tool_input.person_id)
+                    )
+                )
+                metadata["textmessages"] = asdict(text_messages.metadata)
+                result["textmessages"] = [
+                    item.model_dump(mode="json", by_alias=True) for item in text_messages.items
+                ]
+
+            if tool_input.include_email_events:
+                email_events = await self._execute_with_services(
+                    lambda: self._services.email_marketing.list_email_events(
+                        EmailEventListRequest(
+                            limit=tool_input.limit,
+                            offset=tool_input.offset,
+                            person_id=tool_input.person_id,
+                        )
+                    )
+                )
+                metadata["emEvents"] = asdict(email_events.metadata)
+                result["emEvents"] = [
+                    item.model_dump(mode="json", by_alias=True) for item in email_events.items
+                ]
+
+            if tool_input.include_events:
+                events = await self._execute_with_services(
+                    lambda: self._services.events.search_events(
+                        EventSearchRequest(
+                            limit=tool_input.limit,
+                            offset=tool_input.offset,
+                            person_id=tool_input.person_id,
+                        )
+                    )
+                )
+                metadata["events"] = asdict(events.metadata)
+                result["events"] = [
+                    item.model_dump(mode="json", by_alias=True) for item in events.items
+                ]
+
+            if tool_input.include_appointments:
+                appointments = await self._execute_with_services(
+                    lambda: self._services.appointments.list_appointments(
+                        AppointmentListRequest(
+                            limit=tool_input.limit,
+                            offset=tool_input.offset,
+                            person_id=tool_input.person_id,
+                        )
+                    )
+                )
+                metadata["appointments"] = asdict(appointments.metadata)
+                result["appointments"] = [
+                    item.model_dump(mode="json", by_alias=True) for item in appointments.items
+                ]
+        except FollowUpBossError as exc:
+            raise RuntimeError(_mcp_safe_error(exc)) from exc
+
+        result["_metadata"] = metadata
+        return result
 
     async def get_deal(self, tool_input: GetDealToolInput) -> dict[str, Any]:
         """Get a deal."""

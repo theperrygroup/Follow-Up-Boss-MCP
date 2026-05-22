@@ -46,6 +46,8 @@ from followupboss_mcp.battle_tests import (
 from followupboss_mcp.models.appointments import AppointmentListRequest, AppointmentRecord
 from followupboss_mcp.models.calls import CallListRequest, CallRecord
 from followupboss_mcp.models.common import JsonValue
+from followupboss_mcp.models.email_marketing import EmailEventListRequest, EmailEventRecord
+from followupboss_mcp.models.events import EventRecord, EventSearchRequest
 from followupboss_mcp.models.identity import IdentityResponse
 from followupboss_mcp.models.notes import NoteRecord
 from followupboss_mcp.models.people import (
@@ -150,6 +152,15 @@ class StubIdentityService:
 class StubPeopleService:
     """People service test double."""
 
+    async def get_person(
+        self,
+        person_id: int,
+        request: object | None = None,
+    ) -> PersonRecord:
+        """Return a person by ID."""
+        del request
+        return PersonRecord.model_validate({"id": person_id})
+
     async def search_people(
         self, request: PeopleSearchRequest | None = None
     ) -> PageResult[PersonRecord]:
@@ -253,6 +264,30 @@ class StubTextMessagesService:
 
 
 @dataclass
+class StubEmailEventsService:
+    """Email-event service test double."""
+
+    async def list_email_events(
+        self,
+        request: EmailEventListRequest | None = None,
+    ) -> PageResult[EmailEventRecord]:
+        """Return no email events."""
+        return _empty_page()
+
+
+@dataclass
+class StubEventsService:
+    """Event service test double."""
+
+    async def search_events(
+        self,
+        request: EventSearchRequest | None = None,
+    ) -> PageResult[EventRecord]:
+        """Return no events."""
+        return _empty_page()
+
+
+@dataclass
 class StubTemplatesService:
     """Templates service test double."""
 
@@ -294,6 +329,8 @@ class StubBattleTestServices:
     appointments: StubAppointmentsService = field(default_factory=StubAppointmentsService)
     calls: StubCallsService = field(default_factory=StubCallsService)
     text_messages: StubTextMessagesService = field(default_factory=StubTextMessagesService)
+    email_marketing: StubEmailEventsService = field(default_factory=StubEmailEventsService)
+    events: StubEventsService = field(default_factory=StubEventsService)
     templates: StubTemplatesService = field(default_factory=StubTemplatesService)
     text_message_templates: StubTextMessageTemplatesService = field(
         default_factory=StubTextMessageTemplatesService
@@ -433,9 +470,11 @@ def test_read_only_tool_specs_include_expanded_read_surfaces() -> None:
         "followupboss_list_smart_lists",
         "followupboss_check_duplicate_person",
         "followupboss_list_unclaimed_people",
+        "followupboss_list_person_activity",
         "followupboss_list_appointments",
         "followupboss_list_calls",
         "followupboss_list_text_messages",
+        "followupboss_list_email_events",
         "followupboss_list_templates",
         "followupboss_list_text_message_templates",
     ):
@@ -454,6 +493,10 @@ def test_read_only_tool_specs_include_expanded_read_surfaces() -> None:
         dict[str, object],
         specs["followupboss_search_people_in_smart_list"].input_schema["properties"],
     )
+    activity_properties = cast(
+        dict[str, object],
+        specs["followupboss_list_person_activity"].input_schema["properties"],
+    )
 
     assert set(duplicate_properties) == {"email", "phone"}
     assert "smart_list_id" in people_properties
@@ -469,6 +512,11 @@ def test_read_only_tool_specs_include_expanded_read_surfaces() -> None:
         specs["followupboss_search_people_in_smart_list"].description
     )
     assert "source='Zillow'" in specs["followupboss_search_people_in_smart_list"].description
+    assert specs["followupboss_list_person_activity"].input_schema["required"] == ["person_id"]
+    assert {"person_id", "include_calls", "include_text_messages"}.issubset(activity_properties)
+    assert "clarify instead of using broad activity list tools" in (
+        specs["followupboss_list_person_activity"].description
+    )
 
 
 def test_selection_instructions_explain_unsupported_note_search() -> None:
@@ -497,6 +545,9 @@ def test_selection_instructions_explain_unsupported_note_search() -> None:
     assert "smart_list_name='Eligible For Transfer'" in instructions
     assert "call battle_test_clarify and ask which smart list" in instructions
     assert "Never default a bare Zillow-leads prompt" in instructions
+    assert "Use followupboss_list_person_activity for communication history" in instructions
+    assert "without a resolved person_id, call battle_test_clarify" in instructions
+    assert "do not use broad calls, text messages, email events, events" in instructions
     assert (
         "followupboss_check_duplicate_person only when an email or phone is provided"
         in instructions

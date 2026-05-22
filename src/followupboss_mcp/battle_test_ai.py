@@ -276,6 +276,32 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
             },
         ),
         BattleTestAiToolSpec(
+            name="followupboss_list_person_activity",
+            description=(
+                "List communication and activity history for one explicit person_id. "
+                "Use this for lead/contact/person history prompts that ask for calls, "
+                "texts, email events, events, appointments, messages, communication log, "
+                "interaction timeline, or what we sent. If no explicit person_id is "
+                "available from the prompt or prior turn, clarify instead of using broad "
+                "activity list tools."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "person_id": _integer_schema("Explicit Follow Up Boss person ID."),
+                    "include_appointments": {"type": "boolean"},
+                    "include_calls": {"type": "boolean"},
+                    "include_email_events": {"type": "boolean"},
+                    "include_events": {"type": "boolean"},
+                    "include_text_messages": {"type": "boolean"},
+                    "limit": _integer_schema("Optional per-surface page size."),
+                    "offset": _integer_schema("Optional per-surface offset."),
+                },
+                "required": ["person_id"],
+                "additionalProperties": False,
+            },
+        ),
+        BattleTestAiToolSpec(
             name="followupboss_list_appointments",
             description=(
                 "List appointment records. Use safe filters when a person_id or user_id "
@@ -316,6 +342,23 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
                 "type": "object",
                 "properties": {
                     "person_id": _integer_schema("Explicit person ID filter."),
+                },
+                "additionalProperties": False,
+            },
+        ),
+        BattleTestAiToolSpec(
+            name="followupboss_list_email_events",
+            description=(
+                "List email marketing event logs. For lead/contact/person communication "
+                "history, prefer followupboss_list_person_activity with an explicit person_id."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "person_id": _integer_schema("Explicit person ID filter."),
+                    "type": _string_schema("Optional email event type."),
+                    "limit": _integer_schema("Optional page size."),
+                    "offset": _integer_schema("Optional offset."),
                 },
                 "additionalProperties": False,
             },
@@ -430,6 +473,13 @@ def battle_test_selection_instructions() -> str:
         "which smart list or saved view should scope the Zillow leads; do not broad-search "
         "or answer from memory. Never default a bare Zillow-leads prompt to Eligible For "
         "Transfer unless the prompt or an earlier turn explicitly named that list. "
+        "Use followupboss_list_person_activity for communication history, activity history, "
+        "messages, calls, texts, email events, events, appointments, interaction timelines, "
+        "or what we sent only when the prompt or prior turn provides an explicit person_id. "
+        "If a lead/contact/person history request says this lead, that contact, my lead, "
+        "latest lead, Zillow person, or similar without a resolved person_id, call "
+        "battle_test_clarify; do not use broad calls, text messages, email events, events, "
+        "or appointments list tools for that vague person-history request. "
         "Use list tools for appointments, calls, text-message logs, email templates, and "
         "text-message templates; these are read-only listing intents. "
         "Fetch notes only with an explicit note ID. "

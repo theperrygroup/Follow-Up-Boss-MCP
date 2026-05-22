@@ -92,6 +92,7 @@ from followupboss_mcp.mcp_tools import (
     ListInboxAppInstallationsToolInput,
     ListInboxAppParticipantsToolInput,
     ListMyTaskIntentToolInput,
+    ListPersonActivityToolInput,
     SearchPeopleInSmartListToolInput,
     UpdateActionPlanPersonToolInput,
     UpdateAppointmentOutcomeToolInput,
@@ -136,6 +137,7 @@ from followupboss_mcp.models.appointment_metadata import (
     CreateAppointmentTypeRequest,
 )
 from followupboss_mcp.models.appointments import (
+    AppointmentInvitee,
     AppointmentListRequest,
     AppointmentRecord,
     CreateAppointmentRequest,
@@ -398,6 +400,7 @@ EXPECTED_REGISTERED_TOOL_NAMES = [
     "followupboss_list_my_tasks_due_today",
     "followupboss_list_my_upcoming_tasks",
     "followupboss_list_people_relationships",
+    "followupboss_list_person_activity",
     "followupboss_list_pipelines",
     "followupboss_list_ponds",
     "followupboss_list_round_robin_groups",
@@ -541,9 +544,14 @@ class StubBundle:
     """Service bundle stub for adapter-only tests."""
 
     def __post_init__(self) -> None:
+        self.appointment_list_requests: list[AppointmentListRequest] = []
+        self.call_list_requests: list[CallListRequest] = []
+        self.email_event_list_requests: list[EmailEventListRequest] = []
+        self.event_search_requests: list[EventSearchRequest] = []
         self.deal_list_requests: list[DealListRequest] = []
         self.people_search_requests: list[PeopleSearchRequest] = []
         self.task_list_requests: list[TaskListRequest] = []
+        self.text_message_list_requests: list[TextMessageListRequest] = []
 
         async def identity_get() -> IdentityResponse:
             return IdentityResponse(id=1, name="Picard")
@@ -763,9 +771,11 @@ class StubBundle:
         async def people_relationships_delete(people_relationship_id: int) -> None:
             del people_relationship_id
 
-        async def events_search(_: EventSearchRequest) -> PageResult[EventRecord]:
+        async def events_search(request: EventSearchRequest) -> PageResult[EventRecord]:
+            self.event_search_requests.append(request)
             return PageResult(
-                items=[EventRecord(id=4, personId=2, type="Inquiry")], metadata=_page_metadata()
+                items=[EventRecord(id=4, personId=request.person_id or 2, type="Inquiry")],
+                metadata=_page_metadata(),
             )
 
         async def events_send(_: CreateEventRequest) -> EventRecord:
@@ -1309,14 +1319,15 @@ class StubBundle:
             )
 
         async def email_marketing_list_events(
-            _: EmailEventListRequest,
+            request: EmailEventListRequest,
         ) -> PageResult[EmailEventRecord]:
+            self.email_event_list_requests.append(request)
             return PageResult(
                 items=[
                     EmailEventRecord(
                         count=2,
                         type="open",
-                        personId=10911,
+                        personId=request.person_id or 10911,
                         campaignId=102,
                         campaignName="Can I help",
                         created="2017-01-03T19:20:49Z",
@@ -1588,11 +1599,19 @@ class StubBundle:
                 ),
             )
 
-        async def appointments_list(_: AppointmentListRequest) -> PageResult[AppointmentRecord]:
+        async def appointments_list(
+            request: AppointmentListRequest,
+        ) -> PageResult[AppointmentRecord]:
+            self.appointment_list_requests.append(request)
             return PageResult(
                 items=[
                     AppointmentRecord(
                         id=8,
+                        invitees=[
+                            AppointmentInvitee.model_validate(
+                                {"personId": request.person_id or 2, "name": "Data"}
+                            )
+                        ],
                         title="Buyer consult",
                         start="2026-03-28T10:00:00Z",
                         end="2026-03-28T11:00:00Z",
@@ -1629,9 +1648,17 @@ class StubBundle:
         async def appointments_delete(appointment_id: int) -> None:
             del appointment_id
 
-        async def calls_list(_: CallListRequest) -> PageResult[CallRecord]:
+        async def calls_list(request: CallListRequest) -> PageResult[CallRecord]:
+            self.call_list_requests.append(request)
             return PageResult(
-                items=[CallRecord(id=11, personId=2, phone="555-0000", userName="Data")],
+                items=[
+                    CallRecord(
+                        id=11,
+                        personId=request.person_id or 2,
+                        phone="555-0000",
+                        userName="Data",
+                    )
+                ],
                 metadata=_page_metadata(),
             )
 
@@ -1696,9 +1723,19 @@ class StubBundle:
         async def templates_delete(template_id: int) -> None:
             del template_id
 
-        async def text_messages_list(_: TextMessageListRequest) -> PageResult[TextMessageRecord]:
+        async def text_messages_list(
+            request: TextMessageListRequest,
+        ) -> PageResult[TextMessageRecord]:
+            self.text_message_list_requests.append(request)
             return PageResult(
-                items=[TextMessageRecord(id=31, personId=2, message="Hi there", userName="Data")],
+                items=[
+                    TextMessageRecord(
+                        id=31,
+                        personId=request.person_id or 2,
+                        message="Hi there",
+                        userName="Data",
+                    )
+                ],
                 metadata=_page_metadata(),
             )
 
@@ -2118,6 +2155,46 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     with pytest.raises(RuntimeError, match="Smart list named 'Missing List' was not found"):
         await adapter.search_people_in_smart_list(
             SearchPeopleInSmartListToolInput(smart_list_name="Missing List")
+        )
+    person_activity = await adapter.list_person_activity(
+        ListPersonActivityToolInput(person_id=42, limit=5)
+    )
+    assert person_activity["person"]["id"] == 42
+    assert person_activity["calls"][0]["personId"] == 42
+    assert person_activity["textmessages"][0]["personId"] == 42
+    assert person_activity["emEvents"][0]["personId"] == 42
+    assert person_activity["events"][0]["personId"] == 42
+    assert person_activity["appointments"][0]["invitees"][0]["personId"] == 42
+    assert stub.call_list_requests[-1].person_id == 42
+    assert stub.call_list_requests[-1].limit == 5
+    assert stub.text_message_list_requests[-1].person_id == 42
+    assert stub.email_event_list_requests[-1].person_id == 42
+    assert stub.event_search_requests[-1].person_id == 42
+    assert stub.appointment_list_requests[-1].person_id == 42
+    calls_only_activity = await adapter.list_person_activity(
+        ListPersonActivityToolInput(
+            person_id=42,
+            include_appointments=False,
+            include_email_events=False,
+            include_events=False,
+            include_text_messages=False,
+        )
+    )
+    assert list(calls_only_activity["_metadata"]) == ["calls"]
+    assert "textmessages" not in calls_only_activity
+    no_calls_activity = await adapter.list_person_activity(
+        ListPersonActivityToolInput(person_id=42, include_calls=False)
+    )
+    assert "calls" not in no_calls_activity
+    assert "textmessages" in no_calls_activity
+    with pytest.raises(ValidationError, match="At least one person activity surface"):
+        ListPersonActivityToolInput(
+            person_id=42,
+            include_appointments=False,
+            include_calls=False,
+            include_email_events=False,
+            include_events=False,
+            include_text_messages=False,
         )
     ambiguous_services = replace(
         stub.bundle,
@@ -3075,6 +3152,26 @@ async def test_smart_list_helper_returns_safe_runtime_error_for_follow_up_boss_f
         )
 
 
+@pytest.mark.asyncio
+async def test_person_activity_returns_safe_runtime_error_for_follow_up_boss_failures() -> None:
+    """Person-activity helper should surface Follow Up Boss failures as safe runtime errors."""
+    stub = StubBundle()
+
+    async def failing_people_get(
+        person_id: int,
+        request: object | None = None,
+    ) -> PersonRecord:
+        """Raise a representative Follow Up Boss service failure."""
+        del person_id, request
+        raise FollowUpBossError("upstream exploded")
+
+    services = replace(stub.bundle, people=_service_stub(get_person=failing_people_get))
+    adapter = FollowUpBossToolAdapter(services)
+
+    with pytest.raises(RuntimeError, match="upstream exploded"):
+        await adapter.list_person_activity(ListPersonActivityToolInput(person_id=42))
+
+
 class QueueClient:
     """Queue-backed client for FastMCP server tests."""
 
@@ -3771,6 +3868,12 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     )
     assert "named Follow Up Boss smart list" in helper_description
     assert "provenance" in helper_description
+    person_activity_description = cast(
+        "str",
+        tools["followupboss_list_person_activity"].description,
+    )
+    assert "one explicit Follow Up Boss person_id" in person_activity_description
+    assert "applies person_id to calls" in person_activity_description
     assert "followupboss_list_my_overdue_tasks" in list_tasks_description
     assert "followupboss_list_my_tasks_due_today" in list_tasks_description
     assert "followupboss_list_my_upcoming_tasks" in list_tasks_description
@@ -3896,6 +3999,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_list_my_tasks_due_today",
         "followupboss_list_my_upcoming_tasks",
         "followupboss_list_people_relationships",
+        "followupboss_list_person_activity",
         "followupboss_list_pipelines",
         "followupboss_list_ponds",
         "followupboss_list_round_robin_groups",
@@ -4835,6 +4939,55 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     content_text = getattr(prompt_result.messages[0].content, "text", None)
     assert isinstance(content_text, str)
     assert content_text.startswith("Create a Follow Up Boss POST /events payload")
+
+
+@pytest.mark.asyncio
+async def test_public_person_activity_tool_returns_scoped_activity() -> None:
+    """The registered public helper should enforce person activity scope."""
+    server = create_server(
+        FollowUpBossSettings.model_validate({"api_key": "key"}),
+        client=QueueClient(
+            [
+                {"id": 42, "firstName": "Data"},
+                {
+                    "_metadata": {"count": 1, "limit": 2, "offset": 0, "total": 1},
+                    "calls": [{"id": 1, "personId": 42}],
+                },
+                {
+                    "_metadata": {"count": 1, "limit": 0, "offset": 0, "total": 1},
+                    "textmessages": [{"id": 2, "personId": 42}],
+                },
+                {
+                    "_metadata": {"count": 1, "limit": 2, "offset": 0, "total": 1},
+                    "emEvents": [{"count": 1, "personId": 42, "type": "open"}],
+                },
+                {
+                    "_metadata": {"count": 1, "limit": 2, "offset": 0, "total": 1},
+                    "events": [{"id": 4, "personId": 42}],
+                },
+                {
+                    "_metadata": {"count": 1, "limit": 2, "offset": 0, "total": 1},
+                    "appointments": [{"id": 5, "invitees": [{"personId": 42}]}],
+                },
+            ]
+        ),
+    )
+    tools = {tool.name: tool for tool in await server.list_tools()}
+
+    result = await _call_public_tool(
+        server,
+        tools,
+        "followupboss_list_person_activity",
+        42,
+        limit=2,
+    )
+
+    assert result["person"]["id"] == 42
+    assert result["calls"][0]["personId"] == 42
+    assert result["textmessages"][0]["personId"] == 42
+    assert result["emEvents"][0]["personId"] == 42
+    assert result["events"][0]["personId"] == 42
+    assert result["appointments"][0]["invitees"][0]["personId"] == 42
 
 
 @pytest.mark.asyncio

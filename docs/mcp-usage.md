@@ -153,6 +153,8 @@ or list calls when the intent is already clear.
 | "my upcoming tasks" or "what do I have coming up?" | `followupboss_list_my_upcoming_tasks` | A broad task list without authenticated-user and incomplete-task scope. |
 | A named smart-list people search, such as "Zillow leads in Eligible For Transfer" | `followupboss_search_people_in_smart_list` with `smart_list_name` and any explicit safe filters such as `source` | Broad people search by source without the resolved smart-list boundary. |
 | A named smart-list count | `followupboss_search_people_in_smart_list` with `smart_list_name` and a small `limit`, then read `_metadata.total` | Inferring the smart-list ID from the name alone. |
+| Lead/contact communication or activity history with an explicit `person_id` | `followupboss_list_person_activity` | Broad calls, texts, email events, events, or appointments list tools without the person boundary. |
+| Lead/contact communication or activity history without an explicit `person_id` | Ask which Follow Up Boss person ID should scope the history request. | Returning account-wide communication logs or guessing the lead from context. |
 | Notes for a lead/person ID | No tool; Follow Up Boss has not made note search by FUB person ID available via the API. Tell the user to ask `support@followupboss.com` to make that search possible. | `followupboss_search_events` or claiming no notes exist from an empty event search. |
 | Updating or deleting people and tasks | The explicit-ID mutation tool such as `followupboss_update_person`, `followupboss_delete_person`, `followupboss_update_task`, or `followupboss_delete_task` | Inferring IDs from vague natural-language intent. |
 
@@ -164,6 +166,7 @@ or list calls when the intent is already clear.
 | `followupboss_search_people_in_smart_list` | Resolve one exact smart-list name internally, search people only with the resolved `smart_list_id`, and return smart-list provenance. |
 | `followupboss_get_latest_lead` | Retrieve the newest lead assigned to the authenticated user. |
 | `followupboss_get_person` | Retrieve one person by ID. |
+| `followupboss_list_person_activity` | List calls, text messages, email events, events, and appointments for one explicit `person_id` in one scoped response. |
 | `followupboss_create_person` | Create a person directly. |
 | `followupboss_update_person` | Update a person by explicit ID. |
 | `followupboss_delete_person` | Delete a person by explicit ID and return a structured confirmation. |

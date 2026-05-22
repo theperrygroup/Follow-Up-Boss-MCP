@@ -13,6 +13,8 @@ from pydantic import Field, model_validator
 from followupboss_mcp.models.appointments import AppointmentListRequest, AppointmentRecord
 from followupboss_mcp.models.calls import CallListRequest, CallRecord
 from followupboss_mcp.models.common import JsonValue, RequestModel, ResponseModel
+from followupboss_mcp.models.email_marketing import EmailEventListRequest, EmailEventRecord
+from followupboss_mcp.models.events import EventRecord, EventSearchRequest
 from followupboss_mcp.models.identity import IdentityResponse
 from followupboss_mcp.models.notes import NoteRecord
 from followupboss_mcp.models.people import (
@@ -59,6 +61,7 @@ class BattleTestOracleKind(StrEnum):
     MY_UPCOMING_TASKS = "my_upcoming_tasks"
     NAMED_SMART_LIST_PEOPLE = "named_smart_list_people"
     PEOPLE_SEARCH = "people_search"
+    PERSON_ACTIVITY = "person_activity"
     PERSON_DUPLICATE_CHECK = "person_duplicate_check"
     ROUTE_ONLY_PENDING = "route_only_pending"
     SMART_LISTS = "smart_lists"
@@ -378,6 +381,13 @@ class IdentityOracleService(Protocol):
 class PeopleOracleService(Protocol):
     """Minimal people service needed by read-only oracle checks."""
 
+    async def get_person(
+        self,
+        person_id: int,
+        request: object | None = None,
+    ) -> PersonRecord:
+        """Get one person for direct API oracle provenance."""
+
     async def search_people(
         self, request: PeopleSearchRequest | None = None
     ) -> PageResult[PersonRecord]:
@@ -435,6 +445,26 @@ class TextMessagesOracleService(Protocol):
         """List text message logs for direct API oracle comparison."""
 
 
+class EmailEventsOracleService(Protocol):
+    """Minimal email-event service needed by person-activity oracle checks."""
+
+    async def list_email_events(
+        self,
+        request: EmailEventListRequest | None = None,
+    ) -> PageResult[EmailEventRecord]:
+        """List email events for direct API oracle comparison."""
+
+
+class EventsOracleService(Protocol):
+    """Minimal event service needed by person-activity oracle checks."""
+
+    async def search_events(
+        self,
+        request: EventSearchRequest | None = None,
+    ) -> PageResult[EventRecord]:
+        """Search events for direct API oracle comparison."""
+
+
 class TemplatesOracleService(Protocol):
     """Minimal email-template service needed by read-only oracle checks."""
 
@@ -490,6 +520,14 @@ class ReadOnlyBattleTestServices(Protocol):
     @property
     def text_messages(self) -> TextMessagesOracleService:
         """Return the text-message service used for oracle checks."""
+
+    @property
+    def email_marketing(self) -> EmailEventsOracleService:
+        """Return the email-marketing service used for oracle checks."""
+
+    @property
+    def events(self) -> EventsOracleService:
+        """Return the event service used for oracle checks."""
 
     @property
     def templates(self) -> TemplatesOracleService:
@@ -1495,6 +1533,8 @@ class ReadOnlyBattleTestOracle:
                 response_key="textmessages",
                 expected_key="text_message_ids",
             )
+        if scenario.api_oracle.kind is BattleTestOracleKind.PERSON_ACTIVITY:
+            return await self._person_activity_snapshot(scenario, transcript)
         if scenario.api_oracle.kind is BattleTestOracleKind.TEMPLATES:
             return await self._page_snapshot(
                 scenario,
@@ -1726,6 +1766,71 @@ class ReadOnlyBattleTestOracle:
             },
         )
 
+    async def _person_activity_snapshot(
+        self,
+        scenario: BattleTestScenario,
+        transcript: BattleTestTranscript,
+    ) -> BattleTestOracleSnapshot:
+        """Build direct API truth for person-scoped communication activity.
+
+        Args:
+            scenario: Scenario contract being checked.
+            transcript: Captured helper transcript whose `person_id` and
+                include flags should be mirrored by direct API calls.
+
+        Returns:
+            A stable snapshot containing per-surface expected IDs.
+
+        Raises:
+            RuntimeError: If the transcript omits the required `person_id`.
+        """
+        person_id = _optional_int(transcript.arguments.get("person_id"))
+        if person_id is None:
+            raise RuntimeError("Person activity oracle requires a person_id argument.")
+
+        limit = _optional_int(transcript.arguments.get("limit"))
+        offset = _optional_int(transcript.arguments.get("offset"))
+        expected: JsonObject = {"person_id": person_id}
+        person = await self._services.people.get_person(person_id)
+        expected["resolved_person_id"] = person.id
+
+        if _optional_bool(transcript.arguments.get("include_calls")) is not False:
+            calls = await self._services.calls.list_calls(
+                CallListRequest(limit=limit, offset=offset, person_id=person_id)
+            )
+            expected["call_ids"] = [_record_id(item) for item in calls.items]
+
+        if _optional_bool(transcript.arguments.get("include_text_messages")) is not False:
+            text_messages = await self._services.text_messages.list_text_messages(
+                TextMessageListRequest(person_id=person_id)
+            )
+            expected["text_message_ids"] = [_record_id(item) for item in text_messages.items]
+
+        if _optional_bool(transcript.arguments.get("include_email_events")) is not False:
+            email_events = await self._services.email_marketing.list_email_events(
+                EmailEventListRequest(limit=limit, offset=offset, person_id=person_id)
+            )
+            expected["email_event_ids"] = [_record_id(item) for item in email_events.items]
+
+        if _optional_bool(transcript.arguments.get("include_events")) is not False:
+            events = await self._services.events.search_events(
+                EventSearchRequest(limit=limit, offset=offset, person_id=person_id)
+            )
+            expected["event_ids"] = [_record_id(item) for item in events.items]
+
+        if _optional_bool(transcript.arguments.get("include_appointments")) is not False:
+            appointments = await self._services.appointments.list_appointments(
+                AppointmentListRequest(limit=limit, offset=offset, person_id=person_id)
+            )
+            expected["appointment_ids"] = [_record_id(item) for item in appointments.items]
+
+        return BattleTestOracleSnapshot(
+            scenario_id=scenario.id,
+            kind=scenario.api_oracle.kind,
+            automated=True,
+            expected=expected,
+        )
+
     async def _named_smart_list_people_snapshot(
         self,
         scenario: BattleTestScenario,
@@ -1949,6 +2054,8 @@ def _compare_transcript_to_oracle(
         return _compare_page_response(transcript, snapshot)
     if snapshot.kind is BattleTestOracleKind.NAMED_SMART_LIST_PEOPLE:
         return _compare_named_smart_list_people_response(transcript, snapshot)
+    if snapshot.kind is BattleTestOracleKind.PERSON_ACTIVITY:
+        return _compare_person_activity_response(transcript, snapshot)
     if snapshot.kind is BattleTestOracleKind.PERSON_DUPLICATE_CHECK:
         return _compare_duplicate_response(transcript, snapshot)
     if snapshot.kind is BattleTestOracleKind.EXPLICIT_NOTE:
@@ -2077,6 +2184,59 @@ def _compare_named_smart_list_helper_route(
             f"Expected helper smartlist id {expected_smart_list_id!r}, "
             f"got {smart_list.get('id')!r}."
         )
+    return failures
+
+
+def _compare_person_activity_response(
+    transcript: BattleTestTranscript,
+    snapshot: BattleTestOracleSnapshot,
+) -> list[str]:
+    """Compare a person-activity helper response to direct API truth."""
+    response = _mapping_or_none(transcript.response)
+    if response is None:
+        return ["Expected person-activity MCP response to be an object."]
+
+    failures: list[str] = []
+    person = response.get("person")
+    expected_person_id = snapshot.expected.get("resolved_person_id")
+    if not isinstance(person, dict):
+        failures.append("Expected person-activity MCP response to include a person object.")
+    elif person.get("id") != expected_person_id:
+        failures.append(
+            f"Expected person-activity person id {expected_person_id!r}, got {person.get('id')!r}."
+        )
+
+    response_expectations = (
+        ("calls", "call_ids"),
+        ("textmessages", "text_message_ids"),
+        ("emEvents", "email_event_ids"),
+        ("events", "event_ids"),
+        ("appointments", "appointment_ids"),
+    )
+    for response_key, expected_key in response_expectations:
+        if expected_key not in snapshot.expected:
+            continue
+        records = response.get(response_key)
+        if not isinstance(records, list):
+            failures.append(f"Expected person-activity response to include {response_key!r}.")
+            continue
+        actual_ids = [item.get("id") for item in records if isinstance(item, dict)]
+        expected_ids = snapshot.expected.get(expected_key)
+        if actual_ids != expected_ids:
+            failures.append(f"Expected {response_key} ids {expected_ids!r}, got {actual_ids!r}.")
+        off_scope_ids = [
+            item.get("id")
+            for item in records
+            if isinstance(item, dict)
+            and item.get("personId") is not None
+            and item.get("personId") != snapshot.expected.get("person_id")
+        ]
+        if off_scope_ids:
+            failures.append(
+                "Expected person-activity records to stay scoped to "
+                f"person {snapshot.expected.get('person_id')!r}; off-scope IDs: {off_scope_ids!r}."
+            )
+
     return failures
 
 
@@ -2823,6 +2983,84 @@ _EXPANDED_READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
             description="Direct note lookup for the same explicit note ID.",
         ),
         response_assertions=("response.id == api_oracle.note_id",),
+    ),
+    BattleTestScenario(
+        id="BT-READ-016",
+        grade=BattleTestGrade.MUST_REQUIRE_ID,
+        prompt_variants=_expand_prompt_families(
+            (
+                "Show all communication history for person 1",
+                "Pull calls texts emails and events for contact ID 1",
+                "What activity do we have for lead 1?",
+                "List the interaction timeline for person_id 1",
+                "Show calls and text messages for Follow Up Boss person 1",
+                "Get activity records tied to contact 1",
+                "Show what we have sent to person 1",
+                "Pull the communication log for lead ID 1",
+                "Review appointments calls and events for person 1",
+                "Summarize the FUB activity history for contact ID 1",
+            )
+        ),
+        expected_mcp=ExpectedMcpRoute(
+            allowed_tools=("followupboss_list_person_activity",),
+            forbidden_tools=(
+                "followupboss_list_calls",
+                "followupboss_list_text_messages",
+                "followupboss_list_email_events",
+                "followupboss_search_events",
+                "followupboss_list_appointments",
+            ),
+            required_argument_keys=("person_id",),
+        ),
+        api_oracle=ApiOracleSpec(
+            kind=BattleTestOracleKind.PERSON_ACTIVITY,
+            description=(
+                "Direct person-scoped activity queries for calls, texts, email events, "
+                "events, and appointments."
+            ),
+        ),
+        response_assertions=(
+            "response.person.id == api_oracle.resolved_person_id",
+            "response.calls[*].id == api_oracle.call_ids",
+            "response.textmessages[*].id == api_oracle.text_message_ids",
+            "response.emEvents[*].id == api_oracle.email_event_ids",
+            "response.events[*].id == api_oracle.event_ids",
+            "response.appointments[*].id == api_oracle.appointment_ids",
+        ),
+    ),
+    BattleTestScenario(
+        id="BT-READ-017",
+        grade=BattleTestGrade.MUST_CLARIFY,
+        prompt_variants=_expand_prompt_families(
+            (
+                "Show this lead's communication history",
+                "Pull activity for that contact",
+                "What messages has this person received?",
+                "Show the latest lead's calls and texts",
+                "Give me the contact history for the Zillow person",
+                "List all recent conversations for this lead",
+                "What did we send that buyer?",
+                "Show activity for the contact we discussed",
+                "Pull communication history for my lead",
+                "Review the timeline for this person",
+            )
+        ),
+        expected_mcp=ExpectedMcpRoute(
+            allowed_tools=(),
+            forbidden_tools=(
+                "followupboss_list_person_activity",
+                "followupboss_list_calls",
+                "followupboss_list_text_messages",
+                "followupboss_list_email_events",
+                "followupboss_search_events",
+                "followupboss_list_appointments",
+            ),
+        ),
+        api_oracle=ApiOracleSpec(
+            kind=BattleTestOracleKind.ROUTE_ONLY_PENDING,
+            description="Require clarification before returning broad communication history.",
+        ),
+        response_assertions=("clarified is true", "selected_tool is None"),
     ),
 )
 

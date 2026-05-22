@@ -66,6 +66,8 @@ from followupboss_mcp.battle_tests import (
 from followupboss_mcp.models.appointments import AppointmentListRequest, AppointmentRecord
 from followupboss_mcp.models.calls import CallListRequest, CallRecord
 from followupboss_mcp.models.common import JsonValue
+from followupboss_mcp.models.email_marketing import EmailEventListRequest, EmailEventRecord
+from followupboss_mcp.models.events import EventRecord, EventSearchRequest
 from followupboss_mcp.models.identity import IdentityResponse
 from followupboss_mcp.models.notes import NoteRecord
 from followupboss_mcp.models.people import (
@@ -122,6 +124,14 @@ def _text_messages_page(*messages: TextMessageRecord) -> PageResult[TextMessageR
     return PageResult(items=list(messages), metadata=_metadata(len(messages)))
 
 
+def _email_events_page(*events: EmailEventRecord) -> PageResult[EmailEventRecord]:
+    return PageResult(items=list(events), metadata=_metadata(len(events)))
+
+
+def _events_page(*events: EventRecord) -> PageResult[EventRecord]:
+    return PageResult(items=list(events), metadata=_metadata(len(events)))
+
+
 def _templates_page(*templates: TemplateRecord) -> PageResult[TemplateRecord]:
     return PageResult(items=list(templates), metadata=_metadata(len(templates)))
 
@@ -166,6 +176,14 @@ class StubPeopleService:
     requests: list[PeopleSearchRequest] = field(default_factory=list)
     duplicate_requests: list[PersonDuplicateCheckRequest] = field(default_factory=list)
     unclaimed_requests: list[UnclaimedPeopleListRequest] = field(default_factory=list)
+
+    async def get_person(
+        self,
+        person_id: int,
+        request: object | None = None,
+    ) -> PersonRecord:
+        del request
+        return PersonRecord(id=person_id, firstName="Alex")
 
     async def search_people(
         self, request: PeopleSearchRequest | None = None
@@ -255,6 +273,30 @@ class StubTextMessagesService:
 
 
 @dataclass
+class StubEmailEventsService:
+    page: PageResult[EmailEventRecord] = field(default_factory=_email_events_page)
+    requests: list[EmailEventListRequest] = field(default_factory=list)
+
+    async def list_email_events(
+        self, request: EmailEventListRequest | None = None
+    ) -> PageResult[EmailEventRecord]:
+        self.requests.append(request or EmailEventListRequest())
+        return self.page
+
+
+@dataclass
+class StubEventsService:
+    page: PageResult[EventRecord] = field(default_factory=_events_page)
+    requests: list[EventSearchRequest] = field(default_factory=list)
+
+    async def search_events(
+        self, request: EventSearchRequest | None = None
+    ) -> PageResult[EventRecord]:
+        self.requests.append(request or EventSearchRequest())
+        return self.page
+
+
+@dataclass
 class StubTemplatesService:
     page: PageResult[TemplateRecord] = field(default_factory=_templates_page)
     requests: list[TemplateListRequest] = field(default_factory=list)
@@ -304,6 +346,8 @@ class StubBattleTestServices:
     appointments: StubAppointmentsService = field(default_factory=StubAppointmentsService)
     calls: StubCallsService = field(default_factory=StubCallsService)
     text_messages: StubTextMessagesService = field(default_factory=StubTextMessagesService)
+    email_marketing: StubEmailEventsService = field(default_factory=StubEmailEventsService)
+    events: StubEventsService = field(default_factory=StubEventsService)
     templates: StubTemplatesService = field(default_factory=StubTemplatesService)
     text_message_templates: StubTextMessageTemplatesService = field(
         default_factory=StubTextMessageTemplatesService
@@ -320,6 +364,8 @@ class FailingTaskBattleTestServices:
     appointments: StubAppointmentsService = field(default_factory=StubAppointmentsService)
     calls: StubCallsService = field(default_factory=StubCallsService)
     text_messages: StubTextMessagesService = field(default_factory=StubTextMessagesService)
+    email_marketing: StubEmailEventsService = field(default_factory=StubEmailEventsService)
+    events: StubEventsService = field(default_factory=StubEventsService)
     templates: StubTemplatesService = field(default_factory=StubTemplatesService)
     text_message_templates: StubTextMessageTemplatesService = field(
         default_factory=StubTextMessageTemplatesService
@@ -362,6 +408,8 @@ def _services(
     appointments: PageResult[AppointmentRecord] | None = None,
     calls: PageResult[CallRecord] | None = None,
     text_messages: PageResult[TextMessageRecord] | None = None,
+    email_events: PageResult[EmailEventRecord] | None = None,
+    events: PageResult[EventRecord] | None = None,
     templates: PageResult[TemplateRecord] | None = None,
     text_templates: PageResult[TextMessageTemplateRecord] | None = None,
 ) -> StubBattleTestServices:
@@ -373,6 +421,8 @@ def _services(
         appointments=StubAppointmentsService(appointments or _appointments_page()),
         calls=StubCallsService(calls or _calls_page()),
         text_messages=StubTextMessagesService(text_messages or _text_messages_page()),
+        email_marketing=StubEmailEventsService(email_events or _email_events_page()),
+        events=StubEventsService(events or _events_page()),
         templates=StubTemplatesService(templates or _templates_page()),
         text_message_templates=StubTextMessageTemplatesService(
             text_templates or _text_templates_page()
@@ -435,10 +485,20 @@ def test_expanded_read_only_scenario_corpus_adds_api_surfaces() -> None:
         "BT-READ-013",
         "BT-READ-014",
         "BT-READ-015",
+        "BT-READ-016",
+        "BT-READ-017",
     ]
     assert all(len(scenario.prompt_variants) == 50 for scenario in scenarios[5:])
     assert scenario_by_id("BT-READ-008").expected_mcp.required_argument_keys == ("email",)
     assert scenario_by_id("BT-READ-015").api_oracle.kind is BattleTestOracleKind.EXPLICIT_NOTE
+    assert scenario_by_id("BT-READ-016").api_oracle.kind is BattleTestOracleKind.PERSON_ACTIVITY
+    assert scenario_by_id("BT-READ-016").expected_mcp.forbidden_tools == (
+        "followupboss_list_calls",
+        "followupboss_list_text_messages",
+        "followupboss_list_email_events",
+        "followupboss_search_events",
+        "followupboss_list_appointments",
+    )
 
 
 def test_expanded_conversation_corpus_adds_cross_surface_prompts() -> None:
@@ -1151,6 +1211,187 @@ async def test_people_search_oracle_uses_required_smart_list_id() -> None:
 
     assert evaluation.passed is True
     assert services.people.requests[0].smart_list_id == 1
+
+
+@pytest.mark.asyncio
+async def test_person_activity_oracle_scopes_every_surface_by_person_id() -> None:
+    scenario = scenario_by_id("BT-READ-016")
+    services = _services(
+        appointments=_appointments_page(AppointmentRecord.model_validate({"id": 51})),
+        calls=_calls_page(CallRecord.model_validate({"id": 52, "personId": 42})),
+        text_messages=_text_messages_page(
+            TextMessageRecord.model_validate({"id": 53, "personId": 42})
+        ),
+        email_events=_email_events_page(
+            EmailEventRecord.model_validate({"count": 1, "personId": 42, "type": "open"})
+        ),
+        events=_events_page(EventRecord.model_validate({"id": 55, "personId": 42})),
+    )
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        selected_tool="followupboss_list_person_activity",
+        arguments={"person_id": 42, "limit": 5, "offset": 2},
+        response={
+            "person": {"id": 42},
+            "calls": [{"id": 52, "personId": 42}],
+            "textmessages": [{"id": 53, "personId": 42}],
+            "emEvents": [{"id": None, "personId": 42}],
+            "events": [{"id": 55, "personId": 42}],
+            "appointments": [{"id": 51}],
+        },
+    )
+
+    evaluation = await ReadOnlyBattleTestOracle(services).evaluate(scenario, transcript)
+
+    assert evaluation.passed is True
+    assert services.calls.requests[0] == CallListRequest(limit=5, offset=2, person_id=42)
+    assert services.text_messages.requests[0] == TextMessageListRequest(person_id=42)
+    assert services.email_marketing.requests[0] == EmailEventListRequest(
+        limit=5,
+        offset=2,
+        person_id=42,
+    )
+    assert services.events.requests[0] == EventSearchRequest(limit=5, offset=2, person_id=42)
+    assert services.appointments.requests[0] == AppointmentListRequest(
+        limit=5,
+        offset=2,
+        person_id=42,
+    )
+
+
+@pytest.mark.asyncio
+async def test_person_activity_oracle_honors_include_flags_and_requires_person_id() -> None:
+    scenario = scenario_by_id("BT-READ-016")
+    services = _services(
+        appointments=_appointments_page(AppointmentRecord.model_validate({"id": 9}))
+    )
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        selected_tool="followupboss_list_person_activity",
+        arguments={
+            "person_id": 42,
+            "include_calls": False,
+            "include_text_messages": False,
+            "include_email_events": False,
+            "include_events": False,
+            "include_appointments": True,
+        },
+        response={"person": {"id": 42}, "appointments": [{"id": 9}]},
+    )
+
+    evaluation = await ReadOnlyBattleTestOracle(services).evaluate(scenario, transcript)
+
+    assert evaluation.passed is True
+    assert services.calls.requests == []
+    assert services.text_messages.requests == []
+    assert services.email_marketing.requests == []
+    assert services.events.requests == []
+    assert services.appointments.requests == [AppointmentListRequest(person_id=42)]
+
+    skip_appointments = await ReadOnlyBattleTestOracle(services).evaluate(
+        scenario,
+        transcript.model_copy(
+            update={
+                "arguments": {"person_id": 42, "include_appointments": False},
+                "response": {
+                    "person": {"id": 42},
+                    "calls": [],
+                    "textmessages": [],
+                    "emEvents": [],
+                    "events": [],
+                },
+            }
+        ),
+    )
+    assert skip_appointments.passed is True
+    assert services.appointments.requests == [AppointmentListRequest(person_id=42)]
+
+    with pytest.raises(RuntimeError, match="requires a person_id argument"):
+        await ReadOnlyBattleTestOracle(_services()).snapshot(
+            scenario,
+            transcript.model_copy(update={"arguments": {}}),
+        )
+
+
+@pytest.mark.asyncio
+async def test_person_activity_oracle_catches_off_scope_activity() -> None:
+    scenario = scenario_by_id("BT-READ-016")
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        selected_tool="followupboss_list_person_activity",
+        arguments={"person_id": 42},
+        response={
+            "person": {"id": 42},
+            "calls": [{"id": 52, "personId": 43}],
+            "textmessages": [],
+            "emEvents": [],
+            "events": [],
+            "appointments": [],
+        },
+    )
+
+    evaluation = await ReadOnlyBattleTestOracle(
+        _services(calls=_calls_page(CallRecord.model_validate({"id": 52, "personId": 42})))
+    ).evaluate(scenario, transcript)
+
+    assert evaluation.passed is False
+    assert any("off-scope IDs: [52]" in failure for failure in evaluation.failures)
+
+
+def test_person_activity_private_compare_failure_edges() -> None:
+    compare_activity = cast(
+        "Callable[[BattleTestTranscript, BattleTestOracleSnapshot], list[str]]",
+        getattr(battle_tests_module, "_compare_person_activity_response"),  # noqa: B009
+    )
+    snapshot = BattleTestOracleSnapshot(
+        scenario_id="BT-READ-016",
+        kind=BattleTestOracleKind.PERSON_ACTIVITY,
+        automated=True,
+        expected={"person_id": 42, "resolved_person_id": 42, "call_ids": [1]},
+    )
+
+    not_an_object = compare_activity(
+        BattleTestTranscript(scenario_id="BT-READ-016", prompt="history", response=None),
+        snapshot,
+    )
+    wrong_shape = compare_activity(
+        BattleTestTranscript(
+            scenario_id="BT-READ-016",
+            prompt="history",
+            response={"person": None},
+        ),
+        snapshot,
+    )
+    wrong_id_and_missing_calls = compare_activity(
+        BattleTestTranscript(
+            scenario_id="BT-READ-016",
+            prompt="history",
+            response={"person": {"id": 43}},
+        ),
+        snapshot,
+    )
+    mismatched_call_ids = compare_activity(
+        BattleTestTranscript(
+            scenario_id="BT-READ-016",
+            prompt="history",
+            response={"person": {"id": 42}, "calls": [{"id": 2, "personId": 42}]},
+        ),
+        snapshot,
+    )
+
+    assert not_an_object == ["Expected person-activity MCP response to be an object."]
+    assert wrong_shape == [
+        "Expected person-activity MCP response to include a person object.",
+        "Expected person-activity response to include 'calls'.",
+    ]
+    assert wrong_id_and_missing_calls == [
+        "Expected person-activity person id 42, got 43.",
+        "Expected person-activity response to include 'calls'.",
+    ]
+    assert mismatched_call_ids == ["Expected calls ids [1], got [2]."]
 
 
 @pytest.mark.asyncio

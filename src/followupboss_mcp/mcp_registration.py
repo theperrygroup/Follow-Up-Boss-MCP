@@ -72,6 +72,7 @@ from followupboss_mcp.mcp_tools import (
     ListInboxAppInstallationsToolInput,
     ListInboxAppParticipantsToolInput,
     ListMyTaskIntentToolInput,
+    ListPersonActivityToolInput,
     SearchPeopleInSmartListToolInput,
     UpdateActionPlanPersonToolInput,
     UpdateAppointmentOutcomeToolInput,
@@ -529,6 +530,33 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
         fields: list[str] | None = None,
     ) -> dict[str, object]:
         return await adapter.get_person(_validated_request(GetPersonToolInput, locals()))
+
+    @mcp.tool(
+        name="followupboss_list_person_activity",
+        description=(
+            "List communication and activity records for one explicit Follow Up Boss "
+            "person_id. Use this for prompts like 'history for person 123', 'calls, "
+            "texts, and events for this lead', or 'what have we sent contact 123'. "
+            "This helper applies person_id to calls, text messages, email events, "
+            "events, and appointments inside the MCP boundary. Do not use broad "
+            "activity list tools for lead/contact history unless the user supplies "
+            "the exact required person or phone filter."
+        ),
+    )
+    async def followupboss_list_person_activity(
+        person_id: int,
+        *,
+        include_appointments: bool = True,
+        include_calls: bool = True,
+        include_email_events: bool = True,
+        include_events: bool = True,
+        include_text_messages: bool = True,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> dict[str, object]:
+        return await adapter.list_person_activity(
+            _validated_request(ListPersonActivityToolInput, locals())
+        )
 
     @mcp.tool(
         name="followupboss_create_person",
