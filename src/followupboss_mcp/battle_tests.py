@@ -1861,7 +1861,7 @@ class ReadOnlyBattleTestOracle:
         )
         mine = _optional_bool(transcript.arguments.get("mine")) is not False
         assigned_user_id = _optional_int(transcript.arguments.get("assigned_user_id"))
-        if mine:
+        if assigned_user_id is None and mine:
             assigned_user_id = await self._authenticated_user_id()
         page = await self._services.people.search_people(
             PeopleSearchRequest(

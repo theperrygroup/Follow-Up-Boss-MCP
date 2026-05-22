@@ -1474,7 +1474,10 @@ async def test_named_smart_list_grounding_rejects_unowned_my_followup_route() ->
 
 
 @pytest.mark.asyncio
-async def test_named_smart_list_grounding_accepts_explicit_assigned_user_scope() -> None:
+@pytest.mark.parametrize("mine_argument", [None, True])
+async def test_named_smart_list_grounding_accepts_explicit_assigned_user_scope(
+    mine_argument: bool | None,
+) -> None:
     base_scenario = scenario_by_id("BT-SMARTLIST-002")
     scenario = base_scenario.model_copy(
         update={
@@ -1493,15 +1496,18 @@ async def test_named_smart_list_grounding_accepts_explicit_assigned_user_scope()
             PersonRecord.model_validate({"id": 21, "name": "Jane Zillow", "assignedUserId": 101})
         ),
     )
+    arguments: dict[str, object] = {
+        "smart_list_name": "Eligible For Transfer",
+        "source": "Zillow",
+        "assigned_user_id": 101,
+    }
+    if mine_argument is not None:
+        arguments["mine"] = mine_argument
     transcript = BattleTestTranscript(
         scenario_id=scenario.id,
         prompt="Show Scott Willey's Zillow leads in Eligible For Transfer using user id 101.",
         selected_tool="followupboss_search_people_in_smart_list",
-        arguments={
-            "smart_list_name": "Eligible For Transfer",
-            "source": "Zillow",
-            "assigned_user_id": 101,
-        },
+        arguments=arguments,
         response={
             "smartlist": {"id": 77, "name": "Eligible For Transfer"},
             "people": [{"id": 21, "name": "Jane Zillow", "assignedUserId": 101}],
