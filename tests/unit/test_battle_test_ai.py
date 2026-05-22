@@ -515,7 +515,15 @@ def test_read_only_tool_specs_include_expanded_read_surfaces() -> None:
         specs["followupboss_search_people_in_smart_list"].description
     )
     assert "source='Zillow'" in specs["followupboss_search_people_in_smart_list"].description
-    assert "mine=true" in specs["followupboss_search_people_in_smart_list"].description
+    assert "defaults to mine=true" in specs["followupboss_search_people_in_smart_list"].description
+    assert cast(
+        dict[str, object],
+        specs["followupboss_search_people_in_smart_list"].input_schema["properties"],
+    )["mine"] == {
+        "type": "boolean",
+        "default": True,
+        "description": "True for I/me/my follow-up requests; false only when explicitly account-wide/everyone.",
+    }
     assert specs["followupboss_list_person_activity"].input_schema["required"] == ["person_id"]
     assert {"person_id", "include_calls", "include_text_messages"}.issubset(activity_properties)
     assert "clarify instead of using broad activity list tools" in (

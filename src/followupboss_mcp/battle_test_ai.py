@@ -173,9 +173,10 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
                 "tool resolves the list name internally, searches only inside that "
                 "smart-list ID, and returns smart-list provenance. Do not include people "
                 "absent from this tool result in the answer. When the prompt says Zillow "
-                "leads, include source='Zillow'. For I/me/my follow-up prompts, set "
-                "mine=true so admin credentials do not return account-wide people. For a "
-                "named owner, pass assigned_user_id only when the user ID is already known."
+                "leads, include source='Zillow'. The helper defaults to mine=true, so "
+                "omitted owner scope is authenticated-user scoped. Set mine=false only "
+                "for explicit everyone/account-wide prompts. For a named owner, pass "
+                "assigned_user_id only when the user ID is already known."
             ),
             input_schema={
                 "type": "object",
@@ -189,6 +190,7 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
                     "limit": _integer_schema("Optional page size."),
                     "mine": {
                         "type": "boolean",
+                        "default": True,
                         "description": (
                             "True for I/me/my follow-up requests; false only when explicitly "
                             "account-wide/everyone."

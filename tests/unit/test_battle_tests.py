@@ -1790,7 +1790,7 @@ def test_named_smart_list_helper_route_private_compare_failure_edges() -> None:
             scenario_id="BT-SMARTLIST-PRIVATE",
             prompt="Show Scott's Zillow leads in Eligible For Transfer",
             selected_tool="followupboss_search_people_in_smart_list",
-            arguments={"smart_list_name": "Eligible For Transfer"},
+            arguments={"smart_list_name": "Eligible For Transfer", "mine": False},
             response={"smartlist": {"id": 77}, "people": [{"id": 21, "assignedUserId": 102}]},
         ),
         expected_smart_list_id=77,

@@ -2131,10 +2131,19 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         "name": "🚨 Active Buyers ✅",
     }
     assert smart_list_people["people"][0]["id"] == 2
-    assert stub.people_search_requests[-1].assigned_user_id is None
+    assert stub.people_search_requests[-1].assigned_user_id == 1
     assert stub.people_search_requests[-1].smart_list_id == 74
     assert stub.people_search_requests[-1].source == "Zillow"
     assert stub.people_search_requests[-1].limit == 5
+    everyone_smart_list_people = await adapter.search_people_in_smart_list(
+        SearchPeopleInSmartListToolInput(
+            smart_list_name="Active Buyers",
+            source="Zillow",
+            mine=False,
+        )
+    )
+    assert everyone_smart_list_people["people"][0]["id"] == 2
+    assert stub.people_search_requests[-1].assigned_user_id is None
     mine_smart_list_people = await adapter.search_people_in_smart_list(
         SearchPeopleInSmartListToolInput(
             smart_list_name="Active Buyers",

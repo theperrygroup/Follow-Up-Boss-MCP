@@ -240,7 +240,7 @@ class SearchPeopleInSmartListToolInput(RequestModel):
     fields: list[str] | None = None
     limit: int | None = None
     lead_source: str | None = None
-    mine: bool = False
+    mine: bool = True
     next_token: str | None = None
     offset: int | None = None
     source: str | None = None
@@ -294,8 +294,10 @@ class SearchPeopleInSmartListToolInput(RequestModel):
             RuntimeError: If `mine` is true but the authenticated identity does
                 not include a Follow Up Boss user ID.
         """
-        if not self.mine:
+        if self.assigned_user_id is not None:
             return self.assigned_user_id
+        if not self.mine:
+            return None
         identity = await services.identity.get_identity()
         if identity.id is None:
             raise RuntimeError("Authenticated Follow Up Boss user id is unavailable.")

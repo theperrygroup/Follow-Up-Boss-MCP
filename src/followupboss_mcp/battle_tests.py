@@ -1859,7 +1859,7 @@ class ReadOnlyBattleTestOracle:
             await self._list_all_smart_lists(),
             smart_list_name,
         )
-        mine = _optional_bool(transcript.arguments.get("mine")) is True
+        mine = _optional_bool(transcript.arguments.get("mine")) is not False
         assigned_user_id = _optional_int(transcript.arguments.get("assigned_user_id"))
         if mine:
             assigned_user_id = await self._authenticated_user_id()
@@ -2203,7 +2203,7 @@ def _compare_named_smart_list_helper_route(
         )
     if isinstance(expected_assigned_user_id, int):
         actual_assigned_user_id = _optional_int(transcript.arguments.get("assigned_user_id"))
-        if _optional_bool(transcript.arguments.get("mine")) is not True and (
+        if _optional_bool(transcript.arguments.get("mine")) is False and (
             actual_assigned_user_id != expected_assigned_user_id
         ):
             failures.append(
