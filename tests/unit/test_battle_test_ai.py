@@ -503,15 +503,19 @@ def test_read_only_tool_specs_include_expanded_read_surfaces() -> None:
     assert "Do not use this for named smart-list" in (
         specs["followupboss_search_people"].description
     )
-    assert {"smart_list_name", "source", "stage"}.issubset(helper_properties)
+    assert {"smart_list_name", "source", "stage", "mine", "assigned_user_id"}.issubset(
+        helper_properties
+    )
     assert specs["followupboss_search_people_in_smart_list"].input_schema["required"] == [
         "smart_list_name",
         "source",
+        "mine",
     ]
     assert "Zillow leads in Eligible For Transfer" in (
         specs["followupboss_search_people_in_smart_list"].description
     )
     assert "source='Zillow'" in specs["followupboss_search_people_in_smart_list"].description
+    assert "mine=true" in specs["followupboss_search_people_in_smart_list"].description
     assert specs["followupboss_list_person_activity"].input_schema["required"] == ["person_id"]
     assert {"person_id", "include_calls", "include_text_messages"}.issubset(activity_properties)
     assert "clarify instead of using broad activity list tools" in (
@@ -539,6 +543,9 @@ def test_selection_instructions_explain_unsupported_note_search() -> None:
     assert "followupboss_list_smart_lists" in instructions
     assert "Use followupboss_search_people_in_smart_list" in instructions
     assert "When the prompt says Zillow leads, include source='Zillow'" in instructions
+    assert "set mine=true" in instructions
+    assert "Set mine=false only when the prompt explicitly asks for everyone" in instructions
+    assert "pass assigned_user_id only if the user ID is already known" in instructions
     assert "came from Zillow" in instructions
     assert "boundary for Zillow follow-ups" in instructions
     assert "absent from that smart-list-scoped tool result" in instructions

@@ -503,7 +503,7 @@ Create one unique fixture person in each account so tenant isolation can be chec
 Export:
 
 ```bash
-export STAGING_MCP_URL="https://staging-mcp.example.com/mcp"
+export STAGING_MCP_URL="https://fub.theperry.group/mcp"
 export TENANT_A_TOKEN="replace-with-real-hosted-token"
 export TENANT_B_TOKEN="replace-with-real-hosted-token"
 export TENANT_A_FIXTURE_EMAIL="mcp-tenant-a@example.com"

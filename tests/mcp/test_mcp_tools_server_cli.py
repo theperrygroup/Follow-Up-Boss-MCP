@@ -2135,6 +2135,24 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert stub.people_search_requests[-1].smart_list_id == 74
     assert stub.people_search_requests[-1].source == "Zillow"
     assert stub.people_search_requests[-1].limit == 5
+    mine_smart_list_people = await adapter.search_people_in_smart_list(
+        SearchPeopleInSmartListToolInput(
+            smart_list_name="Active Buyers",
+            source="Zillow",
+            mine=True,
+        )
+    )
+    assert mine_smart_list_people["people"][0]["id"] == 2
+    assert stub.people_search_requests[-1].assigned_user_id == 1
+    explicit_owner_smart_list_people = await adapter.search_people_in_smart_list(
+        SearchPeopleInSmartListToolInput(
+            smart_list_name="Active Buyers",
+            source="Zillow",
+            assigned_user_id=101,
+        )
+    )
+    assert explicit_owner_smart_list_people["people"][0]["id"] == 2
+    assert stub.people_search_requests[-1].assigned_user_id == 101
     aliased_input = SearchPeopleInSmartListToolInput(
         list_name="Active Buyers",
         lead_source="Zillow",
@@ -3082,6 +3100,10 @@ async def test_search_people_requires_identity_id_for_default_scope() -> None:
         await adapter.list_my_tasks_due_today(ListMyTaskIntentToolInput())
     with pytest.raises(RuntimeError, match="Authenticated Follow Up Boss user id is unavailable"):
         await adapter.list_my_upcoming_tasks(ListMyTaskIntentToolInput())
+    with pytest.raises(RuntimeError, match="Authenticated Follow Up Boss user id is unavailable"):
+        await adapter.search_people_in_smart_list(
+            SearchPeopleInSmartListToolInput(smart_list_name="Active Buyers", mine=True)
+        )
 
     assert stub.people_search_requests == []
     assert stub.task_list_requests == []

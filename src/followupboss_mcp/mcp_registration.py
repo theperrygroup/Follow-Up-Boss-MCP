@@ -483,18 +483,22 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
             "smart_list_id. The tool resolves the smart-list name with "
             "include_all=true, fails on missing or ambiguous names, then searches "
             "people only with the resolved smart_list_id and returns smart-list "
-            "provenance. Do not include people outside the returned people list in "
-            "the answer."
+            "provenance. Set mine=true for I/me/my follow-up requests so the "
+            "helper also scopes by the authenticated user. Use assigned_user_id "
+            "for an explicit owner. Do not include people outside the returned "
+            "people list in the answer."
         ),
     )
     async def followupboss_search_people_in_smart_list(
         smart_list_name: str | None = None,
         *,
+        assigned_user_id: int | None = None,
         fields: list[str] | None = None,
         smart_list: str | None = None,
         list_name: str | None = None,
         limit: int | None = None,
         lead_source: str | None = None,
+        mine: bool = False,
         next_token: str | None = None,
         offset: int | None = None,
         source: str | None = None,

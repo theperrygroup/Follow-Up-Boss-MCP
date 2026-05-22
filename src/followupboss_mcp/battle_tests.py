@@ -138,6 +138,7 @@ class ExpectedMcpRoute(RequestModel):
     allowed_tools: tuple[str, ...] = ()
     forbidden_tools: tuple[str, ...] = ()
     required_argument_keys: tuple[str, ...] = ()
+    required_argument_values: JsonObject = Field(default_factory=dict)
 
 
 class ApiOracleSpec(RequestModel):
@@ -1858,8 +1859,13 @@ class ReadOnlyBattleTestOracle:
             await self._list_all_smart_lists(),
             smart_list_name,
         )
+        mine = _optional_bool(transcript.arguments.get("mine")) is True
+        assigned_user_id = _optional_int(transcript.arguments.get("assigned_user_id"))
+        if mine:
+            assigned_user_id = await self._authenticated_user_id()
         page = await self._services.people.search_people(
             PeopleSearchRequest(
+                assigned_user_id=assigned_user_id,
                 fields=_optional_string_list(transcript.arguments.get("fields")),
                 limit=_optional_int(transcript.arguments.get("limit")),
                 next_token=_optional_string(transcript.arguments.get("next_token")),
@@ -1877,6 +1883,8 @@ class ReadOnlyBattleTestOracle:
                 "response_key": "people",
                 "smart_list_id": smart_list.id,
                 "smart_list_name": smart_list.name or smart_list_name,
+                "assigned_user_id": assigned_user_id,
+                "mine": mine,
                 "person_ids": [_record_id(person) for person in page.items],
                 "answer_must_be_grounded": scenario.api_oracle.answer_must_be_grounded,
                 "allowed_answer_names": _person_answer_names(page.items),
@@ -2009,6 +2017,13 @@ def _check_required_arguments(
         failures.append(
             f"Selected {transcript.selected_tool!r} without required arguments {missing!r}."
         )
+    wrong_values = {
+        key: {"expected": expected_value, "actual": transcript.arguments.get(key)}
+        for key, expected_value in scenario.expected_mcp.required_argument_values.items()
+        if transcript.arguments.get(key) != expected_value
+    }
+    if wrong_values and not transcript.clarified:
+        failures.append(f"Expected explicit argument values {wrong_values!r}.")
 
 
 def _check_unsupported_explanation(
@@ -2138,6 +2153,7 @@ def _compare_named_smart_list_people_response(
                 transcript,
                 expected_smart_list_id=expected_smart_list_id,
                 expected_smart_list_name=expected_smart_list_name,
+                expected_assigned_user_id=snapshot.expected.get("assigned_user_id"),
             )
         )
     elif transcript.selected_tool == "followupboss_search_people":
@@ -2163,6 +2179,7 @@ def _compare_named_smart_list_helper_route(
     *,
     expected_smart_list_id: JsonValue,
     expected_smart_list_name: JsonValue,
+    expected_assigned_user_id: JsonValue,
 ) -> list[str]:
     """Compare helper arguments and provenance for a named smart-list search."""
     failures: list[str] = []
@@ -2184,6 +2201,30 @@ def _compare_named_smart_list_helper_route(
             f"Expected helper smartlist id {expected_smart_list_id!r}, "
             f"got {smart_list.get('id')!r}."
         )
+    if isinstance(expected_assigned_user_id, int):
+        actual_assigned_user_id = _optional_int(transcript.arguments.get("assigned_user_id"))
+        if _optional_bool(transcript.arguments.get("mine")) is not True and (
+            actual_assigned_user_id != expected_assigned_user_id
+        ):
+            failures.append(
+                "Expected helper route to include owner scope "
+                f"{expected_assigned_user_id!r}, got {actual_assigned_user_id!r}."
+            )
+        response = _mapping_or_none(transcript.response)
+        records = response.get("people") if response is not None else None
+        if isinstance(records, list):
+            wrong_owner_ids = [
+                record.get("id")
+                for record in records
+                if isinstance(record, dict)
+                and record.get("assignedUserId") is not None
+                and record.get("assignedUserId") != expected_assigned_user_id
+            ]
+            if wrong_owner_ids:
+                failures.append(
+                    "Expected all returned people to match assigned_user_id "
+                    f"{expected_assigned_user_id!r}; off-owner ids: {wrong_owner_ids!r}."
+                )
     return failures
 
 
@@ -3088,23 +3129,23 @@ _SMART_LIST_GROUNDING_SCENARIOS: tuple[BattleTestScenario, ...] = (
         grade=BattleTestGrade.MUST_REQUIRE_ID,
         prompt_variants=(
             "What Zillow leads do I need to follow up with in Eligible For Transfer?",
-            "Show only Zillow follow-up leads from the Eligible For Transfer smart list.",
-            "Which Eligible For Transfer Zillow leads need follow-up?",
-            "Pull Zillow leads to follow up with, but only from Eligible For Transfer.",
+            "Show only my Zillow follow-up leads from the Eligible For Transfer smart list.",
+            "Which Eligible For Transfer Zillow leads do I need to follow up with?",
+            "Pull Zillow leads I need to follow up with, but only from Eligible For Transfer.",
             "Use the Eligible For Transfer smart list for Zillow leads I should call.",
-            "How many Zillow leads are in Eligible For Transfer?",
-            "Give me the people in Eligible For Transfer that came from Zillow.",
-            "List Eligible For Transfer leads from Zillow only.",
+            "How many Zillow leads are in my Eligible For Transfer follow-up queue?",
+            "Give me my people in Eligible For Transfer that came from Zillow.",
+            "List my Eligible For Transfer leads from Zillow only.",
             "Who should I work from Eligible For Transfer for Zillow?",
-            "Show Zillow source people scoped to Eligible For Transfer.",
-            "In the Eligible For Transfer smart list, which Zillow leads need attention?",
-            "Pull the Eligible For Transfer list and only show Zillow leads.",
-            "Eligible For Transfer Zillow follow-up queue please.",
-            "Find Zillow leads inside Eligible For Transfer, not outside it.",
-            "Show me Zillow contacts from the Eligible For Transfer list.",
-            "Which Zillow contacts in Eligible For Transfer need a call?",
-            "Use Eligible For Transfer as the boundary for Zillow follow-ups.",
-            "From Eligible For Transfer, show leads where source is Zillow.",
+            "Show Zillow source people scoped to my Eligible For Transfer queue.",
+            "In the Eligible For Transfer smart list, which Zillow leads need my attention?",
+            "Pull the Eligible For Transfer list and only show Zillow leads assigned to me.",
+            "My Eligible For Transfer Zillow follow-up queue please.",
+            "Find my Zillow leads inside Eligible For Transfer, not outside it.",
+            "Show me my Zillow contacts from the Eligible For Transfer list.",
+            "Which Zillow contacts in Eligible For Transfer do I need to call?",
+            "Use Eligible For Transfer as the boundary for my Zillow follow-ups.",
+            "From Eligible For Transfer, show my leads where source is Zillow.",
             "For my Zillow follow-up block, use Eligible For Transfer only.",
             "I need the Zillow leads within Eligible For Transfer.",
         ),
@@ -3115,20 +3156,23 @@ _SMART_LIST_GROUNDING_SCENARIOS: tuple[BattleTestScenario, ...] = (
                 "followupboss_search_people",
                 "followupboss_list_smart_lists",
             ),
-            required_argument_keys=("smart_list_name", "source"),
+            required_argument_keys=("smart_list_name", "source", "mine"),
+            required_argument_values={"mine": True},
         ),
         api_oracle=ApiOracleSpec(
             kind=BattleTestOracleKind.NAMED_SMART_LIST_PEOPLE,
             description=(
                 "Resolve Eligible For Transfer by exact smart-list name and verify the "
-                "people response and visible answer are a subset of that list."
+                "people response and visible answer are a subset of that list and owner."
             ),
             smart_list_name="Eligible For Transfer",
             answer_must_be_grounded=True,
         ),
         response_assertions=(
             "request.smart_list_name == api_oracle.smart_list_name",
+            "request.mine is true for I/me/my follow-up wording",
             "response.smartlist.id == api_oracle.smart_list_id",
+            "response.people[*].assignedUserId == authenticated_user.id",
             "response.people[*].id == api_oracle.person_ids",
             "assistant_answer contains no off-list names or phones",
         ),
@@ -3163,16 +3207,16 @@ _SMART_LIST_GROUNDING_SCENARIOS: tuple[BattleTestScenario, ...] = (
         id="BT-SMARTLIST-004",
         grade=BattleTestGrade.MUST_REQUIRE_ID,
         prompt_variants=(
-            "Show people in eligible   for transfer from Zillow.",
-            "Pull Zillow leads in eligible for transfer.",
-            "Search ELIGIBLE FOR TRANSFER for Zillow leads.",
-            "From Eligible    For    Transfer, show Zillow leads.",
-            "List Zillow contacts in the eligible for transfer smart list.",
-            "Search the Eligible For Transfer smart list for Zillow leads.",
-            "Search only the eligible for transfer smart list for Zillow follow-ups.",
-            "Can you count Zillow leads in ELIGIBLE FOR TRANSFER?",
-            "Find source Zillow inside eligible for transfer.",
-            "Show me Eligible For Transfer members where the source is Zillow.",
+            "Show everyone's people in eligible   for transfer from Zillow.",
+            "Pull all users' Zillow leads in eligible for transfer.",
+            "Search ELIGIBLE FOR TRANSFER for all account Zillow leads.",
+            "From Eligible    For    Transfer, show team-wide Zillow leads.",
+            "List all Zillow contacts in the eligible for transfer smart list.",
+            "Search the Eligible For Transfer smart list for everyone with Zillow leads.",
+            "Search only the eligible for transfer smart list for account-wide Zillow follow-ups.",
+            "Can you count everyone's Zillow leads in ELIGIBLE FOR TRANSFER?",
+            "Find all source Zillow people inside eligible for transfer.",
+            "Show me Eligible For Transfer members where the source is Zillow for everyone.",
         ),
         expected_mcp=ExpectedMcpRoute(
             allowed_tools=("followupboss_search_people_in_smart_list",),
@@ -3181,7 +3225,8 @@ _SMART_LIST_GROUNDING_SCENARIOS: tuple[BattleTestScenario, ...] = (
                 "followupboss_search_people",
                 "followupboss_list_smart_lists",
             ),
-            required_argument_keys=("smart_list_name", "source"),
+            required_argument_keys=("smart_list_name", "source", "mine"),
+            required_argument_values={"mine": False},
         ),
         api_oracle=ApiOracleSpec(
             kind=BattleTestOracleKind.NAMED_SMART_LIST_PEOPLE,
@@ -3469,19 +3514,21 @@ _SMART_LIST_GROUNDING_BLUEPRINTS: tuple[
 ] = (
     (
         BattleTestConversationKind.MULTI_ASK,
-        ("Show saved smart-list metadata first, then show Zillow leads in Eligible For Transfer."),
+        (
+            "Show saved smart-list metadata first, then show my Zillow leads in Eligible For Transfer."
+        ),
         (
             (
                 "BT-SMARTLIST-001",
                 (
-                    "Show saved smart-list metadata first, then show Zillow leads in "
+                    "Show saved smart-list metadata first, then show my Zillow leads in "
                     "Eligible For Transfer."
                 ),
             ),
             (
                 "BT-SMARTLIST-002",
                 (
-                    "Show saved smart-list metadata first, then show Zillow leads in "
+                    "Show saved smart-list metadata first, then show my Zillow leads in "
                     "Eligible For Transfer."
                 ),
             ),
@@ -3520,8 +3567,8 @@ _SMART_LIST_GROUNDING_BLUEPRINTS: tuple[
                 "Pull only Eligible For Transfer smart-list metadata before my Zillow calls.",
             ),
             (
-                "BT-SMARTLIST-004",
-                "Now show Zillow leads from that list.",
+                "BT-SMARTLIST-002",
+                "Now show my Zillow leads from that list.",
             ),
         ),
     ),

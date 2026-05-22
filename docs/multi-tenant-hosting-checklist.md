@@ -226,7 +226,7 @@ evidence capture, and external pilot execution.
 | Primary operator | OpenAI GPT-5.4 agent |
 | Reviewer | `jp26jp` |
 | Deployment revision, image tag, or commit | `bbeefc7`, ECR tag `staging` |
-| Shared `STAGING_MCP_URL` | `https://mcp-staging.theperrygroup.email/mcp` |
+| Shared `STAGING_MCP_URL` | `https://fub.theperry.group/mcp` |
 | Staging dashboard or log link | CloudWatch Logs group `/ecs/followupboss-mcp-staging` |
 | Incident or escalation channel | Direct operator escalation to `jp26jp` |
 | Notes | Shared staging runtime is live on ECS/Fargate. During the 2026-03-30 pilot window, `tenant-b` was rotated in place from the earlier Perry Group placeholder credential to the real external `j-26` Follow Up Boss account while keeping `credential_id` stable. Shared-URL smoke then passed for both tenants with `own_fixture_count=1`, `other_fixture_count=0`, `resource_count=1`, and `prompt_message_count=1`, and CloudWatch recorded hosted auth, tenant resolution, and upstream credential usage without hosted rate-limit backend failures. |
@@ -255,7 +255,7 @@ evidence capture, and external pilot execution.
 Export these values before running the staged validation commands:
 
 ```bash
-export STAGING_MCP_URL="https://staging-mcp.example.com/mcp"
+export STAGING_MCP_URL="https://fub.theperry.group/mcp"
 export TENANT_A_TOKEN="replace-with-real-hosted-token"
 export TENANT_B_TOKEN="replace-with-real-hosted-token"
 export TENANT_A_FIXTURE_EMAIL="mcp-tenant-a@example.com"
@@ -339,7 +339,7 @@ Recommended execution order:
 
 | Check | Status | Evidence |
 | --- | --- | --- |
-| Invalid token fails closed before any tool call | PASS | During the 2026-03-30 pilot window, a fresh invalid bearer token against `https://mcp-staging.theperrygroup.email/mcp` failed closed before `followupboss_get_identity` could execute, and CloudWatch recorded `hosted_auth_failed`. |
+| Invalid token fails closed before any tool call | PASS | During the 2026-03-30 pilot window, a fresh invalid bearer token against `https://fub.theperry.group/mcp` failed closed before `followupboss_get_identity` could execute, and CloudWatch recorded `hosted_auth_failed`. |
 | Tenant A shared-endpoint smoke | PASS | `tenant-a` resolved through the shared staging URL to Perry Group `accountId=1108468760` with `own_fixture_count=1`, `other_fixture_count=0`, `resource_count=1`, and `prompt_message_count=1`. |
 | Tenant B shared-endpoint smoke | PASS | After rotating the staging `tenant-b` secret in place and updating `system_name` to `J-26`, the shared staging URL resolved `tenant-b` to `j-26` `accountId=1746230763` with `own_fixture_count=1`, `other_fixture_count=0`, `resource_count=1`, and `prompt_message_count=1`. |
 | Cross-tenant fixture isolation | PASS | Unique fixture emails `mcp-tenant-a-pilot-1774898106@example.com` and `mcp-tenant-b-pilot-1774898106@example.com` each resolved only under the matching tenant token. Both cross-tenant searches returned zero results, and a temporary `tenant-b` token intentionally bound to `cred-staging-tenant-a-primary` failed closed. |

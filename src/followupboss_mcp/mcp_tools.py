@@ -236,9 +236,11 @@ class SearchPeopleInSmartListToolInput(RequestModel):
     smart_list_name: str | None = None
     smart_list: str | None = None
     list_name: str | None = None
+    assigned_user_id: int | None = None
     fields: list[str] | None = None
     limit: int | None = None
     lead_source: str | None = None
+    mine: bool = False
     next_token: str | None = None
     offset: int | None = None
     source: str | None = None
@@ -273,6 +275,31 @@ class SearchPeopleInSmartListToolInput(RequestModel):
             required_name=None,
         )
         return self
+
+    async def resolved_assigned_user_id(
+        self,
+        services: ServiceBundle,
+    ) -> int | None:
+        """Return the assigned-user scope for this smart-list search.
+
+        Args:
+            services: Active service bundle used to resolve authenticated-user
+                identity when `mine` is true.
+
+        Returns:
+            The explicit assigned user, authenticated user, or `None` for
+            intentionally account-wide searches.
+
+        Raises:
+            RuntimeError: If `mine` is true but the authenticated identity does
+                not include a Follow Up Boss user ID.
+        """
+        if not self.mine:
+            return self.assigned_user_id
+        identity = await services.identity.get_identity()
+        if identity.id is None:
+            raise RuntimeError("Authenticated Follow Up Boss user id is unavailable.")
+        return identity.id
 
     def resolved_smart_list_name(self) -> str:
         """Return the normalized smart-list name after validation.
@@ -1185,9 +1212,13 @@ class FollowUpBossToolAdapter:
                 await self._list_all_smart_lists(),
                 tool_input.resolved_smart_list_name(),
             )
+            assigned_user_id = await self._execute_with_services(
+                lambda: tool_input.resolved_assigned_user_id(self._services)
+            )
             page = await self._execute_with_services(
                 lambda: self._services.people.search_people(
                     PeopleSearchRequest(
+                        assigned_user_id=assigned_user_id,
                         fields=tool_input.fields,
                         limit=tool_input.limit,
                         next_token=tool_input.next_token,

@@ -173,23 +173,33 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
                 "tool resolves the list name internally, searches only inside that "
                 "smart-list ID, and returns smart-list provenance. Do not include people "
                 "absent from this tool result in the answer. When the prompt says Zillow "
-                "leads, include source='Zillow'."
+                "leads, include source='Zillow'. For I/me/my follow-up prompts, set "
+                "mine=true so admin credentials do not return account-wide people. For a "
+                "named owner, pass assigned_user_id only when the user ID is already known."
             ),
             input_schema={
                 "type": "object",
                 "properties": {
                     "smart_list_name": _string_schema("Exact Follow Up Boss smart-list name."),
+                    "assigned_user_id": _integer_schema("Explicit Follow Up Boss owner user ID."),
                     "fields": _enum_array_schema(
                         "Optional person response fields to request.",
                         _LATEST_LEAD_RESPONSE_FIELDS,
                     ),
                     "limit": _integer_schema("Optional page size."),
+                    "mine": {
+                        "type": "boolean",
+                        "description": (
+                            "True for I/me/my follow-up requests; false only when explicitly "
+                            "account-wide/everyone."
+                        ),
+                    },
                     "next_token": _string_schema("Optional next page token."),
                     "offset": _integer_schema("Optional offset."),
                     "source": _string_schema("Optional source filter, such as Zillow."),
                     "stage": _string_schema("Optional stage filter."),
                 },
-                "required": ["smart_list_name", "source"],
+                "required": ["smart_list_name", "source", "mine"],
                 "additionalProperties": False,
             },
         ),
@@ -460,8 +470,15 @@ def battle_test_selection_instructions() -> str:
         "source='Zillow'. Treat 'came from Zillow', 'source is Zillow', 'Zillow follow-up "
         "block', 'boundary for Zillow follow-ups', and 'Zillow leads I should call' the "
         "same way: use smart_list_name='Eligible For Transfer' and source='Zillow' when "
-        "Eligible For Transfer is named. The final answer must not include any person "
-        "absent from that smart-list-scoped tool result. Use followupboss_list_smart_lists "
+        "Eligible For Transfer is named. For named smart-list follow-up prompts using I, "
+        "me, my, mine, I should call, I need to work, or do I need to follow up, set "
+        "mine=true so the helper scopes to the authenticated user even when the credential "
+        "is admin-visible. Set mine=false only when the prompt explicitly asks for everyone, "
+        "all agents, account-wide, team-wide, or an overall count. For a named owner such as "
+        "Scott Willey, pass assigned_user_id only if the user ID is already known; otherwise "
+        "call battle_test_clarify instead of returning account-wide results. The final answer must "
+        "not include any person absent from that smart-list-scoped tool result. Use "
+        "followupboss_list_smart_lists "
         "only when the user is asking to list or inspect saved lists, not as the final route "
         "for a named-list people search. Use followupboss_search_people when a people search "
         "includes an explicit name, email, phone, or known numeric smart_list_id, and "
