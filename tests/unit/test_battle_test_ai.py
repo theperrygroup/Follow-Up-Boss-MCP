@@ -522,7 +522,9 @@ def test_read_only_tool_specs_include_expanded_read_surfaces() -> None:
     )["mine"] == {
         "type": "boolean",
         "default": True,
-        "description": "True for I/me/my follow-up requests; false only when explicitly account-wide/everyone.",
+        "description": (
+            "True for I/me/my follow-up requests; false only when explicitly account-wide/everyone."
+        ),
     }
     assert specs["followupboss_list_person_activity"].input_schema["required"] == ["person_id"]
     assert {"person_id", "include_calls", "include_text_messages"}.issubset(activity_properties)
