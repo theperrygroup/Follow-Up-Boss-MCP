@@ -2123,9 +2123,13 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     )
     assert my_uncontacted_leads["people"][0]["id"] == 2
     assert stub.people_search_requests[-1].assigned_user_id == 1
-    assert stub.people_search_requests[-1].contacted is False
+    assert stub.people_search_requests[-1].contacted is None
+    assert stub.people_search_requests[-1].sort == "-created"
+    assert stub.people_search_requests[-1].fields is not None
+    assert "lastCommunication" in stub.people_search_requests[-1].fields
     assert stub.people_search_requests[-1].smart_list_id is None
-    assert stub.people_search_requests[-1].limit == 25
+    assert stub.people_search_requests[-1].limit == 100
+    assert my_uncontacted_leads["_metadata"]["limit"] == 25
     named_owner_uncontacted_leads = await adapter.list_uncontacted_leads(
         ListUncontactedLeadsToolInput(assigned_user_name="Geordi", source="Zillow")
     )
@@ -2133,20 +2137,20 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert stub.user_list_requests[-1].name == "Geordi"
     assert stub.user_list_requests[-1].include_deleted is False
     assert stub.people_search_requests[-1].assigned_user_id == 6
-    assert stub.people_search_requests[-1].contacted is False
+    assert stub.people_search_requests[-1].contacted is None
     assert stub.people_search_requests[-1].source == "Zillow"
     all_uncontacted_leads = await adapter.list_uncontacted_leads(
         ListUncontactedLeadsToolInput(mine=False)
     )
     assert all_uncontacted_leads["people"][0]["id"] == 2
     assert stub.people_search_requests[-1].assigned_user_id is None
-    assert stub.people_search_requests[-1].contacted is False
+    assert stub.people_search_requests[-1].contacted is None
     explicit_owner_uncontacted_leads = await adapter.list_uncontacted_leads(
         ListUncontactedLeadsToolInput(assigned_user_id=101)
     )
     assert explicit_owner_uncontacted_leads["people"][0]["id"] == 2
     assert stub.people_search_requests[-1].assigned_user_id == 101
-    assert stub.people_search_requests[-1].contacted is False
+    assert stub.people_search_requests[-1].contacted is None
     uncontacted_alias_input = ListUncontactedLeadsToolInput(
         owner_name="Geordi",
         lead_source="Zillow",
@@ -2155,6 +2159,8 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert uncontacted_alias_input.source == "Zillow"
     with pytest.raises(ValidationError, match="assigned_user_id must be a positive"):
         ListUncontactedLeadsToolInput(assigned_user_id=0)
+    with pytest.raises(ValidationError, match="Unsupported no-communication lead fields"):
+        ListUncontactedLeadsToolInput(fields=["id", "createdAt"])
     with pytest.raises(ValidationError, match="Conflicting values"):
         ListUncontactedLeadsToolInput(owner_name="Geordi", agent_name="Worf")
     paginated_uncontacted_user_requests: list[UserListRequest] = []
@@ -4136,8 +4142,9 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "str",
         tools["followupboss_list_uncontacted_leads"].description,
     )
-    assert "contacted=false" in uncontacted_description
+    assert "no recorded lastCommunication" in uncontacted_description
     assert "never smart-list lookup" in uncontacted_description
+    assert "contacted=false only when the user explicitly asks" in uncontacted_description
     assert "assigned_user_name/owner_name/agent_name" in uncontacted_description
     search_events_description = cast("str", tools["followupboss_search_events"].description)
     assert "Do not use this to answer requests for notes associated with a person" in (
@@ -5289,8 +5296,8 @@ async def test_public_person_activity_tool_returns_scoped_activity() -> None:
 
 
 @pytest.mark.asyncio
-async def test_public_uncontacted_leads_tool_forces_direct_contacted_filter() -> None:
-    """The registered uncontacted helper should force contacted=false in public calls."""
+async def test_public_uncontacted_leads_tool_filters_missing_last_communication() -> None:
+    """The registered helper should request lastCommunication and filter locally."""
 
     @dataclass
     class CapturingQueueClient:
@@ -5327,8 +5334,15 @@ async def test_public_uncontacted_leads_tool_forces_direct_contacted_filter() ->
         responses=[
             {"id": 7, "name": "Picard"},
             {
-                "_metadata": {"limit": 25, "offset": 0, "total": 1},
-                "people": [{"id": 724, "name": "Wesley Binks", "contacted": False}],
+                "_metadata": {"limit": 100, "offset": 0, "total": 1},
+                "people": [
+                    {
+                        "id": 724,
+                        "name": "Wesley Binks",
+                        "contacted": True,
+                        "lastCommunication": None,
+                    }
+                ],
             },
         ]
     )
@@ -5349,8 +5363,13 @@ async def test_public_uncontacted_leads_tool_forces_direct_contacted_filter() ->
     assert client.params_seen is not None
     assert client.params_seen[-1] == {
         "assignedUserId": "7",
-        "contacted": "false",
-        "limit": "25",
+        "fields": (
+            "assignedTo,assignedUserId,contacted,created,emails,firstName,id,"
+            "lastActivity,lastCommunication,lastName,name,phones,source,stage"
+        ),
+        "limit": "100",
+        "offset": "0",
+        "sort": "-created",
     }
 
 

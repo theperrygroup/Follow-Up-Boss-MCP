@@ -533,7 +533,9 @@ def test_read_only_tool_specs_include_expanded_read_surfaces() -> None:
         "mine",
         "limit",
     }.issubset(uncontacted_properties)
-    assert "contacted=false enforced" in specs["followupboss_list_uncontacted_leads"].description
+    assert "empty lastCommunication filtering" in (
+        specs["followupboss_list_uncontacted_leads"].description
+    )
     assert "Do not list or search smart lists" in (
         specs["followupboss_list_uncontacted_leads"].description
     )
@@ -592,7 +594,7 @@ def test_selection_instructions_explain_unsupported_note_search() -> None:
     assert "coming up, upcoming, later, after today" in instructions
     assert "followupboss_list_my_upcoming_tasks" in instructions
     assert "Use followupboss_list_uncontacted_leads" in instructions
-    assert "contacted-false, or needs-contact leads" in instructions
+    assert "no-communication, or haven't communicated" in instructions
     assert "assigned_user_name='Scott Willey'" in instructions
     assert (
         "Do not list or resolve smart lists for these direct search-filter prompts" in instructions

@@ -1766,7 +1766,7 @@ class ReadOnlyBattleTestOracle:
         scenario: BattleTestScenario,
         transcript: BattleTestTranscript,
     ) -> BattleTestOracleSnapshot:
-        """Build direct API truth for contacted=false people-search helpers.
+        """Build direct API truth for no-last-communication people-search helpers.
 
         Args:
             scenario: Scenario contract being checked.
@@ -1787,15 +1787,21 @@ class ReadOnlyBattleTestOracle:
         page = await self._services.people.search_people(
             PeopleSearchRequest(
                 assigned_user_id=assigned_user_id,
-                contacted=False,
-                fields=_optional_string_list(transcript.arguments.get("fields")),
+                fields=sorted(
+                    set(_optional_string_list(transcript.arguments.get("fields")) or [])
+                    | {"id", "lastCommunication"}
+                ),
                 limit=_optional_int(transcript.arguments.get("limit")),
                 next_token=_optional_string(transcript.arguments.get("next_token")),
                 offset=_optional_int(transcript.arguments.get("offset")),
+                sort="-created",
                 source=_optional_string(transcript.arguments.get("source")),
                 stage=_optional_string(transcript.arguments.get("stage")),
             )
         )
+        no_communication_people = [
+            person for person in page.items if person.last_communication in (None, "", 0, "0")
+        ]
         return BattleTestOracleSnapshot(
             scenario_id=scenario.id,
             kind=scenario.api_oracle.kind,
@@ -1803,9 +1809,9 @@ class ReadOnlyBattleTestOracle:
             expected={
                 "response_key": "people",
                 "assigned_user_id": assigned_user_id,
-                "contacted": False,
+                "last_communication": None,
                 "mine": mine,
-                "person_ids": [_record_id(person) for person in page.items],
+                "person_ids": [_record_id(person) for person in no_communication_people],
             },
         )
 
@@ -3315,12 +3321,12 @@ _EXPANDED_READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
                 "Show Scott Willey's zero communication leads.",
                 "Scott Willey has 323 leads with zero communication; list them.",
                 "Pull Scott Willey's no-communication leads using the uncontacted helper.",
-                "Get me Scott Willey's leads that have not been contacted.",
-                "Which leads assigned to Scott Willey have contacted false?",
+                "Get me Scott Willey's leads that have no last communication.",
+                "Which leads assigned to Scott Willey have no communication recorded?",
                 "Show leads I haven't communicated with for Scott Willey.",
                 "List never-contacted people assigned to Scott Willey.",
                 "Use direct filtering to show Scott Willey's uncontacted leads.",
-                "Count Scott Willey's contacted false leads, then show them.",
+                "Count Scott Willey's no-communication leads, then show them.",
                 "Show those zero communication leads for Scott Willey.",
             )
         ),
@@ -3339,12 +3345,12 @@ _EXPANDED_READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
         api_oracle=ApiOracleSpec(
             kind=BattleTestOracleKind.MY_UNCONTACTED_LEADS,
             description=(
-                "Direct people search filtered by contacted=false and resolved Scott Willey owner "
-                "scope; no saved-list lookup or per-person activity inference."
+                "Direct people search filtered to empty lastCommunication and resolved Scott "
+                "Willey owner scope; no saved-list lookup or per-person activity inference."
             ),
         ),
         response_assertions=(
-            "request.contacted is false",
+            "request.lastCommunication is empty",
             "request.assigned_user_name == Scott Willey",
             "response.people[*].id == api_oracle.person_ids",
         ),
@@ -3359,7 +3365,7 @@ _EXPANDED_READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
                 "List my never-contacted leads.",
                 "Who are my leads with no communication?",
                 "Show my zero communication leads.",
-                "Get my contacted false leads.",
+                "Get my leads with no last communication.",
                 "Which of my leads have not been contacted?",
                 "Pull my leads where contacted is false.",
                 "Count my no-communication leads, then show them.",
@@ -3378,12 +3384,12 @@ _EXPANDED_READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
         api_oracle=ApiOracleSpec(
             kind=BattleTestOracleKind.MY_UNCONTACTED_LEADS,
             description=(
-                "Direct authenticated-user people search with contacted=false; "
+                "Direct authenticated-user people search filtered to empty lastCommunication; "
                 "no saved-list lookup."
             ),
         ),
         response_assertions=(
-            "request.contacted is false",
+            "request.lastCommunication is empty",
             "request.assigned_user_id == authenticated_user.id",
             "response.people[*].id == api_oracle.person_ids",
         ),
@@ -3400,9 +3406,9 @@ _EXPANDED_READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
                 "Which of my leads are in a needs contact state?",
                 "Show my leads needing contact because they are uncontacted.",
                 "List all my leads that have zero communication and need contact.",
-                "Get the people I need to contact because contacted is false.",
+                "Get the people I need to contact because last communication is empty.",
                 "Show the Needs Contact results from my people search.",
-                "Use contacted false for my needs-contact leads.",
+                "Use no-last-communication filtering for my needs-contact leads.",
             )
         ),
         expected_mcp=ExpectedMcpRoute(
@@ -3417,12 +3423,12 @@ _EXPANDED_READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
         api_oracle=ApiOracleSpec(
             kind=BattleTestOracleKind.MY_UNCONTACTED_LEADS,
             description=(
-                "Direct authenticated-user contacted=false search for needs-contact wording "
+                "Direct authenticated-user empty-lastCommunication search for needs-contact wording "
                 "that does not explicitly ask for a saved smart list."
             ),
         ),
         response_assertions=(
-            "request.contacted is false",
+            "request.lastCommunication is empty",
             "request.smart_list_id is None",
             "response.people[*].id == api_oracle.person_ids",
         ),
@@ -3862,7 +3868,7 @@ _EXPANDED_CHAIN_BLUEPRINTS: tuple[
         (
             (
                 "BT-READ-018",
-                "How many contacted false leads are assigned to Scott Willey?",
+                "How many no-communication leads are assigned to Scott Willey?",
             ),
             (
                 "BT-READ-018",

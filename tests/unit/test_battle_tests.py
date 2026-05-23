@@ -1664,7 +1664,8 @@ async def test_zero_communication_grounding_uses_uncontacted_helper() -> None:
                     "id": 323,
                     "name": "Casey Quiet",
                     "assignedUserId": 101,
-                    "contacted": False,
+                    "contacted": True,
+                    "lastCommunication": None,
                     "phones": [{"value": "(555) 323-0000"}],
                 }
             )
@@ -1685,7 +1686,8 @@ async def test_zero_communication_grounding_uses_uncontacted_helper() -> None:
                     "id": 323,
                     "name": "Casey Quiet",
                     "assignedUserId": 101,
-                    "contacted": False,
+                    "contacted": True,
+                    "lastCommunication": None,
                 }
             ]
         },
@@ -1696,7 +1698,10 @@ async def test_zero_communication_grounding_uses_uncontacted_helper() -> None:
     assert evaluation.passed is True
     assert services.users.requests[0].name == "Scott Willey"
     assert services.people.requests[0].assigned_user_id == 101
-    assert services.people.requests[0].contacted is False
+    assert services.people.requests[0].contacted is None
+    assert services.people.requests[0].sort == "-created"
+    assert services.people.requests[0].fields is not None
+    assert "lastCommunication" in services.people.requests[0].fields
     assert services.people.requests[0].smart_list_id is None
     assert services.people.requests[0].limit == 25
 
@@ -1712,7 +1717,8 @@ async def test_my_uncontacted_grounding_uses_authenticated_owner_scope() -> None
                     "id": 724,
                     "name": "Wesley Binks",
                     "assignedUserId": 7,
-                    "contacted": False,
+                    "contacted": True,
+                    "lastCommunication": None,
                 }
             )
         ),
@@ -1728,7 +1734,8 @@ async def test_my_uncontacted_grounding_uses_authenticated_owner_scope() -> None
                     "id": 724,
                     "name": "Wesley Binks",
                     "assignedUserId": 7,
-                    "contacted": False,
+                    "contacted": True,
+                    "lastCommunication": None,
                 }
             ]
         },
@@ -1738,7 +1745,9 @@ async def test_my_uncontacted_grounding_uses_authenticated_owner_scope() -> None
 
     assert evaluation.passed is True
     assert services.people.requests[0].assigned_user_id == 7
-    assert services.people.requests[0].contacted is False
+    assert services.people.requests[0].contacted is None
+    assert services.people.requests[0].fields is not None
+    assert "lastCommunication" in services.people.requests[0].fields
     assert services.people.requests[0].smart_list_id is None
 
 
@@ -1752,7 +1761,8 @@ async def test_zero_communication_grounding_rejects_list_lookup_or_activity_deto
                     "id": 323,
                     "name": "Casey Quiet",
                     "assignedTo": "Scott Willey",
-                    "contacted": False,
+                    "contacted": True,
+                    "lastCommunication": None,
                 }
             )
         ),
@@ -1815,7 +1825,13 @@ async def test_needs_contact_trap_rejects_smart_list_without_saved_list_wording(
     services = _services(
         people=_people_page(
             PersonRecord.model_validate(
-                {"id": 724, "name": "Wesley Binks", "assignedUserId": 7, "contacted": False}
+                {
+                    "id": 724,
+                    "name": "Wesley Binks",
+                    "assignedUserId": 7,
+                    "contacted": True,
+                    "lastCommunication": None,
+                }
             )
         )
     )
@@ -1824,7 +1840,7 @@ async def test_needs_contact_trap_rejects_smart_list_without_saved_list_wording(
         prompt="Show my leads that need contact.",
         selected_tool="followupboss_list_uncontacted_leads",
         arguments={"limit": 25},
-        response={"people": [{"id": 724, "name": "Wesley Binks", "contacted": False}]},
+        response={"people": [{"id": 724, "name": "Wesley Binks", "lastCommunication": None}]},
     )
     smart_list_transcript = BattleTestTranscript(
         scenario_id=scenario.id,
@@ -1844,7 +1860,9 @@ async def test_needs_contact_trap_rejects_smart_list_without_saved_list_wording(
     )
 
     assert helper_evaluation.passed is True
-    assert services.people.requests[0].contacted is False
+    assert services.people.requests[0].contacted is None
+    assert services.people.requests[0].fields is not None
+    assert "lastCommunication" in services.people.requests[0].fields
     assert smart_list_evaluation.passed is False
     assert (
         "Selected forbidden tool 'followupboss_search_people_in_smart_list'."

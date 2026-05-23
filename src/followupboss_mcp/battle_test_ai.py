@@ -155,8 +155,9 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
                 "known numeric smart_list_id people searches, or direct documented search "
                 "filters when the caller explicitly asks for low-level arguments. For "
                 "uncontacted, never-contacted, zero-communication, no-communication, "
-                "needs-contact, or contacted-false leads, prefer "
-                "followupboss_list_uncontacted_leads so contacted=false is enforced. "
+                "or needs-contact leads, prefer "
+                "followupboss_list_uncontacted_leads so empty lastCommunication "
+                "filtering is enforced. "
                 "Do not use this for named smart-list people prompts; use "
                 "followupboss_search_people_in_smart_list."
             ),
@@ -181,10 +182,12 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
         BattleTestAiToolSpec(
             name="followupboss_list_uncontacted_leads",
             description=(
-                "List leads using direct people search with contacted=false enforced inside "
-                "the MCP tool. Use this for uncontacted, never contacted, no communication, "
-                "zero communication, contacted false, or needs contact lead requests. Defaults "
-                "to authenticated-user assigned leads; for named owners such as Scott Willey, "
+                "List leads using direct people search with empty lastCommunication filtering "
+                "inside the MCP tool. Use this for uncontacted, never contacted, no "
+                "communication, zero communication, has not communicated, or needs contact "
+                "lead requests. Use followupboss_search_people only when the prompt explicitly "
+                "asks for the raw contacted=false field. Defaults to authenticated-user assigned "
+                "leads; for named owners such as Scott Willey, "
                 "pass assigned_user_name. Do not list or search smart lists for these filter "
                 "intents unless the user explicitly says smart list or saved list."
             ),
@@ -525,7 +528,7 @@ def battle_test_selection_instructions() -> str:
         "today means followupboss_list_my_tasks_due_today; coming up, upcoming, later, after "
         "today, next, future, or ahead means followupboss_list_my_upcoming_tasks. "
         "Use followupboss_list_uncontacted_leads for uncontacted, never-contacted, "
-        "zero-communication, no-communication, haven't communicated, contacted-false, "
+        "zero-communication, no-communication, or haven't communicated "
         "or needs-contact leads when the user is asking for search filtering rather than "
         "an explicitly named saved list. If the prompt names an owner such as Scott Willey, "
         "pass assigned_user_name='Scott Willey'. Do not list or resolve smart lists for "

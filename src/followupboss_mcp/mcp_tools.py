@@ -158,7 +158,7 @@ from followupboss_mcp.models.webhooks import (
     UpdateWebhookRequest,
     WebhookListRequest,
 )
-from followupboss_mcp.pagination import PageResult
+from followupboss_mcp.pagination import PageResult, PaginationMetadata
 from followupboss_mcp.task_intents import upcoming_task_due_start as _upcoming_task_due_start
 from followupboss_mcp.tenant_runtime import ServiceBundle, ServiceBundleResolver
 
@@ -190,6 +190,25 @@ _TASK_INTENT_RESPONSE_FIELDS = frozenset(
         "type",
     }
 )
+_UNCOMMUNICATED_LEAD_RESPONSE_FIELDS = frozenset(
+    {
+        "id",
+        "name",
+        "firstName",
+        "lastName",
+        "created",
+        "assignedUserId",
+        "assignedTo",
+        "stage",
+        "source",
+        "lastActivity",
+        "lastCommunication",
+        "contacted",
+        "emails",
+        "phones",
+    }
+)
+_UNCOMMUNICATED_LEAD_FILTER_FIELDS = frozenset({"id", "lastCommunication"})
 
 
 class GetPersonToolInput(PersonLookupRequest):
@@ -418,7 +437,7 @@ class SearchPeopleInSmartListToolInput(RequestModel):
 
 
 class ListUncontactedLeadsToolInput(RequestModel):
-    """Tool input for direct uncontacted-lead people searches."""
+    """Tool input for direct no-communication lead searches."""
 
     assigned_user_id: int | None = None
     assigned_user_name: str | None = None
@@ -450,6 +469,32 @@ class ListUncontactedLeadsToolInput(RequestModel):
         """
         if value is not None and value <= 0:
             raise ValueError("assigned_user_id must be a positive Follow Up Boss user ID.")
+        return value
+
+    @field_validator("fields")
+    @classmethod
+    def _validate_fields(cls, value: list[str] | None) -> list[str] | None:
+        """Validate person projection fields for no-communication helpers.
+
+        Args:
+            value: Optional field names requested by the MCP caller.
+
+        Returns:
+            The original field list when every field is supported.
+
+        Raises:
+            ValueError: If any requested field is not supported by the helper.
+        """
+        if value is None:
+            return None
+        invalid_fields = sorted(set(value) - _UNCOMMUNICATED_LEAD_RESPONSE_FIELDS)
+        if invalid_fields:
+            allowed_fields = ", ".join(sorted(_UNCOMMUNICATED_LEAD_RESPONSE_FIELDS))
+            invalid = ", ".join(invalid_fields)
+            raise ValueError(
+                f"Unsupported no-communication lead fields: {invalid}. "
+                f"Allowed fields: {allowed_fields}."
+            )
         return value
 
     @model_validator(mode="after")
@@ -1457,14 +1502,15 @@ class FollowUpBossToolAdapter:
         self,
         tool_input: ListUncontactedLeadsToolInput,
     ) -> dict[str, Any]:
-        """List leads that have not been contacted via direct people search.
+        """List leads with no recorded last communication.
 
         Args:
             tool_input: Owner scope, optional source/stage filters, and
-                pagination settings for the uncontacted-leads helper.
+                pagination settings for the no-communication helper.
 
         Returns:
-            A paginated people payload where `contacted` is forced to `False`.
+            A paginated people payload filtered to records whose
+            `lastCommunication` is empty.
         """
         return await self._page_result(
             lambda: self._list_uncontacted_leads(tool_input),
@@ -1475,26 +1521,54 @@ class FollowUpBossToolAdapter:
         self,
         tool_input: ListUncontactedLeadsToolInput,
     ) -> PageResult[PersonRecord]:
-        """Build and run the direct contacted=false people search.
+        """Build and run the direct no-last-communication people search.
 
         Args:
             tool_input: Validated uncontacted-leads helper input.
 
         Returns:
-            The paginated people search result returned by Follow Up Boss.
+            A filtered page of people whose `lastCommunication` is empty.
         """
         assigned_user_id = await tool_input.resolved_assigned_user_id(self._services)
-        request = PeopleSearchRequest(
-            assigned_user_id=assigned_user_id,
-            contacted=False,
-            fields=tool_input.fields,
-            limit=tool_input.limit,
-            next_token=tool_input.next_token,
-            offset=tool_input.offset,
-            source=tool_input.source,
-            stage=tool_input.stage,
+        requested_fields = _uncommunicated_lead_fields(tool_input.fields)
+        matches: list[PersonRecord] = []
+        fetch_offset = 0
+        fetch_limit = 100
+        while True:
+            request = PeopleSearchRequest(
+                assigned_user_id=assigned_user_id,
+                fields=requested_fields,
+                limit=fetch_limit,
+                offset=fetch_offset,
+                sort="-created",
+                source=tool_input.source,
+                stage=tool_input.stage,
+            )
+            page = await self._services.people.search_people(request)
+            matches.extend(
+                person
+                for person in page.items
+                if _is_empty_last_communication(person.last_communication)
+            )
+            if not page.metadata.has_next() or page.metadata.count == 0:
+                break
+            fetch_offset = page.metadata.offset + page.metadata.count
+
+        page_offset = _pagination_offset(tool_input)
+        page_limit = tool_input.limit or 25
+        page_items = matches[page_offset : page_offset + page_limit]
+        next_offset = page_offset + len(page_items)
+        return PageResult(
+            items=page_items,
+            metadata=PaginationMetadata(
+                count=len(page_items),
+                limit=page_limit,
+                next_token=str(next_offset) if next_offset < len(matches) else None,
+                next_link=None,
+                offset=page_offset,
+                total=len(matches),
+            ),
         )
-        return await self._services.people.search_people(request)
 
     async def search_people_in_smart_list(
         self,
@@ -3026,6 +3100,53 @@ def _mcp_safe_error(exc: FollowUpBossError) -> str:
     if isinstance(exc, FollowUpBossRateLimitError) and exc.retry_after_seconds is not None:
         return f"{exc} Retry after {exc.retry_after_seconds:.0f} seconds."
     return str(exc)
+
+
+def _uncommunicated_lead_fields(fields: list[str] | None) -> list[str]:
+    """Return fields required for no-communication filtering and display.
+
+    Args:
+        fields: Optional caller-requested projection fields.
+
+    Returns:
+        A deterministic field list that always includes `lastCommunication` so
+        the helper can post-filter records correctly.
+    """
+    if fields is None:
+        return sorted(_UNCOMMUNICATED_LEAD_RESPONSE_FIELDS)
+    return sorted(set(fields) | _UNCOMMUNICATED_LEAD_FILTER_FIELDS)
+
+
+def _is_empty_last_communication(value: object) -> bool:
+    """Return whether a Follow Up Boss lastCommunication value is empty.
+
+    Args:
+        value: The raw `lastCommunication` response field, which is `None` for
+            no communication and an object when communication exists.
+
+    Returns:
+        `True` only when no communication value is present.
+    """
+    return value in (None, "", 0, "0")
+
+
+def _pagination_offset(tool_input: ListUncontactedLeadsToolInput) -> int:
+    """Return the filtered-result offset requested by the MCP caller.
+
+    Args:
+        tool_input: Validated no-communication helper input.
+
+    Returns:
+        The explicit offset, numeric next token, or zero.
+
+    Raises:
+        RuntimeError: If the supplied next token is not a numeric filtered offset.
+    """
+    if tool_input.next_token is None:
+        return tool_input.offset or 0
+    if not tool_input.next_token.isdigit():
+        raise RuntimeError("Uncontacted lead pagination token must be a numeric offset.")
+    return int(tool_input.next_token)
 
 
 def _coalesce_text_aliases(
