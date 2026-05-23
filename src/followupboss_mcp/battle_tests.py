@@ -33,6 +33,7 @@ from followupboss_mcp.models.text_messages import (
     TextMessageTemplateListRequest,
     TextMessageTemplateRecord,
 )
+from followupboss_mcp.models.users import UserListRequest, UserRecord
 from followupboss_mcp.pagination import PageResult
 from followupboss_mcp.task_intents import upcoming_task_due_start as _upcoming_task_due_start
 
@@ -415,6 +416,13 @@ class SmartListsOracleService(Protocol):
         """List smart lists for direct API oracle comparison."""
 
 
+class UsersOracleService(Protocol):
+    """Minimal users service needed by owner-name oracle checks."""
+
+    async def list_users(self, request: UserListRequest | None = None) -> PageResult[UserRecord]:
+        """List users for exact owner-name resolution."""
+
+
 class TasksOracleService(Protocol):
     """Minimal tasks service needed by read-only oracle checks."""
 
@@ -510,6 +518,10 @@ class ReadOnlyBattleTestServices(Protocol):
     @property
     def smart_lists(self) -> SmartListsOracleService:
         """Return the smart-list service used for oracle checks."""
+
+    @property
+    def users(self) -> UsersOracleService:
+        """Return the users service used for owner-name oracle checks."""
 
     @property
     def appointments(self) -> AppointmentsOracleService:
@@ -1870,6 +1882,13 @@ class ReadOnlyBattleTestOracle:
             if scenario.api_oracle.requires_authenticated_owner_scope
             else _optional_int(transcript.arguments.get("assigned_user_id"))
         )
+        assigned_user_name = (
+            None
+            if scenario.api_oracle.requires_authenticated_owner_scope
+            else _optional_string(transcript.arguments.get("assigned_user_name"))
+        )
+        if assigned_user_id is None and assigned_user_name is not None:
+            assigned_user_id = await self._resolve_user_id_by_name(assigned_user_name)
         if assigned_user_id is None and mine:
             assigned_user_id = await self._authenticated_user_id()
         page = await self._services.people.search_people(
@@ -1916,6 +1935,63 @@ class ReadOnlyBattleTestOracle:
             smart_lists.extend(page.items)
             if not page.metadata.has_next() or page.metadata.count == 0:
                 return smart_lists
+            offset = page.metadata.offset + page.metadata.count
+
+    async def _resolve_user_id_by_name(self, assigned_user_name: str) -> int:
+        """Resolve one active user by exact normalized name for oracle truth.
+
+        Args:
+            assigned_user_name: Owner name supplied to the MCP transcript.
+
+        Returns:
+            The unique active Follow Up Boss user ID.
+
+        Raises:
+            RuntimeError: If no active user or multiple active users match.
+        """
+        users = await self._list_all_users_for_name(assigned_user_name)
+        normalized_name = _normalize_user_name(assigned_user_name)
+        matches = [
+            user
+            for user in users
+            if _normalize_user_name(user.name or _user_full_name(user)) == normalized_name
+            and _is_active_user(user)
+        ]
+        if not matches:
+            raise RuntimeError(
+                f"Active Follow Up Boss user named {assigned_user_name!r} was not found."
+            )
+        if len(matches) > 1:
+            match_ids = [user.id for user in matches]
+            raise RuntimeError(
+                f"Active Follow Up Boss user named {assigned_user_name!r} is ambiguous; "
+                f"matched IDs {match_ids!r}."
+            )
+        return matches[0].id
+
+    async def _list_all_users_for_name(self, assigned_user_name: str) -> list[UserRecord]:
+        """List all pages for an exact owner-name oracle lookup.
+
+        Args:
+            assigned_user_name: Name query sent to the users service.
+
+        Returns:
+            User records returned by every page of the users endpoint.
+        """
+        users: list[UserRecord] = []
+        offset = 0
+        while True:
+            page = await self._services.users.list_users(
+                UserListRequest(
+                    include_deleted=False,
+                    limit=100,
+                    name=assigned_user_name,
+                    offset=offset,
+                )
+            )
+            users.extend(page.items)
+            if not page.metadata.has_next() or page.metadata.count == 0:
+                return users
             offset = page.metadata.offset + page.metadata.count
 
     async def _duplicate_person_snapshot(
@@ -2495,6 +2571,44 @@ def _normalize_smart_list_name(value: str) -> str:
     """Normalize a smart-list name for exact matching."""
     collapsed = " ".join(value.casefold().strip().split())
     return _strip_decorative_smart_list_name_edges(collapsed)
+
+
+def _normalize_user_name(value: str) -> str:
+    """Normalize a Follow Up Boss user name for exact matching.
+
+    Args:
+        value: Raw user name from a transcript or API user record.
+
+    Returns:
+        Lowercased text with repeated whitespace collapsed.
+    """
+    return " ".join(value.casefold().strip().split())
+
+
+def _user_full_name(user: UserRecord) -> str:
+    """Return a display name assembled from user first and last names.
+
+    Args:
+        user: Follow Up Boss user record.
+
+    Returns:
+        First and last names joined with single spaces.
+    """
+    return " ".join(part for part in (user.first_name, user.last_name) if part)
+
+
+def _is_active_user(user: UserRecord) -> bool:
+    """Return whether a user should be considered active for oracle routing.
+
+    Args:
+        user: Follow Up Boss user record.
+
+    Returns:
+        `True` if the user status is absent or not a deleted/inactive status.
+    """
+    if user.status is None:
+        return True
+    return user.status.casefold() not in {"deleted", "disabled", "inactive", "archived"}
 
 
 def _strip_decorative_smart_list_name_edges(value: str) -> str:
@@ -3268,11 +3382,11 @@ _SMART_LIST_GROUNDING_SCENARIOS: tuple[BattleTestScenario, ...] = (
             "Pull all users' Zillow leads in eligible for transfer.",
             "Search ELIGIBLE FOR TRANSFER for all account Zillow leads.",
             "From Eligible    For    Transfer, show team-wide Zillow leads.",
-            "List all Zillow contacts in the eligible for transfer smart list.",
+            "List all account-wide Zillow contacts in the eligible for transfer smart list.",
             "Search the Eligible For Transfer smart list for everyone with Zillow leads.",
             "Search only the eligible for transfer smart list for account-wide Zillow follow-ups.",
             "Can you count everyone's Zillow leads in ELIGIBLE FOR TRANSFER?",
-            "Find all source Zillow people inside eligible for transfer.",
+            "Find every account Zillow person inside eligible for transfer.",
             "Show me Eligible For Transfer members where the source is Zillow for everyone.",
         ),
         expected_mcp=ExpectedMcpRoute(
@@ -3297,6 +3411,86 @@ _SMART_LIST_GROUNDING_SCENARIOS: tuple[BattleTestScenario, ...] = (
         response_assertions=(
             "request.smart_list_name normalizes to api_oracle.smart_list_name",
             "response.smartlist.id == api_oracle.smart_list_id",
+            "assistant_answer contains no off-list names or phones",
+        ),
+    ),
+    BattleTestScenario(
+        id="BT-SMARTLIST-005",
+        grade=BattleTestGrade.MUST_REQUIRE_ID,
+        prompt_variants=(
+            "Show Scott Willey's Zero Communication leads.",
+            "Scott Willey has leads with zero communication; list them from Zero Communication.",
+            "Pull Scott Willey's no-communication leads from the Zero Communication smart list.",
+            "Which Zero Communication leads are assigned to Scott Willey?",
+            "Show those zero communication leads for Scott Willey from the saved list.",
+            "Scott Willey's 323 zero communication leads need to be listed from the smart list.",
+            "For Scott Willey, show people in Zero Communication without broad-searching.",
+            "Use the Zero Communication list and show Scott Willey's leads.",
+        ),
+        expected_mcp=ExpectedMcpRoute(
+            allowed_tools=("followupboss_search_people_in_smart_list",),
+            forbidden_tools=(
+                "followupboss_get_latest_lead",
+                "followupboss_search_people",
+                "followupboss_list_person_activity",
+                "followupboss_list_smart_lists",
+            ),
+            required_argument_keys=("smart_list_name", "assigned_user_name"),
+            required_argument_values={"assigned_user_name": "Scott Willey"},
+        ),
+        api_oracle=ApiOracleSpec(
+            kind=BattleTestOracleKind.NAMED_SMART_LIST_PEOPLE,
+            description=(
+                "Resolve Zero Communication by exact smart-list name, resolve Scott Willey "
+                "by exact owner name, and verify the visible answer stays list- and "
+                "owner-scoped."
+            ),
+            smart_list_name="Zero Communication",
+            answer_must_be_grounded=True,
+        ),
+        response_assertions=(
+            "request.smart_list_name normalizes to Zero Communication",
+            "request.assigned_user_name == Scott Willey",
+            "response.smartlist.id == api_oracle.smart_list_id",
+            "response.people[*].assignedUserId == resolved Scott Willey user id",
+            "assistant_answer contains no off-list names or phones",
+        ),
+    ),
+    BattleTestScenario(
+        id="BT-SMARTLIST-006",
+        grade=BattleTestGrade.MUST_REQUIRE_ID,
+        prompt_variants=(
+            "Show Scott Willey's Needs Contact leads.",
+            "Pull Scott Willey's leads from the Needs Contact smart list.",
+            "Which Needs Contact people are assigned to Scott Willey?",
+            "List Scott Willey's needs-contact queue from the saved list.",
+            "For Scott Willey, show the Needs Contact leads I should chase.",
+        ),
+        expected_mcp=ExpectedMcpRoute(
+            allowed_tools=("followupboss_search_people_in_smart_list",),
+            forbidden_tools=(
+                "followupboss_get_latest_lead",
+                "followupboss_search_people",
+                "followupboss_list_person_activity",
+                "followupboss_list_smart_lists",
+            ),
+            required_argument_keys=("smart_list_name", "assigned_user_name"),
+            required_argument_values={"assigned_user_name": "Scott Willey"},
+        ),
+        api_oracle=ApiOracleSpec(
+            kind=BattleTestOracleKind.NAMED_SMART_LIST_PEOPLE,
+            description=(
+                "Resolve Needs Contact as a saved list, resolve Scott Willey by owner name, "
+                "and verify the response does not infer communication status from activity logs."
+            ),
+            smart_list_name="Needs Contact",
+            answer_must_be_grounded=True,
+        ),
+        response_assertions=(
+            "request.smart_list_name normalizes to Needs Contact",
+            "request.assigned_user_name == Scott Willey",
+            "response.smartlist.id == api_oracle.smart_list_id",
+            "response.people[*].assignedUserId == resolved Scott Willey user id",
             "assistant_answer contains no off-list names or phones",
         ),
     ),
@@ -3650,7 +3844,7 @@ _SMART_LIST_GROUNDING_BLUEPRINTS: tuple[
         (
             (
                 "BT-SMARTLIST-001",
-                "Before calls, check the saved smart-list named Eligible For Transfer.",
+                "List only metadata for the saved smart list named Eligible For Transfer.",
             ),
             (
                 "BT-SMARTLIST-002",
@@ -3664,7 +3858,7 @@ _SMART_LIST_GROUNDING_BLUEPRINTS: tuple[
         (
             (
                 "BT-SMARTLIST-001",
-                "Look up Eligible For Transfer so we can use that list for Zillow work.",
+                "Show only the smart-list metadata for Eligible For Transfer.",
             ),
             (
                 "BT-SMARTLIST-002",
@@ -3678,7 +3872,7 @@ _SMART_LIST_GROUNDING_BLUEPRINTS: tuple[
         (
             (
                 "BT-SMARTLIST-001",
-                "Use Eligible For Transfer as the list boundary for my next Zillow ask.",
+                "Pull only smart-list metadata for Eligible For Transfer before my next ask.",
             ),
             (
                 "BT-SMARTLIST-002",
@@ -3692,7 +3886,7 @@ _SMART_LIST_GROUNDING_BLUEPRINTS: tuple[
         (
             (
                 "BT-SMARTLIST-001",
-                "Check that Eligible For Transfer is the smart list for my Zillow block.",
+                "List the Eligible For Transfer smart-list metadata only.",
             ),
             (
                 "BT-SMARTLIST-002",
@@ -3720,6 +3914,57 @@ _SMART_LIST_GROUNDING_BLUEPRINTS: tuple[
                     "Use Eligible For Transfer as my Zillow follow-up boundary, then tell me "
                     "what Zillow leads I need to call."
                 ),
+            ),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_TURN,
+        None,
+        (
+            (
+                "BT-SMARTLIST-005",
+                "How many leads does Scott Willey have in Zero Communication?",
+            ),
+            (
+                "BT-SMARTLIST-005",
+                "Now show those leads.",
+            ),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_ASK,
+        (
+            "Count Scott Willey's Zero Communication leads, then list those leads from "
+            "that saved list."
+        ),
+        (
+            (
+                "BT-SMARTLIST-005",
+                (
+                    "Count Scott Willey's Zero Communication leads, then list those leads from "
+                    "that saved list."
+                ),
+            ),
+            (
+                "BT-SMARTLIST-005",
+                (
+                    "Count Scott Willey's Zero Communication leads, then list those leads from "
+                    "that saved list."
+                ),
+            ),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_TURN,
+        None,
+        (
+            (
+                "BT-SMARTLIST-006",
+                "Check Scott Willey's Needs Contact count.",
+            ),
+            (
+                "BT-SMARTLIST-006",
+                "Show me the leads in that list.",
             ),
         ),
     ),

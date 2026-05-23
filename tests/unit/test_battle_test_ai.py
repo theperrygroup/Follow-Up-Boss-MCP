@@ -66,6 +66,7 @@ from followupboss_mcp.models.text_messages import (
     TextMessageTemplateListRequest,
     TextMessageTemplateRecord,
 )
+from followupboss_mcp.models.users import UserListRequest, UserRecord
 from followupboss_mcp.pagination import PageResult, PaginationMetadata
 
 
@@ -319,6 +320,15 @@ class StubNotesService:
 
 
 @dataclass
+class StubUsersService:
+    """Users service test double."""
+
+    async def list_users(self, request: UserListRequest | None = None) -> PageResult[UserRecord]:
+        """Return no users."""
+        return _empty_page()
+
+
+@dataclass
 class StubBattleTestServices:
     """Read-only battle-test service bundle test double."""
 
@@ -336,6 +346,7 @@ class StubBattleTestServices:
         default_factory=StubTextMessageTemplatesService
     )
     notes: StubNotesService = field(default_factory=StubNotesService)
+    users: StubUsersService = field(default_factory=StubUsersService)
 
 
 @pytest.mark.asyncio
@@ -500,19 +511,23 @@ def test_read_only_tool_specs_include_expanded_read_surfaces() -> None:
 
     assert set(duplicate_properties) == {"email", "phone"}
     assert "smart_list_id" in people_properties
+    assert "source" in people_properties
     assert "Do not use this for named smart-list" in (
         specs["followupboss_search_people"].description
     )
-    assert {"smart_list_name", "source", "stage", "mine"}.issubset(helper_properties)
+    assert {"assigned_user_name", "smart_list_name", "source", "stage", "mine"}.issubset(
+        helper_properties
+    )
     assert "assigned_user_id" not in helper_properties
     assert specs["followupboss_search_people_in_smart_list"].input_schema["required"] == [
         "smart_list_name",
-        "source",
         "mine",
     ]
     assert "Zillow leads in Eligible For Transfer" in (
         specs["followupboss_search_people_in_smart_list"].description
     )
+    assert "Zero Communication" in specs["followupboss_search_people_in_smart_list"].description
+    assert "assigned_user_name" in specs["followupboss_search_people_in_smart_list"].description
     assert "source='Zillow'" in specs["followupboss_search_people_in_smart_list"].description
     assert "defaults to mine=true" in specs["followupboss_search_people_in_smart_list"].description
     assert cast(
@@ -555,12 +570,16 @@ def test_selection_instructions_explain_unsupported_note_search() -> None:
     assert "set mine=true" in instructions
     assert "Set mine=false only when the prompt explicitly asks for everyone" in instructions
     assert "do not invent owner IDs" in instructions
+    assert "pass assigned_user_name" in instructions
     assert "came from Zillow" in instructions
     assert "boundary for Zillow follow-ups" in instructions
     assert "absent from that smart-list-scoped tool result" in instructions
     assert "smart_list_name='Eligible For Transfer'" in instructions
     assert "call battle_test_clarify and ask which smart list" in instructions
     assert "Never default a bare Zillow-leads prompt" in instructions
+    assert "never use a source-only people search" in instructions
+    assert "zero communication, no communication, Needs Contact" in instructions
+    assert "re-run followupboss_search_people_in_smart_list" in instructions
     assert "Use followupboss_list_person_activity for communication history" in instructions
     assert "without a resolved person_id, call battle_test_clarify" in instructions
     assert "do not use broad calls, text messages, email events, events" in instructions

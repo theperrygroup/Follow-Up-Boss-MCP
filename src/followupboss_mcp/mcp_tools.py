@@ -152,7 +152,7 @@ from followupboss_mcp.models.text_messages import (
     UpdateTextMessageTemplateRequest,
 )
 from followupboss_mcp.models.timeframes import TimeframeListRequest
-from followupboss_mcp.models.users import DeleteUserRequest, UserListRequest
+from followupboss_mcp.models.users import DeleteUserRequest, UserListRequest, UserRecord
 from followupboss_mcp.models.webhooks import (
     CreateWebhookRequest,
     UpdateWebhookRequest,
@@ -237,6 +237,9 @@ class SearchPeopleInSmartListToolInput(RequestModel):
     smart_list: str | None = None
     list_name: str | None = None
     assigned_user_id: int | None = None
+    assigned_user_name: str | None = None
+    owner_name: str | None = None
+    agent_name: str | None = None
     fields: list[str] | None = None
     limit: int | None = None
     lead_source: str | None = None
@@ -267,7 +270,7 @@ class SearchPeopleInSmartListToolInput(RequestModel):
 
     @model_validator(mode="after")
     def _normalize_aliases(self) -> SearchPeopleInSmartListToolInput:
-        """Normalize smart-list and source aliases.
+        """Normalize smart-list, source, and owner-name aliases.
 
         Returns:
             The validated helper input.
@@ -289,6 +292,14 @@ class SearchPeopleInSmartListToolInput(RequestModel):
                 ("source", self.source),
                 ("lead_source", self.lead_source),
                 ("source_name", self.source_name),
+            ),
+            required_name=None,
+        )
+        self.assigned_user_name = _coalesce_text_aliases(
+            (
+                ("assigned_user_name", self.assigned_user_name),
+                ("owner_name", self.owner_name),
+                ("agent_name", self.agent_name),
             ),
             required_name=None,
         )
@@ -314,12 +325,82 @@ class SearchPeopleInSmartListToolInput(RequestModel):
         """
         if self.assigned_user_id is not None:
             return self.assigned_user_id
+        if self.assigned_user_name is not None:
+            return await self._resolve_user_id_by_name(services, self.assigned_user_name)
         if not self.mine:
             return None
         identity = await services.identity.get_identity()
         if identity.id is None:
             raise RuntimeError("Authenticated Follow Up Boss user id is unavailable.")
         return identity.id
+
+    async def _resolve_user_id_by_name(
+        self,
+        services: ServiceBundle,
+        assigned_user_name: str,
+    ) -> int:
+        """Resolve a Follow Up Boss user name to one exact active user ID.
+
+        Args:
+            services: Active service bundle used to search users.
+            assigned_user_name: User-provided owner or agent name.
+
+        Returns:
+            The unique matching Follow Up Boss user ID.
+
+        Raises:
+            RuntimeError: If no active user or more than one active user matches
+                the normalized name.
+        """
+        users = await self._list_all_users_for_name(services, assigned_user_name)
+        normalized_name = _normalize_user_name(assigned_user_name)
+        matches = [
+            user
+            for user in users
+            if _normalize_user_name(user.name or _user_full_name(user)) == normalized_name
+            and _is_active_user(user)
+        ]
+        if not matches:
+            raise RuntimeError(
+                f"Active Follow Up Boss user named {assigned_user_name!r} was not found."
+            )
+        if len(matches) > 1:
+            match_ids = [user.id for user in matches]
+            raise RuntimeError(
+                f"Active Follow Up Boss user named {assigned_user_name!r} is ambiguous; "
+                f"matched IDs {match_ids!r}."
+            )
+        return matches[0].id
+
+    async def _list_all_users_for_name(
+        self,
+        services: ServiceBundle,
+        assigned_user_name: str,
+    ) -> list[UserRecord]:
+        """List all user-search pages for an owner-name lookup.
+
+        Args:
+            services: Active service bundle used to search users.
+            assigned_user_name: Name query to send to Follow Up Boss.
+
+        Returns:
+            User records returned by the paginated users endpoint.
+        """
+        users: list[UserRecord] = []
+        offset = 0
+        while True:
+            page = await services.users.list_users(
+                UserListRequest(
+                    include_deleted=False,
+                    limit=100,
+                    name=assigned_user_name,
+                    offset=offset,
+                )
+            )
+            users.extend(page.items)
+            if not page.metadata.has_next() or page.metadata.count == 0:
+                return users
+            offset = page.metadata.offset + page.metadata.count
 
     def resolved_smart_list_name(self) -> str:
         """Return the normalized smart-list name after validation.
@@ -2802,6 +2883,45 @@ def _resolve_smart_list_by_name(
             f"Smart list named {smart_list_name!r} is ambiguous; matched IDs {match_ids!r}."
         )
     return matches[0]
+
+
+def _normalize_user_name(value: str) -> str:
+    """Normalize a Follow Up Boss user name for exact matching.
+
+    Args:
+        value: Raw user name.
+
+    Returns:
+        Lowercased text with repeated whitespace removed.
+    """
+    return " ".join(value.casefold().strip().split())
+
+
+def _user_full_name(user: UserRecord) -> str:
+    """Return a display name assembled from first and last name fields.
+
+    Args:
+        user: Follow Up Boss user record.
+
+    Returns:
+        The user's first and last name joined with single spaces.
+    """
+    return " ".join(part for part in (user.first_name, user.last_name) if part)
+
+
+def _is_active_user(user: UserRecord) -> bool:
+    """Return whether a user record should be considered active for routing.
+
+    Args:
+        user: Follow Up Boss user record.
+
+    Returns:
+        `True` when the status is absent or does not describe a deleted/inactive
+        user.
+    """
+    if user.status is None:
+        return True
+    return user.status.casefold() not in {"deleted", "disabled", "inactive", "archived"}
 
 
 def _normalize_smart_list_name(value: str) -> str:

@@ -480,7 +480,8 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
         name="followupboss_search_people_in_smart_list",
         description=(
             "Search people inside an exact named Follow Up Boss smart list. Use this "
-            "for prompts such as 'Zillow leads in Eligible For Transfer' or any "
+            "for prompts such as 'Zillow leads in Eligible For Transfer', "
+            "'Zero Communication leads', 'Needs Contact leads', or any "
             "request where the user names a smart list instead of providing a numeric "
             "smart_list_id. The tool resolves the smart-list name with "
             "include_all=true, fails on missing or ambiguous names, then searches "
@@ -488,14 +489,18 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
             "provenance. This helper defaults to mine=true, so omitted owner "
             "scope is authenticated-user scoped. Set mine=false only when the "
             "user explicitly asks for everyone or account-wide results. Use "
-            "assigned_user_id for an explicit owner. Do not include people "
-            "outside the returned people list in the answer."
+            "assigned_user_id for an explicit owner ID, or assigned_user_name "
+            "for an exact owner name such as Scott Willey. Do not include "
+            "people outside the returned people list in the answer."
         ),
     )
     async def followupboss_search_people_in_smart_list(
         smart_list_name: str | None = None,
         *,
         assigned_user_id: int | None = None,
+        assigned_user_name: str | None = None,
+        owner_name: str | None = None,
+        agent_name: str | None = None,
         fields: list[str] | None = None,
         smart_list: str | None = None,
         list_name: str | None = None,

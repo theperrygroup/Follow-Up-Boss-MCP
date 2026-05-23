@@ -160,6 +160,10 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
                 "properties": {
                     "name": _string_schema("Optional person name query."),
                     "smart_list_id": _integer_schema("Resolved smart list ID."),
+                    "source": _string_schema(
+                        "Lead source filter. Required as source='Zillow' whenever the prompt "
+                        "mentions Zillow and a resolved smart_list_id is used."
+                    ),
                     "limit": _integer_schema("Optional page size."),
                 },
                 "additionalProperties": False,
@@ -169,17 +173,23 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
             name="followupboss_search_people_in_smart_list",
             description=(
                 "Search people inside one exact named smart list. Use this for named "
-                "smart-list prompts such as Zillow leads in Eligible For Transfer. This "
+                "smart-list prompts such as Zillow leads in Eligible For Transfer, "
+                "Zero Communication, or Needs Contact. This "
                 "tool resolves the list name internally, searches only inside that "
                 "smart-list ID, and returns smart-list provenance. Do not include people "
                 "absent from this tool result in the answer. When the prompt says Zillow "
                 "leads, include source='Zillow'. The helper defaults to mine=true, so "
                 "omitted owner scope is authenticated-user scoped. Set mine=false only "
-                "for explicit everyone/account-wide prompts. Do not invent owner IDs."
+                "for explicit everyone/account-wide prompts. For named owners such as "
+                "Scott Willey, pass assigned_user_name and let the helper resolve it. "
+                "Do not invent owner IDs."
             ),
             input_schema={
                 "type": "object",
                 "properties": {
+                    "assigned_user_name": _string_schema(
+                        "Exact Follow Up Boss owner/agent name, such as Scott Willey."
+                    ),
                     "smart_list_name": _string_schema("Exact Follow Up Boss smart-list name."),
                     "fields": _enum_array_schema(
                         "Optional person response fields to request.",
@@ -199,7 +209,7 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
                     "source": _string_schema("Optional source filter, such as Zillow."),
                     "stage": _string_schema("Optional stage filter."),
                 },
-                "required": ["smart_list_name", "source", "mine"],
+                "required": ["smart_list_name", "mine"],
                 "additionalProperties": False,
             },
         ),
@@ -475,13 +485,14 @@ def battle_test_selection_instructions() -> str:
         "mine=true so the helper scopes to the authenticated user even when the credential "
         "is admin-visible. Set mine=false only when the prompt explicitly asks for everyone, "
         "all agents, account-wide, team-wide, or an overall count. For a named owner such as "
-        "Scott Willey, do not invent owner IDs; call battle_test_clarify when the owner ID is "
-        "unknown instead of returning account-wide results. The final answer must "
-        "not include any person absent from that smart-list-scoped tool result. Use "
+        "Scott Willey, pass assigned_user_name and let the helper resolve the owner; do not "
+        "invent owner IDs or return account-wide results. The final answer must not include "
+        "any person absent from that smart-list-scoped tool result. Use "
         "followupboss_list_smart_lists "
         "only when the user is asking to list or inspect saved lists, not as the final route "
         "for a named-list people search. Use followupboss_search_people when a people search "
         "includes an explicit name, email, phone, or known numeric smart_list_id, and "
+        "never use a source-only people search for a bare Zillow follow-up prompt. "
         "followupboss_check_duplicate_person only when an email or phone is provided. "
         "If the prompt says Zillow leads and the current or prior context maps Zillow leads "
         "to Eligible For Transfer, call followupboss_search_people_in_smart_list with "
@@ -501,7 +512,15 @@ def battle_test_selection_instructions() -> str:
         "text-message templates; these are read-only listing intents. "
         "Fetch notes only with an explicit note ID. "
         "For multi-turn prompts, route the current user turn independently; use prior turns "
-        "only to resolve references such as that lead or this contact. "
+        "only to resolve references such as that lead, this contact, that list, or those leads. "
+        "For zero communication, no communication, Needs Contact, or similar saved-list follow-up "
+        "wording, use followupboss_search_people_in_smart_list when the prompt or prior context "
+        "identifies the saved list; do not inspect per-person activity or broad-search people to "
+        "infer communication status. For count-to-list follow-ups such as 'show those leads' after "
+        "a smart-list count, re-run followupboss_search_people_in_smart_list with the same "
+        "smart_list_name and owner scope from context. For named owners such as Scott Willey, pass "
+        "assigned_user_name rather than clarifying or searching account-wide; never invent an "
+        "assigned_user_id. "
         f"Use {_CLARIFY_TOOL} when the prompt needs more information before any MCP call. "
         f"Use {_UNSUPPORTED_TOOL} when this MCP or the Follow Up Boss API does not support "
         "the requested capability. Note history and notes by person, lead, or contact are "

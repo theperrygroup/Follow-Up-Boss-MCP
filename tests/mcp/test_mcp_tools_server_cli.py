@@ -552,6 +552,7 @@ class StubBundle:
         self.people_search_requests: list[PeopleSearchRequest] = []
         self.task_list_requests: list[TaskListRequest] = []
         self.text_message_list_requests: list[TextMessageListRequest] = []
+        self.user_list_requests: list[UserListRequest] = []
 
         async def identity_get() -> IdentityResponse:
             return IdentityResponse(id=1, name="Picard")
@@ -1110,7 +1111,8 @@ class StubBundle:
                 conversationDeepLinkUrl="https://app.followupboss.com/2/inbox-new/0/inbox/1",
             )
 
-        async def users_list(_: UserListRequest) -> PageResult[UserRecord]:
+        async def users_list(request: UserListRequest) -> PageResult[UserRecord]:
+            self.user_list_requests.append(request)
             return PageResult(items=[UserRecord(id=6, name="Geordi")], metadata=_page_metadata())
 
         async def users_get(user_id: int) -> UserRecord:
@@ -2162,12 +2164,37 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     )
     assert explicit_owner_smart_list_people["people"][0]["id"] == 2
     assert stub.people_search_requests[-1].assigned_user_id == 101
+    owner_name_smart_list_people = await adapter.search_people_in_smart_list(
+        SearchPeopleInSmartListToolInput(
+            smart_list_name="Active Buyers",
+            source="Zillow",
+            assigned_user_name="Geordi",
+        )
+    )
+    assert owner_name_smart_list_people["people"][0]["id"] == 2
+    assert stub.user_list_requests[-1].name == "Geordi"
+    assert stub.user_list_requests[-1].include_deleted is False
+    assert stub.people_search_requests[-1].assigned_user_id == 6
+    assert stub.people_search_requests[-1].smart_list_id == 74
+    user_lookup_count = len(stub.user_list_requests)
+    explicit_owner_still_wins = await adapter.search_people_in_smart_list(
+        SearchPeopleInSmartListToolInput(
+            smart_list_name="Active Buyers",
+            assigned_user_id=101,
+            assigned_user_name="Geordi",
+        )
+    )
+    assert explicit_owner_still_wins["people"][0]["id"] == 2
+    assert len(stub.user_list_requests) == user_lookup_count
+    assert stub.people_search_requests[-1].assigned_user_id == 101
     aliased_input = SearchPeopleInSmartListToolInput(
         list_name="Active Buyers",
         lead_source="Zillow",
+        owner_name="Geordi",
     )
     assert aliased_input.resolved_smart_list_name() == "Active Buyers"
     assert aliased_input.source == "Zillow"
+    assert aliased_input.assigned_user_name == "Geordi"
     with pytest.raises(RuntimeError, match="must be normalized"):
         SearchPeopleInSmartListToolInput.model_construct(
             smart_list_name=None,
@@ -2180,6 +2207,12 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         SearchPeopleInSmartListToolInput(
             smart_list_name="Active Buyers",
             list_name="Seller Leads",
+        )
+    with pytest.raises(ValidationError, match="Conflicting values"):
+        SearchPeopleInSmartListToolInput(
+            smart_list_name="Active Buyers",
+            owner_name="Geordi",
+            agent_name="Worf",
         )
     with pytest.raises(RuntimeError, match="Smart list named 'Missing List' was not found"):
         await adapter.search_people_in_smart_list(
@@ -2245,6 +2278,55 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     with pytest.raises(RuntimeError, match="ambiguous; matched IDs \\[74, 75\\]"):
         await ambiguous_adapter.search_people_in_smart_list(
             SearchPeopleInSmartListToolInput(smart_list_name="Active Buyers")
+        )
+    ambiguous_user_services = replace(
+        stub.bundle,
+        users=_service_stub(
+            list_users=lambda _request: asyncio.sleep(
+                0,
+                result=PageResult(
+                    items=[
+                        UserRecord(id=6, name="Geordi"),
+                        UserRecord(id=7, firstName="Geordi", lastName=""),
+                    ],
+                    metadata=_page_metadata(),
+                ),
+            ),
+            get_user=stub.bundle.users.get_user,
+            get_me=stub.bundle.users.get_me,
+            delete_user=stub.bundle.users.delete_user,
+        ),
+    )
+    ambiguous_user_adapter = FollowUpBossToolAdapter(ambiguous_user_services)
+    with pytest.raises(RuntimeError, match="ambiguous; matched IDs \\[6, 7\\]"):
+        await ambiguous_user_adapter.search_people_in_smart_list(
+            SearchPeopleInSmartListToolInput(
+                smart_list_name="Active Buyers",
+                assigned_user_name="Geordi",
+            )
+        )
+    missing_user_services = replace(
+        stub.bundle,
+        users=_service_stub(
+            list_users=lambda _request: asyncio.sleep(
+                0,
+                result=PageResult(
+                    items=[UserRecord(id=8, name="Geordi", status="Deleted")],
+                    metadata=_page_metadata(),
+                ),
+            ),
+            get_user=stub.bundle.users.get_user,
+            get_me=stub.bundle.users.get_me,
+            delete_user=stub.bundle.users.delete_user,
+        ),
+    )
+    missing_user_adapter = FollowUpBossToolAdapter(missing_user_services)
+    with pytest.raises(RuntimeError, match="Active Follow Up Boss user named 'Geordi' was not found"):
+        await missing_user_adapter.search_people_in_smart_list(
+            SearchPeopleInSmartListToolInput(
+                smart_list_name="Active Buyers",
+                assigned_user_name="Geordi",
+            )
         )
     paginated_smart_list_requests: list[SmartListListRequest] = []
 
@@ -3906,6 +3988,8 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         tools["followupboss_search_people_in_smart_list"].description,
     )
     assert "named Follow Up Boss smart list" in helper_description
+    assert "assigned_user_name" in helper_description
+    assert "Zero Communication leads" in helper_description
     assert "provenance" in helper_description
     person_activity_description = cast(
         "str",

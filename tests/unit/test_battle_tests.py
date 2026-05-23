@@ -86,6 +86,7 @@ from followupboss_mcp.models.text_messages import (
     TextMessageTemplateListRequest,
     TextMessageTemplateRecord,
 )
+from followupboss_mcp.models.users import UserListRequest, UserRecord
 from followupboss_mcp.pagination import PageResult, PaginationMetadata
 
 
@@ -110,6 +111,10 @@ def _tasks_page(*tasks: TaskRecord) -> PageResult[TaskRecord]:
 
 def _smart_lists_page(*smart_lists: SmartListRecord) -> PageResult[SmartListRecord]:
     return PageResult(items=list(smart_lists), metadata=_metadata(len(smart_lists)))
+
+
+def _users_page(*users: UserRecord) -> PageResult[UserRecord]:
+    return PageResult(items=list(users), metadata=_metadata(len(users)))
 
 
 def _appointments_page(*appointments: AppointmentRecord) -> PageResult[AppointmentRecord]:
@@ -239,6 +244,16 @@ class PaginatedStubSmartListsService(StubSmartListsService):
 
 
 @dataclass
+class StubUsersService:
+    page: PageResult[UserRecord] = field(default_factory=lambda: _users_page())
+    requests: list[UserListRequest] = field(default_factory=list)
+
+    async def list_users(self, request: UserListRequest | None = None) -> PageResult[UserRecord]:
+        self.requests.append(request or UserListRequest())
+        return self.page
+
+
+@dataclass
 class StubAppointmentsService:
     page: PageResult[AppointmentRecord] = field(default_factory=_appointments_page)
     requests: list[AppointmentListRequest] = field(default_factory=list)
@@ -343,6 +358,7 @@ class StubBattleTestServices:
     people: StubPeopleService
     tasks: StubTasksService
     smart_lists: StubSmartListsService = field(default_factory=StubSmartListsService)
+    users: StubUsersService = field(default_factory=StubUsersService)
     appointments: StubAppointmentsService = field(default_factory=StubAppointmentsService)
     calls: StubCallsService = field(default_factory=StubCallsService)
     text_messages: StubTextMessagesService = field(default_factory=StubTextMessagesService)
@@ -361,6 +377,7 @@ class FailingTaskBattleTestServices:
     people: StubPeopleService
     tasks: FailingTasksService
     smart_lists: StubSmartListsService = field(default_factory=StubSmartListsService)
+    users: StubUsersService = field(default_factory=StubUsersService)
     appointments: StubAppointmentsService = field(default_factory=StubAppointmentsService)
     calls: StubCallsService = field(default_factory=StubCallsService)
     text_messages: StubTextMessagesService = field(default_factory=StubTextMessagesService)
@@ -405,6 +422,7 @@ def _services(
     people: PageResult[PersonRecord] | None = None,
     tasks: PageResult[TaskRecord] | None = None,
     smart_lists: PageResult[SmartListRecord] | None = None,
+    users: PageResult[UserRecord] | None = None,
     appointments: PageResult[AppointmentRecord] | None = None,
     calls: PageResult[CallRecord] | None = None,
     text_messages: PageResult[TextMessageRecord] | None = None,
@@ -418,6 +436,7 @@ def _services(
         people=StubPeopleService(people or _people_page()),
         tasks=StubTasksService(tasks or _tasks_page()),
         smart_lists=StubSmartListsService(smart_lists or _smart_lists_page()),
+        users=StubUsersService(users or _users_page()),
         appointments=StubAppointmentsService(appointments or _appointments_page()),
         calls=StubCallsService(calls or _calls_page()),
         text_messages=StubTextMessagesService(text_messages or _text_messages_page()),
@@ -526,6 +545,8 @@ def test_smart_list_grounding_corpus_targets_zillow_regression() -> None:
         "BT-SMARTLIST-002",
         "BT-SMARTLIST-003",
         "BT-SMARTLIST-004",
+        "BT-SMARTLIST-005",
+        "BT-SMARTLIST-006",
     ]
     assert not any("Zillow" in prompt for prompt in scenarios[0].prompt_variants)
     assert not any("lead" in prompt.casefold() for prompt in scenarios[0].prompt_variants)
@@ -545,6 +566,11 @@ def test_smart_list_grounding_corpus_targets_zillow_regression() -> None:
     assert scenario_by_id("BT-SMARTLIST-004").expected_mcp.required_argument_values == {
         "mine": False
     }
+    assert scenario_by_id("BT-SMARTLIST-005").api_oracle.smart_list_name == "Zero Communication"
+    assert scenario_by_id("BT-SMARTLIST-005").expected_mcp.required_argument_values == {
+        "assigned_user_name": "Scott Willey"
+    }
+    assert scenario_by_id("BT-SMARTLIST-006").api_oracle.smart_list_name == "Needs Contact"
     assert scenario_by_id("BT-SMARTLIST-003").grade is BattleTestGrade.MUST_CLARIFY
     assert [conversation.kind for conversation in conversations] == [
         BattleTestConversationKind.MULTI_ASK,
@@ -557,6 +583,9 @@ def test_smart_list_grounding_corpus_targets_zillow_regression() -> None:
         BattleTestConversationKind.MULTI_TURN,
         BattleTestConversationKind.MULTI_TURN,
         BattleTestConversationKind.MULTI_ASK,
+        BattleTestConversationKind.MULTI_TURN,
+        BattleTestConversationKind.MULTI_ASK,
+        BattleTestConversationKind.MULTI_TURN,
     ]
     assert (
         smart_list_grounding_battle_test_conversations(BattleTestConversationKind.MULTI_ASK)[0]
@@ -1469,6 +1498,95 @@ async def test_named_smart_list_grounding_resolves_exact_list_and_people() -> No
     assert services.people.requests[0].limit == 10
     assert evaluation.oracle_snapshot is not None
     assert evaluation.oracle_snapshot.expected["allowed_answer_phones"] == ["5550001111"]
+
+
+@pytest.mark.asyncio
+async def test_zero_communication_grounding_resolves_owner_name_and_list() -> None:
+    scenario = scenario_by_id("BT-SMARTLIST-005")
+    services = _services(
+        smart_lists=_smart_lists_page(
+            SmartListRecord.model_validate({"id": 88, "name": "Zero Communication"})
+        ),
+        users=_users_page(UserRecord.model_validate({"id": 101, "name": "Scott Willey"})),
+        people=_people_page(
+            PersonRecord.model_validate(
+                {
+                    "id": 323,
+                    "name": "Casey Quiet",
+                    "assignedUserId": 101,
+                    "phones": [{"value": "(555) 323-0000"}],
+                }
+            )
+        ),
+    )
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        selected_tool="followupboss_search_people_in_smart_list",
+        arguments={
+            "smart_list_name": "Zero Communication",
+            "assigned_user_name": "Scott Willey",
+            "limit": 25,
+        },
+        response={
+            "smartlist": {"id": 88, "name": "Zero Communication"},
+            "people": [{"id": 323, "name": "Casey Quiet", "assignedUserId": 101}],
+        },
+        assistant_message="Casey Quiet | (555) 323-0000",
+    )
+
+    evaluation = await ReadOnlyBattleTestOracle(services).evaluate(scenario, transcript)
+
+    assert evaluation.passed is True
+    assert services.users.requests[0].name == "Scott Willey"
+    assert services.users.requests[0].include_deleted is False
+    assert services.people.requests[0].smart_list_id == 88
+    assert services.people.requests[0].assigned_user_id == 101
+    assert services.people.requests[0].source is None
+    assert evaluation.oracle_snapshot is not None
+    assert evaluation.oracle_snapshot.expected["allowed_answer_phones"] == ["5553230000"]
+
+
+@pytest.mark.asyncio
+async def test_zero_communication_grounding_rejects_broad_search_or_activity_detour() -> None:
+    scenario = scenario_by_id("BT-SMARTLIST-005")
+    services = _services(
+        smart_lists=_smart_lists_page(
+            SmartListRecord.model_validate({"id": 88, "name": "Zero Communication"})
+        ),
+        users=_users_page(UserRecord.model_validate({"id": 101, "name": "Scott Willey"})),
+        people=_people_page(
+            PersonRecord.model_validate({"id": 323, "name": "Casey Quiet", "assignedUserId": 101})
+        ),
+    )
+    broad_transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        selected_tool="followupboss_search_people",
+        arguments={"name": "Scott Willey"},
+        response={"people": [{"id": 999, "name": "Broad Lead", "assignedUserId": 102}]},
+    )
+    activity_transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        selected_tool="followupboss_list_person_activity",
+        arguments={"person_id": 323},
+        response={"person": {"id": 323}, "calls": []},
+    )
+
+    broad_evaluation = await ReadOnlyBattleTestOracle(services).evaluate(scenario, broad_transcript)
+    activity_evaluation = await ReadOnlyBattleTestOracle(services).evaluate(
+        scenario,
+        activity_transcript,
+    )
+
+    assert broad_evaluation.passed is False
+    assert "Selected forbidden tool 'followupboss_search_people'." in broad_evaluation.failures
+    assert activity_evaluation.passed is False
+    assert (
+        "Selected forbidden tool 'followupboss_list_person_activity'."
+        in activity_evaluation.failures
+    )
 
 
 @pytest.mark.asyncio
