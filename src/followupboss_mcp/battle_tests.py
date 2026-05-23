@@ -59,6 +59,7 @@ class BattleTestOracleKind(StrEnum):
     LATEST_ASSIGNED_LEAD = "latest_assigned_lead"
     MY_OVERDUE_TASKS = "my_overdue_tasks"
     MY_TASKS_DUE_TODAY = "my_tasks_due_today"
+    MY_UNCONTACTED_LEADS = "my_uncontacted_leads"
     MY_UPCOMING_TASKS = "my_upcoming_tasks"
     NAMED_SMART_LIST_PEOPLE = "named_smart_list_people"
     PEOPLE_SEARCH = "people_search"
@@ -1501,6 +1502,8 @@ class ReadOnlyBattleTestOracle:
                 response_key="people",
                 expected_key="person_ids",
             )
+        if scenario.api_oracle.kind is BattleTestOracleKind.MY_UNCONTACTED_LEADS:
+            return await self._uncontacted_leads_snapshot(scenario, transcript)
         if scenario.api_oracle.kind is BattleTestOracleKind.PERSON_DUPLICATE_CHECK:
             return await self._duplicate_person_snapshot(scenario, transcript)
         if scenario.api_oracle.kind is BattleTestOracleKind.UNCLAIMED_PEOPLE:
@@ -1755,6 +1758,54 @@ class ReadOnlyBattleTestOracle:
                 "due_start": due_start.isoformat(),
                 "is_completed": False,
                 "task_ids": [task.id for task in page.items],
+            },
+        )
+
+    async def _uncontacted_leads_snapshot(
+        self,
+        scenario: BattleTestScenario,
+        transcript: BattleTestTranscript,
+    ) -> BattleTestOracleSnapshot:
+        """Build direct API truth for contacted=false people-search helpers.
+
+        Args:
+            scenario: Scenario contract being checked.
+            transcript: Captured helper transcript whose owner and pagination
+                arguments should be mirrored by direct API search.
+
+        Returns:
+            A stable snapshot containing expected uncontacted person IDs and
+            owner-scope metadata.
+        """
+        assigned_user_id = _optional_int(transcript.arguments.get("assigned_user_id"))
+        assigned_user_name = _optional_string(transcript.arguments.get("assigned_user_name"))
+        if assigned_user_id is None and assigned_user_name is not None:
+            assigned_user_id = await self._resolve_user_id_by_name(assigned_user_name)
+        mine = _optional_bool(transcript.arguments.get("mine")) is not False
+        if assigned_user_id is None and mine:
+            assigned_user_id = await self._authenticated_user_id()
+        page = await self._services.people.search_people(
+            PeopleSearchRequest(
+                assigned_user_id=assigned_user_id,
+                contacted=False,
+                fields=_optional_string_list(transcript.arguments.get("fields")),
+                limit=_optional_int(transcript.arguments.get("limit")),
+                next_token=_optional_string(transcript.arguments.get("next_token")),
+                offset=_optional_int(transcript.arguments.get("offset")),
+                source=_optional_string(transcript.arguments.get("source")),
+                stage=_optional_string(transcript.arguments.get("stage")),
+            )
+        )
+        return BattleTestOracleSnapshot(
+            scenario_id=scenario.id,
+            kind=scenario.api_oracle.kind,
+            automated=True,
+            expected={
+                "response_key": "people",
+                "assigned_user_id": assigned_user_id,
+                "contacted": False,
+                "mine": mine,
+                "person_ids": [_record_id(person) for person in page.items],
             },
         )
 
@@ -2158,6 +2209,8 @@ def _compare_transcript_to_oracle(
     }:
         return _compare_page_response(transcript, snapshot)
     if snapshot.kind is BattleTestOracleKind.PEOPLE_SEARCH:
+        return _compare_page_response(transcript, snapshot)
+    if snapshot.kind is BattleTestOracleKind.MY_UNCONTACTED_LEADS:
         return _compare_page_response(transcript, snapshot)
     if snapshot.kind is BattleTestOracleKind.NAMED_SMART_LIST_PEOPLE:
         return _compare_named_smart_list_people_response(transcript, snapshot)
@@ -3261,37 +3314,115 @@ _EXPANDED_READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
             (
                 "Show Scott Willey's zero communication leads.",
                 "Scott Willey has 323 leads with zero communication; list them.",
-                "Pull Scott Willey's no-communication leads using people search filters.",
+                "Pull Scott Willey's no-communication leads using the uncontacted helper.",
                 "Get me Scott Willey's leads that have not been contacted.",
                 "Which leads assigned to Scott Willey have contacted false?",
                 "Show leads I haven't communicated with for Scott Willey.",
                 "List never-contacted people assigned to Scott Willey.",
-                "Use search filtering to show Scott Willey's uncontacted leads.",
+                "Use direct filtering to show Scott Willey's uncontacted leads.",
                 "Count Scott Willey's contacted false leads, then show them.",
                 "Show those zero communication leads for Scott Willey.",
             )
         ),
         expected_mcp=ExpectedMcpRoute(
-            allowed_tools=("followupboss_search_people",),
+            allowed_tools=("followupboss_list_uncontacted_leads",),
             forbidden_tools=(
                 "followupboss_search_people_in_smart_list",
                 "followupboss_list_smart_lists",
+                "followupboss_search_people",
                 "followupboss_list_person_activity",
                 "followupboss_get_latest_lead",
             ),
-            required_argument_keys=("contacted", "assigned_to"),
-            required_argument_values={"contacted": False, "assigned_to": "Scott Willey"},
+            required_argument_keys=("assigned_user_name",),
+            required_argument_values={"assigned_user_name": "Scott Willey"},
         ),
         api_oracle=ApiOracleSpec(
-            kind=BattleTestOracleKind.PEOPLE_SEARCH,
+            kind=BattleTestOracleKind.MY_UNCONTACTED_LEADS,
             description=(
-                "Direct people search filtered by contacted=false and assignedTo=Scott Willey; "
-                "no saved-list lookup or per-person activity inference."
+                "Direct people search filtered by contacted=false and resolved Scott Willey owner "
+                "scope; no saved-list lookup or per-person activity inference."
             ),
         ),
         response_assertions=(
             "request.contacted is false",
-            "request.assigned_to == Scott Willey",
+            "request.assigned_user_name == Scott Willey",
+            "response.people[*].id == api_oracle.person_ids",
+        ),
+    ),
+    BattleTestScenario(
+        id="BT-READ-019",
+        grade=BattleTestGrade.MUST_ROUTE,
+        prompt_variants=_expand_prompt_families(
+            (
+                "Which leads should I check for uncontacted ones? All my leads.",
+                "Show all my uncontacted leads.",
+                "List my never-contacted leads.",
+                "Who are my leads with no communication?",
+                "Show my zero communication leads.",
+                "Get my contacted false leads.",
+                "Which of my leads have not been contacted?",
+                "Pull my leads where contacted is false.",
+                "Count my no-communication leads, then show them.",
+                "Show those uncontacted leads from all my leads.",
+            )
+        ),
+        expected_mcp=ExpectedMcpRoute(
+            allowed_tools=("followupboss_list_uncontacted_leads",),
+            forbidden_tools=(
+                "followupboss_search_people_in_smart_list",
+                "followupboss_list_smart_lists",
+                "followupboss_search_people",
+                "followupboss_list_person_activity",
+            ),
+        ),
+        api_oracle=ApiOracleSpec(
+            kind=BattleTestOracleKind.MY_UNCONTACTED_LEADS,
+            description=(
+                "Direct authenticated-user people search with contacted=false; no saved-list lookup."
+            ),
+        ),
+        response_assertions=(
+            "request.contacted is false",
+            "request.assigned_user_id == authenticated_user.id",
+            "response.people[*].id == api_oracle.person_ids",
+        ),
+    ),
+    BattleTestScenario(
+        id="BT-READ-020",
+        grade=BattleTestGrade.MUST_ROUTE,
+        prompt_variants=_expand_prompt_families(
+            (
+                "Show my leads that need contact.",
+                "Who needs contact from all my leads?",
+                "Find the Needs Contact leads for me, not a smart list.",
+                "Pull my needs-contact leads using filters.",
+                "Which of my leads are in a needs contact state?",
+                "Show my leads needing contact because they are uncontacted.",
+                "List all my leads that have zero communication and need contact.",
+                "Get the people I need to contact because contacted is false.",
+                "Show the Needs Contact results from my people search.",
+                "Use contacted false for my needs-contact leads.",
+            )
+        ),
+        expected_mcp=ExpectedMcpRoute(
+            allowed_tools=("followupboss_list_uncontacted_leads",),
+            forbidden_tools=(
+                "followupboss_search_people_in_smart_list",
+                "followupboss_list_smart_lists",
+                "followupboss_search_people",
+                "followupboss_list_person_activity",
+            ),
+        ),
+        api_oracle=ApiOracleSpec(
+            kind=BattleTestOracleKind.MY_UNCONTACTED_LEADS,
+            description=(
+                "Direct authenticated-user contacted=false search for needs-contact wording "
+                "that does not explicitly ask for a saved smart list."
+            ),
+        ),
+        response_assertions=(
+            "request.contacted is false",
+            "request.smart_list_id is None",
             "response.people[*].id == api_oracle.person_ids",
         ),
     ),
@@ -3460,6 +3591,41 @@ _SMART_LIST_GROUNDING_SCENARIOS: tuple[BattleTestScenario, ...] = (
             "request.smart_list_name normalizes to api_oracle.smart_list_name",
             "response.smartlist.id == api_oracle.smart_list_id",
             "assistant_answer contains no off-list names or phones",
+        ),
+    ),
+    BattleTestScenario(
+        id="BT-SMARTLIST-005",
+        grade=BattleTestGrade.MUST_REQUIRE_ID,
+        prompt_variants=(
+            "Show my people in the Needs Contact smart list.",
+            "Search the Needs Contact smart list for my leads.",
+            "Pull people from the saved list named Needs Contact.",
+            "Use the Needs Contact smart list, not the contacted filter.",
+            "List my leads inside the Needs Contact saved list.",
+        ),
+        expected_mcp=ExpectedMcpRoute(
+            allowed_tools=("followupboss_search_people_in_smart_list",),
+            forbidden_tools=(
+                "followupboss_list_uncontacted_leads",
+                "followupboss_search_people",
+                "followupboss_list_smart_lists",
+            ),
+            required_argument_keys=("smart_list_name",),
+            required_argument_values={"smart_list_name": "Needs Contact"},
+        ),
+        api_oracle=ApiOracleSpec(
+            kind=BattleTestOracleKind.NAMED_SMART_LIST_PEOPLE,
+            description=(
+                "Explicit saved-list wording should still resolve and search the named "
+                "Needs Contact smart list."
+            ),
+            smart_list_name="Needs Contact",
+            answer_must_be_grounded=True,
+        ),
+        response_assertions=(
+            "request.smart_list_name == Needs Contact",
+            "response.smartlist.id == api_oracle.smart_list_id",
+            "response.people[*].id == api_oracle.person_ids",
         ),
     ),
 )
@@ -3700,6 +3866,48 @@ _EXPANDED_CHAIN_BLUEPRINTS: tuple[
             (
                 "BT-READ-018",
                 "Now show those leads.",
+            ),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_TURN,
+        "",
+        (
+            (
+                "BT-READ-019",
+                "How many of my leads have zero communication?",
+            ),
+            (
+                "BT-READ-019",
+                "Show those leads.",
+            ),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_TURN,
+        "",
+        (
+            (
+                "BT-READ-006",
+                "List my smart lists so I know what saved views exist.",
+            ),
+            (
+                "BT-READ-019",
+                "Now show my uncontacted leads from all my leads.",
+            ),
+        ),
+    ),
+    (
+        BattleTestConversationKind.MULTI_ASK,
+        "List smart lists and show my uncontacted leads.",
+        (
+            (
+                "BT-READ-006",
+                "List smart lists and show my uncontacted leads.",
+            ),
+            (
+                "BT-READ-019",
+                "List smart lists and show my uncontacted leads.",
             ),
         ),
     ),

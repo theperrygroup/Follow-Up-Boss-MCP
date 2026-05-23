@@ -517,16 +517,28 @@ def test_expanded_read_only_scenario_corpus_adds_api_surfaces() -> None:
         "BT-READ-016",
         "BT-READ-017",
         "BT-READ-018",
+        "BT-READ-019",
+        "BT-READ-020",
     ]
     assert all(len(scenario.prompt_variants) == 50 for scenario in scenarios[5:])
     assert scenario_by_id("BT-READ-008").expected_mcp.required_argument_keys == ("email",)
     assert scenario_by_id("BT-READ-015").api_oracle.kind is BattleTestOracleKind.EXPLICIT_NOTE
     assert scenario_by_id("BT-READ-016").api_oracle.kind is BattleTestOracleKind.PERSON_ACTIVITY
-    assert scenario_by_id("BT-READ-018").api_oracle.kind is BattleTestOracleKind.PEOPLE_SEARCH
+    assert scenario_by_id("BT-READ-018").api_oracle.kind is (
+        BattleTestOracleKind.MY_UNCONTACTED_LEADS
+    )
     assert scenario_by_id("BT-READ-018").expected_mcp.required_argument_values == {
-        "contacted": False,
-        "assigned_to": "Scott Willey",
+        "assigned_user_name": "Scott Willey",
     }
+    assert scenario_by_id("BT-READ-019").expected_mcp.allowed_tools == (
+        "followupboss_list_uncontacted_leads",
+    )
+    assert scenario_by_id("BT-READ-020").expected_mcp.forbidden_tools == (
+        "followupboss_search_people_in_smart_list",
+        "followupboss_list_smart_lists",
+        "followupboss_search_people",
+        "followupboss_list_person_activity",
+    )
     assert scenario_by_id("BT-READ-016").expected_mcp.forbidden_tools == (
         "followupboss_list_calls",
         "followupboss_list_text_messages",
@@ -551,8 +563,7 @@ def test_expanded_conversation_corpus_adds_cross_surface_prompts() -> None:
         for turn in conversation.turns
     )
     assert any(
-        turn.api_oracle.kind is BattleTestOracleKind.PEOPLE_SEARCH
-        and turn.expected_mcp.required_argument_values.get("contacted") is False
+        turn.api_oracle.kind is BattleTestOracleKind.MY_UNCONTACTED_LEADS
         for conversation in conversations
         for turn in conversation.turns
     )
@@ -567,6 +578,7 @@ def test_smart_list_grounding_corpus_targets_zillow_regression() -> None:
         "BT-SMARTLIST-002",
         "BT-SMARTLIST-003",
         "BT-SMARTLIST-004",
+        "BT-SMARTLIST-005",
     ]
     assert not any("Zillow" in prompt for prompt in scenarios[0].prompt_variants)
     assert not any("lead" in prompt.casefold() for prompt in scenarios[0].prompt_variants)
@@ -586,6 +598,12 @@ def test_smart_list_grounding_corpus_targets_zillow_regression() -> None:
     assert scenario_by_id("BT-SMARTLIST-004").expected_mcp.required_argument_values == {
         "mine": False
     }
+    assert scenario_by_id("BT-SMARTLIST-005").api_oracle.smart_list_name == "Needs Contact"
+    assert scenario_by_id("BT-SMARTLIST-005").expected_mcp.forbidden_tools == (
+        "followupboss_list_uncontacted_leads",
+        "followupboss_search_people",
+        "followupboss_list_smart_lists",
+    )
     assert scenario_by_id("BT-SMARTLIST-003").grade is BattleTestGrade.MUST_CLARIFY
     assert [conversation.kind for conversation in conversations] == [
         BattleTestConversationKind.MULTI_ASK,
@@ -1637,7 +1655,7 @@ async def test_named_smart_list_grounding_rejects_missing_or_ambiguous_owner_nam
 
 
 @pytest.mark.asyncio
-async def test_zero_communication_grounding_uses_people_search_filters() -> None:
+async def test_zero_communication_grounding_uses_uncontacted_helper() -> None:
     scenario = scenario_by_id("BT-READ-018")
     services = _services(
         people=_people_page(
@@ -1645,20 +1663,20 @@ async def test_zero_communication_grounding_uses_people_search_filters() -> None
                 {
                     "id": 323,
                     "name": "Casey Quiet",
-                    "assignedTo": "Scott Willey",
+                    "assignedUserId": 101,
                     "contacted": False,
                     "phones": [{"value": "(555) 323-0000"}],
                 }
             )
         ),
+        users=_users_page(UserRecord(id=101, name="Scott Willey", status="Active")),
     )
     transcript = BattleTestTranscript(
         scenario_id=scenario.id,
         prompt=scenario.prompt_variants[0],
-        selected_tool="followupboss_search_people",
+        selected_tool="followupboss_list_uncontacted_leads",
         arguments={
-            "assigned_to": "Scott Willey",
-            "contacted": False,
+            "assigned_user_name": "Scott Willey",
             "limit": 25,
         },
         response={
@@ -1666,7 +1684,7 @@ async def test_zero_communication_grounding_uses_people_search_filters() -> None
                 {
                     "id": 323,
                     "name": "Casey Quiet",
-                    "assignedTo": "Scott Willey",
+                    "assignedUserId": 101,
                     "contacted": False,
                 }
             ]
@@ -1676,10 +1694,52 @@ async def test_zero_communication_grounding_uses_people_search_filters() -> None
     evaluation = await ReadOnlyBattleTestOracle(services).evaluate(scenario, transcript)
 
     assert evaluation.passed is True
-    assert services.people.requests[0].assigned_to == "Scott Willey"
+    assert services.users.requests[0].name == "Scott Willey"
+    assert services.people.requests[0].assigned_user_id == 101
     assert services.people.requests[0].contacted is False
     assert services.people.requests[0].smart_list_id is None
     assert services.people.requests[0].limit == 25
+
+
+@pytest.mark.asyncio
+async def test_my_uncontacted_grounding_uses_authenticated_owner_scope() -> None:
+    scenario = scenario_by_id("BT-READ-019")
+    services = _services(
+        user_id=7,
+        people=_people_page(
+            PersonRecord.model_validate(
+                {
+                    "id": 724,
+                    "name": "Wesley Binks",
+                    "assignedUserId": 7,
+                    "contacted": False,
+                }
+            )
+        ),
+    )
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt="Which leads should I check for uncontacted ones? All my leads.",
+        selected_tool="followupboss_list_uncontacted_leads",
+        arguments={"limit": 25},
+        response={
+            "people": [
+                {
+                    "id": 724,
+                    "name": "Wesley Binks",
+                    "assignedUserId": 7,
+                    "contacted": False,
+                }
+            ]
+        },
+    )
+
+    evaluation = await ReadOnlyBattleTestOracle(services).evaluate(scenario, transcript)
+
+    assert evaluation.passed is True
+    assert services.people.requests[0].assigned_user_id == 7
+    assert services.people.requests[0].contacted is False
+    assert services.people.requests[0].smart_list_id is None
 
 
 @pytest.mark.asyncio
@@ -1704,6 +1764,13 @@ async def test_zero_communication_grounding_rejects_list_lookup_or_activity_deto
         arguments={"smart_list_name": "Zero Communication", "assigned_user_name": "Scott Willey"},
         response={"smartlist": {"id": 88}, "people": []},
     )
+    list_smart_lists_transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        selected_tool="followupboss_list_smart_lists",
+        arguments={"include_all": True},
+        response={"smartlists": [{"id": 88, "name": "Needs Contact"}]},
+    )
     activity_transcript = BattleTestTranscript(
         scenario_id=scenario.id,
         prompt=scenario.prompt_variants[0],
@@ -1716,6 +1783,10 @@ async def test_zero_communication_grounding_rejects_list_lookup_or_activity_deto
         scenario,
         smart_list_transcript,
     )
+    list_smart_lists_evaluation = await ReadOnlyBattleTestOracle(services).evaluate(
+        scenario,
+        list_smart_lists_transcript,
+    )
     activity_evaluation = await ReadOnlyBattleTestOracle(services).evaluate(
         scenario,
         activity_transcript,
@@ -1726,11 +1797,88 @@ async def test_zero_communication_grounding_rejects_list_lookup_or_activity_deto
         "Selected forbidden tool 'followupboss_search_people_in_smart_list'."
         in smart_list_evaluation.failures
     )
+    assert list_smart_lists_evaluation.passed is False
+    assert (
+        "Selected forbidden tool 'followupboss_list_smart_lists'."
+        in list_smart_lists_evaluation.failures
+    )
     assert activity_evaluation.passed is False
     assert (
         "Selected forbidden tool 'followupboss_list_person_activity'."
         in activity_evaluation.failures
     )
+
+
+@pytest.mark.asyncio
+async def test_needs_contact_trap_rejects_smart_list_without_saved_list_wording() -> None:
+    scenario = scenario_by_id("BT-READ-020")
+    services = _services(
+        people=_people_page(
+            PersonRecord.model_validate(
+                {"id": 724, "name": "Wesley Binks", "assignedUserId": 7, "contacted": False}
+            )
+        )
+    )
+    helper_transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt="Show my leads that need contact.",
+        selected_tool="followupboss_list_uncontacted_leads",
+        arguments={"limit": 25},
+        response={"people": [{"id": 724, "name": "Wesley Binks", "contacted": False}]},
+    )
+    smart_list_transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt="Show my leads that need contact.",
+        selected_tool="followupboss_search_people_in_smart_list",
+        arguments={"smart_list_name": "Needs Contact"},
+        response={"smartlist": {"id": 88, "name": "Needs Contact"}, "people": []},
+    )
+
+    helper_evaluation = await ReadOnlyBattleTestOracle(services).evaluate(
+        scenario,
+        helper_transcript,
+    )
+    smart_list_evaluation = await ReadOnlyBattleTestOracle(services).evaluate(
+        scenario,
+        smart_list_transcript,
+    )
+
+    assert helper_evaluation.passed is True
+    assert services.people.requests[0].contacted is False
+    assert smart_list_evaluation.passed is False
+    assert (
+        "Selected forbidden tool 'followupboss_search_people_in_smart_list'."
+        in smart_list_evaluation.failures
+    )
+
+
+@pytest.mark.asyncio
+async def test_explicit_needs_contact_smart_list_still_uses_named_list_helper() -> None:
+    scenario = scenario_by_id("BT-SMARTLIST-005")
+    services = _services(
+        smart_lists=_smart_lists_page(
+            SmartListRecord.model_validate({"id": 88, "name": "Needs Contact"})
+        ),
+        people=_people_page(
+            PersonRecord.model_validate({"id": 724, "name": "Wesley Binks", "assignedUserId": 7})
+        ),
+    )
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt="Show my people in the Needs Contact smart list.",
+        selected_tool="followupboss_search_people_in_smart_list",
+        arguments={"smart_list_name": "Needs Contact", "limit": 25},
+        response={
+            "smartlist": {"id": 88, "name": "Needs Contact"},
+            "people": [{"id": 724, "name": "Wesley Binks"}],
+        },
+    )
+
+    evaluation = await ReadOnlyBattleTestOracle(services).evaluate(scenario, transcript)
+
+    assert evaluation.passed is True
+    assert services.people.requests[0].smart_list_id == 88
+    assert services.people.requests[0].contacted is None
 
 
 @pytest.mark.asyncio

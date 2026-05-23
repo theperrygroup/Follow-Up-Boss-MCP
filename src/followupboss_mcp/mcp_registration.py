@@ -74,6 +74,7 @@ from followupboss_mcp.mcp_tools import (
     ListInboxAppParticipantsToolInput,
     ListMyTaskIntentToolInput,
     ListPersonActivityToolInput,
+    ListUncontactedLeadsToolInput,
     SearchPeopleInSmartListToolInput,
     UpdateActionPlanPersonToolInput,
     UpdateAppointmentOutcomeToolInput,
@@ -445,9 +446,12 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
             "this broad search for named smart-list people prompts; use "
             "followupboss_search_people_in_smart_list so the list name is resolved "
             "inside the MCP boundary. Use direct people filters such as "
-            "contacted=false and assigned_to='Scott Willey' for uncontacted, "
-            "never-contacted, no-communication, or zero-communication people "
-            "requests. Do not use this broad search for "
+            "contacted=false and assigned_to='Scott Willey' only when the caller "
+            "explicitly asks for low-level filter arguments. For uncontacted, "
+            "never-contacted, no-communication, zero-communication, needs-contact, "
+            "or contacted-false lead requests, use followupboss_list_uncontacted_leads "
+            "so contacted=false and owner scope are enforced inside the MCP boundary. "
+            "Do not use this broad search for "
             "'my latest lead', 'newest lead', or 'most recent lead I received'; "
             "use followupboss_get_latest_lead so the authenticated user is resolved "
             "internally."
@@ -492,12 +496,48 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
         return await adapter.search_people(tool_input)
 
     @mcp.tool(
+        name="followupboss_list_uncontacted_leads",
+        description=(
+            "List Follow Up Boss leads where contacted=false using direct people "
+            "search filters, never smart-list lookup. Use this for uncontacted, "
+            "never contacted, no communication, zero communication, contacted false, "
+            "or needs contact lead requests, including 'all my leads' wording. "
+            "Defaults to the authenticated user's assigned leads; use assigned_user_id "
+            "for an explicit owner ID, assigned_user_name/owner_name/agent_name for "
+            "an exact owner such as Scott Willey, or mine=false only for explicitly "
+            "account-wide/everyone requests. Do not use smart-list tools for these "
+            "filter intents unless the user explicitly says 'smart list' or 'saved list'."
+        ),
+    )
+    async def followupboss_list_uncontacted_leads(
+        *,
+        assigned_user_id: int | None = None,
+        assigned_user_name: str | None = None,
+        owner_name: str | None = None,
+        agent_name: str | None = None,
+        fields: list[str] | None = None,
+        lead_source: str | None = None,
+        mine: bool = True,
+        next_token: str | None = None,
+        offset: int | None = None,
+        limit: int | None = None,
+        source: str | None = None,
+        source_name: str | None = None,
+        stage: str | None = None,
+    ) -> dict[str, object]:
+        tool_input = _validated_request(ListUncontactedLeadsToolInput, locals())
+        return await adapter.list_uncontacted_leads(tool_input)
+
+    @mcp.tool(
         name="followupboss_search_people_in_smart_list",
         description=(
             "Search people inside an exact named Follow Up Boss smart list. Use this "
             "for prompts such as 'Zillow leads in Eligible For Transfer' or any "
-            "request where the user names a smart list instead of providing a numeric "
-            "smart_list_id. The tool resolves the smart-list name with "
+            "request where the user explicitly says smart list or saved list instead "
+            "of providing a numeric smart_list_id. Do not use this for uncontacted, "
+            "zero-communication, no-communication, contacted-false, or needs-contact "
+            "filter intents unless the user explicitly names a smart list. The tool "
+            "resolves the smart-list name with "
             "include_all=true, fails on missing or ambiguous names, then searches "
             "people only with the resolved smart_list_id and returns smart-list "
             "provenance. This helper defaults to mine=true, so omitted owner "
@@ -2267,7 +2307,10 @@ def _register_smart_list_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -
         description=(
             "List Follow Up Boss smart lists with documented filters and pagination metadata. "
             "When resolving a user-provided smart list name, set include_all=true so both "
-            "classic and current Follow Up Boss smart lists are considered."
+            "classic and current Follow Up Boss smart lists are considered. Do not use this "
+            "to satisfy uncontacted, no-communication, zero-communication, contacted-false, "
+            "or needs-contact lead filter requests; use followupboss_list_uncontacted_leads "
+            "unless the user explicitly asks to list saved lists or names a smart list."
         ),
     )
     async def followupboss_list_smart_lists(

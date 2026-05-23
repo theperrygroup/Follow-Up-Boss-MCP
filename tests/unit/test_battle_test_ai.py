@@ -477,6 +477,7 @@ def test_read_only_tool_specs_include_expanded_read_surfaces() -> None:
     specs = {tool.name: tool for tool in read_only_battle_test_ai_tool_specs()}
 
     for name in (
+        "followupboss_list_uncontacted_leads",
         "followupboss_search_people_in_smart_list",
         "followupboss_list_smart_lists",
         "followupboss_check_duplicate_person",
@@ -504,6 +505,10 @@ def test_read_only_tool_specs_include_expanded_read_surfaces() -> None:
         dict[str, object],
         specs["followupboss_search_people_in_smart_list"].input_schema["properties"],
     )
+    uncontacted_properties = cast(
+        dict[str, object],
+        specs["followupboss_list_uncontacted_leads"].input_schema["properties"],
+    )
     activity_properties = cast(
         dict[str, object],
         specs["followupboss_list_person_activity"].input_schema["properties"],
@@ -517,6 +522,21 @@ def test_read_only_tool_specs_include_expanded_read_surfaces() -> None:
     assert "Do not use this for named smart-list" in (
         specs["followupboss_search_people"].description
     )
+    assert "prefer followupboss_list_uncontacted_leads" in (
+        specs["followupboss_search_people"].description
+    )
+    assert {
+        "assigned_user_id",
+        "assigned_user_name",
+        "source",
+        "stage",
+        "mine",
+        "limit",
+    }.issubset(uncontacted_properties)
+    assert "contacted=false enforced" in specs["followupboss_list_uncontacted_leads"].description
+    assert "Do not list or search smart lists" in (
+        specs["followupboss_list_uncontacted_leads"].description
+    )
     assert {"assigned_user_name", "smart_list_name", "source", "stage", "mine"}.issubset(
         helper_properties
     )
@@ -526,6 +546,12 @@ def test_read_only_tool_specs_include_expanded_read_surfaces() -> None:
         "mine",
     ]
     assert "Zillow leads in Eligible For Transfer" in (
+        specs["followupboss_search_people_in_smart_list"].description
+    )
+    assert "people in the Needs Contact smart list" in (
+        specs["followupboss_search_people_in_smart_list"].description
+    )
+    assert "Do not use for needs-contact" in (
         specs["followupboss_search_people_in_smart_list"].description
     )
     assert "assigned_user_name" in specs["followupboss_search_people_in_smart_list"].description
@@ -565,11 +591,13 @@ def test_selection_instructions_explain_unsupported_note_search() -> None:
     assert "followupboss_list_my_tasks_due_today" in instructions
     assert "coming up, upcoming, later, after today" in instructions
     assert "followupboss_list_my_upcoming_tasks" in instructions
-    assert "Use followupboss_search_people with contacted=false" in instructions
-    assert "assigned_to='Scott Willey'" in instructions
+    assert "Use followupboss_list_uncontacted_leads" in instructions
+    assert "contacted-false, or needs-contact leads" in instructions
+    assert "assigned_user_name='Scott Willey'" in instructions
     assert (
         "Do not list or resolve smart lists for these direct search-filter prompts" in instructions
     )
+    assert "Use followupboss_search_people with contacted=false only" in instructions
     assert "followupboss_list_smart_lists" in instructions
     assert "Use followupboss_search_people_in_smart_list" in instructions
     assert "When the prompt says Zillow leads, include source='Zillow'" in instructions
@@ -585,7 +613,7 @@ def test_selection_instructions_explain_unsupported_note_search() -> None:
     assert "Never default a bare Zillow-leads prompt" in instructions
     assert "never use a source-only people search" in instructions
     assert (
-        "re-run followupboss_search_people with the same contacted and owner filters"
+        "call followupboss_list_uncontacted_leads again with the same owner filters"
         in instructions
     )
     assert "Use followupboss_list_person_activity for communication history" in instructions

@@ -93,6 +93,7 @@ from followupboss_mcp.mcp_tools import (
     ListInboxAppParticipantsToolInput,
     ListMyTaskIntentToolInput,
     ListPersonActivityToolInput,
+    ListUncontactedLeadsToolInput,
     SearchPeopleInSmartListToolInput,
     UpdateActionPlanPersonToolInput,
     UpdateAppointmentOutcomeToolInput,
@@ -414,6 +415,7 @@ EXPECTED_REGISTERED_TOOL_NAMES = [
     "followupboss_list_text_messages",
     "followupboss_list_timeframes",
     "followupboss_list_unclaimed_people",
+    "followupboss_list_uncontacted_leads",
     "followupboss_list_users",
     "followupboss_list_webhooks",
     "followupboss_merge_template",
@@ -2116,6 +2118,39 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert stub.people_search_requests[-1].assigned_to == "Scott Willey"
     assert stub.people_search_requests[-1].assigned_user_id is None
     assert stub.people_search_requests[-1].contacted is False
+    my_uncontacted_leads = await adapter.list_uncontacted_leads(
+        ListUncontactedLeadsToolInput(limit=25)
+    )
+    assert my_uncontacted_leads["people"][0]["id"] == 2
+    assert stub.people_search_requests[-1].assigned_user_id == 1
+    assert stub.people_search_requests[-1].contacted is False
+    assert stub.people_search_requests[-1].smart_list_id is None
+    assert stub.people_search_requests[-1].limit == 25
+    named_owner_uncontacted_leads = await adapter.list_uncontacted_leads(
+        ListUncontactedLeadsToolInput(assigned_user_name="Geordi", source="Zillow")
+    )
+    assert named_owner_uncontacted_leads["people"][0]["id"] == 2
+    assert stub.user_list_requests[-1].name == "Geordi"
+    assert stub.user_list_requests[-1].include_deleted is False
+    assert stub.people_search_requests[-1].assigned_user_id == 6
+    assert stub.people_search_requests[-1].contacted is False
+    assert stub.people_search_requests[-1].source == "Zillow"
+    all_uncontacted_leads = await adapter.list_uncontacted_leads(
+        ListUncontactedLeadsToolInput(mine=False)
+    )
+    assert all_uncontacted_leads["people"][0]["id"] == 2
+    assert stub.people_search_requests[-1].assigned_user_id is None
+    assert stub.people_search_requests[-1].contacted is False
+    uncontacted_alias_input = ListUncontactedLeadsToolInput(
+        owner_name="Geordi",
+        lead_source="Zillow",
+    )
+    assert uncontacted_alias_input.assigned_user_name == "Geordi"
+    assert uncontacted_alias_input.source == "Zillow"
+    with pytest.raises(ValidationError, match="assigned_user_id must be a positive"):
+        ListUncontactedLeadsToolInput(assigned_user_id=0)
+    with pytest.raises(ValidationError, match="Conflicting values"):
+        ListUncontactedLeadsToolInput(owner_name="Geordi", agent_name="Worf")
     assert (await adapter.search_people(PeopleSearchRequest(smart_list_id=74)))["people"][0][
         "id"
     ] == 2
@@ -4192,6 +4227,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_list_text_messages",
         "followupboss_list_timeframes",
         "followupboss_list_unclaimed_people",
+        "followupboss_list_uncontacted_leads",
         "followupboss_list_users",
         "followupboss_list_webhooks",
         "followupboss_merge_template",
