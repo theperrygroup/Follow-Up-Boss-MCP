@@ -24,6 +24,7 @@ dependencies = [
   "python-multipart>=0.0.26",
   "redis>=7.4.0",
   "sentry-sdk>=2.59.0",
+  "starlette>=1.0.1,<2",
 ]
 
 [project.optional-dependencies]

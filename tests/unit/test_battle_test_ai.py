@@ -567,7 +567,9 @@ def test_selection_instructions_explain_unsupported_note_search() -> None:
     assert "followupboss_list_my_upcoming_tasks" in instructions
     assert "Use followupboss_search_people with contacted=false" in instructions
     assert "assigned_to='Scott Willey'" in instructions
-    assert "Do not list or resolve smart lists for these direct search-filter prompts" in instructions
+    assert (
+        "Do not list or resolve smart lists for these direct search-filter prompts" in instructions
+    )
     assert "followupboss_list_smart_lists" in instructions
     assert "Use followupboss_search_people_in_smart_list" in instructions
     assert "When the prompt says Zillow leads, include source='Zillow'" in instructions
@@ -582,7 +584,10 @@ def test_selection_instructions_explain_unsupported_note_search() -> None:
     assert "call battle_test_clarify and ask which smart list" in instructions
     assert "Never default a bare Zillow-leads prompt" in instructions
     assert "never use a source-only people search" in instructions
-    assert "re-run followupboss_search_people with the same contacted and owner filters" in instructions
+    assert (
+        "re-run followupboss_search_people with the same contacted and owner filters"
+        in instructions
+    )
     assert "Use followupboss_list_person_activity for communication history" in instructions
     assert "without a resolved person_id, call battle_test_clarify" in instructions
     assert "do not use broad calls, text messages, email events, events" in instructions

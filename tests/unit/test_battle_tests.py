@@ -254,6 +254,16 @@ class StubUsersService:
 
 
 @dataclass
+class PaginatedStubUsersService(StubUsersService):
+    pages: list[PageResult[UserRecord]] = field(default_factory=list)
+
+    async def list_users(self, request: UserListRequest | None = None) -> PageResult[UserRecord]:
+        self.requests.append(request or UserListRequest())
+        page_index = min(len(self.requests) - 1, len(self.pages) - 1)
+        return self.pages[page_index]
+
+
+@dataclass
 class StubAppointmentsService:
     page: PageResult[AppointmentRecord] = field(default_factory=_appointments_page)
     requests: list[AppointmentListRequest] = field(default_factory=list)
@@ -1500,6 +1510,130 @@ async def test_named_smart_list_grounding_resolves_exact_list_and_people() -> No
     assert services.people.requests[0].limit == 10
     assert evaluation.oracle_snapshot is not None
     assert evaluation.oracle_snapshot.expected["allowed_answer_phones"] == ["5550001111"]
+
+
+@pytest.mark.asyncio
+async def test_named_smart_list_grounding_resolves_paginated_owner_name() -> None:
+    base_scenario = scenario_by_id("BT-SMARTLIST-002")
+    scenario = base_scenario.model_copy(
+        update={
+            "api_oracle": base_scenario.api_oracle.model_copy(
+                update={"requires_authenticated_owner_scope": False}
+            )
+        }
+    )
+    paginated_users = PaginatedStubUsersService(
+        pages=[
+            PageResult(
+                items=[UserRecord(id=99, name="Other Owner", status="Active")],
+                metadata=PaginationMetadata(
+                    count=1,
+                    limit=1,
+                    next_token=None,
+                    next_link=None,
+                    offset=0,
+                    total=2,
+                ),
+            ),
+            PageResult(
+                items=[UserRecord(id=101, firstName="Scott", lastName="Willey")],
+                metadata=PaginationMetadata(
+                    count=1,
+                    limit=1,
+                    next_token=None,
+                    next_link=None,
+                    offset=1,
+                    total=2,
+                ),
+            ),
+        ]
+    )
+    services = StubBattleTestServices(
+        identity=StubIdentityService(7),
+        people=StubPeopleService(
+            _people_page(PersonRecord.model_validate({"id": 21, "name": "Jane Zillow"}))
+        ),
+        tasks=StubTasksService(_tasks_page()),
+        smart_lists=StubSmartListsService(
+            _smart_lists_page(
+                SmartListRecord.model_validate({"id": 77, "name": "Eligible For Transfer"})
+            )
+        ),
+        users=paginated_users,
+    )
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt="Show Scott Willey's Zillow leads in Eligible For Transfer.",
+        selected_tool="followupboss_search_people_in_smart_list",
+        arguments={
+            "smart_list_name": "Eligible For Transfer",
+            "source": "Zillow",
+            "assigned_user_name": " Scott   Willey ",
+        },
+        response={
+            "smartlist": {"id": 77, "name": "Eligible For Transfer"},
+            "people": [{"id": 21, "name": "Jane Zillow"}],
+        },
+    )
+
+    evaluation = await ReadOnlyBattleTestOracle(services).evaluate(scenario, transcript)
+
+    assert evaluation.passed is True
+    assert [request.offset for request in paginated_users.requests] == [0, 1]
+    assert services.people.requests[0].assigned_user_id == 101
+
+
+@pytest.mark.asyncio
+async def test_named_smart_list_grounding_rejects_missing_or_ambiguous_owner_name() -> None:
+    base_scenario = scenario_by_id("BT-SMARTLIST-002")
+    scenario = base_scenario.model_copy(
+        update={
+            "api_oracle": base_scenario.api_oracle.model_copy(
+                update={"requires_authenticated_owner_scope": False}
+            )
+        }
+    )
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt="Show Geordi's Zillow leads in Eligible For Transfer.",
+        selected_tool="followupboss_search_people_in_smart_list",
+        arguments={
+            "smart_list_name": "Eligible For Transfer",
+            "source": "Zillow",
+            "assigned_user_name": "Geordi",
+        },
+        response={"smartlist": {"id": 77}, "people": []},
+    )
+    smart_lists = _smart_lists_page(
+        SmartListRecord.model_validate({"id": 77, "name": "Eligible For Transfer"})
+    )
+    missing_services = _services(
+        smart_lists=smart_lists,
+        users=_users_page(UserRecord(id=8, name="Geordi", status="Deleted")),
+    )
+    ambiguous_services = _services(
+        smart_lists=smart_lists,
+        users=_users_page(
+            UserRecord(id=6, name="Geordi", status="Active"),
+            UserRecord(id=7, firstName="Geordi", lastName=""),
+        ),
+    )
+
+    missing = await ReadOnlyBattleTestOracle(missing_services).evaluate(scenario, transcript)
+    ambiguous = await ReadOnlyBattleTestOracle(ambiguous_services).evaluate(
+        scenario,
+        transcript,
+    )
+
+    assert missing.passed is False
+    assert missing.failures == [
+        "API oracle failed: Active Follow Up Boss user named 'Geordi' was not found."
+    ]
+    assert ambiguous.passed is False
+    assert ambiguous.failures == [
+        "API oracle failed: Active Follow Up Boss user named 'Geordi' is ambiguous; "
+        "matched IDs [6, 7]."
+    ]
 
 
 @pytest.mark.asyncio

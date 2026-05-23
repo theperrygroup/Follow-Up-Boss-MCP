@@ -2109,7 +2109,9 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert stub.people_search_requests[-1].assigned_user_id is None
     assert stub.people_search_requests[-1].include_ponds is True
     assert (
-        await adapter.search_people(PeopleSearchRequest(assigned_to="Scott Willey", contacted=False))
+        await adapter.search_people(
+            PeopleSearchRequest(assigned_to="Scott Willey", contacted=False)
+        )
     )["people"][0]["id"] == 2
     assert stub.people_search_requests[-1].assigned_to == "Scott Willey"
     assert stub.people_search_requests[-1].assigned_user_id is None
@@ -2327,7 +2329,9 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         ),
     )
     missing_user_adapter = FollowUpBossToolAdapter(missing_user_services)
-    with pytest.raises(RuntimeError, match="Active Follow Up Boss user named 'Geordi' was not found"):
+    with pytest.raises(
+        RuntimeError, match="Active Follow Up Boss user named 'Geordi' was not found"
+    ):
         await missing_user_adapter.search_people_in_smart_list(
             SearchPeopleInSmartListToolInput(
                 smart_list_name="Active Buyers",
@@ -2378,6 +2382,53 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         )
     )["smartlist"]["id"] == 74
     assert [request.offset for request in paginated_smart_list_requests] == [0, 1]
+    paginated_user_requests: list[UserListRequest] = []
+
+    async def paginated_users_list(request: UserListRequest) -> PageResult[UserRecord]:
+        paginated_user_requests.append(request)
+        if len(paginated_user_requests) == 1:
+            return PageResult(
+                items=[UserRecord(id=5, name="Other Owner")],
+                metadata=PaginationMetadata(
+                    count=1,
+                    limit=1,
+                    next_token=None,
+                    next_link=None,
+                    offset=0,
+                    total=2,
+                ),
+            )
+        return PageResult(
+            items=[UserRecord(id=6, name="Geordi")],
+            metadata=PaginationMetadata(
+                count=1,
+                limit=1,
+                next_token=None,
+                next_link=None,
+                offset=1,
+                total=2,
+            ),
+        )
+
+    paginated_user_services = replace(
+        stub.bundle,
+        users=_service_stub(
+            list_users=paginated_users_list,
+            get_user=stub.bundle.users.get_user,
+            get_me=stub.bundle.users.get_me,
+            delete_user=stub.bundle.users.delete_user,
+        ),
+    )
+    paginated_user_adapter = FollowUpBossToolAdapter(paginated_user_services)
+    assert (
+        await paginated_user_adapter.search_people_in_smart_list(
+            SearchPeopleInSmartListToolInput(
+                smart_list_name="Active Buyers",
+                assigned_user_name="Geordi",
+            )
+        )
+    )["people"][0]["id"] == 2
+    assert [request.offset for request in paginated_user_requests] == [0, 1]
     assert (await adapter.get_person(GetPersonToolInput(person_id=3)))["id"] == 3
     assert (await adapter.create_person(CreatePersonRequest(first_name="Tom")))["id"] == 3
     assert (await adapter.update_person(UpdatePersonToolInput(person_id=4)))["id"] == 4
