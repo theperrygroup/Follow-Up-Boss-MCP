@@ -3165,8 +3165,6 @@ async def _list_uncontacted_leads_page(
     next_token = None
     if has_more_raw_results and next_raw_offset is not None:
         next_token = _uncommunicated_lead_next_token(next_raw_offset, next_offset)
-    elif len(page_items) < len(matches):
-        next_token = str(next_offset)
     return PageResult(
         items=page_items,
         metadata=PaginationMetadata(

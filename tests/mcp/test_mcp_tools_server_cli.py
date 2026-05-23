@@ -2160,6 +2160,10 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert ListUncontactedLeadsToolInput(fields=["id", "name"]).fields == ["id", "name"]
     with pytest.raises(ValidationError, match="assigned_user_id must be a positive"):
         ListUncontactedLeadsToolInput(assigned_user_id=0)
+    with pytest.raises(ValidationError, match="limit must be a positive integer"):
+        ListUncontactedLeadsToolInput(limit=0)
+    with pytest.raises(ValidationError, match="offset must be a non-negative integer"):
+        ListUncontactedLeadsToolInput(offset=-1)
     with pytest.raises(ValidationError, match="Unsupported no-communication lead fields"):
         ListUncontactedLeadsToolInput(fields=["id", "createdAt"])
     with pytest.raises(ValidationError, match="Conflicting values"):
@@ -2383,6 +2387,10 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     with pytest.raises(RuntimeError, match="pagination token is invalid"):
         await paginated_no_communication_adapter.list_uncontacted_leads(
             ListUncontactedLeadsToolInput(next_token="not-a-number")
+        )
+    with pytest.raises(RuntimeError, match="pagination token is invalid"):
+        await paginated_no_communication_adapter.list_uncontacted_leads(
+            ListUncontactedLeadsToolInput(next_token="scan:1:not-a-number")
         )
     assert (await adapter.search_people(PeopleSearchRequest(smart_list_id=74)))["people"][0][
         "id"
