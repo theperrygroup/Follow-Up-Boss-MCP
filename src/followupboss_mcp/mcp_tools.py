@@ -3116,8 +3116,8 @@ async def _list_uncontacted_leads_page(
     matches: list[PersonRecord] = []
     pages_scanned = 0
     has_more_raw_results = False
-    next_raw_offset: int | None = fetch_offset
-    while pages_scanned < _UNCOMMUNICATED_LEAD_MAX_SCAN_PAGES:
+    next_raw_offset: int | None = None
+    while pages_scanned < _UNCOMMUNICATED_LEAD_MAX_SCAN_PAGES and len(matches) < page_limit:
         request = PeopleSearchRequest(
             assigned_user_id=assigned_user_id,
             fields=requested_fields,
@@ -3129,19 +3129,34 @@ async def _list_uncontacted_leads_page(
         )
         page = await services.people.search_people(request)
         pages_scanned += 1
-        has_more_raw_results = page.metadata.has_next() and page.metadata.count > 0
+        raw_page_start = page.metadata.offset
+        raw_page_end = raw_page_start + page.metadata.count
+        has_following_raw_page = page.metadata.has_next() and page.metadata.count > 0
+        has_more_raw_results = has_following_raw_page
+        unreturned_match_raw_offset: int | None = None
 
-        for person in page.items:
+        for raw_index, person in enumerate(page.items):
             if not _is_empty_last_communication(person.last_communication):
                 continue
             if remaining_skip > 0:
                 remaining_skip -= 1
                 continue
+            if len(matches) >= page_limit:
+                unreturned_match_raw_offset = raw_page_start + raw_index
+                has_more_raw_results = True
+                break
             matches.append(person)
 
-        if not page.metadata.has_next() or page.metadata.count == 0:
+        if len(matches) >= page_limit:
+            if unreturned_match_raw_offset is not None:
+                next_raw_offset = unreturned_match_raw_offset
+            elif has_following_raw_page:
+                next_raw_offset = raw_page_end
+                has_more_raw_results = True
             break
-        fetch_offset = page.metadata.offset + page.metadata.count
+        if not has_following_raw_page:
+            break
+        fetch_offset = raw_page_end
         next_raw_offset = fetch_offset
 
     page_items = matches[:page_limit]
@@ -3198,7 +3213,6 @@ def _is_empty_last_communication(value: object) -> bool:
         `True` only when no communication value is present.
     """
     return value in (None, "", 0, "0")
-
 
 
 def _uncommunicated_lead_scan_state(

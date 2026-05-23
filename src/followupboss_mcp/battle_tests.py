@@ -3364,7 +3364,7 @@ _EXPANDED_READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
                 "Show my zero communication leads.",
                 "Get my leads with no last communication.",
                 "Which of my leads have not been contacted?",
-                "Pull my leads where contacted is false.",
+                "Pull my leads where last communication is empty.",
                 "Count my no-communication leads, then show them.",
                 "Show those uncontacted leads from all my leads.",
             )

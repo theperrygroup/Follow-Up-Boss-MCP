@@ -2275,6 +2275,111 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert paginated_no_communication["_metadata"]["total"] == 2
     assert [request.offset for request in paginated_no_communication_requests] == [0, 1]
     assert paginated_no_communication_requests[0].fields == ["id", "lastCommunication", "name"]
+    early_stop_no_communication_requests: list[PeopleSearchRequest] = []
+
+    async def search_many_no_communication_people(
+        request: PeopleSearchRequest,
+    ) -> PageResult[PersonRecord]:
+        early_stop_no_communication_requests.append(request)
+        start = request.offset or 0
+        return PageResult(
+            items=[
+                PersonRecord.model_validate(
+                    {
+                        "id": person_id,
+                        "name": f"Quiet {person_id}",
+                        "lastCommunication": None,
+                    }
+                )
+                for person_id in range(start, start + 100)
+            ],
+            metadata=PaginationMetadata(
+                count=100,
+                limit=100,
+                next_token=None,
+                next_link=None,
+                offset=start,
+                total=200,
+            ),
+        )
+
+    early_stop_no_communication_adapter = FollowUpBossToolAdapter(
+        replace(
+            stub.bundle,
+            people=_service_stub(search_people=search_many_no_communication_people),
+        )
+    )
+    early_stop_no_communication = await early_stop_no_communication_adapter.list_uncontacted_leads(
+        ListUncontactedLeadsToolInput(limit=25)
+    )
+    assert [person["id"] for person in early_stop_no_communication["people"]] == list(range(25))
+    early_stop_next_token = early_stop_no_communication["_metadata"]["next_token"]
+    assert early_stop_next_token == "scan:25:25"
+    assert early_stop_no_communication["_metadata"]["total"] is None
+    assert [request.offset for request in early_stop_no_communication_requests] == [0]
+    continued_no_communication = await early_stop_no_communication_adapter.list_uncontacted_leads(
+        ListUncontactedLeadsToolInput(
+            limit=25,
+            next_token=cast(str, early_stop_next_token),
+        )
+    )
+    assert [person["id"] for person in continued_no_communication["people"]] == list(range(25, 50))
+    assert continued_no_communication["_metadata"]["next_token"] == "scan:50:50"
+    assert continued_no_communication["_metadata"]["total"] is None
+    assert [request.offset for request in early_stop_no_communication_requests] == [0, 25]
+    boundary_no_communication_requests: list[PeopleSearchRequest] = []
+
+    async def search_boundary_no_communication_people(
+        request: PeopleSearchRequest,
+    ) -> PageResult[PersonRecord]:
+        boundary_no_communication_requests.append(request)
+        start = request.offset or 0
+        return PageResult(
+            items=[
+                PersonRecord.model_validate(
+                    {
+                        "id": person_id,
+                        "name": f"Quiet {person_id}",
+                        "lastCommunication": None,
+                    }
+                )
+                for person_id in range(start, start + 100)
+            ],
+            metadata=PaginationMetadata(
+                count=100,
+                limit=100,
+                next_token=None,
+                next_link=None,
+                offset=start,
+                total=200,
+            ),
+        )
+
+    boundary_no_communication_adapter = FollowUpBossToolAdapter(
+        replace(
+            stub.bundle,
+            people=_service_stub(search_people=search_boundary_no_communication_people),
+        )
+    )
+    boundary_no_communication = await boundary_no_communication_adapter.list_uncontacted_leads(
+        ListUncontactedLeadsToolInput(limit=100)
+    )
+    assert [person["id"] for person in boundary_no_communication["people"]] == list(range(100))
+    boundary_next_token = boundary_no_communication["_metadata"]["next_token"]
+    assert boundary_next_token == "scan:100:100"
+    boundary_continued_no_communication = (
+        await boundary_no_communication_adapter.list_uncontacted_leads(
+            ListUncontactedLeadsToolInput(
+                limit=100,
+                next_token=cast(str, boundary_next_token),
+            )
+        )
+    )
+    assert [person["id"] for person in boundary_continued_no_communication["people"]] == list(
+        range(100, 200)
+    )
+    assert boundary_continued_no_communication["_metadata"]["next_token"] is None
+    assert [request.offset for request in boundary_no_communication_requests] == [0, 100]
     with pytest.raises(RuntimeError, match="pagination token is invalid"):
         await paginated_no_communication_adapter.list_uncontacted_leads(
             ListUncontactedLeadsToolInput(next_token="not-a-number")
