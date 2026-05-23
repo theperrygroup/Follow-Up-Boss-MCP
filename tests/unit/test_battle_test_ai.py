@@ -613,8 +613,7 @@ def test_selection_instructions_explain_unsupported_note_search() -> None:
     assert "Never default a bare Zillow-leads prompt" in instructions
     assert "never use a source-only people search" in instructions
     assert (
-        "call followupboss_list_uncontacted_leads again with the same owner filters"
-        in instructions
+        "call followupboss_list_uncontacted_leads again with the same owner filters" in instructions
     )
     assert "Use followupboss_list_person_activity for communication history" in instructions
     assert "without a resolved person_id, call battle_test_clarify" in instructions

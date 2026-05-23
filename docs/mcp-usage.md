@@ -151,6 +151,7 @@ or list calls when the intent is already clear.
 | "my overdue tasks" or "what am I late on?" | `followupboss_list_my_overdue_tasks` | A broad task list without authenticated-user and incomplete-task scope. |
 | "my tasks today" or "what do I need to do today?" | `followupboss_list_my_tasks_due_today` | A broad task list without authenticated-user and incomplete-task scope. |
 | "my upcoming tasks" or "what do I have coming up?" | `followupboss_list_my_upcoming_tasks` | A broad task list without authenticated-user and incomplete-task scope. |
+| Uncontacted, never-contacted, no-communication, zero-communication, contacted-false, or needs-contact lead filters | `followupboss_list_uncontacted_leads`; omit owner scope for authenticated-user leads, pass `assigned_user_name` for a named owner, or set `mine=false` only for explicit account-wide wording | Looking up a smart list such as `Needs Contact` unless the user explicitly says "smart list" or "saved list". |
 | A named smart-list people search, such as "Zillow leads in Eligible For Transfer" | `followupboss_search_people_in_smart_list` with `smart_list_name`; omit `mine` or set `mine=true` for authenticated-user scope, and set `mine=false` only for explicitly account-wide wording | Broad people search by source without the resolved smart-list boundary. |
 | A named smart-list follow-up request using "I", "me", or "my" | `followupboss_search_people_in_smart_list` with `smart_list_name`, default owned scope, and any explicit filters such as `source` | Returning account-wide smart-list people from admin-visible credentials. |
 | A named smart-list count | `followupboss_search_people_in_smart_list` with `smart_list_name`, default owned scope unless `mine=false` is explicitly requested, and a small `limit`, then read `_metadata.total` | Inferring the smart-list ID from the name alone or silently choosing account-wide scope. |
@@ -164,6 +165,7 @@ or list calls when the intent is already clear.
 | `followupboss_get_identity` | Return identity information for the authenticated Follow Up Boss account and user. |
 | `followupboss_get_me` | Retrieve the current Follow Up Boss user profile with sensitive keys redacted. |
 | `followupboss_search_people` | Search people with documented filters and pagination metadata; defaults to authenticated-user scope, including `smart_list_id` searches, unless `assigned_user_id` or `include_ponds=true` is explicit. Use `followupboss_get_latest_lead` for latest-owned-lead intent. |
+| `followupboss_list_uncontacted_leads` | List people with `contacted=false` enforced inside the MCP boundary, defaulting to authenticated-user scope and supporting explicit owner IDs or exact owner names. |
 | `followupboss_search_people_in_smart_list` | Resolve one exact smart-list name internally, search people only with the resolved `smart_list_id`, default to authenticated-user scope, optionally apply explicit `assigned_user_id`, and return smart-list provenance. |
 | `followupboss_get_latest_lead` | Retrieve the newest lead assigned to the authenticated user. |
 | `followupboss_get_person` | Retrieve one person by ID. |

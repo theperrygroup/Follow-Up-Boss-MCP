@@ -3378,7 +3378,8 @@ _EXPANDED_READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
         api_oracle=ApiOracleSpec(
             kind=BattleTestOracleKind.MY_UNCONTACTED_LEADS,
             description=(
-                "Direct authenticated-user people search with contacted=false; no saved-list lookup."
+                "Direct authenticated-user people search with contacted=false; "
+                "no saved-list lookup."
             ),
         ),
         response_assertions=(

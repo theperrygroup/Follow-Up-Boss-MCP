@@ -2141,6 +2141,12 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert all_uncontacted_leads["people"][0]["id"] == 2
     assert stub.people_search_requests[-1].assigned_user_id is None
     assert stub.people_search_requests[-1].contacted is False
+    explicit_owner_uncontacted_leads = await adapter.list_uncontacted_leads(
+        ListUncontactedLeadsToolInput(assigned_user_id=101)
+    )
+    assert explicit_owner_uncontacted_leads["people"][0]["id"] == 2
+    assert stub.people_search_requests[-1].assigned_user_id == 101
+    assert stub.people_search_requests[-1].contacted is False
     uncontacted_alias_input = ListUncontactedLeadsToolInput(
         owner_name="Geordi",
         lead_source="Zillow",
@@ -2151,6 +2157,51 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         ListUncontactedLeadsToolInput(assigned_user_id=0)
     with pytest.raises(ValidationError, match="Conflicting values"):
         ListUncontactedLeadsToolInput(owner_name="Geordi", agent_name="Worf")
+    paginated_uncontacted_user_requests: list[UserListRequest] = []
+
+    async def list_paginated_users(request: UserListRequest) -> PageResult[UserRecord]:
+        paginated_uncontacted_user_requests.append(request)
+        if len(paginated_uncontacted_user_requests) == 1:
+            return PageResult(
+                items=[UserRecord(id=5, name="Other Owner", status="Active")],
+                metadata=PaginationMetadata(
+                    count=1,
+                    limit=1,
+                    next_token=None,
+                    next_link=None,
+                    offset=0,
+                    total=2,
+                ),
+            )
+        return PageResult(
+            items=[UserRecord(id=6, name="Geordi", status="Active")],
+            metadata=PaginationMetadata(
+                count=1,
+                limit=1,
+                next_token=None,
+                next_link=None,
+                offset=1,
+                total=2,
+            ),
+        )
+
+    paginated_user_adapter = FollowUpBossToolAdapter(
+        replace(
+            stub.bundle,
+            users=_service_stub(
+                list_users=list_paginated_users,
+                get_user=stub.bundle.users.get_user,
+                get_me=stub.bundle.users.get_me,
+                delete_user=stub.bundle.users.delete_user,
+            ),
+        )
+    )
+    assert (
+        await paginated_user_adapter.list_uncontacted_leads(
+            ListUncontactedLeadsToolInput(assigned_user_name="Geordi")
+        )
+    )["people"][0]["id"] == 2
+    assert [request.offset for request in paginated_uncontacted_user_requests] == [0, 1]
     assert (await adapter.search_people(PeopleSearchRequest(smart_list_id=74)))["people"][0][
         "id"
     ] == 2
@@ -2348,6 +2399,10 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
                 assigned_user_name="Geordi",
             )
         )
+    with pytest.raises(RuntimeError, match="ambiguous; matched IDs \\[6, 7\\]"):
+        await ambiguous_user_adapter.list_uncontacted_leads(
+            ListUncontactedLeadsToolInput(assigned_user_name="Geordi")
+        )
     missing_user_services = replace(
         stub.bundle,
         users=_service_stub(
@@ -2373,6 +2428,21 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
                 assigned_user_name="Geordi",
             )
         )
+    with pytest.raises(
+        RuntimeError, match="Active Follow Up Boss user named 'Geordi' was not found"
+    ):
+        await missing_user_adapter.list_uncontacted_leads(
+            ListUncontactedLeadsToolInput(assigned_user_name="Geordi")
+        )
+    missing_identity_services = replace(
+        stub.bundle,
+        identity=_service_stub(
+            get_identity=lambda: asyncio.sleep(0, result=IdentityResponse(id=None))
+        ),
+    )
+    missing_identity_adapter = FollowUpBossToolAdapter(missing_identity_services)
+    with pytest.raises(RuntimeError, match="Authenticated Follow Up Boss user id is unavailable"):
+        await missing_identity_adapter.list_uncontacted_leads(ListUncontactedLeadsToolInput())
     paginated_smart_list_requests: list[SmartListListRequest] = []
 
     async def paginated_smart_lists_list(
@@ -4061,6 +4131,14 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     search_people_description = cast("str", tools["followupboss_search_people"].description)
     assert "Do not use this broad search for 'my latest lead'" in search_people_description
     assert "use followupboss_get_latest_lead" in search_people_description
+    assert "use followupboss_list_uncontacted_leads" in search_people_description
+    uncontacted_description = cast(
+        "str",
+        tools["followupboss_list_uncontacted_leads"].description,
+    )
+    assert "contacted=false" in uncontacted_description
+    assert "never smart-list lookup" in uncontacted_description
+    assert "assigned_user_name/owner_name/agent_name" in uncontacted_description
     search_events_description = cast("str", tools["followupboss_search_events"].description)
     assert "Do not use this to answer requests for notes associated with a person" in (
         search_events_description
@@ -4080,8 +4158,12 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         tools["followupboss_search_people_in_smart_list"].description,
     )
     assert "named Follow Up Boss smart list" in helper_description
+    assert "Do not use this for uncontacted" in helper_description
     assert "assigned_user_name" in helper_description
     assert "provenance" in helper_description
+    smart_lists_description = cast("str", tools["followupboss_list_smart_lists"].description)
+    assert "use followupboss_list_uncontacted_leads" in smart_lists_description
+    assert "unless the user explicitly asks to list saved lists" in smart_lists_description
     person_activity_description = cast(
         "str",
         tools["followupboss_list_person_activity"].description,
@@ -5204,6 +5286,72 @@ async def test_public_person_activity_tool_returns_scoped_activity() -> None:
     assert result["emEvents"][0]["personId"] == 42
     assert result["events"][0]["personId"] == 42
     assert result["appointments"][0]["invitees"][0]["personId"] == 42
+
+
+@pytest.mark.asyncio
+async def test_public_uncontacted_leads_tool_forces_direct_contacted_filter() -> None:
+    """The registered uncontacted helper should force contacted=false in public calls."""
+
+    @dataclass
+    class CapturingQueueClient:
+        """Queue-backed client that records outgoing request params."""
+
+        responses: list[dict[str, object] | list[object]]
+        params_seen: list[Mapping[str, str] | None] | None = None
+
+        def __post_init__(self) -> None:
+            """Initialize request capture storage."""
+            self.params_seen = []
+
+        async def aclose(self) -> None:
+            """Close the test client."""
+            return None
+
+        async def request_json(
+            self,
+            method: str,
+            path: str,
+            *,
+            headers: Mapping[str, str] | None = None,
+            json_body: Mapping[str, object] | None = None,
+            params: Mapping[str, str] | None = None,
+        ) -> dict[str, object] | list[object]:
+            """Record request params and return the next queued response."""
+            del method, path, headers, json_body
+            if self.params_seen is None:
+                raise AssertionError("params_seen was not initialized.")
+            self.params_seen.append(params)
+            return self.responses.pop(0)
+
+    client = CapturingQueueClient(
+        responses=[
+            {"id": 7, "name": "Picard"},
+            {
+                "_metadata": {"limit": 25, "offset": 0, "total": 1},
+                "people": [{"id": 724, "name": "Wesley Binks", "contacted": False}],
+            },
+        ]
+    )
+    server = create_server(
+        FollowUpBossSettings.model_validate({"api_key": "key"}),
+        client=client,
+    )
+    tools = {tool.name: tool for tool in await server.list_tools()}
+
+    result = await _call_public_tool(
+        server,
+        tools,
+        "followupboss_list_uncontacted_leads",
+        limit=25,
+    )
+
+    assert result["people"][0]["id"] == 724
+    assert client.params_seen is not None
+    assert client.params_seen[-1] == {
+        "assignedUserId": "7",
+        "contacted": "false",
+        "limit": "25",
+    }
 
 
 @pytest.mark.asyncio
