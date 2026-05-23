@@ -204,7 +204,10 @@ class PersonRecord(ResponseModel):
     first_name: str | None = Field(default=None, alias="firstName")
     id: int
     last_activity: str | None = Field(default=None, alias="lastActivity")
-    last_communication: JsonValue = Field(default=None, alias="lastCommunication")
+    last_communication: dict[str, object] | str | int | None = Field(
+        default=None,
+        alias="lastCommunication",
+    )
     last_name: str | None = Field(default=None, alias="lastName")
     name: str | None = None
     picture: PersonPicture | None = None

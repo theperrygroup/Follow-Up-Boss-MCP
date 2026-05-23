@@ -3423,8 +3423,8 @@ _EXPANDED_READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
         api_oracle=ApiOracleSpec(
             kind=BattleTestOracleKind.MY_UNCONTACTED_LEADS,
             description=(
-                "Direct authenticated-user empty-lastCommunication search for needs-contact wording "
-                "that does not explicitly ask for a saved smart list."
+                "Direct authenticated-user empty-lastCommunication search for needs-contact "
+                "wording that does not explicitly ask for a saved smart list."
             ),
         ),
         response_assertions=(
