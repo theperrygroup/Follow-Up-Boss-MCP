@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 from followupboss_mcp.mcp_tools import (
@@ -443,7 +444,10 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
             "explicit person filters or known smart_list_id searches. Do not use "
             "this broad search for named smart-list people prompts; use "
             "followupboss_search_people_in_smart_list so the list name is resolved "
-            "inside the MCP boundary. Do not use this broad search for "
+            "inside the MCP boundary. Use direct people filters such as "
+            "contacted=false and assigned_to='Scott Willey' for uncontacted, "
+            "never-contacted, no-communication, or zero-communication people "
+            "requests. Do not use this broad search for "
             "'my latest lead', 'newest lead', or 'most recent lead I received'; "
             "use followupboss_get_latest_lead so the authenticated user is resolved "
             "internally."
@@ -460,17 +464,28 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
         next_token: str | None = None,
         offset: int | None = None,
         sort: str | None = None,
+        assigned_lender_id: int | None = None,
+        assigned_lender_name: str | None = None,
+        assigned_pond_id: int | None = None,
+        assigned_to: str | None = None,
         assigned_user_id: int | None = None,
+        contacted: bool | None = None,
         email: str | None = None,
         first_name: str | None = None,
         include_trash: bool | None = None,
+        include_unclaimed: bool | None = None,
         include_ponds: bool | None = None,
+        last_activity_after: datetime | None = None,
+        last_activity_before: datetime | None = None,
         last_name: str | None = None,
         name: str | None = None,
         phone: str | None = None,
+        price_above: int | None = None,
+        price_below: int | None = None,
         smart_list_id: int | None = None,
         source: str | None = None,
         stage: str | None = None,
+        tags: str | None = None,
         custom_field_filters: dict[str, str] | None = None,
     ) -> dict[str, object]:
         tool_input = _validated_request(PeopleSearchRequest, locals())
@@ -480,8 +495,7 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
         name="followupboss_search_people_in_smart_list",
         description=(
             "Search people inside an exact named Follow Up Boss smart list. Use this "
-            "for prompts such as 'Zillow leads in Eligible For Transfer', "
-            "'Zero Communication leads', 'Needs Contact leads', or any "
+            "for prompts such as 'Zillow leads in Eligible For Transfer' or any "
             "request where the user names a smart list instead of providing a numeric "
             "smart_list_id. The tool resolves the smart-list name with "
             "include_all=true, fails on missing or ambiguous names, then searches "

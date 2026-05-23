@@ -1484,11 +1484,18 @@ class ReadOnlyBattleTestOracle:
                 scenario,
                 await self._services.people.search_people(
                     PeopleSearchRequest(
+                        assigned_to=_optional_string(transcript.arguments.get("assigned_to")),
+                        assigned_user_id=_optional_int(
+                            transcript.arguments.get("assigned_user_id")
+                        ),
+                        contacted=_optional_bool(transcript.arguments.get("contacted")),
                         email=_optional_string(transcript.arguments.get("email")),
                         limit=_optional_int(transcript.arguments.get("limit")),
                         name=_optional_string(transcript.arguments.get("name")),
                         phone=_optional_string(transcript.arguments.get("phone")),
                         smart_list_id=_optional_int(transcript.arguments.get("smart_list_id")),
+                        source=_optional_string(transcript.arguments.get("source")),
+                        stage=_optional_string(transcript.arguments.get("stage")),
                     )
                 ),
                 response_key="people",
@@ -3247,6 +3254,47 @@ _EXPANDED_READ_ONLY_SCENARIOS: tuple[BattleTestScenario, ...] = (
         ),
         response_assertions=("clarified is true", "selected_tool is None"),
     ),
+    BattleTestScenario(
+        id="BT-READ-018",
+        grade=BattleTestGrade.MUST_REQUIRE_ID,
+        prompt_variants=_expand_prompt_families(
+            (
+                "Show Scott Willey's zero communication leads.",
+                "Scott Willey has 323 leads with zero communication; list them.",
+                "Pull Scott Willey's no-communication leads using people search filters.",
+                "Get me Scott Willey's leads that have not been contacted.",
+                "Which leads assigned to Scott Willey have contacted false?",
+                "Show leads I haven't communicated with for Scott Willey.",
+                "List never-contacted people assigned to Scott Willey.",
+                "Use search filtering to show Scott Willey's uncontacted leads.",
+                "Count Scott Willey's contacted false leads, then show them.",
+                "Show those zero communication leads for Scott Willey.",
+            )
+        ),
+        expected_mcp=ExpectedMcpRoute(
+            allowed_tools=("followupboss_search_people",),
+            forbidden_tools=(
+                "followupboss_search_people_in_smart_list",
+                "followupboss_list_smart_lists",
+                "followupboss_list_person_activity",
+                "followupboss_get_latest_lead",
+            ),
+            required_argument_keys=("contacted", "assigned_to"),
+            required_argument_values={"contacted": False, "assigned_to": "Scott Willey"},
+        ),
+        api_oracle=ApiOracleSpec(
+            kind=BattleTestOracleKind.PEOPLE_SEARCH,
+            description=(
+                "Direct people search filtered by contacted=false and assignedTo=Scott Willey; "
+                "no saved-list lookup or per-person activity inference."
+            ),
+        ),
+        response_assertions=(
+            "request.contacted is false",
+            "request.assigned_to == Scott Willey",
+            "response.people[*].id == api_oracle.person_ids",
+        ),
+    ),
 )
 
 
@@ -3411,86 +3459,6 @@ _SMART_LIST_GROUNDING_SCENARIOS: tuple[BattleTestScenario, ...] = (
         response_assertions=(
             "request.smart_list_name normalizes to api_oracle.smart_list_name",
             "response.smartlist.id == api_oracle.smart_list_id",
-            "assistant_answer contains no off-list names or phones",
-        ),
-    ),
-    BattleTestScenario(
-        id="BT-SMARTLIST-005",
-        grade=BattleTestGrade.MUST_REQUIRE_ID,
-        prompt_variants=(
-            "Show Scott Willey's Zero Communication leads.",
-            "Scott Willey has leads with zero communication; list them from Zero Communication.",
-            "Pull Scott Willey's no-communication leads from the Zero Communication smart list.",
-            "Which Zero Communication leads are assigned to Scott Willey?",
-            "Show those zero communication leads for Scott Willey from the saved list.",
-            "Scott Willey's 323 zero communication leads need to be listed from the smart list.",
-            "For Scott Willey, show people in Zero Communication without broad-searching.",
-            "Use the Zero Communication list and show Scott Willey's leads.",
-        ),
-        expected_mcp=ExpectedMcpRoute(
-            allowed_tools=("followupboss_search_people_in_smart_list",),
-            forbidden_tools=(
-                "followupboss_get_latest_lead",
-                "followupboss_search_people",
-                "followupboss_list_person_activity",
-                "followupboss_list_smart_lists",
-            ),
-            required_argument_keys=("smart_list_name", "assigned_user_name"),
-            required_argument_values={"assigned_user_name": "Scott Willey"},
-        ),
-        api_oracle=ApiOracleSpec(
-            kind=BattleTestOracleKind.NAMED_SMART_LIST_PEOPLE,
-            description=(
-                "Resolve Zero Communication by exact smart-list name, resolve Scott Willey "
-                "by exact owner name, and verify the visible answer stays list- and "
-                "owner-scoped."
-            ),
-            smart_list_name="Zero Communication",
-            answer_must_be_grounded=True,
-        ),
-        response_assertions=(
-            "request.smart_list_name normalizes to Zero Communication",
-            "request.assigned_user_name == Scott Willey",
-            "response.smartlist.id == api_oracle.smart_list_id",
-            "response.people[*].assignedUserId == resolved Scott Willey user id",
-            "assistant_answer contains no off-list names or phones",
-        ),
-    ),
-    BattleTestScenario(
-        id="BT-SMARTLIST-006",
-        grade=BattleTestGrade.MUST_REQUIRE_ID,
-        prompt_variants=(
-            "Show Scott Willey's Needs Contact leads.",
-            "Pull Scott Willey's leads from the Needs Contact smart list.",
-            "Which Needs Contact people are assigned to Scott Willey?",
-            "List Scott Willey's needs-contact queue from the saved list.",
-            "For Scott Willey, show the Needs Contact leads I should chase.",
-        ),
-        expected_mcp=ExpectedMcpRoute(
-            allowed_tools=("followupboss_search_people_in_smart_list",),
-            forbidden_tools=(
-                "followupboss_get_latest_lead",
-                "followupboss_search_people",
-                "followupboss_list_person_activity",
-                "followupboss_list_smart_lists",
-            ),
-            required_argument_keys=("smart_list_name", "assigned_user_name"),
-            required_argument_values={"assigned_user_name": "Scott Willey"},
-        ),
-        api_oracle=ApiOracleSpec(
-            kind=BattleTestOracleKind.NAMED_SMART_LIST_PEOPLE,
-            description=(
-                "Resolve Needs Contact as a saved list, resolve Scott Willey by owner name, "
-                "and verify the response does not infer communication status from activity logs."
-            ),
-            smart_list_name="Needs Contact",
-            answer_must_be_grounded=True,
-        ),
-        response_assertions=(
-            "request.smart_list_name normalizes to Needs Contact",
-            "request.assigned_user_name == Scott Willey",
-            "response.smartlist.id == api_oracle.smart_list_id",
-            "response.people[*].assignedUserId == resolved Scott Willey user id",
             "assistant_answer contains no off-list names or phones",
         ),
     ),
@@ -3721,6 +3689,20 @@ _EXPANDED_CHAIN_BLUEPRINTS: tuple[
             ("BT-READ-014", "List email templates and text templates."),
         ),
     ),
+    (
+        BattleTestConversationKind.MULTI_TURN,
+        "",
+        (
+            (
+                "BT-READ-018",
+                "How many contacted false leads are assigned to Scott Willey?",
+            ),
+            (
+                "BT-READ-018",
+                "Now show those leads.",
+            ),
+        ),
+    ),
 )
 
 
@@ -3914,57 +3896,6 @@ _SMART_LIST_GROUNDING_BLUEPRINTS: tuple[
                     "Use Eligible For Transfer as my Zillow follow-up boundary, then tell me "
                     "what Zillow leads I need to call."
                 ),
-            ),
-        ),
-    ),
-    (
-        BattleTestConversationKind.MULTI_TURN,
-        None,
-        (
-            (
-                "BT-SMARTLIST-005",
-                "How many leads does Scott Willey have in Zero Communication?",
-            ),
-            (
-                "BT-SMARTLIST-005",
-                "Now show those leads.",
-            ),
-        ),
-    ),
-    (
-        BattleTestConversationKind.MULTI_ASK,
-        (
-            "Count Scott Willey's Zero Communication leads, then list those leads from "
-            "that saved list."
-        ),
-        (
-            (
-                "BT-SMARTLIST-005",
-                (
-                    "Count Scott Willey's Zero Communication leads, then list those leads from "
-                    "that saved list."
-                ),
-            ),
-            (
-                "BT-SMARTLIST-005",
-                (
-                    "Count Scott Willey's Zero Communication leads, then list those leads from "
-                    "that saved list."
-                ),
-            ),
-        ),
-    ),
-    (
-        BattleTestConversationKind.MULTI_TURN,
-        None,
-        (
-            (
-                "BT-SMARTLIST-006",
-                "Check Scott Willey's Needs Contact count.",
-            ),
-            (
-                "BT-SMARTLIST-006",
-                "Show me the leads in that list.",
             ),
         ),
     ),

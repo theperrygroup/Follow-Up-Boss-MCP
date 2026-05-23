@@ -21,24 +21,44 @@ from followupboss_mcp.models.common import (
 class PeopleSearchRequest(CommonListQuery):
     """Search filters for the people collection."""
 
+    assigned_lender_id: int | None = Field(default=None, serialization_alias="assignedLenderId")
+    assigned_lender_name: str | None = Field(
+        default=None,
+        serialization_alias="assignedLenderName",
+    )
+    assigned_pond_id: int | None = Field(default=None, serialization_alias="assignedPondId")
+    assigned_to: str | None = Field(default=None, serialization_alias="assignedTo")
     assigned_user_id: int | None = Field(default=None, serialization_alias="assignedUserId")
+    contacted: bool | None = None
     created_after: datetime | None = Field(default=None, serialization_alias="createdAfter")
     created_before: datetime | None = Field(default=None, serialization_alias="createdBefore")
     custom_field_filters: dict[str, str] | None = Field(default=None, exclude=True)
     email: str | None = None
     first_name: str | None = Field(default=None, serialization_alias="firstName")
     include_trash: bool | None = Field(default=None, serialization_alias="includeTrash")
+    include_unclaimed: bool | None = Field(default=None, serialization_alias="includeUnclaimed")
     include_ponds: bool | None = Field(default=None, exclude=True)
+    last_activity_after: datetime | None = Field(
+        default=None,
+        serialization_alias="lastActivityAfter",
+    )
+    last_activity_before: datetime | None = Field(
+        default=None,
+        serialization_alias="lastActivityBefore",
+    )
     last_name: str | None = Field(default=None, serialization_alias="lastName")
     name: str | None = None
     phone: str | None = None
+    price_above: int | None = Field(default=None, serialization_alias="priceAbove")
+    price_below: int | None = Field(default=None, serialization_alias="priceBelow")
     smart_list_id: int | None = Field(default=None, serialization_alias="smartListId")
     source: str | None = None
     stage: str | None = None
+    tags: str | None = None
     updated_after: datetime | None = Field(default=None, serialization_alias="updatedAfter")
     updated_before: datetime | None = Field(default=None, serialization_alias="updatedBefore")
 
-    @field_validator("assigned_user_id", "smart_list_id")
+    @field_validator("assigned_lender_id", "assigned_pond_id", "assigned_user_id", "smart_list_id")
     @classmethod
     def _validate_positive_ids(cls, value: int | None) -> int | None:
         """Require positive search identifier filters when supplied.

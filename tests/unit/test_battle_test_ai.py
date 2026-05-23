@@ -512,6 +512,8 @@ def test_read_only_tool_specs_include_expanded_read_surfaces() -> None:
     assert set(duplicate_properties) == {"email", "phone"}
     assert "smart_list_id" in people_properties
     assert "source" in people_properties
+    assert "assigned_to" in people_properties
+    assert "contacted" in people_properties
     assert "Do not use this for named smart-list" in (
         specs["followupboss_search_people"].description
     )
@@ -526,7 +528,6 @@ def test_read_only_tool_specs_include_expanded_read_surfaces() -> None:
     assert "Zillow leads in Eligible For Transfer" in (
         specs["followupboss_search_people_in_smart_list"].description
     )
-    assert "Zero Communication" in specs["followupboss_search_people_in_smart_list"].description
     assert "assigned_user_name" in specs["followupboss_search_people_in_smart_list"].description
     assert "source='Zillow'" in specs["followupboss_search_people_in_smart_list"].description
     assert "defaults to mine=true" in specs["followupboss_search_people_in_smart_list"].description
@@ -564,6 +565,9 @@ def test_selection_instructions_explain_unsupported_note_search() -> None:
     assert "followupboss_list_my_tasks_due_today" in instructions
     assert "coming up, upcoming, later, after today" in instructions
     assert "followupboss_list_my_upcoming_tasks" in instructions
+    assert "Use followupboss_search_people with contacted=false" in instructions
+    assert "assigned_to='Scott Willey'" in instructions
+    assert "Do not list or resolve smart lists for these direct search-filter prompts" in instructions
     assert "followupboss_list_smart_lists" in instructions
     assert "Use followupboss_search_people_in_smart_list" in instructions
     assert "When the prompt says Zillow leads, include source='Zillow'" in instructions
@@ -578,8 +582,7 @@ def test_selection_instructions_explain_unsupported_note_search() -> None:
     assert "call battle_test_clarify and ask which smart list" in instructions
     assert "Never default a bare Zillow-leads prompt" in instructions
     assert "never use a source-only people search" in instructions
-    assert "zero communication, no communication, Needs Contact" in instructions
-    assert "re-run followupboss_search_people_in_smart_list" in instructions
+    assert "re-run followupboss_search_people with the same contacted and owner filters" in instructions
     assert "Use followupboss_list_person_activity for communication history" in instructions
     assert "without a resolved person_id, call battle_test_clarify" in instructions
     assert "do not use broad calls, text messages, email events, events" in instructions

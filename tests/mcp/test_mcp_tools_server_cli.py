@@ -2108,6 +2108,12 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     ] == 2
     assert stub.people_search_requests[-1].assigned_user_id is None
     assert stub.people_search_requests[-1].include_ponds is True
+    assert (
+        await adapter.search_people(PeopleSearchRequest(assigned_to="Scott Willey", contacted=False))
+    )["people"][0]["id"] == 2
+    assert stub.people_search_requests[-1].assigned_to == "Scott Willey"
+    assert stub.people_search_requests[-1].assigned_user_id is None
+    assert stub.people_search_requests[-1].contacted is False
     assert (await adapter.search_people(PeopleSearchRequest(smart_list_id=74)))["people"][0][
         "id"
     ] == 2
@@ -3989,7 +3995,6 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     )
     assert "named Follow Up Boss smart list" in helper_description
     assert "assigned_user_name" in helper_description
-    assert "Zero Communication leads" in helper_description
     assert "provenance" in helper_description
     person_activity_description = cast(
         "str",

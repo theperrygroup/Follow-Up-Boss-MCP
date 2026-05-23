@@ -1143,6 +1143,8 @@ async def test_people_service_search_create_update_get_and_wait() -> None:
     service = PeopleService(client, sleep=sleep)
     search = await service.search_people(
         PeopleSearchRequest(
+            assigned_to="Scott Willey",
+            contacted=False,
             email="a@example.com",
             smart_list_id=74,
             custom_field_filters={"customSource": "Zillow"},
@@ -1150,6 +1152,8 @@ async def test_people_service_search_create_update_get_and_wait() -> None:
     )
     assert search.items[0].id == 7
     assert client.calls[0].params == {
+        "assignedTo": "Scott Willey",
+        "contacted": "false",
         "customSource": "Zillow",
         "email": "a@example.com",
         "smartListId": "74",

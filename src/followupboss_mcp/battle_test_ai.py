@@ -152,18 +152,25 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
             description=(
                 "Broad people search. Do not use for latest-owned-lead intent when "
                 "followupboss_get_latest_lead applies. Use for explicit name, email, phone, "
-                "or known numeric smart_list_id people searches. Do not use this for named "
-                "smart-list people prompts; use followupboss_search_people_in_smart_list."
+                "known numeric smart_list_id people searches, or direct documented search "
+                "filters such as contacted=false. Use contacted=false for uncontacted, "
+                "never-contacted, zero-communication, or no-communication leads. For a named "
+                "owner such as Scott Willey, pass assigned_to='Scott Willey'. Do not use this "
+                "for named smart-list people prompts; use followupboss_search_people_in_smart_list."
             ),
             input_schema={
                 "type": "object",
                 "properties": {
+                    "assigned_to": _string_schema("Assigned owner name filter."),
+                    "assigned_user_id": _integer_schema("Assigned owner user ID filter."),
+                    "contacted": {"type": "boolean"},
                     "name": _string_schema("Optional person name query."),
                     "smart_list_id": _integer_schema("Resolved smart list ID."),
                     "source": _string_schema(
                         "Lead source filter. Required as source='Zillow' whenever the prompt "
                         "mentions Zillow and a resolved smart_list_id is used."
                     ),
+                    "stage": _string_schema("Optional stage filter."),
                     "limit": _integer_schema("Optional page size."),
                 },
                 "additionalProperties": False,
@@ -173,8 +180,7 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
             name="followupboss_search_people_in_smart_list",
             description=(
                 "Search people inside one exact named smart list. Use this for named "
-                "smart-list prompts such as Zillow leads in Eligible For Transfer, "
-                "Zero Communication, or Needs Contact. This "
+                "smart-list prompts such as Zillow leads in Eligible For Transfer. This "
                 "tool resolves the list name internally, searches only inside that "
                 "smart-list ID, and returns smart-list provenance. Do not include people "
                 "absent from this tool result in the answer. When the prompt says Zillow "
@@ -474,6 +480,11 @@ def battle_test_selection_instructions() -> str:
         "or missed means followupboss_list_my_overdue_tasks; today, due today, or not miss "
         "today means followupboss_list_my_tasks_due_today; coming up, upcoming, later, after "
         "today, next, future, or ahead means followupboss_list_my_upcoming_tasks. "
+        "Use followupboss_search_people with contacted=false for uncontacted, never-contacted, "
+        "zero-communication, no-communication, or haven't communicated leads when the user is "
+        "asking for search filtering rather than a named saved list. If the prompt names an "
+        "owner such as Scott Willey, pass assigned_to='Scott Willey'. Do not list or resolve "
+        "smart lists for these direct search-filter prompts. "
         "Use followupboss_search_people_in_smart_list for named smart-list people prompts; "
         "pass the exact smart_list_name, such as Eligible For Transfer, and optional safe "
         "filters such as source='Zillow'. When the prompt says Zillow leads, include "
@@ -513,14 +524,10 @@ def battle_test_selection_instructions() -> str:
         "Fetch notes only with an explicit note ID. "
         "For multi-turn prompts, route the current user turn independently; use prior turns "
         "only to resolve references such as that lead, this contact, that list, or those leads. "
-        "For zero communication, no communication, Needs Contact, or similar saved-list follow-up "
-        "wording, use followupboss_search_people_in_smart_list when the prompt or prior context "
-        "identifies the saved list; do not inspect per-person activity or broad-search people to "
-        "infer communication status. For count-to-list follow-ups such as 'show those leads' after "
-        "a smart-list count, re-run followupboss_search_people_in_smart_list with the same "
-        "smart_list_name and owner scope from context. For named owners such as Scott Willey, pass "
-        "assigned_user_name rather than clarifying or searching account-wide; never invent an "
-        "assigned_user_id. "
+        "For count-to-list follow-ups such as 'show those leads' after a contacted=false people "
+        "search count, re-run followupboss_search_people with the same contacted and owner filters "
+        "from context. Only use smart-list follow-up context when the previous turn explicitly used "
+        "a smart list. "
         f"Use {_CLARIFY_TOOL} when the prompt needs more information before any MCP call. "
         f"Use {_UNSUPPORTED_TOOL} when this MCP or the Follow Up Boss API does not support "
         "the requested capability. Note history and notes by person, lead, or contact are "

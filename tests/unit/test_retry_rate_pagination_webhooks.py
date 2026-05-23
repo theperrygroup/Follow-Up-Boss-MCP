@@ -80,11 +80,17 @@ def test_shared_query_serialization_and_custom_field_helpers() -> None:
     }
 
     people_query = PeopleSearchRequest(
+        assigned_to="Scott Willey",
+        contacted=False,
         custom_field_filters={"customSource": "Zillow"},
         include_ponds=True,
         smart_list_id=74,
     )
-    assert people_query.to_query_params() == {"smartListId": "74"}
+    assert people_query.to_query_params() == {
+        "assignedTo": "Scott Willey",
+        "contacted": "false",
+        "smartListId": "74",
+    }
 
     valid = CustomFieldsService.validate_custom_field_names({"customBirthday": "2026-03-28"})
     assert valid == {"customBirthday": "2026-03-28"}
