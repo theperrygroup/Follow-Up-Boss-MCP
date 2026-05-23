@@ -2157,6 +2157,7 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     )
     assert uncontacted_alias_input.assigned_user_name == "Geordi"
     assert uncontacted_alias_input.source == "Zillow"
+    assert ListUncontactedLeadsToolInput(fields=["id", "name"]).fields == ["id", "name"]
     with pytest.raises(ValidationError, match="assigned_user_id must be a positive"):
         ListUncontactedLeadsToolInput(assigned_user_id=0)
     with pytest.raises(ValidationError, match="Unsupported no-communication lead fields"):
@@ -2208,6 +2209,76 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         )
     )["people"][0]["id"] == 2
     assert [request.offset for request in paginated_uncontacted_user_requests] == [0, 1]
+    paginated_no_communication_requests: list[PeopleSearchRequest] = []
+
+    async def search_paginated_no_communication_people(
+        request: PeopleSearchRequest,
+    ) -> PageResult[PersonRecord]:
+        paginated_no_communication_requests.append(request)
+        if len(paginated_no_communication_requests) == 1:
+            return PageResult(
+                items=[
+                    PersonRecord.model_validate(
+                        {
+                            "id": 10,
+                            "name": "Quiet One",
+                            "lastCommunication": None,
+                        }
+                    )
+                ],
+                metadata=PaginationMetadata(
+                    count=1,
+                    limit=1,
+                    next_token=None,
+                    next_link=None,
+                    offset=0,
+                    total=2,
+                ),
+            )
+        return PageResult(
+            items=[
+                PersonRecord.model_validate(
+                    {
+                        "id": 11,
+                        "name": "Recently Texted",
+                        "lastCommunication": {"id": 99, "type": "Text"},
+                    }
+                ),
+                PersonRecord.model_validate(
+                    {
+                        "id": 12,
+                        "name": "Quiet Two",
+                        "lastCommunication": "",
+                    }
+                ),
+            ],
+            metadata=PaginationMetadata(
+                count=2,
+                limit=2,
+                next_token=None,
+                next_link=None,
+                offset=1,
+                total=3,
+            ),
+        )
+
+    paginated_no_communication_adapter = FollowUpBossToolAdapter(
+        replace(
+            stub.bundle,
+            people=_service_stub(search_people=search_paginated_no_communication_people),
+        )
+    )
+    paginated_no_communication = await paginated_no_communication_adapter.list_uncontacted_leads(
+        ListUncontactedLeadsToolInput(fields=["id", "name"], limit=1, next_token="1")
+    )
+    assert paginated_no_communication["people"][0]["id"] == 12
+    assert paginated_no_communication["_metadata"]["total"] == 2
+    assert [request.offset for request in paginated_no_communication_requests] == [0, 1]
+    assert paginated_no_communication_requests[0].fields == ["id", "lastCommunication", "name"]
+    with pytest.raises(RuntimeError, match="pagination token is invalid"):
+        await paginated_no_communication_adapter.list_uncontacted_leads(
+            ListUncontactedLeadsToolInput(next_token="not-a-number")
+        )
     assert (await adapter.search_people(PeopleSearchRequest(smart_list_id=74)))["people"][0][
         "id"
     ] == 2
@@ -3337,6 +3408,90 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         await adapter.search_people(PeopleSearchRequest(include_ponds=True))
     with pytest.raises(RuntimeError, match="bad delete"):
         await adapter.delete_note(DeleteNoteToolInput(note_id=1))
+
+
+@pytest.mark.asyncio
+async def test_uncontacted_leads_reports_exact_total_after_local_filtering() -> None:
+    """The no-communication helper should report the exact filtered total."""
+    stub = StubBundle()
+    requests: list[PeopleSearchRequest] = []
+
+    async def search_people(request: PeopleSearchRequest) -> PageResult[PersonRecord]:
+        """Return a final raw page whose first record satisfies the local filter."""
+        requests.append(request)
+        if len(requests) > 1:
+            raise AssertionError("Only one final raw page is expected.")
+        return PageResult(
+            items=[
+                PersonRecord.model_validate({"id": 11, "lastCommunication": None}),
+                PersonRecord.model_validate(
+                    {"id": 12, "lastCommunication": {"type": "Call", "created": "2024-01-01"}}
+                ),
+            ],
+            metadata=PaginationMetadata(
+                count=2,
+                limit=100,
+                next_token=None,
+                next_link=None,
+                offset=0,
+                total=2,
+            ),
+        )
+
+    adapter = FollowUpBossToolAdapter(
+        replace(stub.bundle, people=_service_stub(search_people=search_people))
+    )
+
+    result = await adapter.list_uncontacted_leads(ListUncontactedLeadsToolInput(limit=1))
+
+    assert [person["id"] for person in result["people"]] == [11]
+    assert len(requests) == 1
+    assert result["_metadata"]["total"] == 1
+    assert result["_metadata"]["next_token"] is None
+
+
+@pytest.mark.asyncio
+async def test_uncontacted_leads_scans_raw_pages_before_reporting_zero_total() -> None:
+    """The no-communication helper should scan raw pages before returning zero."""
+    stub = StubBundle()
+    requests: list[PeopleSearchRequest] = []
+
+    async def search_people(request: PeopleSearchRequest) -> PageResult[PersonRecord]:
+        """Return communicated people so the helper must advance by raw pages."""
+        requests.append(request)
+        offset = request.offset or 0
+        people = [
+            PersonRecord.model_validate(
+                {
+                    "id": offset + index + 1,
+                    "lastCommunication": {"type": "Email", "created": "2024-01-01"},
+                }
+            )
+            for index in range(100)
+        ]
+        return PageResult(
+            items=people,
+            metadata=PaginationMetadata(
+                count=100,
+                limit=100,
+                next_token=None,
+                next_link=None,
+                offset=offset,
+                total=5_000,
+            ),
+        )
+
+    adapter = FollowUpBossToolAdapter(
+        replace(stub.bundle, people=_service_stub(search_people=search_people))
+    )
+
+    result = await adapter.list_uncontacted_leads(ListUncontactedLeadsToolInput(limit=25))
+
+    assert result["people"] == []
+    assert len(requests) == 10
+    assert [request.offset for request in requests] == [index * 100 for index in range(10)]
+    assert result["_metadata"]["total"] is None
+    assert cast("str", result["_metadata"]["next_token"]).startswith("scan:")
 
 
 @pytest.mark.asyncio

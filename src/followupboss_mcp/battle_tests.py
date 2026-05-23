@@ -6,10 +6,11 @@ from collections.abc import Callable, Mapping, Sequence
 from enum import StrEnum
 from pathlib import Path
 from random import Random
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from pydantic import Field, model_validator
 
+from followupboss_mcp.mcp_tools import FollowUpBossToolAdapter, ListUncontactedLeadsToolInput
 from followupboss_mcp.models.appointments import AppointmentListRequest, AppointmentRecord
 from followupboss_mcp.models.calls import CallListRequest, CallRecord
 from followupboss_mcp.models.common import JsonValue, RequestModel, ResponseModel
@@ -1777,31 +1778,27 @@ class ReadOnlyBattleTestOracle:
             A stable snapshot containing expected uncontacted person IDs and
             owner-scope metadata.
         """
-        assigned_user_id = _optional_int(transcript.arguments.get("assigned_user_id"))
-        assigned_user_name = _optional_string(transcript.arguments.get("assigned_user_name"))
-        if assigned_user_id is None and assigned_user_name is not None:
-            assigned_user_id = await self._resolve_user_id_by_name(assigned_user_name)
         mine = _optional_bool(transcript.arguments.get("mine")) is not False
-        if assigned_user_id is None and mine:
-            assigned_user_id = await self._authenticated_user_id()
-        page = await self._services.people.search_people(
-            PeopleSearchRequest(
-                assigned_user_id=assigned_user_id,
-                fields=sorted(
-                    set(_optional_string_list(transcript.arguments.get("fields")) or [])
-                    | {"id", "lastCommunication"}
-                ),
-                limit=_optional_int(transcript.arguments.get("limit")),
-                next_token=_optional_string(transcript.arguments.get("next_token")),
-                offset=_optional_int(transcript.arguments.get("offset")),
-                sort="-created",
-                source=_optional_string(transcript.arguments.get("source")),
-                stage=_optional_string(transcript.arguments.get("stage")),
-            )
+        tool_input = ListUncontactedLeadsToolInput(
+            assigned_user_id=_optional_int(transcript.arguments.get("assigned_user_id")),
+            assigned_user_name=_optional_string(transcript.arguments.get("assigned_user_name")),
+            owner_name=_optional_string(transcript.arguments.get("owner_name")),
+            agent_name=_optional_string(transcript.arguments.get("agent_name")),
+            fields=_optional_string_list(transcript.arguments.get("fields")),
+            lead_source=_optional_string(transcript.arguments.get("lead_source")),
+            mine=mine,
+            next_token=_optional_string(transcript.arguments.get("next_token")),
+            offset=_optional_int(transcript.arguments.get("offset")),
+            limit=_optional_int(transcript.arguments.get("limit")),
+            source=_optional_string(transcript.arguments.get("source")),
+            source_name=_optional_string(transcript.arguments.get("source_name")),
+            stage=_optional_string(transcript.arguments.get("stage")),
         )
-        no_communication_people = [
-            person for person in page.items if person.last_communication in (None, "", 0, "0")
-        ]
+        service_bundle = cast(Any, self._services)
+        assigned_user_id = await tool_input.resolved_assigned_user_id(service_bundle)
+        page = await FollowUpBossToolAdapter(service_bundle)._list_uncontacted_leads(
+            tool_input.model_copy(update={"assigned_user_id": assigned_user_id})
+        )
         return BattleTestOracleSnapshot(
             scenario_id=scenario.id,
             kind=scenario.api_oracle.kind,
@@ -1811,7 +1808,7 @@ class ReadOnlyBattleTestOracle:
                 "assigned_user_id": assigned_user_id,
                 "last_communication": None,
                 "mine": mine,
-                "person_ids": [_record_id(person) for person in no_communication_people],
+                "person_ids": [_record_id(person) for person in page.items],
             },
         )
 

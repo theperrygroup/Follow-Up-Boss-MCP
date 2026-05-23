@@ -210,6 +210,28 @@ class StubPeopleService:
 
 
 @dataclass
+class PagedStubPeopleService(StubPeopleService):
+    """People service stub that returns pages by requested offset."""
+
+    pages: dict[int, PageResult[PersonRecord]] = field(default_factory=dict)
+
+    async def search_people(
+        self, request: PeopleSearchRequest | None = None
+    ) -> PageResult[PersonRecord]:
+        """Return the page matching the requested search offset.
+
+        Args:
+            request: People search request emitted by the oracle.
+
+        Returns:
+            The configured page for the request offset.
+        """
+        normalized_request = request or PeopleSearchRequest()
+        self.requests.append(normalized_request)
+        return self.pages[normalized_request.offset or 0]
+
+
+@dataclass
 class StubTasksService:
     page: PageResult[TaskRecord]
     requests: list[TaskListRequest] = field(default_factory=list)
@@ -1703,7 +1725,7 @@ async def test_zero_communication_grounding_uses_uncontacted_helper() -> None:
     assert services.people.requests[0].fields is not None
     assert "lastCommunication" in services.people.requests[0].fields
     assert services.people.requests[0].smart_list_id is None
-    assert services.people.requests[0].limit == 25
+    assert services.people.requests[0].limit == 100
 
 
 @pytest.mark.asyncio
@@ -1749,6 +1771,76 @@ async def test_my_uncontacted_grounding_uses_authenticated_owner_scope() -> None
     assert services.people.requests[0].fields is not None
     assert "lastCommunication" in services.people.requests[0].fields
     assert services.people.requests[0].smart_list_id is None
+
+
+@pytest.mark.asyncio
+async def test_uncontacted_oracle_scans_like_tool_before_filtering() -> None:
+    """The oracle should mirror bounded helper scanning before local filtering."""
+    scenario = scenario_by_id("BT-READ-019")
+    communicated_people = [
+        PersonRecord.model_validate(
+            {
+                "id": index,
+                "name": f"Communicated {index}",
+                "assignedUserId": 7,
+                "lastCommunication": {"type": "Call", "created": "2024-01-01"},
+            }
+        )
+        for index in range(1, 101)
+    ]
+    target_person = PersonRecord.model_validate(
+        {
+            "id": 724,
+            "name": "Wesley Binks",
+            "assignedUserId": 7,
+            "lastCommunication": None,
+        }
+    )
+    people = PagedStubPeopleService(
+        page=_people_page(),
+        pages={
+            0: PageResult(
+                items=communicated_people,
+                metadata=PaginationMetadata(
+                    count=100,
+                    limit=100,
+                    next_token=None,
+                    next_link=None,
+                    offset=0,
+                    total=101,
+                ),
+            ),
+            100: PageResult(
+                items=[target_person],
+                metadata=PaginationMetadata(
+                    count=1,
+                    limit=100,
+                    next_token=None,
+                    next_link=None,
+                    offset=100,
+                    total=101,
+                ),
+            ),
+        },
+    )
+    services = StubBattleTestServices(
+        identity=StubIdentityService(7),
+        people=people,
+        tasks=StubTasksService(_tasks_page()),
+    )
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt="List my never-contacted leads.",
+        selected_tool="followupboss_list_uncontacted_leads",
+        arguments={"limit": 1},
+        response={"people": [{"id": 724, "name": "Wesley Binks", "lastCommunication": None}]},
+    )
+
+    evaluation = await ReadOnlyBattleTestOracle(services).evaluate(scenario, transcript)
+
+    assert evaluation.passed is True
+    assert [request.limit for request in people.requests] == [100, 100]
+    assert [request.offset for request in people.requests] == [0, 100]
 
 
 @pytest.mark.asyncio

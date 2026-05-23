@@ -209,6 +209,9 @@ _UNCOMMUNICATED_LEAD_RESPONSE_FIELDS = frozenset(
     }
 )
 _UNCOMMUNICATED_LEAD_FILTER_FIELDS = frozenset({"id", "lastCommunication"})
+_UNCOMMUNICATED_LEAD_FETCH_LIMIT = 100
+_UNCOMMUNICATED_LEAD_MAX_SCAN_PAGES = 10
+_UNCOMMUNICATED_LEAD_TOKEN_PREFIX = "scan:"
 
 
 class GetPersonToolInput(PersonLookupRequest):
@@ -495,6 +498,42 @@ class ListUncontactedLeadsToolInput(RequestModel):
                 f"Unsupported no-communication lead fields: {invalid}. "
                 f"Allowed fields: {allowed_fields}."
             )
+        return value
+
+    @field_validator("limit")
+    @classmethod
+    def _validate_limit(cls, value: int | None) -> int | None:
+        """Require positive local page sizes when supplied.
+
+        Args:
+            value: Candidate local filtered-result page size.
+
+        Returns:
+            The validated page size or `None`.
+
+        Raises:
+            ValueError: If the page size is not positive.
+        """
+        if value is not None and value <= 0:
+            raise ValueError("limit must be a positive integer.")
+        return value
+
+    @field_validator("offset")
+    @classmethod
+    def _validate_offset(cls, value: int | None) -> int | None:
+        """Require non-negative local offsets when supplied.
+
+        Args:
+            value: Candidate filtered-result offset.
+
+        Returns:
+            The validated offset or `None`.
+
+        Raises:
+            ValueError: If the offset is negative.
+        """
+        if value is not None and value < 0:
+            raise ValueError("offset must be a non-negative integer.")
         return value
 
     @model_validator(mode="after")
@@ -1238,12 +1277,12 @@ class FollowUpBossToolAdapter:
         """
         self._fixed_services: ServiceBundle | None
         self._service_bundle_resolver: ServiceBundleResolver | None
-        if isinstance(services, ServiceBundle):
+        if hasattr(services, "service_bundle"):
+            self._fixed_services = None
+            self._service_bundle_resolver = cast(ServiceBundleResolver, services)
+        else:
             self._fixed_services = services
             self._service_bundle_resolver = None
-        else:
-            self._fixed_services = None
-            self._service_bundle_resolver = services
 
     @property
     def _services(self) -> ServiceBundle:
@@ -1529,46 +1568,7 @@ class FollowUpBossToolAdapter:
         Returns:
             A filtered page of people whose `lastCommunication` is empty.
         """
-        assigned_user_id = await tool_input.resolved_assigned_user_id(self._services)
-        requested_fields = _uncommunicated_lead_fields(tool_input.fields)
-        matches: list[PersonRecord] = []
-        fetch_offset = 0
-        fetch_limit = 100
-        while True:
-            request = PeopleSearchRequest(
-                assigned_user_id=assigned_user_id,
-                fields=requested_fields,
-                limit=fetch_limit,
-                offset=fetch_offset,
-                sort="-created",
-                source=tool_input.source,
-                stage=tool_input.stage,
-            )
-            page = await self._services.people.search_people(request)
-            matches.extend(
-                person
-                for person in page.items
-                if _is_empty_last_communication(person.last_communication)
-            )
-            if not page.metadata.has_next() or page.metadata.count == 0:
-                break
-            fetch_offset = page.metadata.offset + page.metadata.count
-
-        page_offset = _pagination_offset(tool_input)
-        page_limit = tool_input.limit or 25
-        page_items = matches[page_offset : page_offset + page_limit]
-        next_offset = page_offset + len(page_items)
-        return PageResult(
-            items=page_items,
-            metadata=PaginationMetadata(
-                count=len(page_items),
-                limit=page_limit,
-                next_token=str(next_offset) if next_offset < len(matches) else None,
-                next_link=None,
-                offset=page_offset,
-                total=len(matches),
-            ),
-        )
+        return await _list_uncontacted_leads_page(self._services, tool_input)
 
     async def search_people_in_smart_list(
         self,
@@ -3095,6 +3095,76 @@ class FollowUpBossToolAdapter:
                 _ACTIVE_SERVICE_BUNDLE.reset(token)
 
 
+async def _list_uncontacted_leads_page(
+    services: ServiceBundle,
+    tool_input: ListUncontactedLeadsToolInput,
+) -> PageResult[PersonRecord]:
+    """Return one bounded page of no-communication leads.
+
+    Args:
+        services: Service bundle used to resolve owner scope and search people.
+        tool_input: Validated no-communication helper input.
+
+    Returns:
+        A page of people whose `lastCommunication` is empty, plus continuation
+        metadata when more raw results may need scanning.
+    """
+    assigned_user_id = await tool_input.resolved_assigned_user_id(services)
+    requested_fields = _uncommunicated_lead_fields(tool_input.fields)
+    page_offset, fetch_offset, remaining_skip = _uncommunicated_lead_scan_state(tool_input)
+    page_limit = tool_input.limit or 25
+    matches: list[PersonRecord] = []
+    pages_scanned = 0
+    has_more_raw_results = False
+    next_raw_offset: int | None = fetch_offset
+    while pages_scanned < _UNCOMMUNICATED_LEAD_MAX_SCAN_PAGES:
+        request = PeopleSearchRequest(
+            assigned_user_id=assigned_user_id,
+            fields=requested_fields,
+            limit=_UNCOMMUNICATED_LEAD_FETCH_LIMIT,
+            offset=fetch_offset,
+            sort="-created",
+            source=tool_input.source,
+            stage=tool_input.stage,
+        )
+        page = await services.people.search_people(request)
+        pages_scanned += 1
+        has_more_raw_results = page.metadata.has_next() and page.metadata.count > 0
+
+        for person in page.items:
+            if not _is_empty_last_communication(person.last_communication):
+                continue
+            if remaining_skip > 0:
+                remaining_skip -= 1
+                continue
+            matches.append(person)
+
+        if not page.metadata.has_next() or page.metadata.count == 0:
+            break
+        fetch_offset = page.metadata.offset + page.metadata.count
+        next_raw_offset = fetch_offset
+
+    page_items = matches[:page_limit]
+    total_seen = page_offset - remaining_skip + len(matches)
+    next_offset = page_offset + len(page_items)
+    next_token = None
+    if has_more_raw_results and next_raw_offset is not None:
+        next_token = _uncommunicated_lead_next_token(next_raw_offset, next_offset)
+    elif len(page_items) < len(matches):
+        next_token = str(next_offset)
+    return PageResult(
+        items=page_items,
+        metadata=PaginationMetadata(
+            count=len(page_items),
+            limit=page_limit,
+            next_token=next_token,
+            next_link=None,
+            offset=page_offset,
+            total=None if has_more_raw_results else total_seen,
+        ),
+    )
+
+
 def _mcp_safe_error(exc: FollowUpBossError) -> str:
     """Return an MCP-safe error message."""
     if isinstance(exc, FollowUpBossRateLimitError) and exc.retry_after_seconds is not None:
@@ -3130,23 +3200,50 @@ def _is_empty_last_communication(value: object) -> bool:
     return value in (None, "", 0, "0")
 
 
-def _pagination_offset(tool_input: ListUncontactedLeadsToolInput) -> int:
-    """Return the filtered-result offset requested by the MCP caller.
+
+def _uncommunicated_lead_scan_state(
+    tool_input: ListUncontactedLeadsToolInput,
+) -> tuple[int, int, int]:
+    """Return the local offset, raw fetch offset, and match skip count.
 
     Args:
         tool_input: Validated no-communication helper input.
 
     Returns:
-        The explicit offset, numeric next token, or zero.
+        A tuple containing the filtered-result offset, Follow Up Boss raw
+        search offset to start scanning from, and filtered matches to skip.
 
     Raises:
-        RuntimeError: If the supplied next token is not a numeric filtered offset.
+        RuntimeError: If the supplied continuation token cannot be parsed.
     """
     if tool_input.next_token is None:
-        return tool_input.offset or 0
-    if not tool_input.next_token.isdigit():
-        raise RuntimeError("Uncontacted lead pagination token must be a numeric offset.")
-    return int(tool_input.next_token)
+        offset = tool_input.offset or 0
+        return offset, 0, offset
+    if tool_input.next_token.isdigit():
+        offset = int(tool_input.next_token)
+        return offset, 0, offset
+    if not tool_input.next_token.startswith(_UNCOMMUNICATED_LEAD_TOKEN_PREFIX):
+        raise RuntimeError("Uncontacted lead pagination token is invalid.")
+    token_parts = tool_input.next_token.removeprefix(_UNCOMMUNICATED_LEAD_TOKEN_PREFIX).split(":")
+    if len(token_parts) != 2 or not all(part.isdigit() for part in token_parts):
+        raise RuntimeError("Uncontacted lead pagination token is invalid.")
+    raw_offset, filtered_offset = (int(part) for part in token_parts)
+    return filtered_offset, raw_offset, 0
+
+
+def _uncommunicated_lead_next_token(raw_offset: int, filtered_offset: int) -> str:
+    """Return an opaque continuation token for the bounded scan helper.
+
+    Args:
+        raw_offset: Follow Up Boss people-search offset where scanning should
+            resume.
+        filtered_offset: Filtered-result offset represented by the next page.
+
+    Returns:
+        An opaque token that preserves raw scan progress without requiring the
+        next call to rescan already-inspected people.
+    """
+    return f"{_UNCOMMUNICATED_LEAD_TOKEN_PREFIX}{raw_offset}:{filtered_offset}"
 
 
 def _coalesce_text_aliases(
