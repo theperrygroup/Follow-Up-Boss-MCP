@@ -557,7 +557,9 @@ def test_read_only_tool_specs_include_expanded_read_surfaces() -> None:
         specs["followupboss_search_people_in_smart_list"].description
     )
     assert "assigned_user_name" in specs["followupboss_search_people_in_smart_list"].description
-    assert "source='Zillow'" in specs["followupboss_search_people_in_smart_list"].description
+    assert "do not add source='Zillow'" in (
+        specs["followupboss_search_people_in_smart_list"].description
+    )
     assert "defaults to mine=true" in specs["followupboss_search_people_in_smart_list"].description
     assert cast(
         dict[str, object],
@@ -602,7 +604,7 @@ def test_selection_instructions_explain_unsupported_note_search() -> None:
     assert "Use followupboss_search_people with contacted=false only" in instructions
     assert "followupboss_list_smart_lists" in instructions
     assert "Use followupboss_search_people_in_smart_list" in instructions
-    assert "When the prompt says Zillow leads, include source='Zillow'" in instructions
+    assert "do not add source='Zillow'" in instructions
     assert "set mine=true" in instructions
     assert "Set mine=false only when the prompt explicitly asks for everyone" in instructions
     assert "do not invent owner IDs" in instructions

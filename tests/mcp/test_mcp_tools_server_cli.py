@@ -2421,6 +2421,30 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert stub.people_search_requests[-1].smart_list_id == 74
     assert stub.people_search_requests[-1].source == "Zillow"
     assert stub.people_search_requests[-1].limit == 5
+    eligible_transfer_services = replace(
+        stub.bundle,
+        smart_lists=_service_stub(
+            list_smart_lists=lambda _request: asyncio.sleep(
+                0,
+                result=PageResult(
+                    items=[SmartListRecord(id=77, name="Eligible For Transfer")],
+                    metadata=_page_metadata(),
+                ),
+            ),
+            get_smart_list=stub.bundle.smart_lists.get_smart_list,
+        ),
+    )
+    eligible_transfer_adapter = FollowUpBossToolAdapter(eligible_transfer_services)
+    eligible_transfer_people = await eligible_transfer_adapter.search_people_in_smart_list(
+        SearchPeopleInSmartListToolInput(
+            smart_list_name="Eligible For Transfer",
+            source="Zillow",
+        )
+    )
+    assert eligible_transfer_people["people"][0]["id"] == 2
+    assert stub.people_search_requests[-1].assigned_user_id == 1
+    assert stub.people_search_requests[-1].smart_list_id == 77
+    assert stub.people_search_requests[-1].source is None
     everyone_smart_list_people = await adapter.search_people_in_smart_list(
         SearchPeopleInSmartListToolInput(
             smart_list_name="Active Buyers",

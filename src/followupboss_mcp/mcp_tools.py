@@ -438,6 +438,20 @@ class SearchPeopleInSmartListToolInput(RequestModel):
             raise RuntimeError("smart_list_name must be normalized before helper execution.")
         return self.smart_list_name
 
+    def resolved_source_filter(self) -> str | None:
+        """Return the lead-source filter allowed for this smart-list search.
+
+        Returns:
+            The optional source filter, except for `Eligible For Transfer` where
+            the named smart list is the source of truth for Zillow follow-up
+            workflows and must not be narrowed by a separate lead-source query.
+        """
+        if self.source is None:
+            return None
+        if _is_eligible_for_transfer_smart_list(self.resolved_smart_list_name()):
+            return None
+        return self.source
+
 
 class ListUncontactedLeadsToolInput(RequestModel):
     """Tool input for direct no-communication lead searches."""
@@ -1599,7 +1613,7 @@ class FollowUpBossToolAdapter:
                         limit=tool_input.limit,
                         next_token=tool_input.next_token,
                         offset=tool_input.offset,
-                        source=tool_input.source,
+                        source=tool_input.resolved_source_filter(),
                         stage=tool_input.stage,
                         smart_list_id=smart_list.id,
                     )
@@ -3372,6 +3386,18 @@ def _normalize_smart_list_name(value: str) -> str:
     """
     collapsed = " ".join(value.casefold().strip().split())
     return _strip_decorative_name_edges(collapsed)
+
+
+def _is_eligible_for_transfer_smart_list(value: str) -> bool:
+    """Return whether a smart-list name is the Zillow transfer boundary.
+
+    Args:
+        value: Raw or normalized smart-list name.
+
+    Returns:
+        `True` when the name matches `Eligible For Transfer`.
+    """
+    return _normalize_smart_list_name(value) == "eligible for transfer"
 
 
 def _strip_decorative_name_edges(value: str) -> str:

@@ -170,8 +170,9 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
                     "name": _string_schema("Optional person name query."),
                     "smart_list_id": _integer_schema("Resolved smart list ID."),
                     "source": _string_schema(
-                        "Lead source filter. Required as source='Zillow' whenever the prompt "
-                        "mentions Zillow and a resolved smart_list_id is used."
+                        "Lead source filter for explicit low-level source searches. Do not use "
+                        "as the boundary for Zillow follow-up workflows mapped to a named "
+                        "smart list such as Eligible For Transfer."
                     ),
                     "stage": _string_schema("Optional stage filter."),
                     "limit": _integer_schema("Optional page size."),
@@ -229,12 +230,13 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
                 "the user explicitly says smart list or saved list. This "
                 "tool resolves the list name internally, searches only inside that "
                 "smart-list ID, and returns smart-list provenance. Do not include people "
-                "absent from this tool result in the answer. When the prompt says Zillow "
-                "leads, include source='Zillow'. The helper defaults to mine=true, so "
-                "omitted owner scope is authenticated-user scoped. Set mine=false only "
-                "for explicit everyone/account-wide prompts. For named owners such as "
-                "Scott Willey, pass assigned_user_name and let the helper resolve it. "
-                "Do not invent owner IDs."
+                "absent from this tool result in the answer. For Eligible For Transfer "
+                "Zillow follow-up workflows, use smart_list_name='Eligible For Transfer' "
+                "as the source of truth and do not add source='Zillow'. The helper "
+                "defaults to mine=true, so omitted owner scope is authenticated-user "
+                "scoped. Set mine=false only for explicit everyone/account-wide prompts. "
+                "For named owners such as Scott Willey, pass assigned_user_name and let "
+                "the helper resolve it. Do not invent owner IDs."
             ),
             input_schema={
                 "type": "object",
@@ -536,12 +538,12 @@ def battle_test_selection_instructions() -> str:
         "contacted=false only when the user explicitly asks for raw people-search filter "
         "arguments. "
         "Use followupboss_search_people_in_smart_list for named smart-list people prompts; "
-        "pass the exact smart_list_name, such as Eligible For Transfer, and optional safe "
-        "filters such as source='Zillow'. When the prompt says Zillow leads, include "
-        "source='Zillow'. Treat 'came from Zillow', 'source is Zillow', 'Zillow follow-up "
-        "block', 'boundary for Zillow follow-ups', and 'Zillow leads I should call' the "
-        "same way: use smart_list_name='Eligible For Transfer' and source='Zillow' when "
-        "Eligible For Transfer is named. For named smart-list follow-up prompts using I, "
+        "pass the exact smart_list_name, such as Eligible For Transfer. Treat 'came from "
+        "Zillow', 'source is Zillow', 'Zillow follow-up block', 'boundary for Zillow "
+        "follow-ups', and 'Zillow leads I should call' as named-list routing cues when "
+        "Eligible For Transfer is named or present in prior context: use "
+        "smart_list_name='Eligible For Transfer' as the source of truth and do not add "
+        "source='Zillow'. For named smart-list follow-up prompts using I, "
         "me, my, mine, I should call, I need to work, or do I need to follow up, set "
         "mine=true so the helper scopes to the authenticated user even when the credential "
         "is admin-visible. Set mine=false only when the prompt explicitly asks for everyone, "

@@ -1959,7 +1959,10 @@ class ReadOnlyBattleTestOracle:
                 limit=_optional_int(transcript.arguments.get("limit")),
                 next_token=_optional_string(transcript.arguments.get("next_token")),
                 offset=_optional_int(transcript.arguments.get("offset")),
-                source=_optional_string(transcript.arguments.get("source")),
+                source=_named_smart_list_source_filter(
+                    smart_list.name or smart_list_name,
+                    transcript,
+                ),
                 stage=_optional_string(transcript.arguments.get("stage")),
                 smart_list_id=smart_list.id,
             )
@@ -2350,6 +2353,15 @@ def _compare_named_smart_list_helper_route(
             f"Expected helper smartlist id {expected_smart_list_id!r}, "
             f"got {smart_list.get('id')!r}."
         )
+    if isinstance(expected_smart_list_name, str) and _is_eligible_for_transfer_smart_list(
+        expected_smart_list_name
+    ):
+        actual_source = _optional_string(transcript.arguments.get("source"))
+        if actual_source is not None:
+            failures.append(
+                "Expected Eligible For Transfer route to omit lead-source filters; "
+                f"got source={actual_source!r}."
+            )
     if isinstance(expected_assigned_user_id, int):
         actual_assigned_user_id = _optional_int(transcript.arguments.get("assigned_user_id"))
         if _optional_bool(transcript.arguments.get("mine")) is False and (
@@ -2634,6 +2646,37 @@ def _normalize_smart_list_name(value: str) -> str:
     """Normalize a smart-list name for exact matching."""
     collapsed = " ".join(value.casefold().strip().split())
     return _strip_decorative_smart_list_name_edges(collapsed)
+
+
+def _is_eligible_for_transfer_smart_list(value: str) -> bool:
+    """Return whether a smart-list name is the Zillow transfer boundary.
+
+    Args:
+        value: Raw or normalized smart-list name.
+
+    Returns:
+        `True` when the name matches `Eligible For Transfer`.
+    """
+    return _normalize_smart_list_name(value) == "eligible for transfer"
+
+
+def _named_smart_list_source_filter(
+    smart_list_name: str,
+    transcript: BattleTestTranscript,
+) -> str | None:
+    """Return the source filter that should be mirrored by the oracle.
+
+    Args:
+        smart_list_name: Resolved smart-list name for the route.
+        transcript: Captured tool transcript that may include optional filters.
+
+    Returns:
+        The transcript source filter, except for `Eligible For Transfer` where the
+        list itself is the lead-source boundary.
+    """
+    if _is_eligible_for_transfer_smart_list(smart_list_name):
+        return None
+    return _optional_string(transcript.arguments.get("source"))
 
 
 def _normalize_user_name(value: str) -> str:
@@ -3502,15 +3545,13 @@ _SMART_LIST_GROUNDING_SCENARIOS: tuple[BattleTestScenario, ...] = (
             "Pull my Zillow people from the eligible transfer smart list.",
         ),
         expected_mcp=ExpectedMcpRoute(
-            allowed_tools=(
-                "followupboss_search_people_in_smart_list",
-                "followupboss_search_people",
-            ),
+            allowed_tools=("followupboss_search_people_in_smart_list",),
             forbidden_tools=(
                 "followupboss_get_latest_lead",
+                "followupboss_search_people",
                 "followupboss_list_smart_lists",
             ),
-            required_argument_keys=("source",),
+            required_argument_keys=("smart_list_name",),
         ),
         api_oracle=ApiOracleSpec(
             kind=BattleTestOracleKind.NAMED_SMART_LIST_PEOPLE,
@@ -3579,7 +3620,7 @@ _SMART_LIST_GROUNDING_SCENARIOS: tuple[BattleTestScenario, ...] = (
                 "followupboss_search_people",
                 "followupboss_list_smart_lists",
             ),
-            required_argument_keys=("smart_list_name", "source", "mine"),
+            required_argument_keys=("smart_list_name", "mine"),
             required_argument_values={"mine": False},
         ),
         api_oracle=ApiOracleSpec(

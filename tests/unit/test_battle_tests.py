@@ -612,9 +612,13 @@ def test_smart_list_grounding_corpus_targets_zillow_regression() -> None:
     )
     assert scenario_by_id("BT-SMARTLIST-002").expected_mcp.allowed_tools == (
         "followupboss_search_people_in_smart_list",
-        "followupboss_search_people",
     )
-    assert scenario_by_id("BT-SMARTLIST-002").expected_mcp.required_argument_keys == ("source",)
+    assert "followupboss_search_people" in scenario_by_id(
+        "BT-SMARTLIST-002"
+    ).expected_mcp.forbidden_tools
+    assert scenario_by_id("BT-SMARTLIST-002").expected_mcp.required_argument_keys == (
+        "smart_list_name",
+    )
     assert scenario_by_id("BT-SMARTLIST-002").expected_mcp.required_argument_values == {}
     assert len(scenario_by_id("BT-SMARTLIST-002").prompt_variants) == 45
     assert scenario_by_id("BT-SMARTLIST-004").expected_mcp.required_argument_values == {
@@ -1529,7 +1533,6 @@ async def test_named_smart_list_grounding_resolves_exact_list_and_people() -> No
         selected_tool="followupboss_search_people_in_smart_list",
         arguments={
             "smart_list_name": "Eligible For Transfer",
-            "source": "Zillow",
             "mine": True,
             "limit": 10,
         },
@@ -1546,10 +1549,45 @@ async def test_named_smart_list_grounding_resolves_exact_list_and_people() -> No
     assert services.smart_lists.requests[0].include_all is True
     assert services.people.requests[0].smart_list_id == 77
     assert services.people.requests[0].assigned_user_id == 7
-    assert services.people.requests[0].source == "Zillow"
+    assert services.people.requests[0].source is None
     assert services.people.requests[0].limit == 10
     assert evaluation.oracle_snapshot is not None
     assert evaluation.oracle_snapshot.expected["allowed_answer_phones"] == ["5550001111"]
+
+
+@pytest.mark.asyncio
+async def test_named_smart_list_grounding_rejects_eligible_transfer_source_filter() -> None:
+    """Eligible For Transfer should be the only source boundary for Zillow workflows."""
+    scenario = scenario_by_id("BT-SMARTLIST-002")
+    services = _services(
+        smart_lists=_smart_lists_page(
+            SmartListRecord.model_validate({"id": 77, "name": "Eligible For Transfer"})
+        ),
+        people=_people_page(PersonRecord.model_validate({"id": 21, "name": "Jane Zillow"})),
+    )
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        selected_tool="followupboss_search_people_in_smart_list",
+        arguments={
+            "smart_list_name": "Eligible For Transfer",
+            "source": "Zillow",
+            "mine": True,
+        },
+        response={
+            "smartlist": {"id": 77, "name": "Eligible For Transfer"},
+            "people": [{"id": 21, "name": "Jane Zillow"}],
+        },
+    )
+
+    evaluation = await ReadOnlyBattleTestOracle(services).evaluate(scenario, transcript)
+
+    assert evaluation.passed is False
+    assert (
+        "Expected Eligible For Transfer route to omit lead-source filters; got source='Zillow'."
+        in evaluation.failures
+    )
+    assert services.people.requests[0].source is None
 
 
 @pytest.mark.asyncio
@@ -1607,7 +1645,6 @@ async def test_named_smart_list_grounding_resolves_paginated_owner_name() -> Non
         selected_tool="followupboss_search_people_in_smart_list",
         arguments={
             "smart_list_name": "Eligible For Transfer",
-            "source": "Zillow",
             "assigned_user_name": " Scott   Willey ",
         },
         response={
@@ -1639,7 +1676,6 @@ async def test_named_smart_list_grounding_rejects_missing_or_ambiguous_owner_nam
         selected_tool="followupboss_search_people_in_smart_list",
         arguments={
             "smart_list_name": "Eligible For Transfer",
-            "source": "Zillow",
             "assigned_user_name": "Geordi",
         },
         response={"smartlist": {"id": 77}, "people": []},
@@ -2004,7 +2040,7 @@ async def test_named_smart_list_grounding_rejects_unowned_my_followup_route() ->
         scenario_id=scenario.id,
         prompt=scenario.prompt_variants[0],
         selected_tool="followupboss_search_people_in_smart_list",
-        arguments={"smart_list_name": "Eligible For Transfer", "source": "Zillow", "mine": False},
+        arguments={"smart_list_name": "Eligible For Transfer", "mine": False},
         response={
             "smartlist": {"id": 77, "name": "Eligible For Transfer"},
             "people": [{"id": 21, "name": "Jane Zillow"}],
@@ -2026,7 +2062,7 @@ async def test_named_smart_list_grounding_rejects_broad_search_owner_bypass() ->
         update={
             "expected_mcp": ExpectedMcpRoute(
                 allowed_tools=("followupboss_search_people",),
-                required_argument_keys=("smart_list_id", "source"),
+                required_argument_keys=("smart_list_id",),
             )
         }
     )
@@ -2043,7 +2079,7 @@ async def test_named_smart_list_grounding_rejects_broad_search_owner_bypass() ->
         scenario_id=scenario.id,
         prompt=scenario.prompt_variants[0],
         selected_tool="followupboss_search_people",
-        arguments={"smart_list_id": 77, "source": "Zillow"},
+        arguments={"smart_list_id": 77},
         response={
             "people": [
                 {"id": 999, "name": "Account Wide Lead", "assignedUserId": 102},
@@ -2071,7 +2107,7 @@ async def test_named_smart_list_grounding_accepts_explicit_assigned_user_scope(
         update={
             "expected_mcp": ExpectedMcpRoute(
                 allowed_tools=("followupboss_search_people_in_smart_list",),
-                required_argument_keys=("smart_list_name", "source", "assigned_user_id"),
+                required_argument_keys=("smart_list_name", "assigned_user_id"),
                 required_argument_values={"assigned_user_id": 101},
             ),
             "api_oracle": base_scenario.api_oracle.model_copy(
@@ -2089,7 +2125,6 @@ async def test_named_smart_list_grounding_accepts_explicit_assigned_user_scope(
     )
     arguments: dict[str, JsonValue] = {
         "smart_list_name": "Eligible For Transfer",
-        "source": "Zillow",
         "assigned_user_id": 101,
     }
     if mine_argument is not None:
@@ -2152,7 +2187,7 @@ async def test_named_smart_list_grounding_resolves_list_from_later_page() -> Non
         scenario_id=scenario.id,
         prompt=scenario.prompt_variants[0],
         selected_tool="followupboss_search_people_in_smart_list",
-        arguments={"smart_list_name": "Eligible For Transfer", "source": "Zillow", "mine": True},
+        arguments={"smart_list_name": "Eligible For Transfer", "mine": True},
         response={
             "smartlist": {"id": 77, "name": "Eligible For Transfer"},
             "people": [{"id": 21, "name": "Jane Zillow"}],
@@ -2179,7 +2214,7 @@ async def test_named_smart_list_grounding_rejects_off_list_response() -> None:
         scenario_id=scenario.id,
         prompt=scenario.prompt_variants[0],
         selected_tool="followupboss_search_people_in_smart_list",
-        arguments={"smart_list_name": "Eligible For Transfer", "source": "Zillow", "mine": True},
+        arguments={"smart_list_name": "Eligible For Transfer", "mine": True},
         response={
             "smartlist": {"id": 77, "name": "Eligible For Transfer"},
             "people": [{"id": 999, "name": "Off List"}],
@@ -2213,7 +2248,7 @@ async def test_named_smart_list_grounding_rejects_answer_leakage() -> None:
         scenario_id=scenario.id,
         prompt=scenario.prompt_variants[0],
         selected_tool="followupboss_search_people_in_smart_list",
-        arguments={"smart_list_name": "Eligible For Transfer", "source": "Zillow", "mine": True},
+        arguments={"smart_list_name": "Eligible For Transfer", "mine": True},
         response={
             "smartlist": {"id": 77, "name": "Eligible For Transfer"},
             "people": [{"id": 21, "name": "Jane Zillow"}],
@@ -2251,7 +2286,7 @@ async def test_named_smart_list_grounding_reports_wrong_helper_provenance() -> N
         scenario_id=scenario.id,
         prompt=scenario.prompt_variants[0],
         selected_tool="followupboss_search_people_in_smart_list",
-        arguments={"smart_list_name": "Eligible For Transfer", "source": "Zillow", "mine": True},
+        arguments={"smart_list_name": "Eligible For Transfer", "mine": True},
         response={
             "smartlist": {"id": 78, "name": "Wrong List"},
             "people": [{"id": 21, "name": "Jane Zillow"}],
@@ -2462,7 +2497,7 @@ async def test_named_smart_list_grounding_requires_configured_list_name() -> Non
         scenario_id=scenario.id,
         prompt=scenario.prompt_variants[0],
         selected_tool="followupboss_search_people_in_smart_list",
-        arguments={"smart_list_name": "Eligible For Transfer", "source": "Zillow", "mine": True},
+        arguments={"smart_list_name": "Eligible For Transfer", "mine": True},
         response={"smartlist": {"id": 77}, "people": []},
     )
 
@@ -2481,7 +2516,7 @@ async def test_named_smart_list_grounding_fails_missing_or_ambiguous_list() -> N
         scenario_id=scenario.id,
         prompt=scenario.prompt_variants[0],
         selected_tool="followupboss_search_people_in_smart_list",
-        arguments={"smart_list_name": "Eligible For Transfer", "source": "Zillow", "mine": True},
+        arguments={"smart_list_name": "Eligible For Transfer", "mine": True},
         response={"smartlist": {"id": 77}, "people": []},
     )
     missing_services = _services()
