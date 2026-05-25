@@ -447,7 +447,8 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
             "followupboss_search_people_in_smart_list so the list name is resolved "
             "inside the MCP boundary. For Zillow follow-up workflows mapped to "
             "Eligible For Transfer, the named smart list is the lead source of "
-            "truth; do not replace it with a source-only or broad people search. "
+            "truth; do not replace it with a source-only or broad people search, "
+            "including after a smart-list-scoped result is empty. "
             "Use direct people filters such as "
             "contacted=false and assigned_to='Scott Willey' only when the caller "
             "explicitly asks for low-level contacted-field arguments. For "
@@ -513,7 +514,9 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
             "for an explicit owner ID, assigned_user_name/owner_name/agent_name for "
             "an exact owner such as Scott Willey, or mine=false only for explicitly "
             "account-wide/everyone requests. Do not use smart-list tools for these "
-            "filter intents unless the user explicitly says 'smart list' or 'saved list'."
+            "filter intents unless the user explicitly says 'smart list' or 'saved list'. "
+            "Do not use this as a fallback after an Eligible For Transfer or other "
+            "named-smart-list search; answer from the smart-list-scoped result instead."
         ),
     )
     async def followupboss_list_uncontacted_leads(
@@ -549,12 +552,16 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
             "people only with the resolved smart_list_id and returns smart-list "
             "provenance. When the named list is Eligible For Transfer, use that "
             "list as the only lead-source boundary; do not add source='Zillow' "
-            "or answer from a broad source search. This helper defaults to mine=true, so omitted owner "
+            "or answer from a broad source search. This helper defaults to "
+            "mine=true, so omitted owner "
             "scope is authenticated-user scoped. Set mine=false only when the "
             "user explicitly asks for everyone or account-wide results. Use "
             "assigned_user_id for an explicit owner ID, or assigned_user_name "
             "for an exact owner name such as Scott Willey. Do not include "
-            "people outside the returned people list in the answer."
+            "people outside the returned people list in the answer. If the "
+            "returned people list is empty, answer that no scoped people are in "
+            "that smart list; do not run a broad Zillow or uncontacted-leads "
+            "fallback unless the user explicitly asks for a broader search."
         ),
     )
     async def followupboss_search_people_in_smart_list(

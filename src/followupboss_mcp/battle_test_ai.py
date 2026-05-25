@@ -159,7 +159,8 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
                 "followupboss_list_uncontacted_leads so empty lastCommunication "
                 "filtering is enforced. "
                 "Do not use this for named smart-list people prompts; use "
-                "followupboss_search_people_in_smart_list."
+                "followupboss_search_people_in_smart_list. Do not use this as a "
+                "fallback after a named-smart-list result is empty."
             ),
             input_schema={
                 "type": "object",
@@ -190,7 +191,9 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
                 "asks for the raw contacted=false field. Defaults to authenticated-user assigned "
                 "leads; for named owners such as Scott Willey, "
                 "pass assigned_user_name. Do not list or search smart lists for these filter "
-                "intents unless the user explicitly says smart list or saved list."
+                "intents unless the user explicitly says smart list or saved list. Do not "
+                "use this as a fallback after an Eligible For Transfer smart-list search; "
+                "answer from the smart-list-scoped result instead."
             ),
             input_schema={
                 "type": "object",
@@ -236,7 +239,10 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
                 "defaults to mine=true, so omitted owner scope is authenticated-user "
                 "scoped. Set mine=false only for explicit everyone/account-wide prompts. "
                 "For named owners such as Scott Willey, pass assigned_user_name and let "
-                "the helper resolve it. Do not invent owner IDs."
+                "the helper resolve it. Do not invent owner IDs. If this tool returns no "
+                "people, answer that no scoped people are in that smart list; do not run "
+                "broad Zillow or uncontacted-leads fallback tools unless the user explicitly "
+                "asks for a broader search."
             ),
             input_schema={
                 "type": "object",
@@ -550,7 +556,10 @@ def battle_test_selection_instructions() -> str:
         "all agents, account-wide, team-wide, or an overall count. For a named owner such as "
         "Scott Willey, pass assigned_user_name and let the helper resolve the owner; do not "
         "invent owner IDs or return account-wide results. The final answer must not include "
-        "any person absent from that smart-list-scoped tool result. Use "
+        "any person absent from that smart-list-scoped tool result. If that scoped smart-list "
+        "result is empty, answer that there are no scoped people in that smart list; do not "
+        "call broad Zillow, people-search, or uncontacted-leads fallback tools unless the "
+        "user explicitly asks for a broader search. Use "
         "followupboss_list_smart_lists "
         "only when the user is asking to list or inspect saved lists, not as the final route "
         "for a named-list people search. Use followupboss_search_people when a people search "

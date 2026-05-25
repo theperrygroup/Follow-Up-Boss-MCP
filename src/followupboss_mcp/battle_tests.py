@@ -2481,6 +2481,16 @@ def _compare_assistant_answer_grounding(
         str(name).casefold() for name in allowed_name_list if isinstance(name, str) and name
     }
     failures: list[str] = []
+    expected_person_ids = snapshot.expected.get("person_ids")
+    if (
+        isinstance(expected_person_ids, list)
+        and len(expected_person_ids) > 0
+        and _answer_claims_empty_smart_list(message)
+    ):
+        failures.append(
+            "Assistant answer claimed the named smart-list result was empty despite "
+            f"oracle people ids {expected_person_ids!r}."
+        )
     for phone in _phone_like_tokens(message):
         normalized_phone = _normalize_phone(phone)
         if normalized_phone and normalized_phone not in allowed_phones:
@@ -2786,6 +2796,31 @@ def _table_like_answer_names(value: str) -> tuple[str, ...]:
         if any(character.isalpha() for character in first_cell):
             names.append(first_cell)
     return tuple(names)
+
+
+def _answer_claims_empty_smart_list(value: str) -> bool:
+    """Return whether an assistant answer says the scoped smart-list result is empty.
+
+    Args:
+        value: Assistant-visible text to inspect.
+
+    Returns:
+        `True` when the answer contains common empty-result wording for a
+        smart-list-scoped lead result.
+    """
+    normalized = " ".join(value.casefold().split())
+    empty_phrases = (
+        "smart list is currently empty",
+        "smart-list is currently empty",
+        "smart list is empty",
+        "smart-list is empty",
+        "no zillow leads",
+        "no scoped people",
+        "nothing at imminent risk",
+        "nothing in that list",
+        "no leads in that list",
+    )
+    return any(phrase in normalized for phrase in empty_phrases)
 
 
 def _normalize_phone(value: str) -> str | None:

@@ -613,9 +613,10 @@ def test_smart_list_grounding_corpus_targets_zillow_regression() -> None:
     assert scenario_by_id("BT-SMARTLIST-002").expected_mcp.allowed_tools == (
         "followupboss_search_people_in_smart_list",
     )
-    assert "followupboss_search_people" in scenario_by_id(
-        "BT-SMARTLIST-002"
-    ).expected_mcp.forbidden_tools
+    assert (
+        "followupboss_search_people"
+        in scenario_by_id("BT-SMARTLIST-002").expected_mcp.forbidden_tools
+    )
     assert scenario_by_id("BT-SMARTLIST-002").expected_mcp.required_argument_keys == (
         "smart_list_name",
     )
@@ -1553,6 +1554,46 @@ async def test_named_smart_list_grounding_resolves_exact_list_and_people() -> No
     assert services.people.requests[0].limit == 10
     assert evaluation.oracle_snapshot is not None
     assert evaluation.oracle_snapshot.expected["allowed_answer_phones"] == ["5550001111"]
+
+
+@pytest.mark.asyncio
+async def test_named_smart_list_grounding_rejects_empty_answer_for_nonempty_scope() -> None:
+    """Non-empty authenticated smart-list results must not be summarized as empty."""
+    scenario = scenario_by_id("BT-SMARTLIST-002")
+    services = _services(
+        smart_lists=_smart_lists_page(
+            SmartListRecord.model_validate({"id": 77, "name": "🚨 Eligible For Transfer"})
+        ),
+        people=_people_page(
+            PersonRecord.model_validate({"id": 21, "name": "Jane Zillow", "assignedUserId": 7})
+        ),
+    )
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        selected_tool="followupboss_search_people_in_smart_list",
+        arguments={
+            "smart_list_name": "Eligible For Transfer",
+            "mine": True,
+            "limit": 10,
+        },
+        response={
+            "smartlist": {"id": 77, "name": "🚨 Eligible For Transfer"},
+            "people": [{"id": 21, "name": "Jane Zillow", "assignedUserId": 7}],
+        },
+        assistant_message=(
+            "Good news - your Eligible For Transfer smart list is currently empty, "
+            "so no Zillow leads are at imminent risk."
+        ),
+    )
+
+    evaluation = await ReadOnlyBattleTestOracle(services).evaluate(scenario, transcript)
+
+    assert evaluation.passed is False
+    assert (
+        "Assistant answer claimed the named smart-list result was empty despite "
+        "oracle people ids [21]." in evaluation.failures
+    )
 
 
 @pytest.mark.asyncio

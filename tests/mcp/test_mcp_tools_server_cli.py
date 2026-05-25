@@ -4430,6 +4430,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     assert "Do not use this broad search for 'my latest lead'" in search_people_description
     assert "use followupboss_get_latest_lead" in search_people_description
     assert "use followupboss_list_uncontacted_leads" in search_people_description
+    assert "including after a smart-list-scoped result is empty" in search_people_description
     uncontacted_description = cast(
         "str",
         tools["followupboss_list_uncontacted_leads"].description,
@@ -4438,6 +4439,9 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     assert "never smart-list lookup" in uncontacted_description
     assert "contacted=false only when the user explicitly asks" in uncontacted_description
     assert "assigned_user_name/owner_name/agent_name" in uncontacted_description
+    assert "Do not use this as a fallback after an Eligible For Transfer" in (
+        uncontacted_description
+    )
     search_events_description = cast("str", tools["followupboss_search_events"].description)
     assert "Do not use this to answer requests for notes associated with a person" in (
         search_events_description
@@ -4460,6 +4464,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     assert "Do not use this for uncontacted" in helper_description
     assert "assigned_user_name" in helper_description
     assert "provenance" in helper_description
+    assert "do not run a broad Zillow or uncontacted-leads fallback" in helper_description
     smart_lists_description = cast("str", tools["followupboss_list_smart_lists"].description)
     assert "use followupboss_list_uncontacted_leads" in smart_lists_description
     assert "unless the user explicitly asks to list saved lists" in smart_lists_description

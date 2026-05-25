@@ -539,6 +539,9 @@ def test_read_only_tool_specs_include_expanded_read_surfaces() -> None:
     assert "Do not list or search smart lists" in (
         specs["followupboss_list_uncontacted_leads"].description
     )
+    assert "fallback after an Eligible For Transfer smart-list search" in (
+        specs["followupboss_list_uncontacted_leads"].description
+    )
     assert {"assigned_user_name", "smart_list_name", "source", "stage", "mine"}.issubset(
         helper_properties
     )
@@ -561,6 +564,9 @@ def test_read_only_tool_specs_include_expanded_read_surfaces() -> None:
         specs["followupboss_search_people_in_smart_list"].description
     )
     assert "defaults to mine=true" in specs["followupboss_search_people_in_smart_list"].description
+    assert "If this tool returns no people" in (
+        specs["followupboss_search_people_in_smart_list"].description
+    )
     assert cast(
         dict[str, object],
         specs["followupboss_search_people_in_smart_list"].input_schema["properties"],
@@ -612,6 +618,8 @@ def test_selection_instructions_explain_unsupported_note_search() -> None:
     assert "came from Zillow" in instructions
     assert "boundary for Zillow follow-ups" in instructions
     assert "absent from that smart-list-scoped tool result" in instructions
+    assert "If that scoped smart-list result is empty" in instructions
+    assert "do not call broad Zillow" in instructions
     assert "smart_list_name='Eligible For Transfer'" in instructions
     assert "call battle_test_clarify and ask which smart list" in instructions
     assert "Never default a bare Zillow-leads prompt" in instructions
