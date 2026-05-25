@@ -514,6 +514,47 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
     )
 
 
+def text_logging_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
+    """Return the mutation-aware tool menu for text-log routing regressions.
+
+    Returns:
+        Read-only route-selection specs plus the external text-message logging
+        mutation tool. This is intentionally opt-in so routine battle tests do
+        not create CRM records.
+    """
+    return read_only_battle_test_ai_tool_specs() + (
+        BattleTestAiToolSpec(
+            name="followupboss_create_text_message",
+            description=(
+                "Record an externally sent text message log entry. For follow-up prompts "
+                "such as 'log this as a text' or 'log a text for them', reuse exactly one "
+                "resolved prior lead/contact/person from conversation context as the "
+                "recipient: pass that prior person.id as person_id and that person's phone "
+                "as to_number. Do not ask who the conversation is with when exactly one "
+                "prior person is resolved. Clarify only for missing message, from_number, "
+                "ambiguous people, or a missing recipient phone."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "person_id": _integer_schema("Resolved prior Follow Up Boss person ID."),
+                    "message": _string_schema("Text body to record."),
+                    "to_number": _string_schema("Recipient phone from the resolved person."),
+                    "from_number": _string_schema("Sender/FUB phone number used for the text."),
+                    "external_label": _string_schema("Optional external provider label."),
+                    "external_url": _string_schema("Optional external message URL."),
+                    "is_incoming": {
+                        "type": "boolean",
+                        "description": "True for received texts; false for sent texts.",
+                    },
+                },
+                "required": ["person_id", "message", "to_number", "from_number"],
+                "additionalProperties": False,
+            },
+        ),
+    )
+
+
 def battle_test_selection_instructions() -> str:
     """Return provider-neutral instructions for AI route selection.
 
@@ -582,6 +623,13 @@ def battle_test_selection_instructions() -> str:
         "or appointments list tools for that vague person-history request. "
         "Use list tools for appointments, calls, text-message logs, email templates, and "
         "text-message templates; these are read-only listing intents. "
+        "When the user asks to log, record, save, or add a text message and exactly one "
+        "prior lead/contact/person has been resolved in the conversation, use that prior "
+        "person as sticky recipient context for followupboss_create_text_message: pass the "
+        "prior person.id as person_id and that person's phone as to_number. Do not ask who "
+        "the text is with in that case. If message or from_number is missing, ask only for "
+        "the missing field; if multiple people or no usable recipient phone are present, "
+        "clarify before logging. "
         "Fetch notes only with an explicit note ID. "
         "For multi-turn prompts, route the current user turn independently; use prior turns "
         "only to resolve references such as that lead, this contact, that list, or those leads. "

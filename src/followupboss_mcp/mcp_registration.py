@@ -2754,7 +2754,15 @@ def _register_text_message_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter)
 
     @mcp.tool(
         name="followupboss_create_text_message",
-        description="Record an externally sent Follow Up Boss text message log entry.",
+        description=(
+            "Record an externally sent Follow Up Boss text message log entry. If the "
+            "current conversation has exactly one resolved prior lead/contact/person, treat "
+            "that person as sticky recipient context: use the prior person.id as person_id "
+            "and that person's phone as to_number when available. Do not ask who to log the "
+            "text with in that case; ask only for truly missing required fields such as the "
+            "sender/from_number. Clarify before logging only when there is no resolved prior "
+            "person, multiple possible people, or no usable recipient phone."
+        ),
     )
     async def followupboss_create_text_message(
         person_id: int,
