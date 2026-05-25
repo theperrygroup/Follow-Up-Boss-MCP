@@ -3572,6 +3572,23 @@ async def test_communication_mutations_require_authenticated_attribution() -> No
 
     assert call["userId"] == 1
     assert stub.call_create_requests[-1].user_id == 1
+    assert (await adapter.update_call(UpdateCallToolInput(call_id=12, user_id=1)))["id"] == 12
+
+
+@pytest.mark.asyncio
+async def test_communication_mutations_require_identity_user_id() -> None:
+    """Communication attribution should fail closed without an authenticated user ID."""
+    stub = StubBundle()
+    services = replace(
+        stub.bundle,
+        identity=_service_stub(get_identity=lambda: asyncio.sleep(0, result=IdentityResponse())),
+    )
+    adapter = FollowUpBossToolAdapter(services)
+
+    with pytest.raises(RuntimeError, match="Authenticated Follow Up Boss user id is unavailable"):
+        await adapter.create_call(
+            CreateCallRequest(person_id=99, phone="555-2222", is_incoming=False)
+        )
 
 
 @pytest.mark.asyncio
@@ -3592,6 +3609,27 @@ async def test_outbound_text_logs_fail_closed_by_default() -> None:
         )
 
     assert stub.text_message_create_requests == []
+
+
+@pytest.mark.asyncio
+async def test_incoming_text_logs_do_not_require_outbound_attribution_opt_in() -> None:
+    """Incoming external text logs should keep original sender direction."""
+    stub = StubBundle()
+    adapter = FollowUpBossToolAdapter(stub.bundle)
+
+    text = await adapter.create_text_message(
+        CreateTextMessageRequest(
+            person_id=99,
+            message="Incoming SMS",
+            to_number="1234567890",
+            from_number="555-2222",
+            is_incoming=True,
+        )
+    )
+
+    assert text["id"] == 34
+    assert text["fromNumber"] == "555-2222"
+    assert stub.text_message_create_requests[-1].is_incoming is True
 
 
 @pytest.mark.asyncio
@@ -3625,6 +3663,8 @@ async def test_communication_mutations_reject_mismatched_attribution() -> None:
         await adapter.create_call(
             CreateCallRequest(person_id=99, phone="555-2222", is_incoming=False, user_id=999)
         )
+    with pytest.raises(RuntimeError, match="must remain attributed to the authenticated"):
+        await adapter.update_call(UpdateCallToolInput(call_id=12, user_id=999))
     opt_in_adapter = FollowUpBossToolAdapter(stub.bundle, allow_external_text_message_logs=True)
     with pytest.raises(RuntimeError, match="authenticated Follow Up Boss user's sender phone"):
         await opt_in_adapter.create_text_message(

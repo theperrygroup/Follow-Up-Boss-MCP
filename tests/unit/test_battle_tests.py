@@ -672,6 +672,9 @@ def test_text_logging_context_corpus_targets_prior_person_regression() -> None:
     assert scenario.api_oracle.kind is BattleTestOracleKind.ROUTE_ONLY_PENDING
     assert [conversation.id for conversation in conversations] == ["BT-TEXTLOG-CHAIN-001"]
     assert [turn.id for turn in conversations[0].turns] == ["T01", "T02"]
+    assert text_logging_context_battle_test_conversations(
+        BattleTestConversationKind.MULTI_TURN
+    ) == (conversations[0],)
     assert conversations[0].turns[0].expected_mcp.allowed_tools == (
         "followupboss_search_people_in_smart_list",
     )
