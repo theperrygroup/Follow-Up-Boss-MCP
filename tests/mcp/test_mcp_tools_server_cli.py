@@ -4474,6 +4474,11 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     )
     assert "one explicit Follow Up Boss person_id" in person_activity_description
     assert "applies person_id to calls" in person_activity_description
+    create_text_description = cast("str", tools["followupboss_create_text_message"].description)
+    assert "exactly one resolved prior lead/contact/person" in create_text_description
+    assert "sticky recipient context" in create_text_description
+    assert "Do not ask who to log the text with" in create_text_description
+    assert "sender/from_number" in create_text_description
     assert "followupboss_list_my_overdue_tasks" in list_tasks_description
     assert "followupboss_list_my_tasks_due_today" in list_tasks_description
     assert "followupboss_list_my_upcoming_tasks" in list_tasks_description

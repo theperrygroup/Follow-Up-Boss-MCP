@@ -681,6 +681,22 @@ def test_text_logging_context_corpus_targets_prior_person_regression() -> None:
     assert conversations[0].turns[1].expected_mcp.allowed_tools == (
         "followupboss_create_text_message",
     )
+    route = evaluate_transcript_route(
+        scenario,
+        BattleTestTranscript(
+            scenario_id="BT-TEXTLOG-001",
+            prompt=scenario.prompt_variants[0],
+            selected_tool="followupboss_create_text_message",
+            arguments={
+                "person_id": 917,
+                "message": "Hey Lauren, checking in about the Zillow transfer.",
+                "to_number": "555-7249",
+                "from_number": "555-0001",
+            },
+        ),
+    )
+
+    assert route.passed is True
 
 
 def test_disposable_fixture_plan_orders_cleanup_safely() -> None:
