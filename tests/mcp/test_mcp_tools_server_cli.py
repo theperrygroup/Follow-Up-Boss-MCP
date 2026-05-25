@@ -1768,6 +1768,7 @@ class StubBundle:
                 message=request.message,
                 fromNumber=request.from_number,
                 toNumber=request.to_number,
+                userId=1,
                 userName="Gerald Leenerts",
                 isIncoming=request.is_incoming,
                 externalLabel=request.external_label,
@@ -2094,7 +2095,7 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     """The MCP adapter should normalize service results and safe errors."""
     stub = StubBundle()
     services = stub.bundle
-    adapter = FollowUpBossToolAdapter(services)
+    adapter = FollowUpBossToolAdapter(services, allow_external_text_message_logs=True)
     assert (await adapter.get_identity())["id"] == 1
     assert (await adapter.get_me())["id"] == 1
     assert (await adapter.get_me())["apiKey"] == "***redacted***"
