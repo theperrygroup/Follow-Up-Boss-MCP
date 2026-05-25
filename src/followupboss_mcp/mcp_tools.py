@@ -159,8 +159,8 @@ from followupboss_mcp.models.webhooks import (
     UpdateWebhookRequest,
     WebhookListRequest,
 )
-from followupboss_mcp.pagination import PageResult, PaginationMetadata
 from followupboss_mcp.observability import capture_sentry_message
+from followupboss_mcp.pagination import PageResult, PaginationMetadata
 from followupboss_mcp.task_intents import upcoming_task_due_start as _upcoming_task_due_start
 from followupboss_mcp.tenant_runtime import ServiceBundle, ServiceBundleResolver
 
