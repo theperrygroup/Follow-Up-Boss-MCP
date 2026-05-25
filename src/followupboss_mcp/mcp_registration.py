@@ -2762,16 +2762,13 @@ def _register_text_message_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter)
     @mcp.tool(
         name="followupboss_create_text_message",
         description=(
-            "Record an externally sent Follow Up Boss text message log entry. If the "
-            "current conversation has exactly one resolved prior lead/contact/person, treat "
-            "that person as sticky recipient context: use the prior person.id as person_id "
-            "and that person's phone as to_number when available. Do not ask who to log the "
-            "text with in that case; ask only for truly missing required fields such as the "
-            "sender/from_number. For outbound text logs, from_number must be the "
-            "authenticated user's own Follow Up Boss phone, never a team, group, account, "
-            "or default sender number; the server rejects mismatched sender numbers. "
-            "Clarify before logging only when there is no resolved prior person, multiple "
-            "possible people, no usable recipient phone, or no authenticated-user sender phone."
+            "Record a Follow Up Boss text message through the registered-system endpoint only "
+            "for inbound texts or explicitly configured external logging workflows. Do not use "
+            "this tool for normal outbound user-authored text transcript logging; use "
+            "followupboss_add_note instead so the timeline does not show a team, group, "
+            "shared inbox, account, or registered-system sender. When external outbound logging "
+            "is explicitly enabled, from_number must be the authenticated user's own Follow Up "
+            "Boss phone and the server validates the returned attribution."
         ),
     )
     async def followupboss_create_text_message(
@@ -2874,8 +2871,10 @@ def _register_note_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
     @mcp.tool(
         name="followupboss_add_note",
         description=(
-            "Create a Follow Up Boss note for a person, optionally waiting "
-            "for person visibility first."
+            "Create a Follow Up Boss note for a person, optionally waiting for person "
+            "visibility first. Use this as the safe path for normal 'log this text' or "
+            "text transcript requests; include explicit wording such as 'Text message "
+            "transcript logged by <authenticated user>' in the note body."
         ),
     )
     async def followupboss_add_note(
