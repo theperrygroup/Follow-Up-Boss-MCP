@@ -148,7 +148,7 @@ def _allow_external_text_message_logs(
         `True` only when the explicit opt-in setting is enabled.
     """
     if settings is None:
-        return FollowUpBossTenantRuntimeDefaults().allow_external_text_message_logs
+        return FollowUpBossTenantRuntimeDefaults.builtin_defaults().allow_external_text_message_logs
     return settings.allow_external_text_message_logs
 
 
