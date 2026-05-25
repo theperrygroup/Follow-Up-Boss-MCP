@@ -2990,7 +2990,9 @@ class FollowUpBossToolAdapter:
         """Create a text message record only when external logging is explicitly allowed."""
 
         async def create_authenticated_text_message() -> Any:
-            scoped_input, expected_user_id = await self._authenticated_text_message_request(tool_input)
+            scoped_input, expected_user_id = await self._authenticated_text_message_request(
+                tool_input
+            )
             record = await self._services.text_messages.create_text_message(scoped_input)
             self._validate_text_message_attribution(record, expected_user_id=expected_user_id)
             return record

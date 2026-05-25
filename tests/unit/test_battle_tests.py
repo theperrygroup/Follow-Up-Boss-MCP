@@ -675,9 +675,7 @@ def test_text_logging_context_corpus_targets_prior_person_regression() -> None:
     assert conversations[0].turns[0].expected_mcp.allowed_tools == (
         "followupboss_search_people_in_smart_list",
     )
-    assert conversations[0].turns[1].expected_mcp.allowed_tools == (
-        "followupboss_add_note",
-    )
+    assert conversations[0].turns[1].expected_mcp.allowed_tools == ("followupboss_add_note",)
     route = evaluate_transcript_route(
         scenario,
         BattleTestTranscript(

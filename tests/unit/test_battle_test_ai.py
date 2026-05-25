@@ -612,10 +612,13 @@ def test_text_logging_tool_specs_are_opt_in_and_reuse_prior_person_context() -> 
     assert "route those to followupboss_add_note" in create_spec.description
     assert "authenticated user's own Follow Up Boss phone" in create_spec.description
     assert "not a team, group, account, shared inbox" in create_spec.description
-    assert "Authenticated user's own Follow Up Boss sender phone" in cast(
-        dict[str, str],
-        properties["from_number"],
-    )["description"]
+    assert (
+        "Authenticated user's own Follow Up Boss sender phone"
+        in cast(
+            dict[str, str],
+            properties["from_number"],
+        )["description"]
+    )
 
 
 def test_selection_instructions_explain_unsupported_note_search() -> None:
