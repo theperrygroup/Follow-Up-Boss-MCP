@@ -252,6 +252,7 @@ def test_composite_settings_project_split_models(monkeypatch: pytest.MonkeyPatch
             "log_level": "debug",
             "timeout_seconds": 12,
             "max_retries": 2,
+            "allow_external_text_message_logs": True,
         }
     )
 
@@ -266,11 +267,13 @@ def test_composite_settings_project_split_models(monkeypatch: pytest.MonkeyPatch
     assert server_settings.log_level == "DEBUG"
     assert tenant_settings.max_retries == 2
     assert tenant_settings.timeout_seconds == 12
+    assert tenant_settings.allow_external_text_message_logs is True
     assert "log_level" not in tenant_settings.model_dump()
     assert "host" not in tenant_settings.model_dump()
     assert tenant_settings.system_key_value() is None
     assert tenant_runtime_defaults.max_retries == 2
     assert tenant_runtime_defaults.timeout_seconds == 12
+    assert tenant_runtime_defaults.allow_external_text_message_logs is True
     assert "api_key" not in tenant_runtime_defaults.model_dump()
     assert "auth_mode" not in tenant_runtime_defaults.model_dump()
 
@@ -302,11 +305,13 @@ def test_tenant_settings_support_follow_up_boss_env_aliases(
         "FOLLOWUPBOSS_ACCESS_TOKEN",
         "FOLLOWUPBOSS_SYSTEM_NAME",
         "FOLLOWUPBOSS_SYSTEM_KEY",
+        "FOLLOWUPBOSS_ALLOW_EXTERNAL_TEXT_MESSAGE_LOGS",
         "FOLLOW_UP_BOSS_AUTH_MODE",
         "FOLLOW_UP_BOSS_API_KEY",
         "FOLLOW_UP_BOSS_ACCESS_TOKEN",
         "FOLLOW_UP_BOSS_X_SYSTEM",
         "FOLLOW_UP_BOSS_X_SYSTEM_KEY",
+        "FOLLOW_UP_BOSS_ALLOW_EXTERNAL_TEXT_MESSAGE_LOGS",
     ):
         monkeypatch.delenv(key, raising=False)
 
@@ -314,6 +319,7 @@ def test_tenant_settings_support_follow_up_boss_env_aliases(
     monkeypatch.setenv("FOLLOW_UP_BOSS_API_KEY", "legacy-key")
     monkeypatch.setenv("FOLLOW_UP_BOSS_X_SYSTEM", "Legacy System")
     monkeypatch.setenv("FOLLOW_UP_BOSS_X_SYSTEM_KEY", "legacy-system-secret")
+    monkeypatch.setenv("FOLLOW_UP_BOSS_ALLOW_EXTERNAL_TEXT_MESSAGE_LOGS", "true")
 
     settings = FollowUpBossTenantSettings()
     assert settings.auth_mode is AuthMode.API_KEY
@@ -321,6 +327,7 @@ def test_tenant_settings_support_follow_up_boss_env_aliases(
     assert settings.api_key.get_secret_value() == "legacy-key"
     assert settings.system_name == "Legacy System"
     assert settings.system_key_value() == "legacy-system-secret"
+    assert settings.allow_external_text_message_logs is True
 
     monkeypatch.setenv("FOLLOW_UP_BOSS_AUTH_MODE", "oauth")
     monkeypatch.delenv("FOLLOW_UP_BOSS_API_KEY", raising=False)

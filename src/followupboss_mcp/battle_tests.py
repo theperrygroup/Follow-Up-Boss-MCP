@@ -744,8 +744,8 @@ def text_logging_context_battle_test_scenarios() -> tuple[BattleTestScenario, ..
     """Return mutation-aware text logging context regression scenarios.
 
     Returns:
-        Route-only scenarios that verify follow-up text logging reuses exactly
-        one previously resolved lead/contact as recipient context.
+        Route-only scenarios that verify follow-up text logging uses the safe
+        note path while reusing exactly one previously resolved lead/contact.
     """
     return _TEXT_LOGGING_CONTEXT_SCENARIOS
 
@@ -815,7 +815,8 @@ def text_logging_context_battle_test_conversations(
         kind: Optional conversation kind to filter by.
 
     Returns:
-        Conversations that exercise prior-person context reuse for text logging.
+        Conversations that exercise safe note text logging with prior-person
+        context reuse.
     """
     if kind is None:
         return _TEXT_LOGGING_CONTEXT_CONVERSATIONS

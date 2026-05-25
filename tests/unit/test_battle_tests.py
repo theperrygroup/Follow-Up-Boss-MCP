@@ -660,17 +660,14 @@ def test_text_logging_context_corpus_targets_prior_person_regression() -> None:
     scenario = scenario_by_id("BT-TEXTLOG-001")
 
     assert [item.id for item in scenarios] == ["BT-TEXTLOG-001"]
-    assert scenario.expected_mcp.allowed_tools == ("followupboss_create_text_message",)
+    assert scenario.expected_mcp.allowed_tools == ("followupboss_add_note",)
+    assert "followupboss_create_text_message" in scenario.expected_mcp.forbidden_tools
     assert scenario.expected_mcp.required_argument_keys == (
         "person_id",
-        "message",
-        "to_number",
-        "from_number",
+        "body",
     )
     assert scenario.expected_mcp.required_argument_values == {
         "person_id": 917,
-        "to_number": "555-7249",
-        "from_number": "555-0001",
     }
     assert scenario.api_oracle.kind is BattleTestOracleKind.ROUTE_ONLY_PENDING
     assert [conversation.id for conversation in conversations] == ["BT-TEXTLOG-CHAIN-001"]
@@ -679,19 +676,20 @@ def test_text_logging_context_corpus_targets_prior_person_regression() -> None:
         "followupboss_search_people_in_smart_list",
     )
     assert conversations[0].turns[1].expected_mcp.allowed_tools == (
-        "followupboss_create_text_message",
+        "followupboss_add_note",
     )
     route = evaluate_transcript_route(
         scenario,
         BattleTestTranscript(
             scenario_id="BT-TEXTLOG-001",
             prompt=scenario.prompt_variants[0],
-            selected_tool="followupboss_create_text_message",
+            selected_tool="followupboss_add_note",
             arguments={
                 "person_id": 917,
-                "message": "Hey Lauren, checking in about the Zillow transfer.",
-                "to_number": "555-7249",
-                "from_number": "555-0001",
+                "body": (
+                    "Text message transcript logged by Scott Willey: "
+                    "Hey Lauren, checking in about the Zillow transfer."
+                ),
             },
         ),
     )
