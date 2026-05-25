@@ -214,6 +214,20 @@ _UNCOMMUNICATED_LEAD_MAX_SCAN_PAGES = 10
 _UNCOMMUNICATED_LEAD_TOKEN_PREFIX = "scan:"
 
 
+def _phone_digits(value: str | None) -> str:
+    """Return only decimal digits from a phone-like value.
+
+    Args:
+        value: Raw phone-like value from a user record or tool input.
+
+    Returns:
+        Digits from the phone-like value, or an empty string when unavailable.
+    """
+    if value is None:
+        return ""
+    return "".join(character for character in value if character.isdigit())
+
+
 class GetPersonToolInput(PersonLookupRequest):
     """Tool input for fetching a person by ID."""
 
@@ -2695,15 +2709,69 @@ class FollowUpBossToolAdapter:
         return await self._single_result(lambda: self._services.calls.get_call(tool_input.call_id))
 
     async def create_call(self, tool_input: CreateCallRequest) -> dict[str, Any]:
-        """Create a call."""
-        return await self._single_result(lambda: self._services.calls.create_call(tool_input))
+        """Create a call stamped to the authenticated Follow Up Boss user."""
+
+        async def create_authenticated_call() -> Any:
+            scoped_input = await self._authenticated_call_create_request(tool_input)
+            return await self._services.calls.create_call(scoped_input)
+
+        return await self._single_result(create_authenticated_call)
 
     async def update_call(self, tool_input: UpdateCallToolInput) -> dict[str, Any]:
-        """Update a call."""
-        request = UpdateCallRequest.model_validate(tool_input.model_dump(exclude={"call_id"}))
-        return await self._single_result(
-            lambda: self._services.calls.update_call(tool_input.call_id, request)
-        )
+        """Update a call without allowing cross-user attribution changes."""
+
+        async def update_authenticated_call() -> Any:
+            request = await self._authenticated_call_update_request(tool_input)
+            return await self._services.calls.update_call(tool_input.call_id, request)
+
+        return await self._single_result(update_authenticated_call)
+
+    async def _authenticated_call_create_request(
+        self,
+        tool_input: CreateCallRequest,
+    ) -> CreateCallRequest:
+        """Return a call create request scoped to the authenticated user.
+
+        Args:
+            tool_input: Model-selected call creation input.
+
+        Returns:
+            A copy of the input with `user_id` bound to the authenticated user.
+
+        Raises:
+            RuntimeError: If the authenticated user ID is unavailable or the
+                request tries to assign the log to a different user.
+        """
+        user_id = await self._authenticated_user_id()
+        if tool_input.user_id is not None and tool_input.user_id != user_id:
+            raise RuntimeError(
+                "Call logs must be attributed to the authenticated Follow Up Boss user."
+            )
+        return tool_input.model_copy(update={"user_id": user_id})
+
+    async def _authenticated_call_update_request(
+        self,
+        tool_input: UpdateCallToolInput,
+    ) -> UpdateCallRequest:
+        """Return a call update request that cannot reassign away from the user.
+
+        Args:
+            tool_input: Model-selected call update input.
+
+        Returns:
+            A validated call update request.
+
+        Raises:
+            RuntimeError: If the update tries to assign the call to a different
+                Follow Up Boss user.
+        """
+        if tool_input.user_id is not None:
+            user_id = await self._authenticated_user_id()
+            if tool_input.user_id != user_id:
+                raise RuntimeError(
+                    "Call logs must remain attributed to the authenticated Follow Up Boss user."
+                )
+        return UpdateCallRequest.model_validate(tool_input.model_dump(exclude={"call_id"}))
 
     async def list_tasks(self, tool_input: TaskListRequest) -> dict[str, Any]:
         """List tasks."""
@@ -2909,10 +2977,62 @@ class FollowUpBossToolAdapter:
         )
 
     async def create_text_message(self, tool_input: CreateTextMessageRequest) -> dict[str, Any]:
-        """Create a text message record."""
-        return await self._single_result(
-            lambda: self._services.text_messages.create_text_message(tool_input)
-        )
+        """Create a text message record using the authenticated sender phone."""
+
+        async def create_authenticated_text_message() -> Any:
+            scoped_input = await self._authenticated_text_message_request(tool_input)
+            return await self._services.text_messages.create_text_message(scoped_input)
+
+        return await self._single_result(create_authenticated_text_message)
+
+    async def _authenticated_text_message_request(
+        self,
+        tool_input: CreateTextMessageRequest,
+    ) -> CreateTextMessageRequest:
+        """Return an outbound text request scoped to the authenticated sender.
+
+        Incoming text logs keep their original sender direction. Outbound text
+        logs are required to use the authenticated user's `/me.phone` as
+        `from_number` so team or account defaults cannot be selected by a model.
+
+        Args:
+            tool_input: Model-selected text-message creation input.
+
+        Returns:
+            A copy of the input with canonical authenticated-user `from_number`.
+
+        Raises:
+            RuntimeError: If the authenticated user's phone is unavailable or
+                the request tries to use a different outbound sender phone.
+        """
+        if tool_input.is_incoming is True:
+            return tool_input
+        current_user = await self._services.users.get_me()
+        authenticated_phone = current_user.phone
+        authenticated_digits = _phone_digits(authenticated_phone)
+        if authenticated_phone is None or not authenticated_digits:
+            raise RuntimeError(
+                "Authenticated Follow Up Boss user phone is unavailable for outbound text logs."
+            )
+        if _phone_digits(tool_input.from_number) != authenticated_digits:
+            raise RuntimeError(
+                "Outbound text logs must use the authenticated Follow Up Boss user's sender phone."
+            )
+        return tool_input.model_copy(update={"from_number": authenticated_phone})
+
+    async def _authenticated_user_id(self) -> int:
+        """Return the authenticated Follow Up Boss user ID.
+
+        Returns:
+            Authenticated Follow Up Boss user ID.
+
+        Raises:
+            RuntimeError: If `/identity` does not expose a user ID.
+        """
+        identity = await self._services.identity.get_identity()
+        if identity.id is None:
+            raise RuntimeError("Authenticated Follow Up Boss user id is unavailable.")
+        return identity.id
 
     async def list_text_message_templates(
         self,

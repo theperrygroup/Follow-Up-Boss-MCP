@@ -531,8 +531,10 @@ def text_logging_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]
                 "resolved prior lead/contact/person from conversation context as the "
                 "recipient: pass that prior person.id as person_id and that person's phone "
                 "as to_number. Do not ask who the conversation is with when exactly one "
-                "prior person is resolved. Clarify only for missing message, from_number, "
-                "ambiguous people, or a missing recipient phone."
+                "prior person is resolved. For outbound text logs, from_number must be the "
+                "authenticated user's own Follow Up Boss phone, never a team, group, account, "
+                "or default sender number. Clarify only for missing message, authenticated-user "
+                "from_number, ambiguous people, or a missing recipient phone."
             ),
             input_schema={
                 "type": "object",
@@ -540,7 +542,9 @@ def text_logging_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]
                     "person_id": _integer_schema("Resolved prior Follow Up Boss person ID."),
                     "message": _string_schema("Text body to record."),
                     "to_number": _string_schema("Recipient phone from the resolved person."),
-                    "from_number": _string_schema("Sender/FUB phone number used for the text."),
+                    "from_number": _string_schema(
+                        "Authenticated user's own Follow Up Boss sender phone."
+                    ),
                     "external_label": _string_schema("Optional external provider label."),
                     "external_url": _string_schema("Optional external message URL."),
                     "is_incoming": {
@@ -628,8 +632,12 @@ def battle_test_selection_instructions() -> str:
         "person as sticky recipient context for followupboss_create_text_message: pass the "
         "prior person.id as person_id and that person's phone as to_number. Do not ask who "
         "the text is with in that case. If message or from_number is missing, ask only for "
-        "the missing field; if multiple people or no usable recipient phone are present, "
-        "clarify before logging. "
+        "the missing field. For outbound text logs, from_number must be the authenticated "
+        "Follow Up Boss user's own phone, never a team, group, account, or default sender "
+        "number; if the authenticated user's sender phone is unknown, clarify instead of "
+        "using another number. If multiple people or no usable recipient phone are present, "
+        "clarify before logging. Call logs must be attributed to the authenticated Follow Up "
+        "Boss user; do not choose or invent another user_id for followupboss_create_call. "
         "Fetch notes only with an explicit note ID. "
         "For multi-turn prompts, route the current user turn independently; use prior turns "
         "only to resolve references such as that lead, this contact, that list, or those leads. "

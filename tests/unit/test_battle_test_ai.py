@@ -603,7 +603,12 @@ def test_text_logging_tool_specs_are_opt_in_and_reuse_prior_person_context() -> 
     assert {"person_id", "message", "to_number", "from_number"}.issubset(properties)
     assert "reuse exactly one resolved prior lead/contact/person" in create_spec.description
     assert "Do not ask who the conversation is with" in create_spec.description
-    assert "missing message, from_number" in create_spec.description
+    assert "authenticated user's own Follow Up Boss phone" in create_spec.description
+    assert "never a team, group, account, or default sender number" in create_spec.description
+    assert "Authenticated user's own Follow Up Boss sender phone" in cast(
+        dict[str, str],
+        properties["from_number"],
+    )["description"]
 
 
 def test_selection_instructions_explain_unsupported_note_search() -> None:
@@ -656,6 +661,10 @@ def test_selection_instructions_explain_unsupported_note_search() -> None:
     assert "prior person.id as person_id" in instructions
     assert "Do not ask who the text is with" in instructions
     assert "If message or from_number is missing, ask only for the missing field" in instructions
+    assert "authenticated Follow Up Boss user's own phone" in instructions
+    assert "never a team, group, account, or default sender number" in instructions
+    assert "Call logs must be attributed to the authenticated Follow Up Boss user" in instructions
+    assert "do not choose or invent another user_id" in instructions
     assert (
         "followupboss_check_duplicate_person only when an email or phone is provided"
         in instructions

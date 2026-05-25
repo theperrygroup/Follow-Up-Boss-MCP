@@ -547,12 +547,14 @@ class StubBundle:
 
     def __post_init__(self) -> None:
         self.appointment_list_requests: list[AppointmentListRequest] = []
+        self.call_create_requests: list[CreateCallRequest] = []
         self.call_list_requests: list[CallListRequest] = []
         self.email_event_list_requests: list[EmailEventListRequest] = []
         self.event_search_requests: list[EventSearchRequest] = []
         self.deal_list_requests: list[DealListRequest] = []
         self.people_search_requests: list[PeopleSearchRequest] = []
         self.task_list_requests: list[TaskListRequest] = []
+        self.text_message_create_requests: list[CreateTextMessageRequest] = []
         self.text_message_list_requests: list[TextMessageListRequest] = []
         self.user_list_requests: list[UserListRequest] = []
 
@@ -1669,8 +1671,15 @@ class StubBundle:
         async def calls_get(call_id: int) -> CallRecord:
             return CallRecord(id=call_id, personId=2, phone="555-0000", userName="Data")
 
-        async def calls_create(_: CreateCallRequest) -> CallRecord:
-            return CallRecord(id=12, personId=2, phone="555-0000", userName="Data")
+        async def calls_create(request: CreateCallRequest) -> CallRecord:
+            self.call_create_requests.append(request)
+            return CallRecord(
+                id=12,
+                personId=request.person_id,
+                phone=request.phone,
+                userId=request.user_id,
+                userName="Picard",
+            )
 
         async def calls_update(call_id: int, request: object) -> CallRecord:
             del request
@@ -1751,17 +1760,18 @@ class StubBundle:
                 userName="Data",
             )
 
-        async def text_messages_create(_: CreateTextMessageRequest) -> TextMessageRecord:
+        async def text_messages_create(request: CreateTextMessageRequest) -> TextMessageRecord:
+            self.text_message_create_requests.append(request)
             return TextMessageRecord(
                 id=34,
-                personId=2,
-                message="Logged externally",
-                fromNumber="555-0001",
-                toNumber="555-0002",
-                userName="Data",
-                isIncoming=False,
-                externalLabel="External SMS",
-                externalUrl="https://example.com/sms/3",
+                personId=request.person_id,
+                message=request.message,
+                fromNumber=request.from_number,
+                toNumber=request.to_number,
+                userName="Gerald Leenerts",
+                isIncoming=request.is_incoming,
+                externalLabel=request.external_label,
+                externalUrl=request.external_url,
             )
 
         async def text_message_templates_list(
@@ -3314,6 +3324,7 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
             CreateCallRequest(person_id=1, phone="555-0000", is_incoming=True)
         )
     )["id"] == 12
+    assert stub.call_create_requests[-1].user_id == 1
     assert (await adapter.update_call(UpdateCallToolInput(call_id=13, note="Updated note")))[
         "id"
     ] == 13
@@ -3397,13 +3408,14 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
                 person_id=2,
                 message="Logged externally",
                 to_number="555-0002",
-                from_number="555-0001",
+                from_number="1234567890",
                 is_incoming=False,
                 external_label="External SMS",
                 external_url="https://example.com/sms/3",
             )
         )
     )["id"] == 34
+    assert stub.text_message_create_requests[-1].from_number == "(123) 456-7890"
     assert (await adapter.list_text_message_templates(TextMessageTemplateListRequest()))[
         "textmessagetemplates"
     ][0]["id"] == 32
@@ -3545,6 +3557,90 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         await adapter.search_people(PeopleSearchRequest(include_ponds=True))
     with pytest.raises(RuntimeError, match="bad delete"):
         await adapter.delete_note(DeleteNoteToolInput(note_id=1))
+
+
+@pytest.mark.asyncio
+async def test_communication_mutations_require_authenticated_attribution() -> None:
+    """Call and outbound text logs should be bound to the authenticated user."""
+    stub = StubBundle()
+    adapter = FollowUpBossToolAdapter(stub.bundle)
+
+    call = await adapter.create_call(
+        CreateCallRequest(person_id=99, phone="555-2222", is_incoming=False)
+    )
+    text = await adapter.create_text_message(
+        CreateTextMessageRequest(
+            person_id=99,
+            message="Logged externally",
+            to_number="555-2222",
+            from_number="1234567890",
+            is_incoming=False,
+        )
+    )
+
+    assert call["userId"] == 1
+    assert stub.call_create_requests[-1].user_id == 1
+    assert text["fromNumber"] == "(123) 456-7890"
+    assert stub.text_message_create_requests[-1].from_number == "(123) 456-7890"
+
+
+@pytest.mark.asyncio
+async def test_communication_mutations_reject_mismatched_attribution() -> None:
+    """The adapter should fail before logging under another user or sender."""
+    stub = StubBundle()
+    adapter = FollowUpBossToolAdapter(stub.bundle)
+
+    with pytest.raises(RuntimeError, match="attributed to the authenticated"):
+        await adapter.create_call(
+            CreateCallRequest(person_id=99, phone="555-2222", is_incoming=False, user_id=999)
+        )
+    with pytest.raises(RuntimeError, match="authenticated Follow Up Boss user's sender phone"):
+        await adapter.create_text_message(
+            CreateTextMessageRequest(
+                person_id=99,
+                message="Logged externally",
+                to_number="555-2222",
+                from_number="555-0001",
+                is_incoming=False,
+            )
+        )
+
+    assert stub.call_create_requests == []
+    assert stub.text_message_create_requests == []
+
+
+@pytest.mark.asyncio
+async def test_outbound_text_logs_fail_without_authenticated_user_phone() -> None:
+    """Outbound text logs should not fall back to team/default sender numbers."""
+    stub = StubBundle()
+
+    async def users_get_me_without_phone() -> CurrentUserRecord:
+        """Return a current user with no configured sender phone."""
+        return CurrentUserRecord(id=1, name="Scott Willey")
+
+    services = replace(
+        stub.bundle,
+        users=_service_stub(
+            list_users=stub.bundle.users.list_users,
+            get_user=stub.bundle.users.get_user,
+            get_me=users_get_me_without_phone,
+            delete_user=stub.bundle.users.delete_user,
+        ),
+    )
+    adapter = FollowUpBossToolAdapter(services)
+
+    with pytest.raises(RuntimeError, match="user phone is unavailable"):
+        await adapter.create_text_message(
+            CreateTextMessageRequest(
+                person_id=99,
+                message="Logged externally",
+                to_number="555-2222",
+                from_number="555-0001",
+                is_incoming=False,
+            )
+        )
+
+    assert stub.text_message_create_requests == []
 
 
 @pytest.mark.asyncio
@@ -4316,6 +4412,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                 {},
                 {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "calls": [{"id": 12}]},
                 {"id": 13, "personId": 2, "phone": "555-0000", "userName": "Data"},
+                {"id": 1},
                 {"id": 14, "personId": 2, "phone": "555-0000", "userName": "Data"},
                 {"id": 15, "personId": 2, "phone": "555-0000", "userName": "Data"},
                 {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "tasks": [{"id": 16}]},
@@ -4354,10 +4451,16 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                 {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "textmessages": [{"id": 50}]},
                 {"id": 51, "message": "Hi there"},
                 {
+                    "id": 1,
+                    "name": "Gerald Leenerts",
+                    "email": "gerald@followupboss.com",
+                    "phone": "(123) 456-7890",
+                },
+                {
                     "id": 58,
                     "personId": 2,
                     "message": "Logged externally",
-                    "fromNumber": "555-0001",
+                    "fromNumber": "(123) 456-7890",
                     "toNumber": "555-0002",
                     "userName": "Data",
                     "isIncoming": False,
@@ -4474,11 +4577,17 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     )
     assert "one explicit Follow Up Boss person_id" in person_activity_description
     assert "applies person_id to calls" in person_activity_description
+    create_call_description = cast("str", tools["followupboss_create_call"].description)
+    assert "attributed to the authenticated user" in create_call_description
+    assert "rejects mismatched user IDs" in create_call_description
     create_text_description = cast("str", tools["followupboss_create_text_message"].description)
     assert "exactly one resolved prior lead/contact/person" in create_text_description
     assert "sticky recipient context" in create_text_description
     assert "Do not ask who to log the text with" in create_text_description
     assert "sender/from_number" in create_text_description
+    assert "authenticated user's own Follow Up Boss phone" in create_text_description
+    assert "never a team, group, account" in create_text_description
+    assert "rejects mismatched sender numbers" in create_text_description
     assert "followupboss_list_my_overdue_tasks" in list_tasks_description
     assert "followupboss_list_my_tasks_due_today" in list_tasks_description
     assert "followupboss_list_my_upcoming_tasks" in list_tasks_description
@@ -5392,7 +5501,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
             2,
             "Logged externally",
             "555-0002",
-            "555-0001",
+            "1234567890",
             is_incoming=False,
             external_label="External SMS",
             external_url="https://example.com/sms/3",

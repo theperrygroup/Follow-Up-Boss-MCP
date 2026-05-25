@@ -2131,7 +2131,11 @@ def _register_call_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
 
     @mcp.tool(
         name="followupboss_create_call",
-        description="Create a Follow Up Boss call log entry.",
+        description=(
+            "Create a Follow Up Boss call log entry attributed to the authenticated user. "
+            "Do not choose or invent another user_id; the server binds the call to the "
+            "logged-in Follow Up Boss user and rejects mismatched user IDs."
+        ),
     )
     async def followupboss_create_call(
         person_id: int,
@@ -2150,7 +2154,10 @@ def _register_call_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
 
     @mcp.tool(
         name="followupboss_update_call",
-        description="Update a Follow Up Boss call log entry by ID.",
+        description=(
+            "Update a Follow Up Boss call log entry by ID. Do not reassign the log to "
+            "another user; mismatched user_id values are rejected."
+        ),
     )
     async def followupboss_update_call(
         call_id: int,
@@ -2760,8 +2767,11 @@ def _register_text_message_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter)
             "that person as sticky recipient context: use the prior person.id as person_id "
             "and that person's phone as to_number when available. Do not ask who to log the "
             "text with in that case; ask only for truly missing required fields such as the "
-            "sender/from_number. Clarify before logging only when there is no resolved prior "
-            "person, multiple possible people, or no usable recipient phone."
+            "sender/from_number. For outbound text logs, from_number must be the "
+            "authenticated user's own Follow Up Boss phone, never a team, group, account, "
+            "or default sender number; the server rejects mismatched sender numbers. "
+            "Clarify before logging only when there is no resolved prior person, multiple "
+            "possible people, no usable recipient phone, or no authenticated-user sender phone."
         ),
     )
     async def followupboss_create_text_message(
