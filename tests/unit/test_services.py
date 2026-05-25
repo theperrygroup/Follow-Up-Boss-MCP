@@ -1956,6 +1956,13 @@ async def test_appointments_service() -> None:
                         "start": "2026-03-28T10:00:00Z",
                         "end": "2026-03-28T11:00:00Z",
                         "allDay": False,
+                        "invitees": [
+                            {
+                                "personId": 99,
+                                "name": "Lauren Anderson",
+                                "picture": {"small": "https://example.com/invitee.jpg"},
+                            }
+                        ],
                     }
                 ],
             },
@@ -1996,6 +2003,10 @@ async def test_appointments_service() -> None:
         )
     )
     assert appointments_page.items[0].title == "Buyer consult"
+    invitee_picture = appointments_page.items[0].invitees[0].picture
+    assert invitee_picture is not None
+    assert not isinstance(invitee_picture, str)
+    assert invitee_picture.small == "https://example.com/invitee.jpg"
     assert client.calls[0].params == {
         "personId": "99,100",
         "userId": "5",

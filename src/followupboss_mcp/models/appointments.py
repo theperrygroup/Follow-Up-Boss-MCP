@@ -77,13 +77,19 @@ class UpdateAppointmentRequest(AppointmentWriteRequest):
     """Strict request model for updating an appointment."""
 
 
+class AppointmentInviteePicture(ResponseModel):
+    """Picture payload returned for an appointment invitee."""
+
+    small: str | None = None
+
+
 class AppointmentInvitee(ResponseModel):
     """Invitee returned on an appointment resource."""
 
     email: str | None = None
     name: str | None = None
     person_id: int | None = Field(default=None, alias="personId")
-    picture: str | None = None
+    picture: AppointmentInviteePicture | str | None = None
     user_id: int | None = Field(default=None, alias="userId")
 
 
