@@ -61,6 +61,8 @@ from followupboss_mcp.battle_tests import (
     scenario_by_id,
     smart_list_grounding_battle_test_conversations,
     smart_list_grounding_battle_test_scenarios,
+    text_logging_context_battle_test_conversations,
+    text_logging_context_battle_test_scenarios,
     write_battle_test_run_artifact,
 )
 from followupboss_mcp.models.appointments import AppointmentListRequest, AppointmentRecord
@@ -649,6 +651,35 @@ def test_smart_list_grounding_corpus_targets_zillow_regression() -> None:
         .turns[1]
         .api_oracle.kind
         is BattleTestOracleKind.NAMED_SMART_LIST_PEOPLE
+    )
+
+
+def test_text_logging_context_corpus_targets_prior_person_regression() -> None:
+    scenarios = text_logging_context_battle_test_scenarios()
+    conversations = text_logging_context_battle_test_conversations()
+    scenario = scenario_by_id("BT-TEXTLOG-001")
+
+    assert [item.id for item in scenarios] == ["BT-TEXTLOG-001"]
+    assert scenario.expected_mcp.allowed_tools == ("followupboss_create_text_message",)
+    assert scenario.expected_mcp.required_argument_keys == (
+        "person_id",
+        "message",
+        "to_number",
+        "from_number",
+    )
+    assert scenario.expected_mcp.required_argument_values == {
+        "person_id": 917,
+        "to_number": "555-7249",
+        "from_number": "555-0001",
+    }
+    assert scenario.api_oracle.kind is BattleTestOracleKind.ROUTE_ONLY_PENDING
+    assert [conversation.id for conversation in conversations] == ["BT-TEXTLOG-CHAIN-001"]
+    assert [turn.id for turn in conversations[0].turns] == ["T01", "T02"]
+    assert conversations[0].turns[0].expected_mcp.allowed_tools == (
+        "followupboss_search_people_in_smart_list",
+    )
+    assert conversations[0].turns[1].expected_mcp.allowed_tools == (
+        "followupboss_create_text_message",
     )
 
 

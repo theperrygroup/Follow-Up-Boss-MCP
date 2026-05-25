@@ -740,6 +740,16 @@ def smart_list_grounding_battle_test_scenarios() -> tuple[BattleTestScenario, ..
     return _SMART_LIST_GROUNDING_SCENARIOS
 
 
+def text_logging_context_battle_test_scenarios() -> tuple[BattleTestScenario, ...]:
+    """Return mutation-aware text logging context regression scenarios.
+
+    Returns:
+        Route-only scenarios that verify follow-up text logging reuses exactly
+        one previously resolved lead/contact as recipient context.
+    """
+    return _TEXT_LOGGING_CONTEXT_SCENARIOS
+
+
 def read_only_battle_test_conversations(
     kind: BattleTestConversationKind | None = None,
 ) -> tuple[BattleTestConversationScenario, ...]:
@@ -792,6 +802,26 @@ def smart_list_grounding_battle_test_conversations(
     return tuple(
         conversation
         for conversation in _SMART_LIST_GROUNDING_CONVERSATIONS
+        if conversation.kind is kind
+    )
+
+
+def text_logging_context_battle_test_conversations(
+    kind: BattleTestConversationKind | None = None,
+) -> tuple[BattleTestConversationScenario, ...]:
+    """Return mutation-aware text logging context conversations.
+
+    Args:
+        kind: Optional conversation kind to filter by.
+
+    Returns:
+        Conversations that exercise prior-person context reuse for text logging.
+    """
+    if kind is None:
+        return _TEXT_LOGGING_CONTEXT_CONVERSATIONS
+    return tuple(
+        conversation
+        for conversation in _TEXT_LOGGING_CONTEXT_CONVERSATIONS
         if conversation.kind is kind
     )
 
@@ -927,7 +957,7 @@ def flatten_battle_test_conversations(
 
 
 def scenario_by_id(scenario_id: str) -> BattleTestScenario:
-    """Return one read-only battle-test scenario by ID.
+    """Return one registered battle-test scenario by ID.
 
     Args:
         scenario_id: Stable scenario identifier to look up.
@@ -943,6 +973,7 @@ def scenario_by_id(scenario_id: str) -> BattleTestScenario:
         for scenario in (
             expanded_read_only_battle_test_scenarios()
             + smart_list_grounding_battle_test_scenarios()
+            + text_logging_context_battle_test_scenarios()
         )
     }
     return scenarios[scenario_id]
@@ -3711,13 +3742,61 @@ _SMART_LIST_GROUNDING_SCENARIOS: tuple[BattleTestScenario, ...] = (
 )
 
 
+_TEXT_LOGGING_CONTEXT_SCENARIOS: tuple[BattleTestScenario, ...] = (
+    BattleTestScenario(
+        id="BT-TEXTLOG-001",
+        grade=BattleTestGrade.MUST_REQUIRE_ID,
+        prompt_variants=(
+            (
+                "Log this as a text from 555-0001: Hey Lauren, checking in about the "
+                "Zillow transfer."
+            ),
+            "Log a text for them from 555-0001 saying: Hey Lauren, just checking in.",
+            (
+                "Save this SMS on that lead from 555-0001: Lauren, I wanted to follow "
+                "up before the transfer window closes."
+            ),
+        ),
+        expected_mcp=ExpectedMcpRoute(
+            allowed_tools=("followupboss_create_text_message",),
+            forbidden_tools=(
+                "followupboss_search_people",
+                "followupboss_list_text_messages",
+                "followupboss_search_people_in_smart_list",
+            ),
+            required_argument_keys=("person_id", "message", "to_number", "from_number"),
+            required_argument_values={
+                "person_id": 917,
+                "to_number": "555-7249",
+                "from_number": "555-0001",
+            },
+        ),
+        api_oracle=ApiOracleSpec(
+            kind=BattleTestOracleKind.ROUTE_ONLY_PENDING,
+            description=(
+                "Mutation-aware route-only check: a text-log follow-up must reuse the one "
+                "previously resolved person as recipient context instead of asking who to "
+                "log it with."
+            ),
+        ),
+        response_assertions=(
+            "request.person_id == prior_context.people[0].id",
+            "request.to_number == prior_context.people[0].phone",
+            "assistant must not ask who the text is with when one prior person is resolved",
+        ),
+        cleanup="mutation-route-only",
+    ),
+)
+
+
 def _base_scenario(scenario_id: str) -> BattleTestScenario:
-    """Return one base read-only scenario for corpus construction."""
+    """Return one base scenario for corpus construction."""
     return {
         scenario.id: scenario
         for scenario in (
             expanded_read_only_battle_test_scenarios()
             + smart_list_grounding_battle_test_scenarios()
+            + text_logging_context_battle_test_scenarios()
         )
     }[scenario_id]
 
@@ -4210,3 +4289,53 @@ def _build_smart_list_grounding_conversations() -> tuple[BattleTestConversationS
 
 
 _SMART_LIST_GROUNDING_CONVERSATIONS = _build_smart_list_grounding_conversations()
+
+
+_TEXT_LOGGING_CONTEXT_BLUEPRINTS: tuple[
+    tuple[
+        BattleTestConversationKind,
+        str | None,
+        tuple[tuple[str, str], ...],
+    ],
+    ...,
+] = (
+    (
+        BattleTestConversationKind.MULTI_TURN,
+        None,
+        (
+            (
+                "BT-SMARTLIST-002",
+                "Which Zillow leads do I need to follow up with in Eligible For Transfer?",
+            ),
+            (
+                "BT-TEXTLOG-001",
+                (
+                    "Log this as a text from 555-0001: Hey Lauren, checking in about the "
+                    "Zillow transfer."
+                ),
+            ),
+        ),
+    ),
+)
+
+
+def _build_text_logging_context_conversations() -> tuple[BattleTestConversationScenario, ...]:
+    """Build mutation-aware text logging context conversations."""
+    conversations: list[BattleTestConversationScenario] = []
+    for index, (kind, prompt, turns) in enumerate(_TEXT_LOGGING_CONTEXT_BLUEPRINTS, start=1):
+        conversations.append(
+            BattleTestConversationScenario(
+                id=f"BT-TEXTLOG-CHAIN-{index:03d}",
+                kind=kind,
+                prompt=prompt,
+                turns=tuple(
+                    _conversation_turn(f"T{turn_index:02d}", scenario_id, turn_prompt)
+                    for turn_index, (scenario_id, turn_prompt) in enumerate(turns, start=1)
+                ),
+                description="Text logging sticky-recipient context regression coverage.",
+            )
+        )
+    return tuple(conversations)
+
+
+_TEXT_LOGGING_CONTEXT_CONVERSATIONS = _build_text_logging_context_conversations()

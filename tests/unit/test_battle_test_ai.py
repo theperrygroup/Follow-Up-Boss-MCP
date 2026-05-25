@@ -30,6 +30,7 @@ from followupboss_mcp.battle_test_ai import (
     read_only_battle_test_ai_tool_specs,
     run_ai_model_profile_battle_tests,
     run_ai_model_profile_conversation_battle_tests,
+    text_logging_battle_test_ai_tool_specs,
 )
 from followupboss_mcp.battle_tests import (
     BattleTestConversationKind,
@@ -42,6 +43,7 @@ from followupboss_mcp.battle_tests import (
     mcp_tool_result_to_json,
     read_only_battle_test_conversations,
     scenario_by_id,
+    text_logging_context_battle_test_conversations,
 )
 from followupboss_mcp.models.appointments import AppointmentListRequest, AppointmentRecord
 from followupboss_mcp.models.calls import CallListRequest, CallRecord
@@ -584,6 +586,26 @@ def test_read_only_tool_specs_include_expanded_read_surfaces() -> None:
     )
 
 
+def test_text_logging_tool_specs_are_opt_in_and_reuse_prior_person_context() -> None:
+    read_only_specs = {tool.name: tool for tool in read_only_battle_test_ai_tool_specs()}
+    text_logging_specs = {tool.name: tool for tool in text_logging_battle_test_ai_tool_specs()}
+
+    assert "followupboss_create_text_message" not in read_only_specs
+    create_spec = text_logging_specs["followupboss_create_text_message"]
+    properties = cast(dict[str, object], create_spec.input_schema["properties"])
+
+    assert set(create_spec.input_schema["required"]) == {
+        "person_id",
+        "message",
+        "to_number",
+        "from_number",
+    }
+    assert {"person_id", "message", "to_number", "from_number"}.issubset(properties)
+    assert "reuse exactly one resolved prior lead/contact/person" in create_spec.description
+    assert "Do not ask who the conversation is with" in create_spec.description
+    assert "missing message, from_number" in create_spec.description
+
+
 def test_selection_instructions_explain_unsupported_note_search() -> None:
     instructions = battle_test_selection_instructions()
 
@@ -630,6 +652,10 @@ def test_selection_instructions_explain_unsupported_note_search() -> None:
     assert "Use followupboss_list_person_activity for communication history" in instructions
     assert "without a resolved person_id, call battle_test_clarify" in instructions
     assert "do not use broad calls, text messages, email events, events" in instructions
+    assert "use that prior person as sticky recipient context" in instructions
+    assert "prior person.id as person_id" in instructions
+    assert "Do not ask who the text is with" in instructions
+    assert "If message or from_number is missing, ask only for the missing field" in instructions
     assert (
         "followupboss_check_duplicate_person only when an email or phone is provided"
         in instructions
@@ -1369,6 +1395,83 @@ async def test_capture_ai_selected_conversation_transcript_passes_history() -> N
     assert selector.prompts[0] == "Show my latest lead"
     assert "Previous conversation context:" in selector.prompts[1]
     assert "called followupboss_get_latest_lead" in selector.prompts[1]
+
+
+@pytest.mark.asyncio
+async def test_text_logging_context_conversation_keeps_resolved_person_sticky() -> None:
+    conversation = text_logging_context_battle_test_conversations()[0]
+    selector = StubMultiAiSelector(
+        decision_batches=[
+            (
+                BattleTestModelDecision(
+                    scenario_id="BT-TEXTLOG-CHAIN-001-T01",
+                    prompt=conversation.turns[0].prompt,
+                    selected_tool="followupboss_search_people_in_smart_list",
+                    arguments={"smart_list_name": "Eligible For Transfer", "mine": True},
+                ),
+            ),
+            (
+                BattleTestModelDecision(
+                    scenario_id="BT-TEXTLOG-CHAIN-001-T02",
+                    prompt=conversation.turns[1].prompt,
+                    selected_tool="followupboss_create_text_message",
+                    arguments={
+                        "person_id": 917,
+                        "message": "Hey Lauren, checking in about the Zillow transfer.",
+                        "to_number": "555-7249",
+                        "from_number": "555-0001",
+                        "is_incoming": False,
+                    },
+                ),
+            ),
+        ]
+    )
+    client = StubMcpClient(
+        results=[
+            {
+                "smartlist": {"id": 77, "name": "Eligible For Transfer"},
+                "people": [
+                    {
+                        "id": 917,
+                        "name": "Lauren Anderson",
+                        "phones": [{"value": "555-7249"}],
+                    }
+                ],
+            },
+            {"id": 301, "personId": 917, "toNumber": "555-7249"},
+        ]
+    )
+
+    transcript = await capture_ai_selected_conversation_transcript(
+        selector=selector,
+        profile=battle_test_model_profile_by_id("gpt-5.5-low-reasoning"),
+        conversation=conversation,
+        mcp_client=client,
+        tools=text_logging_battle_test_ai_tool_specs(),
+    )
+
+    assert transcript.turn_transcripts[1].selected_tool == "followupboss_create_text_message"
+    assert transcript.turn_transcripts[1].arguments["person_id"] == 917
+    assert transcript.turn_transcripts[1].arguments["to_number"] == "555-7249"
+    assert "Previous conversation context:" in selector.prompts[1]
+    assert "Lauren Anderson" in selector.prompts[1]
+    assert "555-7249" in selector.prompts[1]
+    assert client.calls == [
+        (
+            "followupboss_search_people_in_smart_list",
+            {"smart_list_name": "Eligible For Transfer", "mine": True},
+        ),
+        (
+            "followupboss_create_text_message",
+            {
+                "person_id": 917,
+                "message": "Hey Lauren, checking in about the Zillow transfer.",
+                "to_number": "555-7249",
+                "from_number": "555-0001",
+                "is_incoming": False,
+            },
+        ),
+    ]
 
 
 @pytest.mark.asyncio
