@@ -3758,30 +3758,30 @@ _TEXT_LOGGING_CONTEXT_SCENARIOS: tuple[BattleTestScenario, ...] = (
             ),
         ),
         expected_mcp=ExpectedMcpRoute(
-            allowed_tools=("followupboss_create_text_message",),
+            allowed_tools=("followupboss_add_note",),
             forbidden_tools=(
+                "followupboss_create_text_message",
                 "followupboss_search_people",
                 "followupboss_list_text_messages",
                 "followupboss_search_people_in_smart_list",
             ),
-            required_argument_keys=("person_id", "message", "to_number", "from_number"),
+            required_argument_keys=("person_id", "body"),
             required_argument_values={
                 "person_id": 917,
-                "to_number": "555-7249",
-                "from_number": "555-0001",
             },
         ),
         api_oracle=ApiOracleSpec(
             kind=BattleTestOracleKind.ROUTE_ONLY_PENDING,
             description=(
-                "Mutation-aware route-only check: a text-log follow-up must reuse the one "
-                "previously resolved person as recipient context instead of asking who to "
-                "log it with."
+                "Mutation-aware route-only check: an outbound text-log follow-up must use "
+                "the safe note path with the one previously resolved person instead of "
+                "writing through Follow Up Boss's registered-system text endpoint."
             ),
         ),
         response_assertions=(
             "request.person_id == prior_context.people[0].id",
-            "request.to_number == prior_context.people[0].phone",
+            "request.body contains the text message transcript",
+            "assistant must route outbound text transcripts to followupboss_add_note",
             "assistant must not ask who the text is with when one prior person is resolved",
         ),
         cleanup="mutation-route-only",
