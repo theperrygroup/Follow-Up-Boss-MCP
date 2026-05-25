@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
@@ -596,12 +597,12 @@ def test_text_logging_tool_specs_are_opt_in_and_reuse_prior_person_context() -> 
     create_spec = text_logging_specs["followupboss_create_text_message"]
     properties = cast(dict[str, object], create_spec.input_schema["properties"])
 
-    assert set(note_spec.input_schema["required"]) == {"person_id", "body"}
+    assert set(cast(Sequence[str], note_spec.input_schema["required"])) == {"person_id", "body"}
     assert {"person_id", "body"}.issubset(note_properties)
     assert "Safely log a text message transcript" in note_spec.description
     assert "reuse exactly one resolved prior lead/contact/person" in note_spec.description
     assert "Text message transcript logged by Scott Willey" in note_spec.description
-    assert set(create_spec.input_schema["required"]) == {
+    assert set(cast(Sequence[str], create_spec.input_schema["required"])) == {
         "person_id",
         "message",
         "to_number",
