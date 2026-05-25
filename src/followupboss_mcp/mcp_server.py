@@ -136,6 +136,22 @@ def _resolve_tenant_runtime_defaults(
     return settings
 
 
+def _allow_external_text_message_logs(
+    settings: FollowUpBossTenantRuntimeDefaults | FollowUpBossTenantSettings | None,
+) -> bool:
+    """Return whether unsafe external text-message logging is explicitly enabled.
+
+    Args:
+        settings: Optional caller-supplied settings object.
+
+    Returns:
+        `True` only when the explicit opt-in setting is enabled.
+    """
+    if settings is None:
+        return FollowUpBossTenantRuntimeDefaults.builtin_defaults().allow_external_text_message_logs
+    return settings.allow_external_text_message_logs
+
+
 class FollowUpBossFastMCP(FastMCP):
     """FastMCP subclass with hosted endpoint abuse controls."""
 
@@ -285,7 +301,10 @@ def create_server(
             )
         shared_client = FollowUpBossAsyncClient(resolved_local_settings, logger=resolved_logger)
         service_bundle_resolver = StaticServiceBundleResolver(build_service_bundle(shared_client))
-    adapter = FollowUpBossToolAdapter(service_bundle_resolver)
+    adapter = FollowUpBossToolAdapter(
+        service_bundle_resolver,
+        allow_external_text_message_logs=_allow_external_text_message_logs(settings),
+    )
     resolved_host = host if host is not None else resolved_server_settings.host
     resolved_port = port if port is not None else resolved_server_settings.port
     resolved_streamable_http_path = (

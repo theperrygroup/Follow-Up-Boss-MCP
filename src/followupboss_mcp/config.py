@@ -284,6 +284,13 @@ class FollowUpBossTenantRuntimeDefaults(BaseSettings):
             "FOLLOW_UP_BOSS_MAX_RETRIES",
         ),
     )
+    allow_external_text_message_logs: bool = Field(
+        default=False,
+        validation_alias=_settings_env_aliases(
+            "FOLLOWUPBOSS_ALLOW_EXTERNAL_TEXT_MESSAGE_LOGS",
+            "FOLLOW_UP_BOSS_ALLOW_EXTERNAL_TEXT_MESSAGE_LOGS",
+        ),
+    )
 
     @field_validator("base_url", mode="before")
     @classmethod
@@ -321,6 +328,7 @@ class FollowUpBossTenantRuntimeDefaults(BaseSettings):
                 "base_url": _default_base_url(),
                 "timeout_seconds": DEFAULT_TIMEOUT_SECONDS,
                 "max_retries": DEFAULT_MAX_RETRIES,
+                "allow_external_text_message_logs": False,
             }
         )
 
@@ -413,6 +421,7 @@ class FollowUpBossTenantSettings(FollowUpBossTenantRuntimeDefaults):
                 "base_url": self.base_url,
                 "timeout_seconds": self.timeout_seconds,
                 "max_retries": self.max_retries,
+                "allow_external_text_message_logs": self.allow_external_text_message_logs,
             }
         )
 
@@ -525,5 +534,6 @@ class FollowUpBossSettings(FollowUpBossTenantSettings):
                 "base_url": self.base_url,
                 "timeout_seconds": self.timeout_seconds,
                 "max_retries": self.max_retries,
+                "allow_external_text_message_logs": self.allow_external_text_message_logs,
             }
         )

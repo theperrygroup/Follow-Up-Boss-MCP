@@ -148,6 +148,7 @@ from followupboss_mcp.models.text_messages import (
     CreateTextMessageTemplateRequest,
     MergeTextMessageTemplateRequest,
     TextMessageListRequest,
+    TextMessageRecord,
     TextMessageTemplateListRequest,
     UpdateTextMessageTemplateRequest,
 )
@@ -159,6 +160,7 @@ from followupboss_mcp.models.webhooks import (
     WebhookListRequest,
 )
 from followupboss_mcp.pagination import PageResult, PaginationMetadata
+from followupboss_mcp.observability import capture_sentry_message
 from followupboss_mcp.task_intents import upcoming_task_due_start as _upcoming_task_due_start
 from followupboss_mcp.tenant_runtime import ServiceBundle, ServiceBundleResolver
 
@@ -1296,15 +1298,23 @@ class DeleteWebhookToolInput(RequestModel):
 class FollowUpBossToolAdapter:
     """Thin MCP-safe adapter around typed domain services."""
 
-    def __init__(self, services: ServiceBundle | ServiceBundleResolver) -> None:
+    def __init__(
+        self,
+        services: ServiceBundle | ServiceBundleResolver,
+        *,
+        allow_external_text_message_logs: bool = False,
+    ) -> None:
         """Initialize the adapter.
 
         Args:
             services: Either one fixed service bundle or a resolver that creates
                 a tenant-specific bundle for each call.
+            allow_external_text_message_logs: Explicit opt-in for Follow Up
+                Boss's registered-system text-message logging endpoint.
         """
         self._fixed_services: ServiceBundle | None
         self._service_bundle_resolver: ServiceBundleResolver | None
+        self._allow_external_text_message_logs = allow_external_text_message_logs
         if hasattr(services, "service_bundle"):
             self._fixed_services = None
             self._service_bundle_resolver = cast(ServiceBundleResolver, services)
@@ -2977,37 +2987,49 @@ class FollowUpBossToolAdapter:
         )
 
     async def create_text_message(self, tool_input: CreateTextMessageRequest) -> dict[str, Any]:
-        """Create a text message record using the authenticated sender phone."""
+        """Create a text message record only when external logging is explicitly allowed."""
 
         async def create_authenticated_text_message() -> Any:
-            scoped_input = await self._authenticated_text_message_request(tool_input)
-            return await self._services.text_messages.create_text_message(scoped_input)
+            scoped_input, expected_user_id = await self._authenticated_text_message_request(tool_input)
+            record = await self._services.text_messages.create_text_message(scoped_input)
+            self._validate_text_message_attribution(record, expected_user_id=expected_user_id)
+            return record
 
         return await self._single_result(create_authenticated_text_message)
 
     async def _authenticated_text_message_request(
         self,
         tool_input: CreateTextMessageRequest,
-    ) -> CreateTextMessageRequest:
+    ) -> tuple[CreateTextMessageRequest, int | None]:
         """Return an outbound text request scoped to the authenticated sender.
 
-        Incoming text logs keep their original sender direction. Outbound text
-        logs are required to use the authenticated user's `/me.phone` as
-        `from_number` so team or account defaults cannot be selected by a model.
+        Incoming text logs keep their original sender direction. Outbound user-
+        authored text logs use Follow Up Boss's registered-system endpoint,
+        whose visible timeline attribution cannot be guaranteed by the request
+        body, so they are disabled unless explicitly enabled.
 
         Args:
             tool_input: Model-selected text-message creation input.
 
         Returns:
-            A copy of the input with canonical authenticated-user `from_number`.
+            A copy of the input with canonical authenticated-user `from_number`
+            and the expected authenticated user ID for response validation.
 
         Raises:
-            RuntimeError: If the authenticated user's phone is unavailable or
-                the request tries to use a different outbound sender phone.
+            RuntimeError: If outbound external logging is disabled, the
+                authenticated user's phone is unavailable, or the request tries
+                to use a different outbound sender phone.
         """
         if tool_input.is_incoming is True:
-            return tool_input
+            return tool_input, None
+        if not self._allow_external_text_message_logs:
+            raise RuntimeError(
+                "Outbound Follow Up Boss text logs are disabled because the external "
+                "text-message endpoint cannot guarantee authenticated-user timeline "
+                "attribution. Log the transcript as a Follow Up Boss note instead."
+            )
         current_user = await self._services.users.get_me()
+        expected_user_id = await self._authenticated_user_id()
         authenticated_phone = current_user.phone
         authenticated_digits = _phone_digits(authenticated_phone)
         if authenticated_phone is None or not authenticated_digits:
@@ -3018,7 +3040,50 @@ class FollowUpBossToolAdapter:
             raise RuntimeError(
                 "Outbound text logs must use the authenticated Follow Up Boss user's sender phone."
             )
-        return tool_input.model_copy(update={"from_number": authenticated_phone})
+        return tool_input.model_copy(update={"from_number": authenticated_phone}), expected_user_id
+
+    def _validate_text_message_attribution(
+        self,
+        record: TextMessageRecord,
+        *,
+        expected_user_id: int | None,
+    ) -> None:
+        """Reject opt-in external text logs that FUB attributes to a system sender.
+
+        Args:
+            record: The Follow Up Boss text-message record returned after create.
+            expected_user_id: Authenticated Follow Up Boss user ID expected in
+                the response when FUB returns `userId`.
+
+        Raises:
+            RuntimeError: If the response shows mismatched user, system, or
+                shared-inbox attribution.
+        """
+        if expected_user_id is None:
+            return
+        has_mismatched_user = record.user_id is not None and record.user_id != expected_user_id
+        has_system_sender = record.system_name is not None and bool(record.system_name.strip())
+        has_system_id = record.system_id not in (None, 0)
+        has_shared_inbox = record.shared_inbox_id not in (None, 0)
+        if not (has_mismatched_user or has_system_sender or has_system_id or has_shared_inbox):
+            return
+        capture_sentry_message(
+            "followupboss_text_message_attribution_rejected",
+            level="error",
+            tags={"component": "mcp_tools", "operation": "create_text_message"},
+            extras={
+                "text_message_id": record.id,
+                "expected_user_id": expected_user_id,
+                "actual_user_id": record.user_id,
+                "has_system_name": has_system_sender,
+                "system_id": record.system_id,
+                "shared_inbox_id": record.shared_inbox_id,
+            },
+        )
+        raise RuntimeError(
+            "Follow Up Boss created an external text log with unsafe timeline attribution; "
+            "the record appears tied to a system, shared inbox, or different user."
+        )
 
     async def _authenticated_user_id(self) -> int:
         """Return the authenticated Follow Up Boss user ID.
