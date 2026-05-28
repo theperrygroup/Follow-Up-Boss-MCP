@@ -125,13 +125,15 @@ environment variables.
 
 `FOLLOWUPBOSS_DEFAULT_TIMEZONE` (legacy alias `FOLLOW_UP_BOSS_DEFAULT_TIMEZONE`) is a process-wide
 behavioral setting that controls how appointment and task datetimes are normalized. Follow Up Boss
-interprets a datetime sent without a UTC offset as UTC, so a spoken local time such as `3:30pm`
-relayed without an offset is stored at the wrong instant. When this variable is set to an IANA
-timezone name (for example `America/Denver`), offset-less `start`, `end`, and `dueDateTime` values
-are localized to that zone before the request is sent; datetimes that already carry an offset are
-preserved exactly. Prefer having the calling client supply an explicit offset; this setting is a
-safety net for offset-less input. Because it is read from the process environment, it applies a
-single default to every tenant in hosted multi-tenant deployments.
+stores times in UTC and, in practice, does not honor a timezone *offset suffix* on the wire: a value
+such as `2026-05-28T16:00:00-06:00` is stored as `2026-05-28T16:00:00Z` (the offset is dropped and
+the wall-clock is relabeled as UTC). To land on the correct instant, the server converts appointment
+`start`/`end` and task `dueDateTime` to an explicit UTC instant before sending. When this variable is
+set to an IANA timezone name (for example `America/Denver`), a naive value such as a spoken `3:30pm`
+is interpreted in that zone and converted to UTC; an aware value is converted from its own offset.
+When the variable is unset, naive values are sent unchanged and Follow Up Boss treats them as UTC.
+Because it is read from the process environment, it applies a single default to every tenant in
+hosted multi-tenant deployments.
 
 `FOLLOWUPBOSS_SYSTEM_NAME` and `FOLLOWUPBOSS_SYSTEM_KEY` map to the outbound `X-System` and
 `X-System-Key` headers. The `FOLLOWUPBOSS_X_SYSTEM` and `FOLLOWUPBOSS_X_SYSTEM_KEY` aliases are
