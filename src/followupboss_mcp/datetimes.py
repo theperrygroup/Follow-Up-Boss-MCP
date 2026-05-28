@@ -1,17 +1,27 @@
 """Datetime normalization helpers for Follow Up Boss request models.
 
-Follow Up Boss interprets datetimes sent without a UTC offset as UTC. When an
-MCP caller (for example, an LLM relaying a spoken time such as "3:30pm") supplies
-a local wall-clock time with no offset, the resulting appointment or task is
-silently shifted to the wrong instant. These helpers localize naive datetimes to
-a configured default timezone so the serialized payload carries the correct
-offset, while leaving timezone-aware datetimes untouched.
+Follow Up Boss stores appointment and task datetimes in UTC. In practice it does
+not reliably honor a timezone *offset suffix* on the wire: a value such as
+``2026-05-28T16:00:00-06:00`` is stored as ``2026-05-28T16:00:00Z`` (the offset
+is dropped and the wall-clock is relabeled as UTC). The only representation that
+is stored unambiguously is an explicit UTC instant (``...Z``).
+
+These helpers therefore convert datetimes to UTC before serialization so the
+correct instant is preserved regardless of the offset quirk:
+
+* Timezone-aware values (any offset, including an explicit UTC) are converted to
+  UTC.
+* Naive values are localized to the configured default timezone (when one is
+  set) and then converted to UTC. This is what fixes a spoken local time such as
+  "3:30pm" that an MCP caller relays without an offset.
+* Naive values with no configured default timezone are returned unchanged, which
+  preserves the historical behavior where Follow Up Boss treats them as UTC.
 """
 
 from __future__ import annotations
 
 import os
-from datetime import datetime, tzinfo
+from datetime import UTC, datetime, tzinfo
 from functools import lru_cache
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -65,31 +75,32 @@ def resolve_default_timezone() -> tzinfo | None:
     return None
 
 
-def ensure_timezone_aware(value: datetime, *, default_timezone: tzinfo | None) -> datetime:
-    """Attach a default timezone to a naive datetime.
+def normalize_datetime(value: datetime, *, default_timezone: tzinfo | None) -> datetime:
+    """Convert a datetime to the UTC instant Follow Up Boss stores reliably.
 
     Args:
         value: The datetime to normalize.
-        default_timezone: The timezone applied to naive datetimes. When ``None``,
-            naive datetimes are returned unchanged (Follow Up Boss treats them as
-            UTC).
+        default_timezone: The timezone used to interpret a naive ``value``. When
+            ``None``, a naive ``value`` is returned unchanged (Follow Up Boss
+            treats it as UTC).
 
     Returns:
-        A timezone-aware datetime when ``value`` is naive and a default timezone
-        applies, otherwise the original ``value`` unchanged.
+        A UTC-aware datetime when the instant is known (``value`` is already
+        aware, or it is naive and ``default_timezone`` is provided); otherwise
+        the original naive ``value`` unchanged.
     """
     if value.tzinfo is not None:
-        return value
+        return value.astimezone(UTC)
     if default_timezone is None:
         return value
-    return value.replace(tzinfo=default_timezone)
+    return value.replace(tzinfo=default_timezone).astimezone(UTC)
 
 
-def normalize_local_datetime(value: datetime | None) -> datetime | None:
-    """Localize a naive datetime using the configured default timezone.
+def normalize_optional_datetime(value: datetime | None) -> datetime | None:
+    """Normalize an optional datetime using the configured default timezone.
 
-    This is the convenience entry point used by request-model validators. Aware
-    datetimes and ``None`` are returned unchanged.
+    This is the convenience entry point used by request-model validators for
+    optional fields. ``None`` is returned unchanged.
 
     Args:
         value: The optional datetime to normalize.
@@ -102,4 +113,4 @@ def normalize_local_datetime(value: datetime | None) -> datetime | None:
     """
     if value is None:
         return None
-    return ensure_timezone_aware(value, default_timezone=resolve_default_timezone())
+    return normalize_datetime(value, default_timezone=resolve_default_timezone())

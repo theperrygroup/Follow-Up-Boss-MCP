@@ -7,8 +7,8 @@ from datetime import datetime
 from pydantic import Field, model_validator
 
 from followupboss_mcp.datetimes import (
-    ensure_timezone_aware,
-    normalize_local_datetime,
+    normalize_datetime,
+    normalize_optional_datetime,
     resolve_default_timezone,
 )
 from followupboss_mcp.models.common import QueryModel, RequestModel, ResponseModel
@@ -39,18 +39,19 @@ class AppointmentListRequest(QueryModel):
         return self
 
     @model_validator(mode="after")
-    def _localize_naive_datetimes(self) -> AppointmentListRequest:
-        """Localize naive `start`/`end` filters to the configured default timezone.
+    def _normalize_datetimes_to_utc(self) -> AppointmentListRequest:
+        """Convert naive `start`/`end` filters to the UTC instant to query.
 
-        Follow Up Boss treats offset-less datetimes as UTC, so a naive local
-        time would query the wrong window. Naive values are localized only when
-        a default timezone is configured; aware values are left untouched.
+        Follow Up Boss stores times in UTC and does not honor offset suffixes, so
+        a naive local time would query the wrong window. Naive values are
+        interpreted with the configured default timezone (when set) and converted
+        to UTC; aware values are converted to UTC directly.
 
         Returns:
             The normalized request instance.
         """
-        self.start = normalize_local_datetime(self.start)
-        self.end = normalize_local_datetime(self.end)
+        self.start = normalize_optional_datetime(self.start)
+        self.end = normalize_optional_datetime(self.end)
         return self
 
 
@@ -87,20 +88,23 @@ class AppointmentWriteRequest(RequestModel):
     type_id: int | None = Field(default=None, serialization_alias="typeId")
 
     @model_validator(mode="after")
-    def _localize_naive_datetimes(self) -> AppointmentWriteRequest:
-        """Localize naive `start`/`end` values to the configured default timezone.
+    def _normalize_datetimes_to_utc(self) -> AppointmentWriteRequest:
+        """Convert `start`/`end` to the UTC instant Follow Up Boss stores.
 
-        Follow Up Boss interprets offset-less datetimes as UTC, which would shift
-        a spoken local time (such as "3:30pm") to the wrong instant. Naive values
-        are localized only when a default timezone is configured; values that
-        already carry an offset are preserved exactly.
+        Follow Up Boss stores appointment times in UTC and does not honor an
+        offset suffix on the wire, so a spoken local time (such as "3:30pm") must
+        be converted to UTC to land on the right instant. Naive values are
+        interpreted with the configured default timezone (when set) and converted
+        to UTC; aware values are converted to UTC directly. Naive values with no
+        configured default timezone are left unchanged (Follow Up Boss treats them
+        as UTC).
 
         Returns:
             The normalized request instance.
         """
         default_timezone = resolve_default_timezone()
-        self.start = ensure_timezone_aware(self.start, default_timezone=default_timezone)
-        self.end = ensure_timezone_aware(self.end, default_timezone=default_timezone)
+        self.start = normalize_datetime(self.start, default_timezone=default_timezone)
+        self.end = normalize_datetime(self.end, default_timezone=default_timezone)
         return self
 
 

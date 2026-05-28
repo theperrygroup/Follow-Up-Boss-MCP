@@ -6,7 +6,7 @@ from datetime import date, datetime
 
 from pydantic import AliasChoices, Field, model_validator
 
-from followupboss_mcp.datetimes import normalize_local_datetime
+from followupboss_mcp.datetimes import normalize_optional_datetime
 from followupboss_mcp.models.common import CommonListQuery, JsonValue, RequestModel, ResponseModel
 
 
@@ -24,18 +24,19 @@ class TaskListRequest(CommonListQuery):
     type: list[str] | None = None
 
     @model_validator(mode="after")
-    def _localize_naive_datetimes(self) -> TaskListRequest:
-        """Localize naive `due_start`/`due_end` filters to the default timezone.
+    def _normalize_datetimes_to_utc(self) -> TaskListRequest:
+        """Convert naive `due_start`/`due_end` filters to the UTC instant to query.
 
-        Follow Up Boss treats offset-less datetimes as UTC, so a naive local time
-        would query the wrong due-date window. Naive values are localized only
-        when a default timezone is configured; aware values are left untouched.
+        Follow Up Boss stores times in UTC and does not honor offset suffixes, so
+        a naive local time would query the wrong due-date window. Naive values are
+        interpreted with the configured default timezone (when set) and converted
+        to UTC; aware values are converted to UTC directly.
 
         Returns:
             The normalized request instance.
         """
-        self.due_start = normalize_local_datetime(self.due_start)
-        self.due_end = normalize_local_datetime(self.due_end)
+        self.due_start = normalize_optional_datetime(self.due_start)
+        self.due_end = normalize_optional_datetime(self.due_end)
         return self
 
 
@@ -58,18 +59,20 @@ class TaskWriteRequest(RequestModel):
     type: str | None = None
 
     @model_validator(mode="after")
-    def _localize_naive_due_date_time(self) -> TaskWriteRequest:
-        """Localize a naive `due_date_time` to the configured default timezone.
+    def _normalize_due_date_time_to_utc(self) -> TaskWriteRequest:
+        """Convert `due_date_time` to the UTC instant Follow Up Boss stores.
 
-        Follow Up Boss interprets the offset-less `dueDateTime` as UTC, which
-        would shift a spoken local due time to the wrong instant. The value is
-        localized only when a default timezone is configured; a value that
-        already carries an offset is preserved exactly.
+        Follow Up Boss stores `dueDateTime` in UTC and does not honor an offset
+        suffix on the wire, so a spoken local due time must be converted to UTC.
+        A naive value is interpreted with the configured default timezone (when
+        set) and converted to UTC; an aware value is converted to UTC directly. A
+        naive value with no configured default timezone is left unchanged (Follow
+        Up Boss treats it as UTC).
 
         Returns:
             The normalized request instance.
         """
-        self.due_date_time = normalize_local_datetime(self.due_date_time)
+        self.due_date_time = normalize_optional_datetime(self.due_date_time)
         return self
 
 
