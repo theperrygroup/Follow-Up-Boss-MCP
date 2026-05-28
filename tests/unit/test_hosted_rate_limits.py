@@ -134,6 +134,32 @@ async def test_in_memory_hosted_rate_limit_backend_isolates_budget_keys() -> Non
     assert reset_decision.allowed is True
 
 
+async def test_in_memory_hosted_rate_limit_backend_clamps_retry_after_to_window() -> None:
+    """Same-tick denials should never report a retry hint above the window.
+
+    Regression guard for floating-point rounding in ``(oldest + window) - now``
+    that previously produced a value microscopically above ``window_seconds``
+    (for example ``60.00000000000001``) and inflated the rendered ``Retry-After``
+    header to ``61`` on coarse-resolution clocks such as Windows.
+    """
+    # A realistic monotonic-clock value where ``(clock + 60.0) - clock`` rounds
+    # to ``60.00000000000001`` instead of exactly ``60.0``.
+    clock_value = 4.000400000004014
+    window_seconds = 60.0
+    backend = InMemoryHostedRateLimitBackend(clock=lambda: clock_value)
+    key = HostedRateLimitKey(tenant_id="tenant-1", client_id="portal-app")
+
+    allowed_decision = await backend.consume(key, limit=1, window_seconds=window_seconds)
+    denied_decision = await backend.consume(key, limit=1, window_seconds=window_seconds)
+
+    assert allowed_decision.allowed is True
+    assert denied_decision.allowed is False
+    assert denied_decision.retry_after_seconds is not None
+    assert denied_decision.retry_after_seconds <= window_seconds
+    assert denied_decision.retry_after_seconds == window_seconds
+    assert str(max(1, math.ceil(denied_decision.retry_after_seconds))) == "60"
+
+
 def test_hosted_endpoint_rate_limiter_optionally_adds_client_ip_to_budget_key() -> None:
     """The limiter should ignore client IP unless the setting enables it."""
     access_token = _access_token()
