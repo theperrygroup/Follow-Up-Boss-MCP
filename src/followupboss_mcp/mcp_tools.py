@@ -1306,9 +1306,7 @@ class FollowUpBossToolAdapter:
         else:
             self._fixed_services = services
             self._service_bundle_resolver = None
-        self._account_timezone_cache: WeakKeyDictionary[object, tzinfo | None] = (
-            WeakKeyDictionary()
-        )
+        self._account_timezone_cache: WeakKeyDictionary[object, tzinfo | None] = WeakKeyDictionary()
 
     @property
     def _services(self) -> ServiceBundle:

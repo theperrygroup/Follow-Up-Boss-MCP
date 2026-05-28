@@ -3783,8 +3783,14 @@ async def test_person_activity_returns_safe_runtime_error_for_follow_up_boss_fai
 class QueueClient:
     """Queue-backed client for FastMCP server tests."""
 
-    def __init__(self, responses: list[dict[str, object] | list[object]]) -> None:
+    def __init__(
+        self,
+        responses: list[dict[str, object] | list[object]],
+        *,
+        me_response: dict[str, object] | None = None,
+    ) -> None:
         self.responses = responses
+        self._me_response: dict[str, object] = me_response if me_response is not None else {"id": 0}
 
     async def aclose(self) -> None:
         return None
@@ -3798,7 +3804,9 @@ class QueueClient:
         json_body: Mapping[str, object] | None = None,
         params: Mapping[str, str] | None = None,
     ) -> dict[str, object] | list[object]:
-        del method, path, headers, json_body, params
+        del method, headers, json_body, params
+        if path == "/me":
+            return self._me_response
         return self.responses.pop(0)
 
 
@@ -3808,46 +3816,46 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     server = create_server(
         FollowUpBossSettings.model_validate({"api_key": "key"}),
         client=QueueClient(
-            [
-                {"id": 1},
-                {
-                    "id": 1,
-                    "name": "Gerald Leenerts",
-                    "role": "admin",
-                    "email": "gerald@followupboss.com",
-                    "phone": "(123) 456-7890",
-                    "timeZone": "America/Chicago",
-                    "signature": "<div>Cheers,<br></div><div>-Gerald</div>",
-                    "rawSignature": "<div>Cheers,<br></div><div>-Gerald</div>",
-                    "apiKey": "secret-api-key",
-                    "algoliaKey": "secret-algolia-key",
-                    "intercomSettings": {
-                        "app_id": "abc123",
-                        "created_at": "1313236940",
-                        "user_hash": "secret-hash",
-                        "user_id": "1234-1",
-                    },
-                    "account": 1234,
-                    "teamMember": None,
-                    "beta": True,
-                    "betaOnly": False,
-                    "connectedEmail": {
-                        "email": "gerald@followupboss.com",
-                        "oauthProvider": "google",
-                        "shareEmails": False,
-                        "imapLeadProcessing": True,
-                        "hasSmtp": True,
-                    },
-                    "leadEmailAddress": "gerald@followupboss.me",
-                    "callingEnabled": True,
-                    "voicemailEnabled": False,
-                    "voicemailUrl": None,
-                    "callingCapabilityToken": "secret-calling-token",
-                    "isOwner": True,
-                    "unreadConversationCount": 0,
-                    "notifyBy": ["email", "sms"],
-                    "features": ["calling", "link-tracking"],
+            me_response={
+                "id": 1,
+                "name": "Gerald Leenerts",
+                "role": "admin",
+                "email": "gerald@followupboss.com",
+                "phone": "(123) 456-7890",
+                "timeZone": "America/Chicago",
+                "signature": "<div>Cheers,<br></div><div>-Gerald</div>",
+                "rawSignature": "<div>Cheers,<br></div><div>-Gerald</div>",
+                "apiKey": "secret-api-key",
+                "algoliaKey": "secret-algolia-key",
+                "intercomSettings": {
+                    "app_id": "abc123",
+                    "created_at": "1313236940",
+                    "user_hash": "secret-hash",
+                    "user_id": "1234-1",
                 },
+                "account": 1234,
+                "teamMember": None,
+                "beta": True,
+                "betaOnly": False,
+                "connectedEmail": {
+                    "email": "gerald@followupboss.com",
+                    "oauthProvider": "google",
+                    "shareEmails": False,
+                    "imapLeadProcessing": True,
+                    "hasSmtp": True,
+                },
+                "leadEmailAddress": "gerald@followupboss.me",
+                "callingEnabled": True,
+                "voicemailEnabled": False,
+                "voicemailUrl": None,
+                "callingCapabilityToken": "secret-calling-token",
+                "isOwner": True,
+                "unreadConversationCount": 0,
+                "notifyBy": ["email", "sms"],
+                "features": ["calling", "link-tracking"],
+            },
+            responses=[
+                {"id": 1},
                 {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "people": [{"id": 2}]},
                 {"id": 1},
                 {"_metadata": {"limit": 1, "offset": 0, "total": 1}, "people": [{"id": 2}]},
@@ -4434,7 +4442,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                         {"id": 2, "timeframe": "3-6 Months"},
                     ],
                 },
-            ]
+            ],
         ),
     )
     listed_tools = await server.list_tools()

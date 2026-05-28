@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import cast
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -10,8 +11,13 @@ import pytest
 from followupboss_mcp.datetimes import (
     normalize_datetime,
     normalize_optional_datetime,
+    resolve_configured_timezone,
     resolve_default_timezone,
+    set_account_timezone,
+    timezone_from_name,
 )
+from followupboss_mcp.errors import FollowUpBossError
+from followupboss_mcp.mcp_tools import FollowUpBossToolAdapter
 from followupboss_mcp.models.appointments import (
     AppointmentListRequest,
     CreateAppointmentRequest,
@@ -22,6 +28,190 @@ from followupboss_mcp.models.tasks import (
     TaskListRequest,
     UpdateTaskRequest,
 )
+from followupboss_mcp.models.users import CurrentUserRecord
+from followupboss_mcp.tenant_runtime import ServiceBundle
+
+
+class _StubUsersService:
+    """Minimal users service stub exposing ``get_me`` for timezone detection."""
+
+    def __init__(
+        self,
+        *,
+        time_zone: str | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        """Store the canned ``/me`` timezone or the error to raise.
+
+        Args:
+            time_zone: The ``timeZone`` value returned by ``get_me``.
+            error: An exception to raise from ``get_me`` instead of returning.
+        """
+        self._time_zone = time_zone
+        self._error = error
+        self.calls = 0
+
+    async def get_me(self) -> CurrentUserRecord:
+        """Return a canned current user or raise the configured error.
+
+        Returns:
+            A current-user record carrying the configured timezone.
+
+        Raises:
+            Exception: The configured error, when one was provided.
+        """
+        self.calls += 1
+        if self._error is not None:
+            raise self._error
+        return CurrentUserRecord.model_validate({"id": 1, "timeZone": self._time_zone})
+
+
+class _StubBundle:
+    """Minimal service bundle exposing only the users service."""
+
+    def __init__(self, users: _StubUsersService) -> None:
+        """Store the stub users service.
+
+        Args:
+            users: The stub users service used for ``/me`` detection.
+        """
+        self.users = users
+
+
+def _adapter_with_users(users: _StubUsersService) -> FollowUpBossToolAdapter:
+    """Build an adapter backed by a stub bundle for timezone priming tests.
+
+    Args:
+        users: The stub users service exposed by the bundle.
+
+    Returns:
+        An adapter whose fixed bundle resolves the stub users service.
+    """
+    return FollowUpBossToolAdapter(cast(ServiceBundle, _StubBundle(users)))
+
+
+def test_timezone_from_name_resolves_valid_zone() -> None:
+    """A valid IANA name should resolve to the matching zone."""
+    assert timezone_from_name("America/Denver") == ZoneInfo("America/Denver")
+
+
+@pytest.mark.parametrize("name", [None, "", "   "])
+def test_timezone_from_name_returns_none_for_missing(name: str | None) -> None:
+    """Missing or blank names should resolve to ``None``.
+
+    Args:
+        name: The missing or blank candidate timezone name.
+    """
+    assert timezone_from_name(name) is None
+
+
+def test_timezone_from_name_returns_none_for_invalid() -> None:
+    """An unknown IANA name should resolve to ``None`` rather than raising."""
+    assert timezone_from_name("America/Nowhere") is None
+
+
+def test_resolve_configured_timezone_reads_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The configured resolver should read the environment override.
+
+    Args:
+        monkeypatch: Fixture used to set the configured timezone env var.
+    """
+    monkeypatch.setenv("FOLLOWUPBOSS_DEFAULT_TIMEZONE", "America/Denver")
+    assert resolve_configured_timezone() == ZoneInfo("America/Denver")
+
+
+def test_resolve_default_timezone_uses_account_when_no_env() -> None:
+    """Without an env override, the auto-detected account timezone should win."""
+    set_account_timezone(ZoneInfo("America/Denver"))
+    assert resolve_default_timezone() == ZoneInfo("America/Denver")
+
+
+def test_resolve_default_timezone_env_overrides_account(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An explicit env override should take precedence over the account timezone.
+
+    Args:
+        monkeypatch: Fixture used to set the configured timezone env var.
+    """
+    set_account_timezone(ZoneInfo("America/Denver"))
+    monkeypatch.setenv("FOLLOWUPBOSS_DEFAULT_TIMEZONE", "America/New_York")
+    assert resolve_default_timezone() == ZoneInfo("America/New_York")
+
+
+@pytest.mark.asyncio
+async def test_prime_account_timezone_detects_from_me() -> None:
+    """Priming should publish the account timezone detected from ``/me``."""
+    users = _StubUsersService(time_zone="America/Denver")
+    adapter = _adapter_with_users(users)
+    await adapter.prime_account_timezone()
+    assert resolve_default_timezone() == ZoneInfo("America/Denver")
+    assert users.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_prime_account_timezone_caches_me_lookup() -> None:
+    """Repeated priming for one bundle should reuse the cached ``/me`` lookup."""
+    users = _StubUsersService(time_zone="America/Denver")
+    adapter = _adapter_with_users(users)
+    await adapter.prime_account_timezone()
+    await adapter.prime_account_timezone()
+    assert users.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_prime_account_timezone_env_override_skips_lookup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An env override should short-circuit priming without calling ``/me``.
+
+    Args:
+        monkeypatch: Fixture used to set the configured timezone env var.
+    """
+    monkeypatch.setenv("FOLLOWUPBOSS_DEFAULT_TIMEZONE", "America/New_York")
+    users = _StubUsersService(time_zone="America/Denver")
+    adapter = _adapter_with_users(users)
+    await adapter.prime_account_timezone()
+    assert users.calls == 0
+    assert resolve_default_timezone() == ZoneInfo("America/New_York")
+
+
+@pytest.mark.asyncio
+async def test_prime_account_timezone_handles_missing_zone() -> None:
+    """A ``/me`` payload without a timezone should leave the default unset."""
+    users = _StubUsersService(time_zone=None)
+    adapter = _adapter_with_users(users)
+    await adapter.prime_account_timezone()
+    assert resolve_default_timezone() is None
+
+
+@pytest.mark.asyncio
+async def test_prime_account_timezone_handles_lookup_error() -> None:
+    """A failed ``/me`` lookup should be swallowed and leave the default unset."""
+    users = _StubUsersService(error=FollowUpBossError("boom"))
+    adapter = _adapter_with_users(users)
+    await adapter.prime_account_timezone()
+    assert resolve_default_timezone() is None
+
+
+@pytest.mark.asyncio
+async def test_create_appointment_uses_auto_detected_timezone() -> None:
+    """An auto-detected account timezone should convert naive appointment times."""
+    users = _StubUsersService(time_zone="America/Denver")
+    adapter = _adapter_with_users(users)
+    await adapter.prime_account_timezone()
+    request = CreateAppointmentRequest.model_validate(
+        {
+            "title": "Follow up",
+            "start": "2026-05-28T16:00:00",
+            "end": "2026-05-28T16:30:00",
+        }
+    )
+    payload = request.model_dump(mode="json", by_alias=True, exclude_none=True)
+    assert payload["start"] == "2026-05-28T22:00:00Z"
+    assert payload["end"] == "2026-05-28T22:30:00Z"
 
 
 def test_resolve_default_timezone_returns_none_when_unset() -> None:

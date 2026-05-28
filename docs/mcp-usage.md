@@ -123,17 +123,24 @@ Hosted deployments should use the server-only environment variables for process 
 Customer-specific Follow Up Boss credentials should come from `TenantStore`, not process-wide
 environment variables.
 
-`FOLLOWUPBOSS_DEFAULT_TIMEZONE` (legacy alias `FOLLOW_UP_BOSS_DEFAULT_TIMEZONE`) is a process-wide
-behavioral setting that controls how appointment and task datetimes are normalized. Follow Up Boss
-stores times in UTC and, in practice, does not honor a timezone *offset suffix* on the wire: a value
-such as `2026-05-28T16:00:00-06:00` is stored as `2026-05-28T16:00:00Z` (the offset is dropped and
-the wall-clock is relabeled as UTC). To land on the correct instant, the server converts appointment
-`start`/`end` and task `dueDateTime` to an explicit UTC instant before sending. When this variable is
-set to an IANA timezone name (for example `America/Denver`), a naive value such as a spoken `3:30pm`
-is interpreted in that zone and converted to UTC; an aware value is converted from its own offset.
-When the variable is unset, naive values are sent unchanged and Follow Up Boss treats them as UTC.
-Because it is read from the process environment, it applies a single default to every tenant in
-hosted multi-tenant deployments.
+Appointment and task datetimes are normalized to UTC before they are sent. Follow Up Boss stores
+times in UTC and, in practice, does not honor a timezone *offset suffix* on the wire: a value such as
+`2026-05-28T16:00:00-06:00` is stored as `2026-05-28T16:00:00Z` (the offset is dropped and the
+wall-clock is relabeled as UTC). To land on the correct instant, the server converts appointment
+`start`/`end` and task `dueDateTime` to an explicit UTC instant before sending. A naive value such as
+a spoken `3:30pm` is interpreted in the resolved default timezone and converted to UTC; an aware
+value is converted from its own offset.
+
+The default timezone is resolved in two layers:
+
+- By default, the server auto-detects the authenticated account's timezone from the Follow Up Boss
+  `/me` endpoint before creating or updating an appointment or task. The lookup is cached per service
+  bundle and is best-effort: if it fails, naive values are sent unchanged (treated as UTC). This is
+  what makes appointments land at the right time with zero configuration in clients such as Claude,
+  and it resolves the correct per-tenant zone in hosted multi-tenant deployments.
+- `FOLLOWUPBOSS_DEFAULT_TIMEZONE` (legacy alias `FOLLOW_UP_BOSS_DEFAULT_TIMEZONE`) is an optional
+  process-wide override. When set to an IANA timezone name (for example `America/Denver`), it takes
+  precedence over auto-detection and skips the `/me` lookup. Use it to force a specific zone.
 
 `FOLLOWUPBOSS_SYSTEM_NAME` and `FOLLOWUPBOSS_SYSTEM_KEY` map to the outbound `X-System` and
 `X-System-Key` headers. The `FOLLOWUPBOSS_X_SYSTEM` and `FOLLOWUPBOSS_X_SYSTEM_KEY` aliases are
