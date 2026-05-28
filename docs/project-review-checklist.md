@@ -231,7 +231,7 @@ Current strengths:
 - The broader MCP surface now includes a current-user `/me` helper that keeps secret-like fields redacted instead of leaking them through the MCP transport.
 - The broader MCP surface now includes webhook update support, which makes the registered-system webhook domain effectively complete without introducing transport-specific adapter branches.
 - The broader MCP surface now also includes the remaining person and user delete flows, which closes the last official endpoint gaps in the current manifest.
-- The broader MCP surface now includes externally logged text message creation plus email and text template merge previews without needing transport-specific adapter branches.
+- The broader MCP surface now intentionally excludes text send/log support while retaining read-only text history plus email and text template merge previews without needing transport-specific adapter branches.
 - The broader MCP surface now includes typed team inbox discovery without needing any special-case response shaping.
 - The broader MCP surface now includes inbox app installation, participant, message, note, and conversation mutation flows without needing transport-specific adapter branches.
 - The text messaging slice adds both timeline-style reads and text message template CRUD without requiring special-case MCP handler patterns.
@@ -350,7 +350,7 @@ Current strengths:
 - The inbox app message and conversation slice followed the same pattern, completing the domain with service, adapter, registration, and MCP tool coverage without weakening the offline guarantees.
 - The people relationship slice followed the same pattern, including list/get/create/update/delete coverage without weakening the offline guarantees.
 - The custom field admin slice followed the same pattern, extending an existing domain from read-only discovery into owner-only admin CRUD without weakening the offline guarantees.
-- The text message send and merge slice followed the same pattern, extending the messaging domain with external-log creation and merge previews without weakening the offline guarantees.
+- The text message template merge slice followed the same pattern, while text send/log support remains intentionally unsupported in the MCP surface.
 - The email marketing slice followed the same pattern, adding campaign and batched event flows without weakening the offline guarantees.
 - The attachment slice followed the same pattern, extending both people and deal resource families with registered-system CRUD without weakening the offline guarantees.
 - The reactions slice followed the same pattern, extending the communication surface with read/add/delete coverage without weakening the offline guarantees.
@@ -479,7 +479,7 @@ Current strengths:
 - The repository now covers a full task workflow domain with list, lookup, create, update, and delete support.
 - The repository now covers a full team workflow domain with list, lookup, create, update, and delete support, including the optional member-migration parameter on delete.
 - The repository now covers a full email-template workflow domain with list, lookup, create, update, and delete support.
-- The repository now covers externally logged text messages plus both email-template and text-message-template merge previews instead of leaving those messaging helpers deferred.
+- The repository now covers read-only text messages plus both email-template and text-message-template merge previews while explicitly leaving text send/log capability unsupported.
 - The repository now covers call search plus direct call creation and update flows instead of leaving communication history entirely deferred.
 - The repository now covers a full pipeline workflow domain with list, lookup, create, update, and delete support, including typed stage payloads.
 - The repository now covers a full pond workflow domain with list, lookup, create, update, and delete support, including the documented reassignment requirement on delete.
@@ -547,7 +547,7 @@ Current strengths:
 - The same alignment discipline held again when the inbox app message and conversation surface was added.
 - The same alignment discipline held again when the people relationship surface was added.
 - The same alignment discipline held again when the custom field admin surface was added.
-- The same alignment discipline held again when the text message send and merge surface was added.
+- The same alignment discipline held again when the text message template merge surface was added and text send/log support was kept out of the MCP surface.
 - The same alignment discipline held again when the email marketing surface was added.
 - The same alignment discipline held again when the attachment surface was added.
 - The same alignment discipline held again when the reaction surface was added.
@@ -718,7 +718,7 @@ Use this mini-template when you revisit the file after a code change:
 | `2026-03-28` | `GPT-5.4` | Inbox-app message and conversation breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed inbox app message, note, and conversation mutation support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
 | `2026-03-28` | `GPT-5.4` | People-relationships breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed people relationship list/get/create/update/delete support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
 | `2026-03-28` | `GPT-5.4` | Custom-field admin breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed custom field get/create/update/delete support alongside the existing list flow, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
-| `2026-03-28` | `GPT-5.4` | Text-message send and merge breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed external text-message logging plus email and text template merge support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
+| `2026-03-28` | `GPT-5.4` | Text-template merge breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added email and text template merge support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
 | `2026-03-28` | `GPT-5.4` | Email-marketing breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed email marketing campaign list/create/update plus email event list/post support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
 | `2026-03-28` | `GPT-5.4` | Attachments breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed person and deal attachment get/create/update/delete support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |
 | `2026-03-28` | `GPT-5.4` | Reactions breadth follow-up | `3, 5, 6, 7` | `94.1 -> 94.1` | Added typed reaction get/create/delete support, regenerated coverage artifacts, and revalidated through the shared wrapper plus the optional live identity check. |

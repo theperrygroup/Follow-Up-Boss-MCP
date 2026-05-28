@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from followupboss_mcp.http_client import FollowUpBossClientProtocol
 from followupboss_mcp.models.text_messages import (
-    CreateTextMessageRequest,
     CreateTextMessageTemplateRequest,
     MergedTextMessageTemplateRecord,
     MergeTextMessageTemplateRequest,
@@ -67,19 +66,6 @@ class TextMessagesService:
         """
         payload = await self._client.request_json("GET", f"/textMessages/{text_message_id}")
         return TextMessageRecord.model_validate(payload)
-
-    async def create_text_message(self, request: CreateTextMessageRequest) -> TextMessageRecord:
-        """Record an externally sent text message.
-
-        Args:
-            request: The typed text message creation request.
-
-        Returns:
-            The created text message record returned by Follow Up Boss.
-        """
-        payload = request.model_dump(mode="json", by_alias=True, exclude_none=True)
-        response = await self._client.request_json("POST", "/textMessages", json_body=payload)
-        return TextMessageRecord.model_validate(response)
 
 
 class TextMessageTemplatesService:

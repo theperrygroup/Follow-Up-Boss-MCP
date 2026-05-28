@@ -149,7 +149,6 @@ from followupboss_mcp.models.templates import (
     UpdateTemplateRequest,
 )
 from followupboss_mcp.models.text_messages import (
-    CreateTextMessageRequest,
     CreateTextMessageTemplateRequest,
     MergeTextMessageTemplateRequest,
     TextMessageListRequest,
@@ -3179,17 +3178,6 @@ async def test_text_messages_service() -> None:
                 "toNumber": "555-0002",
                 "userName": "Data",
             },
-            {
-                "id": 3,
-                "personId": 99,
-                "message": "Logged externally",
-                "fromNumber": "555-0001",
-                "toNumber": "555-0002",
-                "userName": "Data",
-                "isIncoming": False,
-                "externalLabel": "External SMS",
-                "externalUrl": "https://example.com/sms/3",
-            },
         ]
     )
     service = TextMessagesService(client)
@@ -3209,28 +3197,6 @@ async def test_text_messages_service() -> None:
     }
 
     assert (await service.get_text_message(2)).id == 2
-
-    created = await service.create_text_message(
-        CreateTextMessageRequest(
-            person_id=99,
-            message="Logged externally",
-            to_number="555-0002",
-            from_number="555-0001",
-            is_incoming=False,
-            external_label="External SMS",
-            external_url="https://example.com/sms/3",
-        )
-    )
-    assert created.id == 3
-    assert client.calls[2].json_body == {
-        "personId": 99,
-        "message": "Logged externally",
-        "toNumber": "555-0002",
-        "fromNumber": "555-0001",
-        "isIncoming": False,
-        "externalLabel": "External SMS",
-        "externalUrl": "https://example.com/sms/3",
-    }
 
 
 @pytest.mark.asyncio

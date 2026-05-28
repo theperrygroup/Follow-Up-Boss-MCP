@@ -129,7 +129,7 @@ Generated from the official Follow Up Boss doc-ingestion manifest and an explici
 | `POST /templates/merge` | Implemented | Yes | Yes | Yes | Merges an email template with recipient-aware merge-field expansion. |
 | `POST /textMessageTemplates` | Implemented | Yes | Yes | Yes | Creates a new text message template. |
 | `POST /textMessageTemplates/merge` | Implemented | Yes | Yes | Yes | Merges a text message template with recipient-aware merge-field expansion. |
-| `POST /textMessages` | Implemented | Yes | Yes | Yes | Records an externally sent text message log entry. |
+| `POST /textMessages` | Unsupported | No | No | No | Not exposed because Follow Up Boss does not provide API support to log or send texts through this MCP. |
 | `POST /webhooks` | Implemented | Yes | Yes | Yes | Requires registered system headers and owner-level permissions. |
 | `PUT /actionPlansPeople/:id` | Implemented | Yes | Yes | Yes | Pauses or resumes an action-plan-person relationship. |
 | `PUT /appointmentOutcomes/{id}` | Implemented | Yes | Yes | Yes | Updates appointment outcome metadata with documented orderWeight behavior. |

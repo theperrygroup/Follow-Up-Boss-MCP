@@ -504,10 +504,11 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
             name=_UNSUPPORTED_TOOL,
             description=(
                 "Use when Follow Up Boss or this MCP does not support the requested action, "
-                "including note history or notes by person, lead, or contact. In multi-action "
-                "prompts, call this as one ordered action for the unsupported portion while "
-                "still calling supported tools for the supported portions. This includes "
-                "questions asking whether notes can be searched by lead or contact."
+                "including sending texts, logging texts, note history, or notes by person, "
+                "lead, or contact. In multi-action prompts, call this as one ordered action "
+                "for the unsupported portion while still calling supported tools for the "
+                "supported portions. This includes questions asking whether notes can be "
+                "searched by lead or contact."
             ),
             input_schema=message_schema,
         ),
@@ -518,21 +519,18 @@ def text_logging_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]
     """Return the mutation-aware tool menu for text-log routing regressions.
 
     Returns:
-        Read-only route-selection specs plus safe note logging and the guarded
-        external text-message logging mutation tools. These are intentionally
-        opt-in so routine battle tests do not create CRM records.
+        Read-only route-selection specs plus safe note logging for explicit
+        transcript-as-note requests. These are intentionally opt-in so routine
+        battle tests do not create CRM records.
     """
     return read_only_battle_test_ai_tool_specs() + (
         BattleTestAiToolSpec(
             name="followupboss_add_note",
             description=(
-                "Safely log a text message transcript as a Follow Up Boss note on a resolved "
-                "person. For normal user-authored outbound text logging requests such as "
-                "'log this as a text' or 'log a text for them', reuse exactly one resolved "
-                "prior lead/contact/person from conversation context as person_id and write "
-                "the transcript in body with wording like 'Text message transcript logged by "
-                "Scott Willey'. Do not use the external text-message endpoint for those "
-                "normal outbound logs."
+                "Save a text message transcript as a plain Follow Up Boss note only when "
+                "the user explicitly asks for a note. Follow Up Boss does not provide API "
+                "support to log or send texts through this MCP, so do not present this as "
+                "an SMS send or text log."
             ),
             input_schema={
                 "type": "object",
@@ -546,37 +544,6 @@ def text_logging_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]
                     },
                 },
                 "required": ["person_id", "body"],
-                "additionalProperties": False,
-            },
-        ),
-        BattleTestAiToolSpec(
-            name="followupboss_create_text_message",
-            description=(
-                "Record a text message through Follow Up Boss's registered-system endpoint "
-                "only for inbound texts or explicitly configured external logging workflows. "
-                "Do not use this for normal outbound user-authored text transcript requests; "
-                "route those to followupboss_add_note. When external outbound logging is "
-                "explicitly enabled, from_number must be the authenticated user's own Follow "
-                "Up Boss phone and not a team, group, account, shared inbox, or default "
-                "sender number."
-            ),
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "person_id": _integer_schema("Resolved prior Follow Up Boss person ID."),
-                    "message": _string_schema("Text body to record."),
-                    "to_number": _string_schema("Recipient phone from the resolved person."),
-                    "from_number": _string_schema(
-                        "Authenticated user's own Follow Up Boss sender phone."
-                    ),
-                    "external_label": _string_schema("Optional external provider label."),
-                    "external_url": _string_schema("Optional external message URL."),
-                    "is_incoming": {
-                        "type": "boolean",
-                        "description": "True for received texts; false for sent texts.",
-                    },
-                },
-                "required": ["person_id", "message", "to_number", "from_number"],
                 "additionalProperties": False,
             },
         ),
@@ -651,17 +618,13 @@ def battle_test_selection_instructions() -> str:
         "or appointments list tools for that vague person-history request. "
         "Use list tools for appointments, calls, text-message logs, email templates, and "
         "text-message templates; these are read-only listing intents. "
-        "When the user asks to log, record, save, or add a text message and exactly one "
-        "prior lead/contact/person has been resolved in the conversation, use that prior "
-        "person as sticky recipient context for followupboss_add_note: pass the prior "
-        "person.id as person_id and write the text transcript in body with explicit wording "
-        "such as 'Text message transcript logged by Scott Willey'. Do not ask who the text "
-        "is with in that case. Do not use followupboss_create_text_message for normal "
-        "outbound user-authored text transcript logging because Follow Up Boss may display "
-        "that endpoint as a team, account, shared inbox, or registered-system sender. Use "
-        "followupboss_create_text_message only for inbound texts or explicitly configured "
-        "external logging workflows. If the message is missing, ask only for the missing "
-        "message. If multiple people are present, clarify before logging. Call logs must be "
+        "When the user asks to send, log, record, save, or add a text message as a text, "
+        f"use {_UNSUPPORTED_TOOL} and explain that Follow Up Boss does not provide API "
+        "support to log or send texts through this MCP. Only use followupboss_add_note for "
+        "text-related requests when the user explicitly asks to save the transcript as a "
+        "plain note; make clear that no SMS was sent and no text log was created. If the "
+        "note body is missing, ask only for the missing message. If multiple people are "
+        "present, clarify before creating the note. Call logs must be "
         "attributed to the authenticated Follow Up Boss user; do not choose or invent "
         "another user_id for followupboss_create_call. "
         "Fetch notes only with an explicit note ID. "

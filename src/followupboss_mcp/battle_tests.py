@@ -3749,13 +3749,16 @@ _TEXT_LOGGING_CONTEXT_SCENARIOS: tuple[BattleTestScenario, ...] = (
         grade=BattleTestGrade.MUST_REQUIRE_ID,
         prompt_variants=(
             (
-                "Log this as a text from 555-0001: Hey Lauren, checking in about the "
-                "Zillow transfer."
+                "Save this text transcript as a note from 555-0001: Hey Lauren, "
+                "checking in about the Zillow transfer."
             ),
-            "Log a text for them from 555-0001 saying: Hey Lauren, just checking in.",
             (
-                "Save this SMS on that lead from 555-0001: Lauren, I wanted to follow "
-                "up before the transfer window closes."
+                "Add a plain note for them with this SMS transcript from 555-0001: "
+                "Hey Lauren, just checking in."
+            ),
+            (
+                "Save this SMS transcript as a note on that lead from 555-0001: Lauren, "
+                "I wanted to follow up before the transfer window closes."
             ),
         ),
         expected_mcp=ExpectedMcpRoute(
@@ -3774,15 +3777,15 @@ _TEXT_LOGGING_CONTEXT_SCENARIOS: tuple[BattleTestScenario, ...] = (
         api_oracle=ApiOracleSpec(
             kind=BattleTestOracleKind.ROUTE_ONLY_PENDING,
             description=(
-                "Mutation-aware route-only check: an outbound text-log follow-up must use "
-                "the safe note path with the one previously resolved person instead of "
-                "writing through Follow Up Boss's registered-system text endpoint."
+                "Mutation-aware route-only check: an explicit transcript-as-note follow-up "
+                "must use the note path with the one previously resolved person without "
+                "claiming that Follow Up Boss logged or sent a text."
             ),
         ),
         response_assertions=(
             "request.person_id == prior_context.people[0].id",
             "request.body contains the text message transcript",
-            "assistant must route outbound text transcripts to followupboss_add_note",
+            "assistant must route explicit transcript-as-note prompts to followupboss_add_note",
             "assistant must not ask who the text is with when one prior person is resolved",
         ),
         cleanup="mutation-route-only",

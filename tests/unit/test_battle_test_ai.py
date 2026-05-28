@@ -592,34 +592,15 @@ def test_text_logging_tool_specs_are_opt_in_and_reuse_prior_person_context() -> 
     text_logging_specs = {tool.name: tool for tool in text_logging_battle_test_ai_tool_specs()}
 
     assert "followupboss_create_text_message" not in read_only_specs
+    assert "followupboss_create_text_message" not in text_logging_specs
     note_spec = text_logging_specs["followupboss_add_note"]
     note_properties = cast(dict[str, object], note_spec.input_schema["properties"])
-    create_spec = text_logging_specs["followupboss_create_text_message"]
-    properties = cast(dict[str, object], create_spec.input_schema["properties"])
 
     assert set(cast(Sequence[str], note_spec.input_schema["required"])) == {"person_id", "body"}
     assert {"person_id", "body"}.issubset(note_properties)
-    assert "Safely log a text message transcript" in note_spec.description
-    assert "reuse exactly one resolved prior lead/contact/person" in note_spec.description
-    assert "Text message transcript logged by Scott Willey" in note_spec.description
-    assert set(cast(Sequence[str], create_spec.input_schema["required"])) == {
-        "person_id",
-        "message",
-        "to_number",
-        "from_number",
-    }
-    assert {"person_id", "message", "to_number", "from_number"}.issubset(properties)
-    assert "registered-system endpoint" in create_spec.description
-    assert "route those to followupboss_add_note" in create_spec.description
-    assert "authenticated user's own Follow Up Boss phone" in create_spec.description
-    assert "not a team, group, account, shared inbox" in create_spec.description
-    assert (
-        "Authenticated user's own Follow Up Boss sender phone"
-        in cast(
-            dict[str, str],
-            properties["from_number"],
-        )["description"]
-    )
+    assert "plain Follow Up Boss note only" in note_spec.description
+    assert "does not provide API support to log or send texts" in note_spec.description
+    assert "do not present this as an SMS send or text log" in note_spec.description
 
 
 def test_selection_instructions_explain_unsupported_note_search() -> None:
@@ -668,13 +649,11 @@ def test_selection_instructions_explain_unsupported_note_search() -> None:
     assert "Use followupboss_list_person_activity for communication history" in instructions
     assert "without a resolved person_id, call battle_test_clarify" in instructions
     assert "do not use broad calls, text messages, email events, events" in instructions
-    assert "use that prior person as sticky recipient context" in instructions
-    assert "prior person.id as person_id" in instructions
-    assert "write the text transcript in body" in instructions
-    assert "Do not ask who the text is with" in instructions
-    assert "Do not use followupboss_create_text_message for normal outbound" in instructions
-    assert "team, account, shared inbox, or registered-system sender" in instructions
-    assert "Use followupboss_create_text_message only for inbound texts" in instructions
+    assert "send, log, record, save, or add a text message as a text" in instructions
+    assert "Follow Up Boss does not provide API support to log or send texts" in instructions
+    assert "Only use followupboss_add_note" in instructions
+    assert "explicitly asks to save the transcript as a plain note" in instructions
+    assert "no SMS was sent and no text log was created" in instructions
     assert "Call logs must be attributed to the authenticated Follow Up Boss user" in instructions
     assert "do not choose or invent another user_id" in instructions
     assert (

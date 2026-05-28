@@ -15,18 +15,6 @@ class TextMessageListRequest(QueryModel):
     to_number: str | None = Field(default=None, serialization_alias="toNumber")
 
 
-class CreateTextMessageRequest(RequestModel):
-    """Strict request model for recording an externally sent text message."""
-
-    external_label: str | None = Field(default=None, serialization_alias="externalLabel")
-    external_url: str | None = Field(default=None, serialization_alias="externalUrl")
-    from_number: str = Field(serialization_alias="fromNumber")
-    is_incoming: bool | None = Field(default=None, serialization_alias="isIncoming")
-    message: str
-    person_id: int = Field(serialization_alias="personId")
-    to_number: str = Field(serialization_alias="toNumber")
-
-
 class TextMessageRecord(ResponseModel):
     """Text message resource returned by the API."""
 

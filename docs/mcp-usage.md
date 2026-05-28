@@ -304,9 +304,8 @@ or list calls when the intent is already clear.
 | `followupboss_create_template` | Create an email template. |
 | `followupboss_update_template` | Update one email template by ID. |
 | `followupboss_delete_template` | Delete one email template by ID and return a structured confirmation. |
-| `followupboss_list_text_messages` | List text messages with documented filters and pagination metadata. |
+| `followupboss_list_text_messages` | List existing text messages with documented filters and pagination metadata. Read-only; Follow Up Boss does not provide API support to log or send texts through the MCP. |
 | `followupboss_get_text_message` | Retrieve one text message by ID. |
-| `followupboss_create_text_message` | Record an externally sent text message log entry. |
 | `followupboss_list_text_message_templates` | List text message templates with pagination metadata. |
 | `followupboss_get_text_message_template` | Retrieve one text message template by ID. |
 | `followupboss_merge_text_message_template` | Merge a text message template with recipients. |

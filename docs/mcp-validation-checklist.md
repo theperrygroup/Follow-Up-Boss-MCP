@@ -38,7 +38,7 @@ The domain sections below follow the registration order from `register_server_su
 
 | Fixture | ID(s) | Created via | Used by | Cleanup path | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Disposable person | | `followupboss_create_person` | People, events, action plans, automations, appointments, calls, tasks, text messages, notes | `followupboss_delete_person` | |
+| Disposable person | | `followupboss_create_person` | People, events, action plans, automations, appointments, calls, tasks, read-only text history, notes | `followupboss_delete_person` | |
 | Unclaimed lead offer | | Existing sandbox data | `followupboss_claim_person`, `followupboss_ignore_unclaimed_person` | Manual or account-specific | |
 | People relationship | | `followupboss_create_people_relationship` | People relationships | `followupboss_delete_people_relationship` | |
 | Deal | | `followupboss_create_deal` | Deal write flow, deal attachments | `followupboss_delete_deal` | |
@@ -61,7 +61,6 @@ The domain sections below follow the registration order from `register_server_su
 | Task | | `followupboss_create_task` | Tasks | `followupboss_delete_task` | |
 | Team | | `followupboss_create_team` | Teams | `followupboss_delete_team` | |
 | Template | | `followupboss_create_template` | Templates | `followupboss_delete_template` | |
-| Text message | | `followupboss_create_text_message` | Text messages | Manual | |
 | Text message template | | `followupboss_create_text_message_template` | Text message templates | `followupboss_delete_text_message_template` | |
 | Note | | `followupboss_add_note` | Notes, reactions | `followupboss_delete_note` | |
 | Webhook | | `followupboss_create_webhook` | Webhooks | `followupboss_delete_webhook` | |
@@ -441,8 +440,7 @@ Team writes are destructive to account membership. Use a disposable team or an e
 
 - [ ] `followupboss_list_text_messages`: confirm list output and `_metadata`, preferably using safe filters such as `person_id`.
 - [ ] `followupboss_get_text_message`: fetch one text message by ID.
-- [ ] `followupboss_create_text_message`: record a disposable externally sent text-message log entry using valid sandbox data and a valid phone-number format.
-- [ ] Record any manual cleanup needed because there is no MCP delete tool for text messages.
+- [ ] Confirm no send/log text tool is exposed. Follow Up Boss does not provide API support to log or send texts through the MCP.
 
 ### Text Message Templates
 
@@ -476,7 +474,7 @@ Webhook access may be owner-only, and event lookup requires a known webhook even
 ## Cleanup And Evidence
 
 - [ ] Delete every temporary object that has an MCP delete tool, including people, attachments, relationships, deals, fields, appointment metadata, appointments, ponds, tasks, teams, templates, text-message templates, notes, and webhooks created for the run.
-- [ ] Manually clean up every temporary object or state change that does not currently have an inverse MCP tool, including email campaigns, email events, inbox-app side effects, calls, text messages, automation runs, and action-plan applications.
+- [ ] Manually clean up every temporary object or state change that does not currently have an inverse MCP tool, including email campaigns, email events, inbox-app side effects, calls, automation runs, and action-plan applications.
 - [ ] Reassign or restore any destructive account-level changes made during `followupboss_delete_user`, team mutations, unclaimed-lead claim or ignore flows, pipeline or stage deletes, or other admin operations.
 - [ ] Review the scratchpad and confirm no temporary IDs were left behind or orphaned.
 - [ ] Confirm every domain above was either validated successfully or explicitly recorded as blocked in `Known Issues And Account Limitations`.

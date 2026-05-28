@@ -26,7 +26,6 @@ from followupboss_mcp.hosted_rate_limits import HostedEndpointRateLimiter, Hoste
 from followupboss_mcp.http_client import FollowUpBossClientProtocol
 from followupboss_mcp.mcp_server import (
     FollowUpBossFastMCP,
-    _allow_external_text_message_logs,
     _resolve_hosted_auth,
     _resolve_local_tenant_settings,
     _resolve_tenant_runtime_defaults,
@@ -197,15 +196,6 @@ def test_resolve_local_tenant_settings_and_runtime_defaults_handle_explicit_mode
     projected_defaults = _resolve_tenant_runtime_defaults(tenant_settings)
     assert projected_defaults == tenant_settings.tenant_runtime_defaults()
     assert _resolve_tenant_runtime_defaults(runtime_defaults) is runtime_defaults
-
-
-def test_allow_external_text_message_logs_uses_builtin_defaults_when_settings_are_omitted(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Omitted adapter settings should not enable external text logs from env vars."""
-    monkeypatch.setenv("FOLLOWUPBOSS_ALLOW_EXTERNAL_TEXT_MESSAGE_LOGS", "true")
-
-    assert _allow_external_text_message_logs(None) is False
 
 
 def test_streamable_http_app_returns_base_app_without_hosted_rate_limiter(

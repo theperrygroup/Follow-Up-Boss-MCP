@@ -47,7 +47,7 @@ The repository now contains:
 - widened `/me` parsing so `notifyBy` accepts both string and list payloads observed in live data
 - typed team inbox collection coverage across the SDK, MCP surface, tests, and docs
 - typed team collection and CRUD coverage with optional member-migration semantics on delete across the SDK, MCP surface, tests, and docs
-- typed text message read support, external log creation, and text message template CRUD plus merge coverage across the SDK, MCP surface, tests, and docs
+- typed text message read support and text message template CRUD plus merge coverage across the SDK, MCP surface, tests, and docs; send/log text support is intentionally not exposed through the MCP
 - typed task collection and CRUD coverage across the SDK, MCP surface, tests, and docs
 - typed email-template collection and CRUD plus merge coverage across the SDK, MCP surface, tests, and docs
 - typed call collection and log-entry coverage across the SDK, MCP surface, tests, and docs
@@ -228,7 +228,6 @@ Implemented Follow Up Boss endpoint coverage in the typed SDK and service layer:
 - `POST /templates`
 - `PUT /templates/:id`
 - `DELETE /templates/:id`
-- `POST /textMessages`
 - `POST /textMessageTemplates/merge`
 - `POST /notes`
 - `GET /notes/:id`
@@ -314,7 +313,6 @@ Registered tools:
 - `followupboss_delete_stage`
 - `followupboss_list_text_messages`
 - `followupboss_get_text_message`
-- `followupboss_create_text_message`
 - `followupboss_list_text_message_templates`
 - `followupboss_get_text_message_template`
 - `followupboss_merge_text_message_template`
@@ -480,7 +478,7 @@ FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check
 - note: the broader suite exposed a live `/me` contract mismatch where `notifyBy` arrived as a list, and the model now accepts both string and list payloads.
 - note: the current `.env` now works directly with either the documented `FOLLOWUPBOSS_*` names or the legacy `FOLLOW_UP_BOSS_*` aliases.
 - `docs/mcp-validation-checklist.md`: updated with credential-backed MCP validation results across stdio, streamable HTTP, pagination, safe error paths, and live domain checks.
-- confirmed live MCP flows: identity, people, people relationships list/get/create/update/delete, person attachments CRUD, reactions add/delete, events search/get/send, action plans list/apply/pause, automations get/trigger/get-person/pause, calls create/list/get/update, text messages create/list/get, appointments create/get/update/delete, deals list/get/create/update/delete, deal attachments CRUD, timeframes list, templates CRUD plus merge, text message templates CRUD plus merge, and notes CRUD.
+- confirmed live MCP flows: identity, people, people relationships list/get/create/update/delete, person attachments CRUD, reactions add/delete, events search/get/send, action plans list/apply/pause, automations get/trigger/get-person/pause, calls create/list/get/update, read-only text messages list/get, appointments create/get/update/delete, deals list/get/create/update/delete, deal attachments CRUD, timeframes list, templates CRUD plus merge, text message templates CRUD plus merge, and notes CRUD.
 - remaining live blockers: owner-only webhook access on the current credential still downgrades the automated webhook CRUD path to a skip, inbox app fixture setup, email marketing write fixtures, and reaction lookup by ID because the live create endpoint returned an acknowledgement rather than a reaction record.
 
 ## CI Status

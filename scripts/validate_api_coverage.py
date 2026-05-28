@@ -1021,11 +1021,14 @@ COVERAGE_MAP: dict[str, dict[str, str]] = {
         "tests": "Yes",
     },
     "POST /textMessages": {
-        "implementation": "Implemented",
-        "mcp": "Yes",
-        "models": "Yes",
-        "notes": "Records an externally sent text message log entry.",
-        "tests": "Yes",
+        "implementation": "Unsupported",
+        "mcp": "No",
+        "models": "No",
+        "notes": (
+            "Not exposed because Follow Up Boss does not provide API support to log or "
+            "send texts through this MCP."
+        ),
+        "tests": "No",
     },
     "GET /textMessageTemplates": {
         "implementation": "Implemented",

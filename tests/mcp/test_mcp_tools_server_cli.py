@@ -248,7 +248,6 @@ from followupboss_mcp.models.templates import (
     TemplateRecord,
 )
 from followupboss_mcp.models.text_messages import (
-    CreateTextMessageRequest,
     CreateTextMessageTemplateRequest,
     MergedTextMessageTemplateRecord,
     MergeTextMessageTemplateRequest,
@@ -319,7 +318,6 @@ EXPECTED_REGISTERED_TOOL_NAMES = [
     "followupboss_create_task",
     "followupboss_create_team",
     "followupboss_create_template",
-    "followupboss_create_text_message",
     "followupboss_create_text_message_template",
     "followupboss_create_webhook",
     "followupboss_deactivate_inbox_app",
@@ -554,7 +552,6 @@ class StubBundle:
         self.deal_list_requests: list[DealListRequest] = []
         self.people_search_requests: list[PeopleSearchRequest] = []
         self.task_list_requests: list[TaskListRequest] = []
-        self.text_message_create_requests: list[CreateTextMessageRequest] = []
         self.text_message_list_requests: list[TextMessageListRequest] = []
         self.user_list_requests: list[UserListRequest] = []
 
@@ -1760,21 +1757,6 @@ class StubBundle:
                 userName="Data",
             )
 
-        async def text_messages_create(request: CreateTextMessageRequest) -> TextMessageRecord:
-            self.text_message_create_requests.append(request)
-            return TextMessageRecord(
-                id=34,
-                personId=request.person_id,
-                message=request.message,
-                fromNumber=request.from_number,
-                toNumber=request.to_number,
-                userId=1,
-                userName="Gerald Leenerts",
-                isIncoming=request.is_incoming,
-                externalLabel=request.external_label,
-                externalUrl=request.external_url,
-            )
-
         async def text_message_templates_list(
             _: TextMessageTemplateListRequest,
         ) -> PageResult[TextMessageTemplateRecord]:
@@ -2063,7 +2045,6 @@ class StubBundle:
             text_messages=_service_stub(
                 list_text_messages=text_messages_list,
                 get_text_message=text_messages_get,
-                create_text_message=text_messages_create,
             ),
             templates=_service_stub(
                 list_templates=templates_list,
@@ -2095,7 +2076,7 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     """The MCP adapter should normalize service results and safe errors."""
     stub = StubBundle()
     services = stub.bundle
-    adapter = FollowUpBossToolAdapter(services, allow_external_text_message_logs=True)
+    adapter = FollowUpBossToolAdapter(services)
     assert (await adapter.get_identity())["id"] == 1
     assert (await adapter.get_me())["id"] == 1
     assert (await adapter.get_me())["apiKey"] == "***redacted***"
@@ -3403,20 +3384,6 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         "id"
     ] == 31
     assert (await adapter.get_text_message(GetTextMessageToolInput(text_message_id=32)))["id"] == 32
-    assert (
-        await adapter.create_text_message(
-            CreateTextMessageRequest(
-                person_id=2,
-                message="Logged externally",
-                to_number="555-0002",
-                from_number="1234567890",
-                is_incoming=False,
-                external_label="External SMS",
-                external_url="https://example.com/sms/3",
-            )
-        )
-    )["id"] == 34
-    assert stub.text_message_create_requests[-1].from_number == "(123) 456-7890"
     assert (await adapter.list_text_message_templates(TextMessageTemplateListRequest()))[
         "textmessagetemplates"
     ][0]["id"] == 32
@@ -3592,68 +3559,6 @@ async def test_communication_mutations_require_identity_user_id() -> None:
 
 
 @pytest.mark.asyncio
-async def test_outbound_text_logs_fail_closed_by_default() -> None:
-    """Outbound text logs should fail before the registered-system endpoint is called."""
-    stub = StubBundle()
-    adapter = FollowUpBossToolAdapter(stub.bundle)
-
-    with pytest.raises(RuntimeError, match="cannot guarantee authenticated-user timeline"):
-        await adapter.create_text_message(
-            CreateTextMessageRequest(
-                person_id=99,
-                message="Logged externally",
-                to_number="555-2222",
-                from_number="1234567890",
-                is_incoming=False,
-            )
-        )
-
-    assert stub.text_message_create_requests == []
-
-
-@pytest.mark.asyncio
-async def test_incoming_text_logs_do_not_require_outbound_attribution_opt_in() -> None:
-    """Incoming external text logs should keep original sender direction."""
-    stub = StubBundle()
-    adapter = FollowUpBossToolAdapter(stub.bundle)
-
-    text = await adapter.create_text_message(
-        CreateTextMessageRequest(
-            person_id=99,
-            message="Incoming SMS",
-            to_number="1234567890",
-            from_number="555-2222",
-            is_incoming=True,
-        )
-    )
-
-    assert text["id"] == 34
-    assert text["fromNumber"] == "555-2222"
-    assert stub.text_message_create_requests[-1].is_incoming is True
-
-
-@pytest.mark.asyncio
-async def test_outbound_text_logs_can_be_explicitly_opted_in_with_attribution_guard() -> None:
-    """Opt-in external text logs should still use and validate authenticated attribution."""
-    stub = StubBundle()
-    adapter = FollowUpBossToolAdapter(stub.bundle, allow_external_text_message_logs=True)
-
-    text = await adapter.create_text_message(
-        CreateTextMessageRequest(
-            person_id=99,
-            message="Logged externally",
-            to_number="555-2222",
-            from_number="1234567890",
-            is_incoming=False,
-        )
-    )
-
-    assert text["fromNumber"] == "(123) 456-7890"
-    assert text["userId"] == 1
-    assert stub.text_message_create_requests[-1].from_number == "(123) 456-7890"
-
-
-@pytest.mark.asyncio
 async def test_communication_mutations_reject_mismatched_attribution() -> None:
     """The adapter should fail before logging under another user or sender."""
     stub = StubBundle()
@@ -3665,99 +3570,8 @@ async def test_communication_mutations_reject_mismatched_attribution() -> None:
         )
     with pytest.raises(RuntimeError, match="must remain attributed to the authenticated"):
         await adapter.update_call(UpdateCallToolInput(call_id=12, user_id=999))
-    opt_in_adapter = FollowUpBossToolAdapter(stub.bundle, allow_external_text_message_logs=True)
-    with pytest.raises(RuntimeError, match="authenticated Follow Up Boss user's sender phone"):
-        await opt_in_adapter.create_text_message(
-            CreateTextMessageRequest(
-                person_id=99,
-                message="Logged externally",
-                to_number="555-2222",
-                from_number="555-0001",
-                is_incoming=False,
-            )
-        )
 
     assert stub.call_create_requests == []
-    assert stub.text_message_create_requests == []
-
-
-@pytest.mark.asyncio
-async def test_outbound_text_logs_fail_without_authenticated_user_phone() -> None:
-    """Outbound text logs should not fall back to team/default sender numbers."""
-    stub = StubBundle()
-
-    async def users_get_me_without_phone() -> CurrentUserRecord:
-        """Return a current user with no configured sender phone."""
-        return CurrentUserRecord(id=1, name="Scott Willey")
-
-    services = replace(
-        stub.bundle,
-        users=_service_stub(
-            list_users=stub.bundle.users.list_users,
-            get_user=stub.bundle.users.get_user,
-            get_me=users_get_me_without_phone,
-            delete_user=stub.bundle.users.delete_user,
-        ),
-    )
-    adapter = FollowUpBossToolAdapter(services, allow_external_text_message_logs=True)
-
-    with pytest.raises(RuntimeError, match="user phone is unavailable"):
-        await adapter.create_text_message(
-            CreateTextMessageRequest(
-                person_id=99,
-                message="Logged externally",
-                to_number="555-2222",
-                from_number="555-0001",
-                is_incoming=False,
-            )
-        )
-
-    assert stub.text_message_create_requests == []
-
-
-@pytest.mark.asyncio
-async def test_opt_in_text_logs_reject_registered_system_attribution() -> None:
-    """Perry Group-style response attribution should be rejected even after opt-in."""
-    stub = StubBundle()
-
-    async def text_messages_create(request: CreateTextMessageRequest) -> TextMessageRecord:
-        """Return an unsafe registered-system text-message response."""
-        stub.text_message_create_requests.append(request)
-        return TextMessageRecord(
-            id=34,
-            personId=request.person_id,
-            message=request.message,
-            fromNumber=request.from_number,
-            toNumber=request.to_number,
-            userId=1,
-            userName="Scott Willey",
-            systemId=123,
-            systemName="The Perry Group",
-            isIncoming=request.is_incoming,
-        )
-
-    services = replace(
-        stub.bundle,
-        text_messages=_service_stub(
-            list_text_messages=stub.bundle.text_messages.list_text_messages,
-            get_text_message=stub.bundle.text_messages.get_text_message,
-            create_text_message=text_messages_create,
-        ),
-    )
-    adapter = FollowUpBossToolAdapter(services, allow_external_text_message_logs=True)
-
-    with pytest.raises(RuntimeError, match="unsafe timeline attribution"):
-        await adapter.create_text_message(
-            CreateTextMessageRequest(
-                person_id=99,
-                message="Logged externally",
-                to_number="555-2222",
-                from_number="1234567890",
-                is_incoming=False,
-            )
-        )
-
-    assert stub.text_message_create_requests[-1].from_number == "(123) 456-7890"
 
 
 @pytest.mark.asyncio
@@ -3992,9 +3806,7 @@ class QueueClient:
 async def test_create_server_registers_tools_resource_and_prompt() -> None:
     """The FastMCP server should register the complete tool/resource/prompt surface."""
     server = create_server(
-        FollowUpBossSettings.model_validate(
-            {"api_key": "key", "allow_external_text_message_logs": True}
-        ),
+        FollowUpBossSettings.model_validate({"api_key": "key"}),
         client=QueueClient(
             [
                 {"id": 1},
@@ -4570,25 +4382,6 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
                 {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "textmessages": [{"id": 50}]},
                 {"id": 51, "message": "Hi there"},
                 {
-                    "id": 1,
-                    "name": "Gerald Leenerts",
-                    "email": "gerald@followupboss.com",
-                    "phone": "(123) 456-7890",
-                },
-                {"id": 1, "name": "Gerald Leenerts"},
-                {
-                    "id": 58,
-                    "personId": 2,
-                    "message": "Logged externally",
-                    "fromNumber": "(123) 456-7890",
-                    "toNumber": "555-0002",
-                    "userId": 1,
-                    "userName": "Data",
-                    "isIncoming": False,
-                    "externalLabel": "External SMS",
-                    "externalUrl": "https://example.com/sms/3",
-                },
-                {
                     "_metadata": {"limit": 10, "offset": 0, "total": 1},
                     "textmessagetemplates": [{"id": 52, "name": "Buyer intro text"}],
                 },
@@ -4675,8 +4468,8 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     assert "by note ID only" in get_note_description
     assert "FUB person ID" in get_note_description
     add_note_description = cast("str", tools["followupboss_add_note"].description)
-    assert "safe path for normal 'log this text'" in add_note_description
-    assert "Text message transcript logged by <authenticated user>" in add_note_description
+    assert "does not provide API support to log or send texts" in add_note_description
+    assert "no SMS was sent or text log was created" in add_note_description
     latest_lead_description = cast("str", tools["followupboss_get_latest_lead"].description)
     assert "Resolves the authenticated user internally" in latest_lead_description
     list_tasks_description = cast("str", tools["followupboss_list_tasks"].description)
@@ -4704,12 +4497,9 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     create_call_description = cast("str", tools["followupboss_create_call"].description)
     assert "attributed to the authenticated user" in create_call_description
     assert "rejects mismatched user IDs" in create_call_description
-    create_text_description = cast("str", tools["followupboss_create_text_message"].description)
-    assert "registered-system endpoint" in create_text_description
-    assert "Do not use this tool for normal outbound user-authored text" in create_text_description
-    assert "use followupboss_add_note instead" in create_text_description
-    assert "authenticated user's own Follow Up Boss phone" in create_text_description
-    assert "validates the returned attribution" in create_text_description
+    list_text_description = cast("str", tools["followupboss_list_text_messages"].description)
+    assert "read-only" in list_text_description
+    assert "does not provide API support to log or send texts" in list_text_description
     assert "followupboss_list_my_overdue_tasks" in list_tasks_description
     assert "followupboss_list_my_tasks_due_today" in list_tasks_description
     assert "followupboss_list_my_upcoming_tasks" in list_tasks_description
@@ -4753,7 +4543,6 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         "followupboss_create_task",
         "followupboss_create_team",
         "followupboss_create_template",
-        "followupboss_create_text_message",
         "followupboss_create_text_message_template",
         "followupboss_create_webhook",
         "followupboss_deactivate_inbox_app",
@@ -5615,20 +5404,6 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
         )
     )["textmessages"][0]["id"] == 50
     assert (await _call_public_tool(server, tools, "followupboss_get_text_message", 51))["id"] == 51
-    assert (
-        await _call_public_tool(
-            server,
-            tools,
-            "followupboss_create_text_message",
-            2,
-            "Logged externally",
-            "555-0002",
-            "1234567890",
-            is_incoming=False,
-            external_label="External SMS",
-            external_url="https://example.com/sms/3",
-        )
-    )["id"] == 58
     assert (
         await _call_public_tool(
             server,

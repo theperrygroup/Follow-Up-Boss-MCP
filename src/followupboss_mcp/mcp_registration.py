@@ -181,7 +181,6 @@ from followupboss_mcp.models.templates import (
     TemplateListRequest,
 )
 from followupboss_mcp.models.text_messages import (
-    CreateTextMessageRequest,
     CreateTextMessageTemplateRequest,
     MergeTextMessageTemplateRequest,
     TextMessageListRequest,
@@ -2739,7 +2738,9 @@ def _register_text_message_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter)
     @mcp.tool(
         name="followupboss_list_text_messages",
         description=(
-            "List Follow Up Boss text messages with documented filters and pagination metadata."
+            "List existing Follow Up Boss text messages with documented filters and "
+            "pagination metadata. This is read-only; Follow Up Boss does not provide "
+            "API support to log or send texts through the MCP."
         ),
     )
     async def followupboss_list_text_messages(
@@ -2758,32 +2759,6 @@ def _register_text_message_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter)
     )
     async def followupboss_get_text_message(text_message_id: int) -> dict[str, object]:
         return await adapter.get_text_message(_validated_request(GetTextMessageToolInput, locals()))
-
-    @mcp.tool(
-        name="followupboss_create_text_message",
-        description=(
-            "Record a Follow Up Boss text message through the registered-system endpoint only "
-            "for inbound texts or explicitly configured external logging workflows. Do not use "
-            "this tool for normal outbound user-authored text transcript logging; use "
-            "followupboss_add_note instead so the timeline does not show a team, group, "
-            "shared inbox, account, or registered-system sender. When external outbound logging "
-            "is explicitly enabled, from_number must be the authenticated user's own Follow Up "
-            "Boss phone and the server validates the returned attribution."
-        ),
-    )
-    async def followupboss_create_text_message(
-        person_id: int,
-        message: str,
-        to_number: str,
-        from_number: str,
-        *,
-        external_label: str | None = None,
-        external_url: str | None = None,
-        is_incoming: bool | None = None,
-    ) -> dict[str, object]:
-        return await adapter.create_text_message(
-            _validated_request(CreateTextMessageRequest, locals())
-        )
 
     @mcp.tool(
         name="followupboss_list_text_message_templates",
@@ -2872,9 +2847,10 @@ def _register_note_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         name="followupboss_add_note",
         description=(
             "Create a Follow Up Boss note for a person, optionally waiting for person "
-            "visibility first. Use this as the safe path for normal 'log this text' or "
-            "text transcript requests; include explicit wording such as 'Text message "
-            "transcript logged by <authenticated user>' in the note body."
+            "visibility first. Follow Up Boss does not provide API support to log or "
+            "send texts through the MCP. Only use this for text-related requests when "
+            "the user explicitly asks to save a plain transcript as a note, and make "
+            "clear that no SMS was sent or text log was created."
         ),
     )
     async def followupboss_add_note(
