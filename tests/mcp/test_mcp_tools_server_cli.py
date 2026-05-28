@@ -5818,6 +5818,137 @@ async def test_list_tasks_converts_naive_due_filters_using_account_timezone() ->
     assert client.captured_params[-1]["dueEnd"] == "2026-05-28T23:00:00+00:00"
 
 
+class _MalformedMeClient:
+    """Queue-backed client whose ``/me`` payload makes timezone detection fail."""
+
+    def __init__(
+        self,
+        *,
+        me_response: dict[str, object] | list[object],
+        responses: list[dict[str, object] | list[object]],
+    ) -> None:
+        """Store a failing ``/me`` payload and the queued non-``/me`` responses.
+
+        Args:
+            me_response: The raw payload returned for ``/me``. A non-mapping value
+                makes ``UsersService.get_me`` raise :class:`ValueError`, while a
+                mapping that violates ``CurrentUserRecord`` raises Pydantic's
+                :class:`~pydantic.ValidationError` (a :class:`ValueError`
+                subclass) from ``model_validate``.
+            responses: The responses returned in order for non-``/me`` requests.
+        """
+        self._me_response = me_response
+        self._responses = responses
+        self.captured_params: list[Mapping[str, str] | None] = []
+
+    async def aclose(self) -> None:
+        """Close the test client."""
+        return None
+
+    async def request_json(
+        self,
+        method: str,
+        path: str,
+        *,
+        headers: Mapping[str, str] | None = None,
+        json_body: Mapping[str, object] | None = None,
+        params: Mapping[str, str] | None = None,
+    ) -> dict[str, object] | list[object]:
+        """Serve the failing ``/me`` payload and record params for other paths.
+
+        Args:
+            method: The HTTP method (ignored).
+            path: The request path; ``/me`` returns the configured raw payload.
+            headers: Outgoing headers (ignored).
+            json_body: Outgoing JSON body (ignored).
+            params: Outgoing query params, recorded for non-``/me`` requests.
+
+        Returns:
+            The configured ``/me`` payload or the next queued response.
+        """
+        del method, headers, json_body
+        if path == "/me":
+            return self._me_response
+        self.captured_params.append(params)
+        return self._responses.pop(0)
+
+
+@pytest.mark.asyncio
+async def test_list_appointments_survives_account_timezone_value_error() -> None:
+    """A non-mapping ``/me`` payload must not crash the appointment list tool.
+
+    ``UsersService.get_me`` raises :class:`ValueError` for an unexpected payload
+    shape. Timezone auto-detection is documented as best-effort and must swallow
+    that failure, returning results with the naive ``start``/``end`` filters
+    passed through untouched (Follow Up Boss then treats them as UTC) instead of
+    propagating the error and crashing the tool call.
+    """
+    client = _MalformedMeClient(
+        me_response=[],
+        responses=[
+            {
+                "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                "appointments": [{"id": 30}],
+            }
+        ],
+    )
+    server = create_server(
+        FollowUpBossSettings.model_validate({"api_key": "key"}),
+        client=client,
+    )
+    tools = {tool.name: tool for tool in await server.list_tools()}
+
+    result = await _call_public_tool(
+        server,
+        tools,
+        "followupboss_list_appointments",
+        start="2026-05-28T08:00:00",
+        end="2026-05-28T17:00:00",
+    )
+
+    assert result["appointments"][0]["id"] == 30
+    assert client.captured_params[-1] is not None
+    assert client.captured_params[-1]["start"] == "2026-05-28T08:00:00"
+    assert client.captured_params[-1]["end"] == "2026-05-28T17:00:00"
+
+
+@pytest.mark.asyncio
+async def test_list_tasks_survives_account_timezone_validation_error() -> None:
+    """A malformed ``/me`` payload must not crash the task list tool.
+
+    ``CurrentUserRecord.model_validate`` raises Pydantic's ``ValidationError``
+    (a :class:`ValueError` subclass) when ``/me`` returns a mapping with an
+    unparsable ``id``. Timezone auto-detection is best-effort and must swallow
+    that failure, returning results with the naive ``due_start`` filter passed
+    through untouched instead of propagating the error and crashing the call.
+    """
+    client = _MalformedMeClient(
+        me_response={"id": "not-an-int", "timeZone": "America/Denver"},
+        responses=[
+            {
+                "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                "tasks": [{"id": 30}],
+            }
+        ],
+    )
+    server = create_server(
+        FollowUpBossSettings.model_validate({"api_key": "key"}),
+        client=client,
+    )
+    tools = {tool.name: tool for tool in await server.list_tools()}
+
+    result = await _call_public_tool(
+        server,
+        tools,
+        "followupboss_list_tasks",
+        due_start="2026-05-28T08:00:00",
+    )
+
+    assert result["tasks"][0]["id"] == 30
+    assert client.captured_params[-1] is not None
+    assert client.captured_params[-1]["dueStart"] == "2026-05-28T08:00:00"
+
+
 @pytest.mark.asyncio
 async def test_stdio_client_interoperates_with_server_surface() -> None:
     """The official stdio client should interoperate with tools, resources, and prompts."""

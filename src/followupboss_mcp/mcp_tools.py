@@ -1361,12 +1361,16 @@ class FollowUpBossToolAdapter:
 
         Returns:
             The account :class:`~datetime.tzinfo`, or ``None`` when the lookup
-            fails or the account has no recognizable timezone. Failures are
-            swallowed so that timezone auto-detection never breaks a write.
+            fails or the account has no recognizable timezone. Transport failures
+            (:class:`~followupboss_mcp.errors.FollowUpBossError`) and unexpected
+            ``/me`` payloads (:class:`ValueError`, which also covers Pydantic's
+            :class:`~pydantic.ValidationError` subclass raised when the response
+            fails validation) are all swallowed so that this best-effort
+            auto-detection never breaks an appointment or task call.
         """
         try:
             current_user = await self._services.users.get_me()
-        except FollowUpBossError:
+        except (FollowUpBossError, ValueError):
             return None
         return timezone_from_name(current_user.time_zone)
 
