@@ -2035,6 +2035,7 @@ def _register_appointment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) 
         start: str | None = None,
         user_id: int | None = None,
     ) -> dict[str, object]:
+        await adapter.prime_account_timezone()
         return await adapter.list_appointments(_validated_request(AppointmentListRequest, locals()))
 
     @mcp.tool(
@@ -2467,6 +2468,7 @@ def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         person_id: int | None = None,
         type: list[str] | None = None,
     ) -> dict[str, object]:
+        await adapter.prime_account_timezone()
         return await adapter.list_tasks(_validated_request(TaskListRequest, locals()))
 
     @mcp.tool(

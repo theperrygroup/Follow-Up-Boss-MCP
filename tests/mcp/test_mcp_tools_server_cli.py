@@ -5689,6 +5689,135 @@ async def test_public_uncontacted_leads_tool_filters_missing_last_communication(
     }
 
 
+class _AccountTimezoneCapturingClient:
+    """Queue-backed client that serves ``/me`` with a timezone and records params."""
+
+    def __init__(
+        self,
+        *,
+        time_zone: str,
+        responses: list[dict[str, object] | list[object]],
+    ) -> None:
+        """Store the ``/me`` timezone and the queued non-``/me`` responses.
+
+        Args:
+            time_zone: The IANA timezone returned by ``/me``, used to exercise
+                auto-detection without a configured environment override.
+            responses: The responses returned in order for non-``/me`` requests.
+        """
+        self._me_response: dict[str, object] = {"id": 1, "timeZone": time_zone}
+        self._responses = responses
+        self.captured_params: list[Mapping[str, str] | None] = []
+
+    async def aclose(self) -> None:
+        """Close the test client."""
+        return None
+
+    async def request_json(
+        self,
+        method: str,
+        path: str,
+        *,
+        headers: Mapping[str, str] | None = None,
+        json_body: Mapping[str, object] | None = None,
+        params: Mapping[str, str] | None = None,
+    ) -> dict[str, object] | list[object]:
+        """Serve ``/me`` from a fixed payload and record params for other paths.
+
+        Args:
+            method: The HTTP method (ignored).
+            path: The request path; ``/me`` returns the canned current user.
+            headers: Outgoing headers (ignored).
+            json_body: Outgoing JSON body (ignored).
+            params: Outgoing query params, recorded for non-``/me`` requests.
+
+        Returns:
+            The canned ``/me`` payload or the next queued response.
+        """
+        del method, headers, json_body
+        if path == "/me":
+            return self._me_response
+        self.captured_params.append(params)
+        return self._responses.pop(0)
+
+
+@pytest.mark.asyncio
+async def test_list_appointments_converts_naive_filters_using_account_timezone() -> None:
+    """List appointment filters should convert to UTC using the auto-detected zone.
+
+    The list tool must prime the account timezone (from ``/me``) before validating
+    the request so naive ``start``/``end`` filters are localized and converted to
+    UTC, matching the create/update appointment behavior. With ``America/Denver``
+    (UTC-6 on this date) a naive ``08:00`` filter must be sent as ``14:00`` UTC.
+    """
+    client = _AccountTimezoneCapturingClient(
+        time_zone="America/Denver",
+        responses=[
+            {
+                "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                "appointments": [{"id": 30}],
+            }
+        ],
+    )
+    server = create_server(
+        FollowUpBossSettings.model_validate({"api_key": "key"}),
+        client=client,
+    )
+    tools = {tool.name: tool for tool in await server.list_tools()}
+
+    result = await _call_public_tool(
+        server,
+        tools,
+        "followupboss_list_appointments",
+        start="2026-05-28T08:00:00",
+        end="2026-05-28T17:00:00",
+    )
+
+    assert result["appointments"][0]["id"] == 30
+    assert client.captured_params[-1] is not None
+    assert client.captured_params[-1]["start"] == "2026-05-28T14:00:00+00:00"
+    assert client.captured_params[-1]["end"] == "2026-05-28T23:00:00+00:00"
+
+
+@pytest.mark.asyncio
+async def test_list_tasks_converts_naive_due_filters_using_account_timezone() -> None:
+    """List task due filters should convert to UTC using the auto-detected zone.
+
+    The list tool must prime the account timezone (from ``/me``) before validating
+    the request so naive ``due_start``/``due_end`` filters are localized and
+    converted to UTC, matching the create/update task behavior. With
+    ``America/Denver`` (UTC-6 on this date) a naive ``08:00`` filter must be sent
+    as ``14:00`` UTC.
+    """
+    client = _AccountTimezoneCapturingClient(
+        time_zone="America/Denver",
+        responses=[
+            {
+                "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                "tasks": [{"id": 30}],
+            }
+        ],
+    )
+    server = create_server(
+        FollowUpBossSettings.model_validate({"api_key": "key"}),
+        client=client,
+    )
+    tools = {tool.name: tool for tool in await server.list_tools()}
+
+    result = await _call_public_tool(
+        server,
+        tools,
+        "followupboss_list_tasks",
+        due_start="2026-05-28T08:00:00",
+        due_end="2026-05-28T17:00:00",
+    )
+
+    assert result["tasks"][0]["id"] == 30
+    assert client.captured_params[-1] is not None
+    assert client.captured_params[-1]["dueStart"] == "2026-05-28T14:00:00+00:00"
+    assert client.captured_params[-1]["dueEnd"] == "2026-05-28T23:00:00+00:00"
+
+
 @pytest.mark.asyncio
 async def test_stdio_client_interoperates_with_server_surface() -> None:
     """The official stdio client should interoperate with tools, resources, and prompts."""
@@ -5702,17 +5831,17 @@ async def test_stdio_client_interoperates_with_server_surface() -> None:
 
         class QueueClient:
             def __init__(self) -> None:
+                self.me_response = {
+                    "id": 1,
+                    "name": "Gerald Leenerts",
+                    "apiKey": "secret-api-key",
+                    "algoliaKey": "secret-algolia-key",
+                    "callingCapabilityToken": "secret-calling-token",
+                    "notifyBy": ["email", "sms"],
+                    "intercomSettings": {"user_hash": "secret-hash"},
+                }
                 self.responses = [
                     {"id": 1, "name": "Picard"},
-                    {
-                        "id": 1,
-                        "name": "Gerald Leenerts",
-                        "apiKey": "secret-api-key",
-                        "algoliaKey": "secret-algolia-key",
-                        "callingCapabilityToken": "secret-calling-token",
-                        "notifyBy": ["email", "sms"],
-                        "intercomSettings": {"user_hash": "secret-hash"},
-                    },
                     {"_metadata": {"limit": 10, "offset": 0, "total": 1}, "people": [{"id": 2}]},
                     {"id": 3, "firstName": "Tom"},
                     {},
@@ -5746,7 +5875,9 @@ async def test_stdio_client_interoperates_with_server_surface() -> None:
                 json_body: Mapping[str, object] | None = None,
                 params: Mapping[str, str] | None = None,
             ) -> dict[str, object] | list[object]:
-                del method, path, headers, json_body, params
+                del method, headers, json_body, params
+                if path == "/me":
+                    return self.me_response
                 return self.responses.pop(0)
 
 
@@ -5928,17 +6059,17 @@ async def test_streamable_http_client_interoperates_with_server_surface() -> Non
 
         class QueueClient:
             def __init__(self) -> None:
+                self.me_response = {{
+                    "id": 1,
+                    "name": "Gerald Leenerts",
+                    "apiKey": "secret-api-key",
+                    "algoliaKey": "secret-algolia-key",
+                    "callingCapabilityToken": "secret-calling-token",
+                    "notifyBy": ["email", "sms"],
+                    "intercomSettings": {{"user_hash": "secret-hash"}},
+                }}
                 self.responses = [
                     {{"id": 1, "name": "Picard"}},
-                    {{
-                        "id": 1,
-                        "name": "Gerald Leenerts",
-                        "apiKey": "secret-api-key",
-                        "algoliaKey": "secret-algolia-key",
-                        "callingCapabilityToken": "secret-calling-token",
-                        "notifyBy": ["email", "sms"],
-                        "intercomSettings": {{"user_hash": "secret-hash"}},
-                    }},
                     {{
                         "_metadata": {{"limit": 10, "offset": 0, "total": 1}},
                         "people": [{{"id": 2}}],
@@ -5983,7 +6114,9 @@ async def test_streamable_http_client_interoperates_with_server_surface() -> Non
                 json_body: Mapping[str, object] | None = None,
                 params: Mapping[str, str] | None = None,
             ) -> dict[str, object] | list[object]:
-                del method, path, headers, json_body, params
+                del method, headers, json_body, params
+                if path == "/me":
+                    return self.me_response
                 return self.responses.pop(0)
 
 
