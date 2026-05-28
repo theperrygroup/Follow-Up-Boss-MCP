@@ -2046,7 +2046,14 @@ def _register_appointment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) 
 
     @mcp.tool(
         name="followupboss_create_appointment",
-        description="Create a Follow Up Boss appointment.",
+        description=(
+            "Create a Follow Up Boss appointment. Provide start and end as ISO 8601 "
+            "datetimes that include the user's UTC offset (for example "
+            "2026-05-28T15:30:00-06:00). Follow Up Boss treats a datetime without an "
+            "offset as UTC, which shifts the appointment to the wrong time; when the "
+            "server sets FOLLOWUPBOSS_DEFAULT_TIMEZONE, offset-less datetimes are "
+            "localized to that timezone instead."
+        ),
     )
     async def followupboss_create_appointment(
         title: str,
@@ -2068,7 +2075,14 @@ def _register_appointment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) 
 
     @mcp.tool(
         name="followupboss_update_appointment",
-        description="Update a Follow Up Boss appointment by ID.",
+        description=(
+            "Update a Follow Up Boss appointment by ID. Provide start and end as ISO "
+            "8601 datetimes that include the user's UTC offset (for example "
+            "2026-05-28T15:30:00-06:00). Follow Up Boss treats a datetime without an "
+            "offset as UTC, which shifts the appointment to the wrong time; when the "
+            "server sets FOLLOWUPBOSS_DEFAULT_TIMEZONE, offset-less datetimes are "
+            "localized to that timezone instead."
+        ),
     )
     async def followupboss_update_appointment(
         appointment_id: int,
@@ -2524,7 +2538,13 @@ def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
 
     @mcp.tool(
         name="followupboss_create_task",
-        description="Create a Follow Up Boss task.",
+        description=(
+            "Create a Follow Up Boss task. When setting due_date_time, provide an ISO "
+            "8601 datetime that includes the user's UTC offset (for example "
+            "2026-05-28T15:30:00-06:00); Follow Up Boss treats an offset-less datetime "
+            "as UTC, and the server localizes naive values only when "
+            "FOLLOWUPBOSS_DEFAULT_TIMEZONE is set."
+        ),
     )
     async def followupboss_create_task(
         person_id: int,
@@ -2545,7 +2565,11 @@ def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         name="followupboss_update_task",
         description=(
             "Update a Follow Up Boss task by explicit task_id. Do not infer the "
-            "task_id from vague natural-language intent."
+            "task_id from vague natural-language intent. When setting due_date_time, "
+            "provide an ISO 8601 datetime that includes the user's UTC offset (for "
+            "example 2026-05-28T15:30:00-06:00); Follow Up Boss treats an offset-less "
+            "datetime as UTC, and the server localizes naive values only when "
+            "FOLLOWUPBOSS_DEFAULT_TIMEZONE is set."
         ),
     )
     async def followupboss_update_task(

@@ -6,6 +6,11 @@ from datetime import datetime
 
 from pydantic import Field, model_validator
 
+from followupboss_mcp.datetimes import (
+    ensure_timezone_aware,
+    normalize_local_datetime,
+    resolve_default_timezone,
+)
 from followupboss_mcp.models.common import QueryModel, RequestModel, ResponseModel
 
 
@@ -31,6 +36,21 @@ class AppointmentListRequest(QueryModel):
         """
         if (self.start is None) != (self.end is None):
             raise ValueError("start and end must be provided together.")
+        return self
+
+    @model_validator(mode="after")
+    def _localize_naive_datetimes(self) -> AppointmentListRequest:
+        """Localize naive `start`/`end` filters to the configured default timezone.
+
+        Follow Up Boss treats offset-less datetimes as UTC, so a naive local
+        time would query the wrong window. Naive values are localized only when
+        a default timezone is configured; aware values are left untouched.
+
+        Returns:
+            The normalized request instance.
+        """
+        self.start = normalize_local_datetime(self.start)
+        self.end = normalize_local_datetime(self.end)
         return self
 
 
@@ -65,6 +85,26 @@ class AppointmentWriteRequest(RequestModel):
     start: datetime
     title: str
     type_id: int | None = Field(default=None, serialization_alias="typeId")
+
+    @model_validator(mode="after")
+    def _localize_naive_datetimes(self) -> AppointmentWriteRequest:
+        """Localize naive `start`/`end` values to the configured default timezone.
+
+        Follow Up Boss interprets offset-less datetimes as UTC, which would shift
+        a spoken local time (such as "3:30pm") to the wrong instant. Naive values
+        are localized only when a default timezone is configured; values that
+        already carry an offset are preserved exactly.
+
+        Returns:
+            The normalized request instance.
+        """
+        start = normalize_local_datetime(self.start)
+        end = normalize_local_datetime(self.end)
+        if start is not None:
+            self.start = start
+        if end is not None:
+            self.end = end
+        return self
 
 
 class CreateAppointmentRequest(AppointmentWriteRequest):

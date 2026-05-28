@@ -6,6 +6,7 @@ from datetime import date, datetime
 
 from pydantic import AliasChoices, Field, model_validator
 
+from followupboss_mcp.datetimes import normalize_local_datetime
 from followupboss_mcp.models.common import CommonListQuery, JsonValue, RequestModel, ResponseModel
 
 
@@ -21,6 +22,21 @@ class TaskListRequest(CommonListQuery):
     name: str | None = None
     person_id: int | None = Field(default=None, serialization_alias="personId")
     type: list[str] | None = None
+
+    @model_validator(mode="after")
+    def _localize_naive_datetimes(self) -> TaskListRequest:
+        """Localize naive `due_start`/`due_end` filters to the default timezone.
+
+        Follow Up Boss treats offset-less datetimes as UTC, so a naive local time
+        would query the wrong due-date window. Naive values are localized only
+        when a default timezone is configured; aware values are left untouched.
+
+        Returns:
+            The normalized request instance.
+        """
+        self.due_start = normalize_local_datetime(self.due_start)
+        self.due_end = normalize_local_datetime(self.due_end)
+        return self
 
 
 class TaskPersonSummary(ResponseModel):
@@ -40,6 +56,21 @@ class TaskWriteRequest(RequestModel):
     is_completed: bool | None = Field(default=None, serialization_alias="isCompleted")
     name: str | None = None
     type: str | None = None
+
+    @model_validator(mode="after")
+    def _localize_naive_due_date_time(self) -> TaskWriteRequest:
+        """Localize a naive `due_date_time` to the configured default timezone.
+
+        Follow Up Boss interprets the offset-less `dueDateTime` as UTC, which
+        would shift a spoken local due time to the wrong instant. The value is
+        localized only when a default timezone is configured; a value that
+        already carries an offset is preserved exactly.
+
+        Returns:
+            The normalized request instance.
+        """
+        self.due_date_time = normalize_local_datetime(self.due_date_time)
+        return self
 
 
 class CreateTaskRequest(TaskWriteRequest):
