@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pytest
 from pydantic import ValidationError
 from starlette.types import Message, Receive, Scope, Send
