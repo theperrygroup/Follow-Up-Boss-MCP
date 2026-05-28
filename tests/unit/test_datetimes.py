@@ -8,8 +8,8 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from followupboss_mcp.datetimes import (
-    ensure_timezone_aware,
-    normalize_local_datetime,
+    normalize_datetime,
+    normalize_optional_datetime,
     resolve_default_timezone,
 )
 from followupboss_mcp.models.appointments import (
@@ -73,46 +73,47 @@ def test_resolve_default_timezone_rejects_invalid_zone(
         resolve_default_timezone()
 
 
-def test_ensure_timezone_aware_localizes_naive_value() -> None:
-    """A naive datetime should adopt the supplied default timezone."""
+def test_normalize_datetime_converts_naive_local_to_utc() -> None:
+    """A naive datetime should be interpreted in the default zone and sent as UTC."""
     naive = datetime(2026, 5, 28, 15, 30)
-    aware = ensure_timezone_aware(naive, default_timezone=ZoneInfo("America/Denver"))
-    assert aware.utcoffset() == timedelta(hours=-6)
-    assert aware.isoformat() == "2026-05-28T15:30:00-06:00"
+    result = normalize_datetime(naive, default_timezone=ZoneInfo("America/Denver"))
+    assert result.utcoffset() == timedelta(0)
+    assert result.isoformat() == "2026-05-28T21:30:00+00:00"
 
 
-def test_ensure_timezone_aware_preserves_aware_value() -> None:
-    """An aware datetime should be returned unchanged regardless of default."""
+def test_normalize_datetime_converts_aware_value_to_utc() -> None:
+    """An aware datetime should be converted from its own offset to UTC."""
     aware = datetime(2026, 5, 28, 15, 30, tzinfo=ZoneInfo("America/New_York"))
-    result = ensure_timezone_aware(aware, default_timezone=ZoneInfo("America/Denver"))
-    assert result is aware
+    result = normalize_datetime(aware, default_timezone=ZoneInfo("America/Denver"))
+    assert result.utcoffset() == timedelta(0)
+    assert result.isoformat() == "2026-05-28T19:30:00+00:00"
 
 
-def test_ensure_timezone_aware_without_default_keeps_naive() -> None:
+def test_normalize_datetime_without_default_keeps_naive() -> None:
     """Without a default timezone, a naive datetime should remain naive."""
     naive = datetime(2026, 5, 28, 15, 30)
-    result = ensure_timezone_aware(naive, default_timezone=None)
+    result = normalize_datetime(naive, default_timezone=None)
     assert result is naive
     assert result.tzinfo is None
 
 
-def test_normalize_local_datetime_passthrough_for_none() -> None:
+def test_normalize_optional_datetime_passthrough_for_none() -> None:
     """``None`` input should return ``None``."""
-    assert normalize_local_datetime(None) is None
+    assert normalize_optional_datetime(None) is None
 
 
-def test_normalize_local_datetime_uses_configured_timezone(
+def test_normalize_optional_datetime_uses_configured_timezone(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The convenience helper should localize naive values via the env config.
+    """The convenience helper should convert naive values to UTC via the env config.
 
     Args:
         monkeypatch: Fixture used to set the configured timezone env var.
     """
     monkeypatch.setenv("FOLLOWUPBOSS_DEFAULT_TIMEZONE", "America/New_York")
-    result = normalize_local_datetime(datetime(2026, 5, 28, 15, 30))
+    result = normalize_optional_datetime(datetime(2026, 5, 28, 15, 30))
     assert result is not None
-    assert result.isoformat() == "2026-05-28T15:30:00-04:00"
+    assert result.isoformat() == "2026-05-28T19:30:00+00:00"
 
 
 def test_create_appointment_localizes_naive_start_end(
