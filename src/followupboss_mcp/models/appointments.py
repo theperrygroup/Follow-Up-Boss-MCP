@@ -98,12 +98,9 @@ class AppointmentWriteRequest(RequestModel):
         Returns:
             The normalized request instance.
         """
-        start = normalize_local_datetime(self.start)
-        end = normalize_local_datetime(self.end)
-        if start is not None:
-            self.start = start
-        if end is not None:
-            self.end = end
+        default_timezone = resolve_default_timezone()
+        self.start = ensure_timezone_aware(self.start, default_timezone=default_timezone)
+        self.end = ensure_timezone_aware(self.end, default_timezone=default_timezone)
         return self
 
 
