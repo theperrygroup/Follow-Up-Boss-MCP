@@ -2049,10 +2049,9 @@ def _register_appointment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) 
         description=(
             "Create a Follow Up Boss appointment. Follow Up Boss stores times in UTC "
             "and does not honor an offset suffix, so provide start and end as the "
-            "user's local wall-clock time (for example 2026-05-28T15:30:00) and the "
-            "server converts them to UTC using FOLLOWUPBOSS_DEFAULT_TIMEZONE. If that "
-            "timezone is not configured, provide the time already converted to UTC "
-            "(for example 2026-05-28T21:30:00Z)."
+            "user's local wall-clock time (for example 2026-05-28T15:30:00); the "
+            "server converts them to UTC using the account's Follow Up Boss timezone "
+            "(auto-detected) or the FOLLOWUPBOSS_DEFAULT_TIMEZONE override."
         ),
     )
     async def followupboss_create_appointment(
@@ -2069,6 +2068,7 @@ def _register_appointment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) 
         send_invitation: bool | None = None,
         type_id: int | None = None,
     ) -> dict[str, object]:
+        await adapter.prime_account_timezone()
         return await adapter.create_appointment(
             _validated_request(CreateAppointmentRequest, locals())
         )
@@ -2078,10 +2078,9 @@ def _register_appointment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) 
         description=(
             "Update a Follow Up Boss appointment by ID. Follow Up Boss stores times in "
             "UTC and does not honor an offset suffix, so provide start and end as the "
-            "user's local wall-clock time (for example 2026-05-28T15:30:00) and the "
-            "server converts them to UTC using FOLLOWUPBOSS_DEFAULT_TIMEZONE. If that "
-            "timezone is not configured, provide the time already converted to UTC "
-            "(for example 2026-05-28T21:30:00Z)."
+            "user's local wall-clock time (for example 2026-05-28T15:30:00); the "
+            "server converts them to UTC using the account's Follow Up Boss timezone "
+            "(auto-detected) or the FOLLOWUPBOSS_DEFAULT_TIMEZONE override."
         ),
     )
     async def followupboss_update_appointment(
@@ -2098,6 +2097,7 @@ def _register_appointment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) 
         send_invitation: bool | None = None,
         type_id: int | None = None,
     ) -> dict[str, object]:
+        await adapter.prime_account_timezone()
         return await adapter.update_appointment(
             _validated_request(UpdateAppointmentToolInput, locals())
         )
@@ -2541,10 +2541,9 @@ def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         description=(
             "Create a Follow Up Boss task. Follow Up Boss stores due_date_time in UTC "
             "and does not honor an offset suffix, so provide it as the user's local "
-            "wall-clock time (for example 2026-05-28T15:30:00) and the server converts "
-            "it to UTC using FOLLOWUPBOSS_DEFAULT_TIMEZONE. If that timezone is not "
-            "configured, provide the time already converted to UTC (for example "
-            "2026-05-28T21:30:00Z)."
+            "wall-clock time (for example 2026-05-28T15:30:00); the server converts it "
+            "to UTC using the account's Follow Up Boss timezone (auto-detected) or the "
+            "FOLLOWUPBOSS_DEFAULT_TIMEZONE override."
         ),
     )
     async def followupboss_create_task(
@@ -2559,6 +2558,7 @@ def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         remind_seconds_before: int | None = None,
         type: str | None = None,
     ) -> dict[str, object]:
+        await adapter.prime_account_timezone()
         tool_input = _validated_request(CreateTaskRequest, locals())
         return await adapter.create_task(tool_input)
 
@@ -2568,10 +2568,9 @@ def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
             "Update a Follow Up Boss task by explicit task_id. Do not infer the "
             "task_id from vague natural-language intent. Follow Up Boss stores "
             "due_date_time in UTC and does not honor an offset suffix, so provide it "
-            "as the user's local wall-clock time (for example 2026-05-28T15:30:00) and "
-            "the server converts it to UTC using FOLLOWUPBOSS_DEFAULT_TIMEZONE. If that "
-            "timezone is not configured, provide the time already converted to UTC "
-            "(for example 2026-05-28T21:30:00Z)."
+            "as the user's local wall-clock time (for example 2026-05-28T15:30:00); "
+            "the server converts it to UTC using the account's Follow Up Boss timezone "
+            "(auto-detected) or the FOLLOWUPBOSS_DEFAULT_TIMEZONE override."
         ),
     )
     async def followupboss_update_task(
@@ -2586,6 +2585,7 @@ def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         person_id: int | None = None,
         type: str | None = None,
     ) -> dict[str, object]:
+        await adapter.prime_account_timezone()
         return await adapter.update_task(_validated_request(UpdateTaskToolInput, locals()))
 
     @mcp.tool(

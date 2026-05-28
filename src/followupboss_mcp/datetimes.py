@@ -11,16 +11,26 @@ correct instant is preserved regardless of the offset quirk:
 
 * Timezone-aware values (any offset, including an explicit UTC) are converted to
   UTC.
-* Naive values are localized to the configured default timezone (when one is
-  set) and then converted to UTC. This is what fixes a spoken local time such as
-  "3:30pm" that an MCP caller relays without an offset.
-* Naive values with no configured default timezone are returned unchanged, which
+* Naive values are localized to the resolved default timezone (when one is
+  available) and then converted to UTC. This is what fixes a spoken local time
+  such as "3:30pm" that an MCP caller relays without an offset.
+* Naive values with no resolved default timezone are returned unchanged, which
   preserves the historical behavior where Follow Up Boss treats them as UTC.
+
+The default timezone is resolved in two layers:
+
+* An explicit ``FOLLOWUPBOSS_DEFAULT_TIMEZONE`` environment override (useful for
+  hosted bootstrap or to force a zone).
+* Otherwise the authenticated account's timezone, auto-detected from the Follow
+  Up Boss ``/me`` endpoint and published into a context variable by the adapter.
+  This makes appointments work with zero configuration in clients such as Claude
+  where setting environment variables is awkward.
 """
 
 from __future__ import annotations
 
 import os
+from contextvars import ContextVar
 from datetime import UTC, datetime, tzinfo
 from functools import lru_cache
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -30,6 +40,12 @@ DEFAULT_TIMEZONE_ENV_VARS: tuple[str, ...] = (
     "FOLLOW_UP_BOSS_DEFAULT_TIMEZONE",
 )
 """Environment variables consulted, in order, for the default IANA timezone."""
+
+_ACCOUNT_TIMEZONE: ContextVar[tzinfo | None] = ContextVar(
+    "followupboss_account_timezone",
+    default=None,
+)
+"""Per-call account timezone auto-detected from Follow Up Boss ``/me``."""
 
 
 @lru_cache(maxsize=32)
@@ -55,15 +71,35 @@ def _load_zoneinfo(name: str) -> ZoneInfo:
         ) from error
 
 
-def resolve_default_timezone() -> tzinfo | None:
-    """Resolve the configured default timezone for naive datetimes.
+def timezone_from_name(name: str | None) -> tzinfo | None:
+    """Resolve an IANA timezone name on a best-effort basis.
+
+    Args:
+        name: A candidate IANA timezone name (for example from the Follow Up Boss
+            ``/me`` payload). May be ``None`` or blank.
+
+    Returns:
+        The resolved :class:`~datetime.tzinfo`, or ``None`` when ``name`` is
+        missing, blank, or not a recognized IANA zone. This never raises so that
+        timezone auto-detection cannot break a request.
+    """
+    if name is None or not name.strip():
+        return None
+    try:
+        return _load_zoneinfo(name.strip())
+    except ValueError:
+        return None
+
+
+def resolve_configured_timezone() -> tzinfo | None:
+    """Resolve the explicit environment-configured default timezone.
 
     Reads the first populated environment variable from
     :data:`DEFAULT_TIMEZONE_ENV_VARS`. The value must be an IANA timezone name.
 
     Returns:
-        The configured :class:`~datetime.tzinfo` when one is set, otherwise
-        ``None``.
+        The environment-configured :class:`~datetime.tzinfo` when one is set,
+        otherwise ``None``.
 
     Raises:
         ValueError: If the configured timezone name is not a valid IANA zone.
@@ -73,6 +109,38 @@ def resolve_default_timezone() -> tzinfo | None:
         if raw is not None and raw.strip():
             return _load_zoneinfo(raw.strip())
     return None
+
+
+def set_account_timezone(value: tzinfo | None) -> None:
+    """Publish the auto-detected account timezone for the current call.
+
+    Args:
+        value: The account timezone resolved from Follow Up Boss ``/me``, or
+            ``None`` when it could not be determined.
+    """
+    _ACCOUNT_TIMEZONE.set(value)
+
+
+def resolve_default_timezone() -> tzinfo | None:
+    """Resolve the default timezone used to interpret naive datetimes.
+
+    Resolution precedence:
+
+    1. The explicit ``FOLLOWUPBOSS_DEFAULT_TIMEZONE`` environment override.
+    2. The account timezone auto-detected from Follow Up Boss ``/me`` for the
+       current call (published via :func:`set_account_timezone`).
+
+    Returns:
+        The resolved :class:`~datetime.tzinfo`, or ``None`` when neither layer
+        provides one.
+
+    Raises:
+        ValueError: If the environment override is not a valid IANA zone.
+    """
+    configured = resolve_configured_timezone()
+    if configured is not None:
+        return configured
+    return _ACCOUNT_TIMEZONE.get()
 
 
 def normalize_datetime(value: datetime, *, default_timezone: tzinfo | None) -> datetime:

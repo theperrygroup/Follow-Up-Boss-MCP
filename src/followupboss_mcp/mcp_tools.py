@@ -5,10 +5,17 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
 from dataclasses import asdict
+from datetime import tzinfo
 from typing import Any, cast
+from weakref import WeakKeyDictionary
 
 from pydantic import field_validator, model_validator
 
+from followupboss_mcp.datetimes import (
+    resolve_configured_timezone,
+    set_account_timezone,
+    timezone_from_name,
+)
 from followupboss_mcp.errors import FollowUpBossError, FollowUpBossRateLimitError
 from followupboss_mcp.models.action_plans import (
     ActionPlanListRequest,
@@ -1299,6 +1306,9 @@ class FollowUpBossToolAdapter:
         else:
             self._fixed_services = services
             self._service_bundle_resolver = None
+        self._account_timezone_cache: WeakKeyDictionary[object, tzinfo | None] = (
+            WeakKeyDictionary()
+        )
 
     @property
     def _services(self) -> ServiceBundle:
@@ -1318,6 +1328,49 @@ class FollowUpBossToolAdapter:
         if active_services is None:
             raise RuntimeError("Tenant runtime is unavailable.")
         return active_services
+
+    async def prime_account_timezone(self) -> None:
+        """Publish the account timezone so naive datetimes resolve to the right zone.
+
+        Follow Up Boss stores appointment and task times in UTC, so a naive local
+        time must be interpreted in the account's timezone before conversion. An
+        explicit ``FOLLOWUPBOSS_DEFAULT_TIMEZONE`` override takes precedence and
+        needs no lookup; otherwise the account timezone is auto-detected once per
+        service bundle from the ``/me`` endpoint and cached. Detection is
+        best-effort and never raises, so timezone resolution cannot block a write.
+        """
+        if resolve_configured_timezone() is not None:
+            return
+        set_account_timezone(await self._execute_with_services(self._resolve_account_timezone))
+
+    async def _resolve_account_timezone(self) -> tzinfo | None:
+        """Return the cached account timezone, detecting it once per bundle.
+
+        Must run with an active service bundle in scope (via
+        :meth:`_execute_with_services`).
+
+        Returns:
+            The account :class:`~datetime.tzinfo`, or ``None`` when it cannot be
+            determined.
+        """
+        bundle = self._services
+        if bundle not in self._account_timezone_cache:
+            self._account_timezone_cache[bundle] = await self._detect_account_timezone()
+        return self._account_timezone_cache[bundle]
+
+    async def _detect_account_timezone(self) -> tzinfo | None:
+        """Detect the authenticated account's timezone from Follow Up Boss ``/me``.
+
+        Returns:
+            The account :class:`~datetime.tzinfo`, or ``None`` when the lookup
+            fails or the account has no recognizable timezone. Failures are
+            swallowed so that timezone auto-detection never breaks a write.
+        """
+        try:
+            current_user = await self._services.users.get_me()
+        except FollowUpBossError:
+            return None
+        return timezone_from_name(current_user.time_zone)
 
     async def get_identity(self) -> dict[str, Any]:
         """Return identity information."""
