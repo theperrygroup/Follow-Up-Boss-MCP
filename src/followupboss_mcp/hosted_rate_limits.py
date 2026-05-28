@@ -151,7 +151,14 @@ class InMemoryHostedRateLimitBackend:
                 timestamps.popleft()
 
             if len(timestamps) >= limit:
-                retry_after_seconds = max(timestamps[0] + window_seconds - now, 0.0)
+                # The retry hint can never exceed the window itself; clamp the
+                # upper bound so floating-point rounding in ``(oldest + window)
+                # - now`` cannot push the value microscopically above
+                # ``window_seconds`` and inflate the rounded ``Retry-After``.
+                retry_after_seconds = min(
+                    max(timestamps[0] + window_seconds - now, 0.0),
+                    window_seconds,
+                )
                 return HostedRateLimitDecision(
                     allowed=False,
                     remaining_requests=0,
