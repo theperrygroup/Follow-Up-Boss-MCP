@@ -116,10 +116,10 @@ def test_normalize_optional_datetime_uses_configured_timezone(
     assert result.isoformat() == "2026-05-28T19:30:00+00:00"
 
 
-def test_create_appointment_localizes_naive_start_end(
+def test_create_appointment_converts_naive_local_to_utc(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Naive appointment times should serialize with the configured offset.
+    """Naive appointment times should serialize as the converted UTC instant.
 
     Args:
         monkeypatch: Fixture used to set the configured timezone env var.
@@ -133,14 +133,14 @@ def test_create_appointment_localizes_naive_start_end(
         }
     )
     payload = request.model_dump(mode="json", by_alias=True, exclude_none=True)
-    assert payload["start"] == "2026-05-28T15:30:00-06:00"
-    assert payload["end"] == "2026-05-28T16:00:00-06:00"
+    assert payload["start"] == "2026-05-28T21:30:00Z"
+    assert payload["end"] == "2026-05-28T22:00:00Z"
 
 
-def test_create_appointment_preserves_explicit_offset(
+def test_create_appointment_converts_explicit_offset_to_utc(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An explicit offset should win over the configured default timezone.
+    """An explicit offset should be converted to UTC (not sent as a suffix).
 
     Args:
         monkeypatch: Fixture used to set the configured timezone env var.
@@ -154,8 +154,8 @@ def test_create_appointment_preserves_explicit_offset(
         }
     )
     payload = request.model_dump(mode="json", by_alias=True, exclude_none=True)
-    assert payload["start"] == "2026-05-28T15:30:00-05:00"
-    assert payload["end"] == "2026-05-28T16:00:00-05:00"
+    assert payload["start"] == "2026-05-28T20:30:00Z"
+    assert payload["end"] == "2026-05-28T21:00:00Z"
 
 
 def test_create_appointment_without_default_keeps_naive() -> None:
@@ -172,10 +172,10 @@ def test_create_appointment_without_default_keeps_naive() -> None:
     assert payload["end"] == "2026-05-28T16:00:00"
 
 
-def test_update_appointment_localizes_naive_start_end(
+def test_update_appointment_converts_naive_local_to_utc(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Update requests should localize naive times like create requests.
+    """Update requests should convert naive times to UTC like create requests.
 
     Args:
         monkeypatch: Fixture used to set the configured timezone env var.
@@ -189,31 +189,31 @@ def test_update_appointment_localizes_naive_start_end(
         }
     )
     payload = request.model_dump(mode="json", by_alias=True, exclude_none=True)
-    assert payload["start"] == "2026-05-28T15:30:00-06:00"
-    assert payload["end"] == "2026-05-28T16:00:00-06:00"
+    assert payload["start"] == "2026-05-28T21:30:00Z"
+    assert payload["end"] == "2026-05-28T22:00:00Z"
 
 
-def test_appointment_list_request_localizes_naive_filters(
+def test_appointment_list_request_converts_naive_filters_to_utc(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Naive appointment list filters should serialize with the offset.
+    """Naive appointment list filters should serialize as the UTC instant.
 
     Args:
         monkeypatch: Fixture used to set the configured timezone env var.
     """
     monkeypatch.setenv("FOLLOWUPBOSS_DEFAULT_TIMEZONE", "America/Denver")
     request = AppointmentListRequest.model_validate(
-        {"start": "2026-05-28T00:00:00", "end": "2026-05-28T23:59:59"}
+        {"start": "2026-05-28T08:00:00", "end": "2026-05-28T17:00:00"}
     )
     params = request.to_query_params()
-    assert params["start"] == "2026-05-28T00:00:00-06:00"
-    assert params["end"] == "2026-05-28T23:59:59-06:00"
+    assert params["start"] == "2026-05-28T14:00:00+00:00"
+    assert params["end"] == "2026-05-28T23:00:00+00:00"
 
 
-def test_create_task_localizes_naive_due_date_time(
+def test_create_task_converts_naive_due_date_time_to_utc(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A naive task due time should serialize with the configured offset.
+    """A naive task due time should serialize as the converted UTC instant.
 
     Args:
         monkeypatch: Fixture used to set the configured timezone env var.
@@ -228,13 +228,13 @@ def test_create_task_localizes_naive_due_date_time(
         }
     )
     payload = request.model_dump(mode="json", by_alias=True, exclude_none=True)
-    assert payload["dueDateTime"] == "2026-05-28T15:30:00-06:00"
+    assert payload["dueDateTime"] == "2026-05-28T21:30:00Z"
 
 
-def test_update_task_preserves_explicit_offset(
+def test_update_task_converts_explicit_offset_to_utc(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An explicit task due offset should be preserved over the default.
+    """An explicit task due offset should be converted to UTC.
 
     Args:
         monkeypatch: Fixture used to set the configured timezone env var.
@@ -244,24 +244,24 @@ def test_update_task_preserves_explicit_offset(
         {"person_id": 99, "due_date_time": "2026-05-28T15:30:00+02:00"}
     )
     payload = request.model_dump(mode="json", by_alias=True, exclude_none=True)
-    assert payload["dueDateTime"] == "2026-05-28T15:30:00+02:00"
+    assert payload["dueDateTime"] == "2026-05-28T13:30:00Z"
 
 
-def test_task_list_request_localizes_naive_due_range(
+def test_task_list_request_converts_naive_due_range_to_utc(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Naive task due-range filters should serialize with the offset.
+    """Naive task due-range filters should serialize as the UTC instant.
 
     Args:
         monkeypatch: Fixture used to set the configured timezone env var.
     """
     monkeypatch.setenv("FOLLOWUPBOSS_DEFAULT_TIMEZONE", "America/Denver")
     request = TaskListRequest.model_validate(
-        {"due_start": "2026-05-28T00:00:00", "due_end": "2026-05-28T23:59:59"}
+        {"due_start": "2026-05-28T08:00:00", "due_end": "2026-05-28T17:00:00"}
     )
     params = request.to_query_params()
-    assert params["dueStart"] == "2026-05-28T00:00:00-06:00"
-    assert params["dueEnd"] == "2026-05-28T23:59:59-06:00"
+    assert params["dueStart"] == "2026-05-28T14:00:00+00:00"
+    assert params["dueEnd"] == "2026-05-28T23:00:00+00:00"
 
 
 def test_existing_aware_utc_datetime_unaffected() -> None:
