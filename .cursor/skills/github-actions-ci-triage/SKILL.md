@@ -278,6 +278,16 @@ is present, so a stale Codecov UI is not the same as a broken repository CI run.
   actionable repo fixes.
 - Publish failures often come from tag/version mismatch or artifact validation.
   Do not publish, tag, or change credentials without explicit user direction.
+- `make audit` (`pip-audit --strict`) can start failing on an unchanged lockfile
+  when a new advisory is published against an already-locked dependency. The
+  signature is a uniform failure across every `quality` matrix cell (all OSes and
+  Python versions) that stops at `Makefile:28: audit` with `Found N known
+  vulnerabilities`, while `secrets` passes and the triggering commit is unrelated
+  to the flagged package. This is advisory timing, not a code regression. Fix by
+  bumping only the affected package to the listed fix version with
+  `uv lock --upgrade-package <name>`, then verify with `make audit` and
+  `make validate`. Do not add the package to `pyproject.toml` unless `src/`
+  imports it directly; a purely transitive dependency only needs the lock bump.
 
 ## Final Output
 
