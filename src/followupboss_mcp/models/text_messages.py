@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from pydantic import AliasChoices, Field
 
-from followupboss_mcp.models.common import JsonValue, QueryModel, RequestModel, ResponseModel
+from followupboss_mcp.models.common import (
+    JsonValue,
+    QueryModel,
+    RequestModel,
+    ResourcePicture,
+    ResponseModel,
+)
 
 
 class TextMessageListRequest(QueryModel):
@@ -36,7 +42,7 @@ class TextMessageRecord(ResponseModel):
     name: str | None = None
     participants: list[JsonValue] = Field(default_factory=list)
     person_id: int | None = Field(default=None, alias="personId")
-    picture: str | None = None
+    picture: ResourcePicture | str | None = None
     read: bool | None = None
     sent: str | None = None
     shared_inbox_id: int | None = Field(default=None, alias="sharedInboxId")
@@ -118,7 +124,7 @@ class TextMessageTemplateRecord(ResponseModel):
     id: int
     is_deletable: bool | None = Field(default=None, alias="isDeletable")
     is_editable: bool | None = Field(default=None, alias="isEditable")
-    is_shareable: bool | None = Field(default=None, alias="isShareable")
+    is_shareable: bool | str | None = Field(default=None, alias="isShareable")
     is_shared: bool | None = Field(default=None, alias="isShared")
     message: str | None = None
     name: str | None = None

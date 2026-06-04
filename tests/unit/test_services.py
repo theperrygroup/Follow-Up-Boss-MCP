@@ -1311,8 +1311,10 @@ async def test_people_service_admin_utility_endpoints() -> None:
 
     unclaimed = await service.list_unclaimed_people(UnclaimedPeopleListRequest(limit=10, offset=0))
     assert unclaimed.items[0].source_id == 730
-    assert unclaimed.items[0].picture is not None
-    assert unclaimed.items[0].picture.small == "https://example.com/avatar.jpg"
+    unclaimed_picture = unclaimed.items[0].picture
+    assert unclaimed_picture is not None
+    assert not isinstance(unclaimed_picture, str)
+    assert unclaimed_picture.small == "https://example.com/avatar.jpg"
     assert client.calls[1].path == "/people/unclaimed"
     assert client.calls[1].params == {"limit": "10", "offset": "0"}
 
@@ -3167,6 +3169,7 @@ async def test_text_messages_service() -> None:
                         "fromNumber": "555-0001",
                         "toNumber": "555-0002",
                         "userName": "Data",
+                        "picture": {"small": "https://s.followupboss.com/avatar.jpg"},
                     }
                 ],
             },
@@ -3177,6 +3180,7 @@ async def test_text_messages_service() -> None:
                 "fromNumber": "555-0001",
                 "toNumber": "555-0002",
                 "userName": "Data",
+                "picture": "https://s.followupboss.com/avatar-2.jpg",
             },
         ]
     )
@@ -3190,13 +3194,19 @@ async def test_text_messages_service() -> None:
         )
     )
     assert messages_page.items[0].user_name == "Data"
+    listed_picture = messages_page.items[0].picture
+    assert not isinstance(listed_picture, str)
+    assert listed_picture is not None
+    assert listed_picture.small == "https://s.followupboss.com/avatar.jpg"
     assert client.calls[0].params == {
         "personId": "99",
         "toNumber": "555-0002",
         "fromNumber": "555-0001",
     }
 
-    assert (await service.get_text_message(2)).id == 2
+    fetched_message = await service.get_text_message(2)
+    assert fetched_message.id == 2
+    assert fetched_message.picture == "https://s.followupboss.com/avatar-2.jpg"
 
 
 @pytest.mark.asyncio
@@ -3212,6 +3222,7 @@ async def test_text_message_templates_service() -> None:
                         "name": "Buyer intro text",
                         "message": "Hi there",
                         "isShared": True,
+                        "isShareable": "disabled",
                     }
                 ],
             },
@@ -3243,6 +3254,7 @@ async def test_text_message_templates_service() -> None:
         TextMessageTemplateListRequest(limit=5, offset=10)
     )
     assert templates_page.items[0].name == "Buyer intro text"
+    assert templates_page.items[0].is_shareable == "disabled"
     assert client.calls[0].params == {"limit": "5", "offset": "10"}
 
     template = await service.get_text_message_template(2)
@@ -3429,6 +3441,7 @@ async def test_templates_service() -> None:
                         "subject": "Hello",
                         "body": "<p>Hello</p>",
                         "isShared": True,
+                        "isShareable": "disabled",
                     }
                 ],
             },
@@ -3469,6 +3482,7 @@ async def test_templates_service() -> None:
 
     templates_page = await service.list_templates(TemplateListRequest(limit=5, offset=10))
     assert templates_page.items[0].name == "Buyer intro"
+    assert templates_page.items[0].is_shareable == "disabled"
     assert client.calls[0].params == {"limit": "5", "offset": "10"}
 
     template = await service.get_template(2, request=TemplateLookupRequest(merge_person_id=99))

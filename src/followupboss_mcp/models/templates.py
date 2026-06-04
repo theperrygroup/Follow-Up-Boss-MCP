@@ -84,7 +84,7 @@ class TemplateRecord(ResponseModel):
     is_deletable: bool | None = Field(default=None, alias="isDeletable")
     is_editable: bool | None = Field(default=None, alias="isEditable")
     is_mobile: bool | None = Field(default=None, alias="isMobile")
-    is_shareable: bool | None = Field(default=None, alias="isShareable")
+    is_shareable: bool | str | None = Field(default=None, alias="isShareable")
     is_shared: bool | None = Field(default=None, alias="isShared")
     name: str | None = None
     subject: str | None = None

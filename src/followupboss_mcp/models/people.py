@@ -14,6 +14,7 @@ from followupboss_mcp.models.common import (
     PhoneNumber,
     QueryModel,
     RequestModel,
+    ResourcePicture,
     ResponseModel,
 )
 
@@ -173,12 +174,6 @@ class UpdatePersonRequest(RequestModel):
     timeframe_id: int | None = Field(default=None, serialization_alias="timeframeId")
 
 
-class PersonPicture(ResponseModel):
-    """Minimal picture payload nested under people resources."""
-
-    small: str | None = None
-
-
 class PersonDuplicateCheckRecord(ResponseModel):
     """Duplicate-check result for a person lookup."""
 
@@ -210,7 +205,7 @@ class PersonRecord(ResponseModel):
     )
     last_name: str | None = Field(default=None, alias="lastName")
     name: str | None = None
-    picture: PersonPicture | None = None
+    picture: ResourcePicture | str | None = None
     phones: list[PhoneNumber] = Field(default_factory=list)
     price: int | None = None
     source: str | None = None

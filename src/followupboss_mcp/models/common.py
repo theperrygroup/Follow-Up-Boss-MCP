@@ -55,6 +55,23 @@ class MailingAddress(ResponseModel):
     street: str | None = None
 
 
+class ResourcePicture(ResponseModel):
+    """A profile picture attached to a Follow Up Boss resource.
+
+    Follow Up Boss returns a resource picture either as a single URL string or as
+    an object containing one or more sized image URLs (for example ``small`` or
+    ``original``). Response models therefore type picture fields as
+    ``ResourcePicture | str | None`` so a string URL, a sized-variant object, or a
+    missing value all parse without raising. The forward-compatible base
+    configuration preserves any additional sizes the API may add.
+    """
+
+    large: str | None = None
+    original: str | None = None
+    small: str | None = None
+    thumb: str | None = None
+
+
 class CommonListQuery(QueryModel):
     """Common collection query parameters documented by Follow Up Boss."""
 

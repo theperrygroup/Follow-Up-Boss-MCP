@@ -11,6 +11,7 @@ from followupboss_mcp.models.common import (
     PhoneNumber,
     QueryModel,
     RequestModel,
+    ResourcePicture,
     ResponseModel,
 )
 
@@ -86,7 +87,7 @@ class PeopleRelationshipRecord(ResponseModel):
     name: str | None = None
     person_id: int | None = Field(default=None, alias="personId")
     phones: list[PhoneNumber] = Field(default_factory=list)
-    picture: str | None = None
+    picture: ResourcePicture | str | None = None
     social_data: list[JsonValue] = Field(default_factory=list, alias="socialData")
     type: str | None = None
     updated: str | None = None

@@ -11,7 +11,12 @@ from followupboss_mcp.datetimes import (
     normalize_optional_datetime,
     resolve_default_timezone,
 )
-from followupboss_mcp.models.common import QueryModel, RequestModel, ResponseModel
+from followupboss_mcp.models.common import (
+    QueryModel,
+    RequestModel,
+    ResourcePicture,
+    ResponseModel,
+)
 
 
 class AppointmentListRequest(QueryModel):
@@ -118,19 +123,13 @@ class UpdateAppointmentRequest(AppointmentWriteRequest):
     """Strict request model for updating an appointment."""
 
 
-class AppointmentInviteePicture(ResponseModel):
-    """Picture payload returned for an appointment invitee."""
-
-    small: str | None = None
-
-
 class AppointmentInvitee(ResponseModel):
     """Invitee returned on an appointment resource."""
 
     email: str | None = None
     name: str | None = None
     person_id: int | None = Field(default=None, alias="personId")
-    picture: AppointmentInviteePicture | str | None = None
+    picture: ResourcePicture | str | None = None
     user_id: int | None = Field(default=None, alias="userId")
 
 
