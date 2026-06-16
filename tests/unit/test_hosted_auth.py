@@ -95,8 +95,8 @@ def test_hosted_verified_identity_and_auth_settings_validation() -> None:
 
     auth_settings = HostedAuthSettings.model_validate(
         {
-            "issuer_url": "https://issuer.example.com",
-            "resource_server_url": "https://mcp.example.com/mcp",
+            "issuer_url": " issuer.example.com/ ",
+            "resource_server_url": "mcp.example.com/mcp/",
             "required_scopes": "tools:read tools:write",
         }
     )
@@ -104,6 +104,15 @@ def test_hosted_verified_identity_and_auth_settings_validation() -> None:
     assert str(mcp_auth_settings.issuer_url) == "https://issuer.example.com/"
     assert str(mcp_auth_settings.resource_server_url) == "https://mcp.example.com/mcp"
     assert mcp_auth_settings.required_scopes == ["tools:read", "tools:write"]
+
+    loopback_auth_settings = HostedAuthSettings.model_validate(
+        {
+            "issuer_url": "localhost:8000",
+            "resource_server_url": "127.0.0.1:8000/mcp/",
+        }
+    )
+    assert str(loopback_auth_settings.issuer_url) == "http://localhost:8000/"
+    assert str(loopback_auth_settings.resource_server_url) == "http://127.0.0.1:8000/mcp"
 
     with pytest.raises(ValidationError):
         HostedVerifiedIdentity.model_validate(
@@ -119,6 +128,27 @@ def test_hosted_verified_identity_and_auth_settings_validation() -> None:
                 "issuer_url": "https://issuer.example.com",
                 "resource_server_url": "https://mcp.example.com/mcp",
                 "required_scopes": ["tools:read", ""],
+            }
+        )
+    with pytest.raises(ValidationError, match="unresolved URL template"):
+        HostedAuthSettings.model_validate(
+            {
+                "issuer_url": "https://issuer.example.com/{tenant}",
+                "resource_server_url": "https://mcp.example.com/mcp",
+            }
+        )
+    with pytest.raises(ValidationError, match="query string"):
+        HostedAuthSettings.model_validate(
+            {
+                "issuer_url": "https://issuer.example.com",
+                "resource_server_url": "https://mcp.example.com/mcp?tenant=one",
+            }
+        )
+    with pytest.raises(ValidationError, match="must use HTTPS"):
+        HostedAuthSettings.model_validate(
+            {
+                "issuer_url": "http://issuer.example.com",
+                "resource_server_url": "https://mcp.example.com/mcp",
             }
         )
     with pytest.raises(ValidationError, match="expires_at must be greater than zero."):

@@ -855,8 +855,8 @@ def test_hosted_deployment_settings_normalize_and_project_models() -> None:
     """Hosted deployment settings should normalize input and build auth and limiter settings."""
     settings = FollowUpBossHostedDeploymentSettings.model_validate(
         {
-            "issuer_url": "https://issuer.example.com",
-            "resource_server_url": "https://mcp.example.com/mcp",
+            "issuer_url": "issuer.example.com/",
+            "resource_server_url": "mcp.example.com/mcp/",
             "required_scopes": "followupboss:mcp followupboss:mcp tools:read",
             "tenant_database_url": "postgresql://app:secret@db.example.com:5432/fub",
             "tenant_secret_prefix": "followupboss/prod/tenants",
@@ -884,8 +884,8 @@ def test_hosted_deployment_settings_normalize_and_project_models() -> None:
 
     oauth_settings = FollowUpBossHostedDeploymentSettings.model_validate(
         {
-            "issuer_url": "https://issuer.example.com",
-            "resource_server_url": "https://mcp.example.com/mcp",
+            "issuer_url": "https://issuer.example.com/",
+            "resource_server_url": "https://mcp.example.com/mcp/",
             "tenant_database_url": "postgresql://app:secret@db.example.com:5432/fub",
             "tenant_secret_prefix": "followupboss/prod/tenants",
             "tenant_secret_region": "us-east-1",
@@ -893,7 +893,9 @@ def test_hosted_deployment_settings_normalize_and_project_models() -> None:
             "oauth_enabled": True,
             "fub_oauth_client_id": "fub-client",
             "fub_oauth_client_secret": "fub-secret",
-            "fub_oauth_callback_url": "https://mcp.example.com/oauth/follow-up-boss/callback",
+            "fub_oauth_authorize_url": "app.followupboss.com/oauth/authorize/",
+            "fub_oauth_token_url": "app.followupboss.com/oauth/token/",
+            "fub_oauth_callback_url": "mcp.example.com/oauth/follow-up-boss/callback/",
             "fub_oauth_system_name": "The-Perry-Group",
             "fub_oauth_system_key": "system-key",
         }
@@ -901,6 +903,14 @@ def test_hosted_deployment_settings_normalize_and_project_models() -> None:
     assert oauth_settings is not None
     assert oauth_settings.fub_client_id == "fub-client"
     assert oauth_settings.system_name == "The-Perry-Group"
+    assert oauth_settings.resource_server == "https://mcp.example.com/mcp"
+    assert str(oauth_settings.fub_authorize_url) == (
+        "https://app.followupboss.com/oauth/authorize"
+    )
+    assert str(oauth_settings.fub_token_url) == "https://app.followupboss.com/oauth/token"
+    assert str(oauth_settings.fub_callback_url) == (
+        "https://mcp.example.com/oauth/follow-up-boss/callback"
+    )
 
     with pytest.raises(ValidationError):
         FollowUpBossHostedDeploymentSettings.model_validate(
@@ -925,6 +935,17 @@ def test_hosted_deployment_settings_normalize_and_project_models() -> None:
                 "oauth_enabled": True,
             }
         ).hosted_oauth_settings()
+    with pytest.raises(ValidationError, match="query string"):
+        FollowUpBossHostedDeploymentSettings.model_validate(
+            {
+                "issuer_url": "https://issuer.example.com",
+                "resource_server_url": "https://mcp.example.com/mcp?bad=true",
+                "tenant_database_url": "postgresql://app:secret@db.example.com:5432/fub",
+                "tenant_secret_prefix": "followupboss/prod/tenants",
+                "tenant_secret_region": "us-east-1",
+                "redis_url": "redis://cache.example.com:6379/0",
+            }
+        )
 
 
 def test_hosted_reference_private_helpers_cover_edge_cases() -> None:

@@ -27,6 +27,7 @@ from starlette.routing import Route
 from followupboss_mcp.config import FollowUpBossTenantRuntimeDefaults
 from followupboss_mcp.models.identity import IdentityResponse
 from followupboss_mcp.observability import capture_sentry_exception, capture_sentry_message
+from followupboss_mcp.url_validation import normalize_public_http_url, validated_public_http_url
 
 _DEFAULT_ACCESS_TOKEN_SECONDS = 3600
 _DEFAULT_AUTHORIZATION_CODE_SECONDS = 300
@@ -40,6 +41,30 @@ _LOGO_ASSET_PACKAGE = "followupboss_mcp.assets"
 _LOGO_ASSET_NAME = "follow-up-boss-logo.png"
 _LOGO_ROUTE_PATH = f"/assets/{_LOGO_ASSET_NAME}"
 _SUPPORTED_CODE_CHALLENGE_METHODS = ("S256", "plain")
+
+
+def _default_fub_authorize_url() -> AnyHttpUrl:
+    """Return the validated default Follow Up Boss OAuth authorize URL."""
+    return validated_public_http_url(
+        "https://app.followupboss.com/oauth/authorize",
+        field_name="fub_authorize_url",
+    )
+
+
+def _default_fub_token_url() -> AnyHttpUrl:
+    """Return the validated default Follow Up Boss OAuth token URL."""
+    return validated_public_http_url(
+        "https://app.followupboss.com/oauth/token",
+        field_name="fub_token_url",
+    )
+
+
+def _default_fub_base_url() -> AnyHttpUrl:
+    """Return the validated default Follow Up Boss API base URL."""
+    return validated_public_http_url(
+        "https://api.followupboss.com/v1",
+        field_name="fub_base_url",
+    )
 
 
 def _normalize_required_string(value: str, *, field_name: str) -> str:
@@ -287,12 +312,10 @@ class HostedOAuthSettings(BaseModel):
     required_scopes: tuple[str, ...] = ()
     fub_client_id: str
     fub_client_secret: SecretStr
-    fub_authorize_url: AnyHttpUrl | str = Field(
-        default="https://app.followupboss.com/oauth/authorize"
-    )
-    fub_token_url: AnyHttpUrl | str = Field(default="https://app.followupboss.com/oauth/token")
+    fub_authorize_url: AnyHttpUrl = Field(default_factory=_default_fub_authorize_url)
+    fub_token_url: AnyHttpUrl = Field(default_factory=_default_fub_token_url)
     fub_callback_url: AnyHttpUrl
-    fub_base_url: AnyHttpUrl | str = Field(default="https://api.followupboss.com/v1")
+    fub_base_url: AnyHttpUrl = Field(default_factory=_default_fub_base_url)
     token_secret_prefix: str
     system_name: str | None = None
     system_key: SecretStr | None = None
@@ -300,6 +323,20 @@ class HostedOAuthSettings(BaseModel):
     authorization_code_seconds: int = _DEFAULT_AUTHORIZATION_CODE_SECONDS
     refresh_token_seconds: int = _DEFAULT_REFRESH_TOKEN_SECONDS
     state_seconds: int = _DEFAULT_STATE_SECONDS
+
+    @field_validator(
+        "issuer_url",
+        "resource_server_url",
+        "fub_authorize_url",
+        "fub_token_url",
+        "fub_callback_url",
+        "fub_base_url",
+        mode="before",
+    )
+    @classmethod
+    def _validate_public_urls(cls, value: object, info: Any) -> object:
+        """Normalize public OAuth URLs before Pydantic URL parsing."""
+        return normalize_public_http_url(value, field_name=str(info.field_name))
 
     @field_validator("required_scopes", mode="before")
     @classmethod

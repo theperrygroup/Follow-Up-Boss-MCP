@@ -25,6 +25,7 @@ from followupboss_mcp.errors import (
 from followupboss_mcp.logging import emit_audit_event, tenant_store_error_reason
 from followupboss_mcp.observability import capture_sentry_exception
 from followupboss_mcp.tenant_store import ResolvedTenantCredentials, TenantStore
+from followupboss_mcp.url_validation import normalize_public_http_url
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 from mcp.server.auth.settings import AuthSettings
@@ -395,6 +396,12 @@ class HostedAuthSettings(BaseModel):
     issuer_url: AnyHttpUrl
     resource_server_url: AnyHttpUrl
     required_scopes: tuple[str, ...] = ()
+
+    @field_validator("issuer_url", "resource_server_url", mode="before")
+    @classmethod
+    def _validate_public_urls(cls, value: object, info: ValidationInfo) -> object:
+        """Normalize hosted public URLs before Pydantic URL parsing."""
+        return normalize_public_http_url(value, field_name=info.field_name or "url")
 
     @field_validator("required_scopes", mode="before")
     @classmethod

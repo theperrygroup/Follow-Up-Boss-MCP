@@ -249,6 +249,28 @@ def test_settings_and_metadata_validation() -> None:
     assert settings.scope_string == "followupboss:mcp"
     assert settings.endpoint_url("/oauth/token") == "https://mcp.example.com/oauth/token"
 
+    normalized_settings = HostedOAuthSettings.model_validate(
+        {
+            **settings.model_dump(),
+            "issuer_url": "mcp.example.com/",
+            "resource_server_url": "mcp.example.com/mcp/",
+            "fub_authorize_url": "app.followupboss.com/oauth/authorize/",
+            "fub_token_url": "app.followupboss.com/oauth/token/",
+            "fub_callback_url": "mcp.example.com/oauth/follow-up-boss/callback/",
+            "fub_base_url": "api.followupboss.com/v1/",
+        }
+    )
+    assert normalized_settings.issuer == "https://mcp.example.com"
+    assert normalized_settings.resource_server == "https://mcp.example.com/mcp"
+    assert str(normalized_settings.fub_authorize_url) == (
+        "https://app.followupboss.com/oauth/authorize"
+    )
+    assert str(normalized_settings.fub_token_url) == "https://app.followupboss.com/oauth/token"
+    assert str(normalized_settings.fub_callback_url) == (
+        "https://mcp.example.com/oauth/follow-up-boss/callback"
+    )
+    assert str(normalized_settings.fub_base_url) == "https://api.followupboss.com/v1"
+
     with pytest.raises(ValidationError):
         HostedOAuthSettings.model_validate(
             {
@@ -261,6 +283,27 @@ def test_settings_and_metadata_validation() -> None:
             {
                 **settings.model_dump(),
                 "access_token_seconds": 0,
+            }
+        )
+    with pytest.raises(ValidationError, match="fragment"):
+        HostedOAuthSettings.model_validate(
+            {
+                **settings.model_dump(),
+                "fub_authorize_url": "https://app.followupboss.com/oauth/authorize#login",
+            }
+        )
+    with pytest.raises(ValidationError, match="query string"):
+        HostedOAuthSettings.model_validate(
+            {
+                **settings.model_dump(),
+                "fub_token_url": "https://app.followupboss.com/oauth/token?tenant=one",
+            }
+        )
+    with pytest.raises(ValidationError, match="whitespace"):
+        HostedOAuthSettings.model_validate(
+            {
+                **settings.model_dump(),
+                "resource_server_url": "https://mcp.example.com/bad path",
             }
         )
     assert hosted_oauth._normalize_scopes(object()).__class__ is object

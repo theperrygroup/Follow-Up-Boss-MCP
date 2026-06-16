@@ -77,6 +77,7 @@ from followupboss_mcp.tenant_store import (
     TenantRecord,
     TenantStore,
 )
+from followupboss_mcp.url_validation import normalize_public_http_url, validated_public_http_url
 from mcp.server.fastmcp import FastMCP
 
 _DEFAULT_HOSTED_REQUIRED_SCOPE = "followupboss:mcp"
@@ -225,6 +226,22 @@ redis.call("ZADD", key, now_ms, member)
 redis.call("PEXPIRE", key, window_ms)
 return {1, math.max(limit - current - 1, 0), -1}
 """
+
+
+def _default_fub_oauth_authorize_url() -> AnyHttpUrl:
+    """Return the validated default Follow Up Boss OAuth authorize URL."""
+    return validated_public_http_url(
+        "https://app.followupboss.com/oauth/authorize",
+        field_name="fub_oauth_authorize_url",
+    )
+
+
+def _default_fub_oauth_token_url() -> AnyHttpUrl:
+    """Return the validated default Follow Up Boss OAuth token URL."""
+    return validated_public_http_url(
+        "https://app.followupboss.com/oauth/token",
+        field_name="fub_oauth_token_url",
+    )
 
 
 def _normalize_required_string(value: str, *, field_name: str) -> str:
@@ -425,12 +442,12 @@ class FollowUpBossHostedDeploymentSettings(BaseSettings):
         default=None,
         validation_alias=_settings_env_aliases("FOLLOWUPBOSS_FUB_OAUTH_CLIENT_SECRET"),
     )
-    fub_oauth_authorize_url: AnyHttpUrl | str = Field(
-        default="https://app.followupboss.com/oauth/authorize",
+    fub_oauth_authorize_url: AnyHttpUrl = Field(
+        default_factory=_default_fub_oauth_authorize_url,
         validation_alias=_settings_env_aliases("FOLLOWUPBOSS_FUB_OAUTH_AUTHORIZE_URL"),
     )
-    fub_oauth_token_url: AnyHttpUrl | str = Field(
-        default="https://app.followupboss.com/oauth/token",
+    fub_oauth_token_url: AnyHttpUrl = Field(
+        default_factory=_default_fub_oauth_token_url,
         validation_alias=_settings_env_aliases("FOLLOWUPBOSS_FUB_OAUTH_TOKEN_URL"),
     )
     fub_oauth_callback_url: AnyHttpUrl | None = Field(
@@ -453,6 +470,21 @@ class FollowUpBossHostedDeploymentSettings(BaseSettings):
         default=60 * 60 * 24 * 30,
         validation_alias=_settings_env_aliases("FOLLOWUPBOSS_HOSTED_OAUTH_REFRESH_TOKEN_SECONDS"),
     )
+
+    @field_validator(
+        "issuer_url",
+        "resource_server_url",
+        "fub_oauth_authorize_url",
+        "fub_oauth_token_url",
+        "fub_oauth_callback_url",
+        mode="before",
+    )
+    @classmethod
+    def _validate_public_urls(cls, value: object, info: ValidationInfo) -> object:
+        """Normalize hosted deployment URL settings."""
+        if value is None:
+            return None
+        return normalize_public_http_url(value, field_name=info.field_name or "url")
 
     @field_validator("required_scopes", mode="before")
     @classmethod
