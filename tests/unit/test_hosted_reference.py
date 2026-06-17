@@ -904,9 +904,7 @@ def test_hosted_deployment_settings_normalize_and_project_models() -> None:
     assert oauth_settings.fub_client_id == "fub-client"
     assert oauth_settings.system_name == "The-Perry-Group"
     assert oauth_settings.resource_server == "https://mcp.example.com/mcp"
-    assert str(oauth_settings.fub_authorize_url) == (
-        "https://app.followupboss.com/oauth/authorize"
-    )
+    assert str(oauth_settings.fub_authorize_url) == ("https://app.followupboss.com/oauth/authorize")
     assert str(oauth_settings.fub_token_url) == "https://app.followupboss.com/oauth/token"
     assert str(oauth_settings.fub_callback_url) == (
         "https://mcp.example.com/oauth/follow-up-boss/callback"

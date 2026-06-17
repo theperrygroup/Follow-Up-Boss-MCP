@@ -84,9 +84,7 @@ def normalize_public_http_url(
         raise ValueError(f"{field_name} must not include a query string.")
     if parsed.fragment:
         raise ValueError(f"{field_name} must not include a fragment.")
-    if parsed.scheme == "http" and not (
-        allow_loopback_http and _host_looks_loopback(parsed.host)
-    ):
+    if parsed.scheme == "http" and not (allow_loopback_http and _host_looks_loopback(parsed.host)):
         raise ValueError(f"{field_name} must use HTTPS unless it points to localhost.")
 
     canonical = str(parsed)
