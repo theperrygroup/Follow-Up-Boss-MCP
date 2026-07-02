@@ -11,7 +11,7 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
-from typing import Annotated, Protocol, Self, cast
+from typing import Annotated, Literal, Protocol, Self, cast
 
 import boto3.session  # type: ignore[import-untyped]
 import psycopg
@@ -403,6 +403,10 @@ class FollowUpBossHostedDeploymentSettings(BaseSettings):
     )
     resource_server_url: AnyHttpUrl = Field(
         validation_alias=_settings_env_aliases("FOLLOWUPBOSS_HOSTED_RESOURCE_SERVER_URL")
+    )
+    deployment_environment: Literal["production"] = Field(
+        default="production",
+        validation_alias=_settings_env_aliases("FOLLOWUPBOSS_DEPLOYMENT_ENVIRONMENT"),
     )
     required_scopes: Annotated[tuple[str, ...], NoDecode] = Field(
         default=(_DEFAULT_HOSTED_REQUIRED_SCOPE,),

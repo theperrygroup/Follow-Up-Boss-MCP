@@ -35,6 +35,10 @@
           "value": "streamable-http"
         },
         {
+          "name": "FOLLOWUPBOSS_DEPLOYMENT_ENVIRONMENT",
+          "value": "__DEPLOYMENT_ENVIRONMENT__"
+        },
+        {
           "name": "FOLLOWUPBOSS_HOST",
           "value": "0.0.0.0"
         },

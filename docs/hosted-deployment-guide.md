@@ -40,8 +40,7 @@ until there is a stronger need for third-party issuer federation or public-key d
 
 - Do not run `uv run python -m followupboss_mcp.cli streamable-http` as the shared production
   entrypoint. That CLI is intentionally local and single-tenant.
-- Do not use `DevelopmentTenantStore` or `DevelopmentHostedTokenVerifier` in shared staging or
-  production.
+- Do not use `DevelopmentTenantStore` or `DevelopmentHostedTokenVerifier` in shared production.
 - Do not rely on the default in-memory hosted rate limiter across more than one application
   instance.
 - Do not load customer-specific `FOLLOWUPBOSS_API_KEY`, `FOLLOWUPBOSS_ACCESS_TOKEN`, or
@@ -217,8 +216,8 @@ being submitted.
 
 ### Reference Hosted Wrapper Settings
 
-The local `followupboss-mcp` CLI remains intentionally single-tenant. For shared staging or
-production-style deployments, use `followupboss-mcp-hosted` or import
+The local `followupboss-mcp` CLI remains intentionally single-tenant. For the shared production
+deployment, use `followupboss-mcp-hosted` or import
 `create_reference_hosted_server(...)` directly. The following environment variable names are the
 reference contract for that hosted wrapper:
 
@@ -226,6 +225,7 @@ reference contract for that hosted wrapper:
 | --- | --- |
 | `FOLLOWUPBOSS_HOSTED_ISSUER_URL` | Stable issuer URL exposed in `HostedAuthSettings`. For opaque tokens, point this at the hosted control-plane or customer portal base URL. |
 | `FOLLOWUPBOSS_HOSTED_RESOURCE_SERVER_URL` | External HTTPS URL for the shared MCP endpoint, such as `https://mcp.example.com/mcp`. |
+| `FOLLOWUPBOSS_DEPLOYMENT_ENVIRONMENT` | Hosted deployment label. The shared hosted wrapper accepts only `production`; omit the variable to use the production default. |
 | `FOLLOWUPBOSS_HOSTED_REQUIRED_SCOPES` | Comma-separated scope list. The reference value is `followupboss:mcp`. |
 | `FOLLOWUPBOSS_TENANT_DATABASE_URL` | PostgreSQL connection string for tenant and hosted-token metadata. |
 | `FOLLOWUPBOSS_TENANT_SECRET_PREFIX` | AWS Secrets Manager path prefix, such as `followupboss/prod/tenants/`. |
@@ -264,6 +264,7 @@ SENTRY_DEBUG=false
 
 FOLLOWUPBOSS_HOSTED_ISSUER_URL=https://portal.example.com
 FOLLOWUPBOSS_HOSTED_RESOURCE_SERVER_URL=https://mcp.example.com/mcp
+FOLLOWUPBOSS_DEPLOYMENT_ENVIRONMENT=production
 FOLLOWUPBOSS_HOSTED_REQUIRED_SCOPES=followupboss:mcp
 FOLLOWUPBOSS_TENANT_DATABASE_URL=postgresql://app:***@db.example.com:5432/followupboss_mcp
 FOLLOWUPBOSS_TENANT_SECRET_PREFIX=followupboss/prod/tenants/
@@ -432,7 +433,7 @@ failures to Sentry because those requests return to this process. A Follow Up Bo
 Follow Up Boss infrastructure. That page may never call our callback route, so it will not naturally
 produce a server exception in this project.
 
-Before enabling hosted OAuth for staging or production, confirm that
+Before enabling hosted OAuth for production, confirm that
 `FOLLOWUPBOSS_FUB_OAUTH_CALLBACK_URL` exactly matches the redirect URI registered on the Follow Up
 Boss OAuth application, including scheme, host, path, and trailing slash behavior. Then run one
 browser login smoke from Cursor and confirm the browser reaches
@@ -488,7 +489,7 @@ Operational rules:
 - alert on `hosted_rate_limit_backend_failed`
 - watch `hosted_rate_limit_exceeded` by `tenant_id` and `client_id` for abuse or runaway clients
 
-## Staged Validation Prerequisites
+## Production Validation Prerequisites
 
 Before rollout, prepare two real hosted test tenants on the same shared deployment:
 
@@ -503,14 +504,14 @@ Create one unique fixture person in each account so tenant isolation can be chec
 Export:
 
 ```bash
-export STAGING_MCP_URL="https://fub.theperry.group/mcp"
+export PRODUCTION_MCP_URL="https://fub.theperry.group/mcp"
 export TENANT_A_TOKEN="replace-with-real-hosted-token"
 export TENANT_B_TOKEN="replace-with-real-hosted-token"
 export TENANT_A_FIXTURE_EMAIL="mcp-tenant-a@example.com"
 export TENANT_B_FIXTURE_EMAIL="mcp-tenant-b@example.com"
 ```
 
-## Staged Validation Commands
+## Production Validation Commands
 
 ### 1. Invalid Token Fails Closed
 
@@ -531,7 +532,7 @@ async def main() -> None:
             timeout=30.0,
         ) as http_client:
             async with streamable_http_client(
-                os.environ["STAGING_MCP_URL"],
+                os.environ["PRODUCTION_MCP_URL"],
                 http_client=http_client,
             ) as (read_stream, write_stream, _):
                 async with ClientSession(read_stream, write_stream) as session:
@@ -569,7 +570,7 @@ async def main() -> None:
         timeout=30.0,
     ) as http_client:
         async with streamable_http_client(
-            os.environ["STAGING_MCP_URL"],
+            os.environ["PRODUCTION_MCP_URL"],
             http_client=http_client,
         ) as (read_stream, write_stream, _):
             async with ClientSession(read_stream, write_stream) as session:
@@ -629,7 +630,7 @@ run_tenant_smoke "tenant-a" "$TENANT_A_TOKEN" "$TENANT_A_FIXTURE_EMAIL" "$TENANT
 run_tenant_smoke "tenant-b" "$TENANT_B_TOKEN" "$TENANT_B_FIXTURE_EMAIL" "$TENANT_A_FIXTURE_EMAIL"
 ```
 
-Both commands must use the same `STAGING_MCP_URL`. That is the proof that one shared deployment is
+Both commands must use the same `PRODUCTION_MCP_URL`. That is the proof that one shared deployment is
 serving both tenants safely.
 
 ### 3. Credential Rotation Smoke
@@ -660,14 +661,14 @@ with the old value.
 Do not widen rollout until every check below passes:
 
 - invalid or revoked hosted bearer tokens fail before any tool call succeeds
-- tenant A and tenant B both succeed against the same shared `STAGING_MCP_URL`
+- tenant A and tenant B both succeed against the same shared `PRODUCTION_MCP_URL`
 - tenant A can read tenant A's fixture but not tenant B's fixture
 - tenant B can read tenant B's fixture but not tenant A's fixture
 - at least one resource read and one prompt render succeed under hosted auth
 - logs show `hosted_auth_succeeded`, `tenant_resolution_succeeded`, and `upstream_credential_usage`
   for both tenants
 - logs do not show `hosted_rate_limit_backend_failed`
-- when `SENTRY_DSN` is configured, a sanitized staged exception appears in the expected Sentry
+- when `SENTRY_DSN` is configured, a sanitized production validation exception appears in the expected Sentry
   project, environment, and release without Follow Up Boss secrets or customer payloads
 - hosted OAuth browser login reaches `/oauth/follow-up-boss/callback`; a Follow Up Boss
   `invalid_redirect_uri` page means the FUB OAuth app registration must be fixed before rollout

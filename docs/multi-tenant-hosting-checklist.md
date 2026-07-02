@@ -226,7 +226,7 @@ evidence capture, and external pilot execution.
 | Primary operator | OpenAI GPT-5.4 agent |
 | Reviewer | `jp26jp` |
 | Deployment revision, image tag, or commit | `bbeefc7`, ECR tag `staging` |
-| Shared `STAGING_MCP_URL` | `https://fub.theperry.group/mcp` |
+| Shared `PRODUCTION_MCP_URL` | `https://fub.theperry.group/mcp` |
 | Staging dashboard or log link | CloudWatch Logs group `/ecs/followupboss-mcp-staging` |
 | Incident or escalation channel | Direct operator escalation to `jp26jp` |
 | Notes | Shared staging runtime is live on ECS/Fargate. During the 2026-03-30 pilot window, `tenant-b` was rotated in place from the earlier Perry Group placeholder credential to the real external `j-26` Follow Up Boss account while keeping `credential_id` stable. Shared-URL smoke then passed for both tenants with `own_fixture_count=1`, `other_fixture_count=0`, `resource_count=1`, and `prompt_message_count=1`, and CloudWatch recorded hosted auth, tenant resolution, and upstream credential usage without hosted rate-limit backend failures. |
@@ -238,7 +238,7 @@ evidence capture, and external pilot execution.
 - [x] `docs/hosted-deployment-guide.md`, `docs/customer-onboarding-flow.md`, and
   `docs/security-incident-playbook.md` are treated as the source-of-truth runbooks for deployment,
   onboarding, and rollback.
-- [x] One shared `STAGING_MCP_URL` is chosen for the entire staged validation run.
+- [x] One shared `PRODUCTION_MCP_URL` is chosen for the entire hosted validation run.
 - [x] `tenant-a` and `tenant-b` are different real Follow Up Boss accounts with one unique fixture
   email or person each.
 - [x] The operator can disable a tenant, revoke a hosted bearer token, rotate a Follow Up Boss
@@ -255,14 +255,14 @@ evidence capture, and external pilot execution.
 Export these values before running the staged validation commands:
 
 ```bash
-export STAGING_MCP_URL="https://fub.theperry.group/mcp"
+export PRODUCTION_MCP_URL="https://fub.theperry.group/mcp"
 export TENANT_A_TOKEN="replace-with-real-hosted-token"
 export TENANT_B_TOKEN="replace-with-real-hosted-token"
 export TENANT_A_FIXTURE_EMAIL="mcp-tenant-a@example.com"
 export TENANT_B_FIXTURE_EMAIL="mcp-tenant-b@example.com"
 ```
 
-`tenant-a` and `tenant-b` must both use the same `STAGING_MCP_URL`. Execute the `Invalid Token
+`tenant-a` and `tenant-b` must both use the same `PRODUCTION_MCP_URL`. Execute the `Invalid Token
 Fails Closed`, `Shared Deployment Smoke For Each Tenant`, `Credential Rotation Smoke`, and
 `Hosted Token Rotation Smoke` command blocks in `docs/hosted-deployment-guide.md`, then attach the
 exact outputs or operator notes to the rollout evidence captured below.
@@ -288,7 +288,7 @@ exact outputs or operator notes to the rollout evidence captured below.
   - Mint one hosted bearer token for each tenant bound to the active `credential_id`.
   - Create one unique fixture person or email in each tenant account.
   - Run the shared-endpoint smoke commands in `docs/hosted-deployment-guide.md` against one
-    shared `STAGING_MCP_URL`.
+    shared `PRODUCTION_MCP_URL`.
   - Confirm each tenant output shows a successful identity response, at least one own-tenant
     fixture result, zero cross-tenant fixture results, at least one resource read, and at least
     one prompt message.
@@ -497,4 +497,3 @@ hosted deployment guide with the concrete wrapper and reference schema, and reva
 `uv run ruff check src/followupboss_mcp/hosted_reference.py src/followupboss_mcp/hosted_auth.py src/followupboss_mcp/hosted_rate_limits.py src/followupboss_mcp/mcp_server.py src/followupboss_mcp/__init__.py tests/unit/test_hosted_reference.py tests/unit/test_hosted_auth.py tests/unit/test_hosted_rate_limits.py tests/unit/test_mcp_server.py tests/unit/test_auth_config_logging.py`,
 `uv run mypy src tests/unit/test_hosted_reference.py tests/unit/test_hosted_auth.py tests/unit/test_hosted_rate_limits.py tests/unit/test_mcp_server.py tests/unit/test_auth_config_logging.py`,
 and `uv run pytest tests/unit/test_hosted_reference.py tests/unit/test_hosted_auth.py tests/unit/test_hosted_rate_limits.py tests/unit/test_mcp_server.py tests/unit/test_auth_config_logging.py`.
-

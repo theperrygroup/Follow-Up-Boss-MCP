@@ -23,26 +23,27 @@ Before registering the task definition, replace the placeholders below:
 | Placeholder | Meaning |
 | --- | --- |
 | `__AWS_ACCOUNT_ID__` | AWS account ID that owns the ECR repository. |
-| `__FUB_OAUTH_CALLBACK_URL__` | Public callback URL registered on the Follow Up Boss OAuth app, such as `https://mcp-staging.example.com/oauth/follow-up-boss/callback`. |
+| `__DEPLOYMENT_ENVIRONMENT__` | Hosted deployment environment label. The only supported shared deployment value is `production`. |
+| `__FUB_OAUTH_CALLBACK_URL__` | Public callback URL registered on the Follow Up Boss OAuth app, such as `https://fub.theperry.group/oauth/follow-up-boss/callback`. |
 | `__FUB_OAUTH_CLIENT_ID__` | Follow Up Boss OAuth client id. |
 | `__FUB_OAUTH_CLIENT_SECRET_ARN__` | Secrets Manager ARN whose secret string is the Follow Up Boss OAuth client secret. |
 | `__FUB_OAUTH_SYSTEM_KEY_SECRET_ARN__` | Secrets Manager ARN whose secret string is the registered-system key for OAuth-created tenant credentials. |
 | `__FUB_OAUTH_SYSTEM_NAME__` | Registered Follow Up Boss system name associated with the OAuth app. |
 | `__AWS_REGION__` | AWS region, such as `us-west-1`. |
 | `__HOSTED_ISSUER_URL__` | Stable issuer URL for hosted auth, such as the customer portal or control plane. |
-| `__HOSTED_RESOURCE_SERVER_URL__` | External HTTPS MCP URL, such as `https://mcp-staging.example.com/mcp`. |
+| `__HOSTED_RESOURCE_SERVER_URL__` | External HTTPS MCP URL, such as `https://fub.theperry.group/mcp`. |
 | `__IMAGE_URI__` | Full ECR image URI, including tag. |
 | `__LOG_GROUP_NAME__` | CloudWatch Logs group name for the ECS service. |
 | `__REDIS_URL_SECRET_ARN__` | Secrets Manager ARN whose secret string is the complete Redis URL. |
 | `__SENTRY_DSN__` | Sentry project DSN for hosted error monitoring. Leave empty to disable Sentry. |
-| `__SENTRY_ENVIRONMENT__` | Sentry environment name, such as `staging` or `production`. |
+| `__SENTRY_ENVIRONMENT__` | Sentry environment name. The hosted MCP deployment uses `production`. |
 | `__SENTRY_RELEASE__` | Sentry release identifier, usually package version plus Git SHA. |
 | `__SENTRY_TRACES_SAMPLE_RATE__` | Optional Sentry trace sample rate between `0.0` and `1.0`; leave empty to disable tracing. |
 | `__TASK_EXECUTION_ROLE_ARN__` | ECS task execution role ARN. |
 | `__TASK_ROLE_ARN__` | ECS task role ARN used by the app at runtime. |
 | `__TENANT_DATABASE_URL_SECRET_ARN__` | Secrets Manager ARN whose secret string is the complete PostgreSQL connection URL. |
-| `__TENANT_SECRET_PREFIX__` | Tenant secret prefix, such as `followupboss/staging/tenants/`. |
-| `__TENANT_SECRET_PREFIX_ARN__` | Secrets Manager ARN prefix, such as `arn:aws:secretsmanager:us-west-1:123456789012:secret:followupboss/staging/tenants/`. |
+| `__TENANT_SECRET_PREFIX__` | Tenant secret prefix for the deployed MCP URL. |
+| `__TENANT_SECRET_PREFIX_ARN__` | Secrets Manager ARN prefix for the deployed MCP URL's tenant secrets. |
 | `__TENANT_SECRET_REGION__` | AWS region for the tenant secret store. |
 
 ## Reference ECS Runtime Shape
@@ -89,7 +90,7 @@ can pull it on either `linux/amd64` or `linux/arm64`:
 ```bash
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
-  --tag __AWS_ACCOUNT_ID__.dkr.ecr.__AWS_REGION__.amazonaws.com/followupboss-mcp-hosted:staging \
+  --tag __AWS_ACCOUNT_ID__.dkr.ecr.__AWS_REGION__.amazonaws.com/followupboss-mcp-hosted:production \
   --push .
 ```
 
@@ -104,8 +105,7 @@ Store non-tenant runtime connection URLs separately from tenant credentials:
 - one Secrets Manager secret whose secret string is the Follow Up Boss OAuth client secret
 - one Secrets Manager secret whose secret string is the Follow Up Boss registered-system key used
   for OAuth-created tenant credentials
-- one Secrets Manager prefix for tenant Follow Up Boss credentials, such as
-  `followupboss/staging/tenants/tenant-a/...`
+- one Secrets Manager prefix for tenant Follow Up Boss credentials scoped to the deployed MCP URL
 
 Do not place raw tenant Follow Up Boss API keys, OAuth access tokens, or `system_key` values in
 the ECS task definition or any plaintext database column.
@@ -131,22 +131,23 @@ aws iam put-role-policy \
 
 ## Post-Deploy Validation
 
-Use the staged validation commands in [`docs/hosted-deployment-guide.md`](../../docs/hosted-deployment-guide.md)
-once the shared staging URL is live. Do not widen rollout until
+Use the production validation commands in [`docs/hosted-deployment-guide.md`](../../docs/hosted-deployment-guide.md)
+once the shared production MCP URL is live. Do not widen rollout until
 [`docs/multi-tenant-hosting-checklist.md`](../../docs/multi-tenant-hosting-checklist.md) Phase 9
 is completed with real evidence.
 
-## GitHub Actions Staging Deploy
+## GitHub Actions Production Deploy
 
-The repository now includes `.github/workflows/deploy-staging.yml` for automated staging deploys.
+The repository now includes `.github/workflows/deploy-production.yml` for automated production deploys.
 It triggers on pushes to `main` and on manual dispatch, reruns `make release-validate`, builds and
 pushes the hosted image to ECR, renders `deploy/ecs/task-definition.template.json`, registers a new
 task definition revision, updates the ECS service, and waits for the service to become stable.
 
-Configure a GitHub Actions environment named `staging` with these repository or environment
+Configure a GitHub Actions environment named `production` with these repository or environment
 variables:
 
 - `AWS_REGION`
+- `DEPLOYMENT_ENVIRONMENT` (optional; defaults to `production` in the workflow)
 - `ECR_REPOSITORY`
 - `ECS_CLUSTER`
 - `ECS_SERVICE`
@@ -154,16 +155,16 @@ variables:
 - `HOSTED_RESOURCE_SERVER_URL`
 - `LOG_GROUP_NAME`
 - `SENTRY_DSN` (optional; omit or leave empty to disable Sentry)
-- `SENTRY_ENVIRONMENT` (optional; defaults to `staging` in the staging workflow)
+- `SENTRY_ENVIRONMENT` (optional; defaults to `production` in the production workflow)
 - `SENTRY_TRACES_SAMPLE_RATE` (optional; leave empty to disable tracing)
 - `TENANT_SECRET_PREFIX`
 - `TENANT_SECRET_REGION`
 
-The current staging Sentry project is `theperrygroup/followupboss-mcp` in the US Sentry region.
-Keep the project DSN in the GitHub `staging` environment's `SENTRY_DSN` variable instead of
+The current production Sentry project is `theperrygroup/followupboss-mcp` in the US Sentry region.
+Keep the project DSN in the GitHub `production` environment's `SENTRY_DSN` variable instead of
 hardcoding it in this template.
 
-The staging workflow sets `SENTRY_RELEASE` to `followupboss-mcp@${{ github.sha }}` when rendering
+The production workflow sets `SENTRY_RELEASE` to `followupboss-mcp@${{ github.sha }}` when rendering
 the task definition.
 
 Set `FUB_OAUTH_ENABLED=true` only after configuring the hosted OAuth app. When OAuth is enabled,
@@ -173,7 +174,7 @@ also configure these variables:
 - `FUB_OAUTH_CLIENT_ID`
 - `FUB_OAUTH_SYSTEM_NAME`
 
-Configure the same `staging` environment with these secrets:
+Configure the same `production` environment with these secrets:
 
 - `AWS_ROLE_TO_ASSUME`
 - `REDIS_URL_SECRET_ARN`

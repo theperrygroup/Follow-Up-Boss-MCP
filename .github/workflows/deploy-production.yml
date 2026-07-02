@@ -1,4 +1,4 @@
-name: deploy-staging
+name: deploy-production
 
 on:
   push:
@@ -11,15 +11,16 @@ permissions:
   id-token: write
 
 concurrency:
-  group: deploy-staging
+  group: deploy-production
   cancel-in-progress: false
 
 jobs:
   validate:
     runs-on: ubuntu-latest
-    environment: staging
+    environment: production
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
+      DEPLOYMENT_ENVIRONMENT: ${{ vars.DEPLOYMENT_ENVIRONMENT || 'production' }}
       ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
       ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
       ECS_SERVICE: ${{ vars.ECS_SERVICE }}
@@ -31,7 +32,7 @@ jobs:
       HOSTED_RESOURCE_SERVER_URL: ${{ vars.HOSTED_RESOURCE_SERVER_URL }}
       LOG_GROUP_NAME: ${{ vars.LOG_GROUP_NAME }}
       SENTRY_DSN: ${{ vars.SENTRY_DSN }}
-      SENTRY_ENVIRONMENT: ${{ vars.SENTRY_ENVIRONMENT || 'staging' }}
+      SENTRY_ENVIRONMENT: ${{ vars.SENTRY_ENVIRONMENT || 'production' }}
       SENTRY_RELEASE: followupboss-mcp@${{ github.sha }}
       SENTRY_TRACES_SAMPLE_RATE: ${{ vars.SENTRY_TRACES_SAMPLE_RATE }}
       TENANT_SECRET_PREFIX: ${{ vars.TENANT_SECRET_PREFIX }}
@@ -49,11 +50,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify staging workflow configuration
+      - name: Verify production workflow configuration
         shell: bash
         run: |
           required_values=(
             AWS_REGION
+            DEPLOYMENT_ENVIRONMENT
             ECR_REPOSITORY
             ECS_CLUSTER
             ECS_SERVICE
@@ -70,10 +72,44 @@ jobs:
           )
           for name in "${required_values[@]}"; do
             if [ -z "${!name}" ]; then
-              printf "Missing required staging configuration: %s\n" "${name}" >&2
+              printf "Missing required production configuration: %s\n" "${name}" >&2
               exit 1
             fi
           done
+          deployment_environment="$(printf "%s" "${DEPLOYMENT_ENVIRONMENT}" | tr '[:upper:]' '[:lower:]')"
+          if [ "${deployment_environment}" != "production" ]; then
+            printf "DEPLOYMENT_ENVIRONMENT must be production.\n" >&2
+            exit 1
+          fi
+          sentry_environment="$(printf "%s" "${SENTRY_ENVIRONMENT:-production}" | tr '[:upper:]' '[:lower:]')"
+          if [ "${sentry_environment}" != "production" ]; then
+            printf "SENTRY_ENVIRONMENT must be production for the hosted MCP deployment.\n" >&2
+            exit 1
+          fi
+          python - <<'PY'
+          import os
+          from urllib.parse import urlparse
+
+          resource_url = os.environ["HOSTED_RESOURCE_SERVER_URL"].strip()
+          issuer_url = os.environ["HOSTED_ISSUER_URL"].strip()
+          resource = urlparse(resource_url)
+          issuer = urlparse(issuer_url)
+          if (
+              resource.scheme != "https"
+              or not resource.netloc
+              or resource.path.rstrip("/") != "/mcp"
+              or resource.params
+              or resource.query
+              or resource.fragment
+          ):
+              raise SystemExit(
+                  "HOSTED_RESOURCE_SERVER_URL must be the external HTTPS MCP URL ending in /mcp."
+              )
+          if issuer.scheme != "https" or issuer.netloc != resource.netloc:
+              raise SystemExit(
+                  "HOSTED_ISSUER_URL must use the same HTTPS host as HOSTED_RESOURCE_SERVER_URL."
+              )
+          PY
           oauth_enabled="$(printf "%s" "${FUB_OAUTH_ENABLED:-false}" | tr '[:upper:]' '[:lower:]')"
           case "${oauth_enabled}" in
             true|false) ;;
@@ -92,7 +128,7 @@ jobs:
             )
             for name in "${oauth_required_values[@]}"; do
               if [ -z "${!name}" ]; then
-                printf "Missing required staging OAuth configuration: %s\n" "${name}" >&2
+                printf "Missing required production OAuth configuration: %s\n" "${name}" >&2
                 exit 1
               fi
             done
@@ -111,9 +147,10 @@ jobs:
     needs:
       - validate
     runs-on: ubuntu-latest
-    environment: staging
+    environment: production
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
+      DEPLOYMENT_ENVIRONMENT: ${{ vars.DEPLOYMENT_ENVIRONMENT || 'production' }}
       ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
       ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
       ECS_SERVICE: ${{ vars.ECS_SERVICE }}
@@ -125,7 +162,7 @@ jobs:
       HOSTED_RESOURCE_SERVER_URL: ${{ vars.HOSTED_RESOURCE_SERVER_URL }}
       LOG_GROUP_NAME: ${{ vars.LOG_GROUP_NAME }}
       SENTRY_DSN: ${{ vars.SENTRY_DSN }}
-      SENTRY_ENVIRONMENT: ${{ vars.SENTRY_ENVIRONMENT || 'staging' }}
+      SENTRY_ENVIRONMENT: ${{ vars.SENTRY_ENVIRONMENT || 'production' }}
       SENTRY_RELEASE: followupboss-mcp@${{ github.sha }}
       SENTRY_TRACES_SAMPLE_RATE: ${{ vars.SENTRY_TRACES_SAMPLE_RATE }}
       TENANT_SECRET_PREFIX: ${{ vars.TENANT_SECRET_PREFIX }}
@@ -149,7 +186,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
 
-      - name: Set up Docker Buildx
+      - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
@@ -168,7 +205,7 @@ jobs:
           provenance: false
           push: true
           tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:staging
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:production
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:sha-${{ github.sha }}
 
       - name: Prepare immutable image reference
@@ -222,6 +259,8 @@ jobs:
 
           replacements = {
               "__AWS_REGION__": os.environ["AWS_REGION"],
+              "__DEPLOYMENT_ENVIRONMENT__": os.environ.get("DEPLOYMENT_ENVIRONMENT")
+              or "production",
               "__FUB_OAUTH_ENABLED__": oauth_enabled,
               "__HOSTED_ISSUER_URL__": os.environ["HOSTED_ISSUER_URL"],
               "__HOSTED_RESOURCE_SERVER_URL__": os.environ["HOSTED_RESOURCE_SERVER_URL"],
@@ -229,7 +268,8 @@ jobs:
               "__LOG_GROUP_NAME__": os.environ["LOG_GROUP_NAME"],
               "__REDIS_URL_SECRET_ARN__": os.environ["REDIS_URL_SECRET_ARN"],
               "__SENTRY_DSN__": os.environ.get("SENTRY_DSN", ""),
-              "__SENTRY_ENVIRONMENT__": os.environ.get("SENTRY_ENVIRONMENT") or "staging",
+              "__SENTRY_ENVIRONMENT__": os.environ.get("SENTRY_ENVIRONMENT")
+              or "production",
               "__SENTRY_RELEASE__": os.environ.get("SENTRY_RELEASE")
               or f"followupboss-mcp@{os.environ['GITHUB_SHA']}",
               "__SENTRY_TRACES_SAMPLE_RATE__": os.environ.get("SENTRY_TRACES_SAMPLE_RATE", ""),

@@ -868,6 +868,7 @@ def test_hosted_deployment_settings_normalize_and_project_models() -> None:
         }
     )
 
+    assert settings.deployment_environment == "production"
     assert settings.required_scopes == ("followupboss:mcp", "tools:read")
     assert settings.tenant_secret_prefix == "followupboss/prod/tenants/"
     assert settings.tenant_secret_region == "us-east-1"
@@ -938,6 +939,18 @@ def test_hosted_deployment_settings_normalize_and_project_models() -> None:
             {
                 "issuer_url": "https://issuer.example.com",
                 "resource_server_url": "https://mcp.example.com/mcp?bad=true",
+                "tenant_database_url": "postgresql://app:secret@db.example.com:5432/fub",
+                "tenant_secret_prefix": "followupboss/prod/tenants",
+                "tenant_secret_region": "us-east-1",
+                "redis_url": "redis://cache.example.com:6379/0",
+            }
+        )
+    with pytest.raises(ValidationError, match="production"):
+        FollowUpBossHostedDeploymentSettings.model_validate(
+            {
+                "issuer_url": "https://issuer.example.com",
+                "resource_server_url": "https://mcp.example.com/mcp",
+                "deployment_environment": "staging",
                 "tenant_database_url": "postgresql://app:secret@db.example.com:5432/fub",
                 "tenant_secret_prefix": "followupboss/prod/tenants",
                 "tenant_secret_region": "us-east-1",

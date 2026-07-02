@@ -70,7 +70,7 @@
 
     - `.github/workflows/publish.yml` reruns `make release-validate`, verifies the tag matches `project.version`, builds `dist/`, and publishes only after those checks pass.
 
-18. Keep the staging deployment workflow configured separately from package publishing.
+18. Keep the production deployment workflow configured separately from package publishing.
 
-    - `.github/workflows/deploy-staging.yml` reruns `make release-validate` and then deploys `main` to the hosted ECS staging service.
-    - Configure the GitHub Actions `staging` environment as documented in `deploy/ecs/README.md`.
+    - `.github/workflows/deploy-production.yml` reruns `make release-validate` and then deploys `main` to the hosted ECS production service.
+    - Configure the GitHub Actions `production` environment as documented in `deploy/ecs/README.md`.
