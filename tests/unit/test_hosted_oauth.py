@@ -243,6 +243,13 @@ def _app(
 
 def test_settings_and_metadata_validation() -> None:
     """Normalize settings and expose OAuth metadata."""
+    assert str(hosted_oauth._default_fub_authorize_url()) == (
+        "https://app.followupboss.com/oauth/authorize"
+    )
+    assert str(hosted_oauth._default_fub_token_url()) == (
+        "https://app.followupboss.com/oauth/token"
+    )
+
     settings = _settings()
     assert settings.issuer == "https://mcp.example.com"
     assert settings.resource_server == "https://mcp.example.com/mcp"
