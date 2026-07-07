@@ -101,6 +101,7 @@ from followupboss_mcp.models.people import (
     PersonRecord,
     UnclaimedPeopleListRequest,
     UpdatePersonRequest,
+    validate_people_projection_fields,
 )
 from followupboss_mcp.models.people_relationships import (
     CreatePeopleRelationshipRequest,
@@ -212,6 +213,9 @@ _UNCOMMUNICATED_LEAD_RESPONSE_FIELDS = frozenset(
         "contacted",
         "emails",
         "phones",
+        "price",
+        "sourceUrl",
+        "tags",
     }
 )
 _UNCOMMUNICATED_LEAD_FILTER_FIELDS = frozenset({"id", "lastCommunication"})
@@ -295,6 +299,12 @@ class SearchPeopleInSmartListToolInput(RequestModel):
         if value is not None and value <= 0:
             raise ValueError("assigned_user_id must be a positive Follow Up Boss user ID.")
         return value
+
+    @field_validator("fields")
+    @classmethod
+    def _validate_fields(cls, value: list[str] | None) -> list[str] | None:
+        """Validate people projection fields for smart-list searches."""
+        return validate_people_projection_fields(value)
 
     @model_validator(mode="after")
     def _normalize_aliases(self) -> SearchPeopleInSmartListToolInput:

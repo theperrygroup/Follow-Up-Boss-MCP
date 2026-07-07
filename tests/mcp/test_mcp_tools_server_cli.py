@@ -2110,6 +2110,8 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert stub.people_search_requests[-1].assigned_to == "Scott Willey"
     assert stub.people_search_requests[-1].assigned_user_id is None
     assert stub.people_search_requests[-1].contacted is False
+    with pytest.raises(ValidationError, match="Use 'emails'"):
+        PeopleSearchRequest(fields=["id", "email", "phone", "notes"])
     my_uncontacted_leads = await adapter.list_uncontacted_leads(
         ListUncontactedLeadsToolInput(limit=25)
     )
@@ -2150,6 +2152,11 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert uncontacted_alias_input.assigned_user_name == "Geordi"
     assert uncontacted_alias_input.source == "Zillow"
     assert ListUncontactedLeadsToolInput(fields=["id", "name"]).fields == ["id", "name"]
+    assert ListUncontactedLeadsToolInput(fields=["price", "sourceUrl", "tags"]).fields == [
+        "price",
+        "sourceUrl",
+        "tags",
+    ]
     with pytest.raises(ValidationError, match="assigned_user_id must be a positive"):
         ListUncontactedLeadsToolInput(assigned_user_id=0)
     with pytest.raises(ValidationError, match="limit must be a positive integer"):
@@ -2158,6 +2165,8 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         ListUncontactedLeadsToolInput(offset=-1)
     with pytest.raises(ValidationError, match="Unsupported no-communication lead fields"):
         ListUncontactedLeadsToolInput(fields=["id", "createdAt"])
+    with pytest.raises(ValidationError, match="Unsupported no-communication lead fields"):
+        ListUncontactedLeadsToolInput(fields=["id", "type"])
     with pytest.raises(ValidationError, match="Conflicting values"):
         ListUncontactedLeadsToolInput(owner_name="Geordi", agent_name="Worf")
     paginated_uncontacted_user_requests: list[UserListRequest] = []
@@ -4456,6 +4465,8 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     assert "use followupboss_get_latest_lead" in search_people_description
     assert "use followupboss_list_uncontacted_leads" in search_people_description
     assert "including after a smart-list-scoped result is empty" in search_people_description
+    assert "email, phone, or notes as fields" in search_people_description
+    assert "starting with custom" in search_people_description
     uncontacted_description = cast(
         "str",
         tools["followupboss_list_uncontacted_leads"].description,
@@ -4467,6 +4478,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     assert "Do not use this as a fallback after an Eligible For Transfer" in (
         uncontacted_description
     )
+    assert "price, sourceUrl, and tags" in uncontacted_description
     search_events_description = cast("str", tools["followupboss_search_events"].description)
     assert "Do not use this to answer requests for notes associated with a person" in (
         search_events_description
@@ -4480,10 +4492,17 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     assert "no SMS was sent or text log was created" in add_note_description
     latest_lead_description = cast("str", tools["followupboss_get_latest_lead"].description)
     assert "Resolves the authenticated user internally" in latest_lead_description
+    create_appointment_description = cast(
+        "str",
+        tools["followupboss_create_appointment"].description,
+    )
+    assert "shorthand {id, type: 'Person'|'User'}" in create_appointment_description
     list_tasks_description = cast("str", tools["followupboss_list_tasks"].description)
     assert "Use this broad list only when the request provides explicit task filters" in (
         list_tasks_description
     )
+    create_task_description = cast("str", tools["followupboss_create_task"].description)
+    assert "Either assigned_to or assigned_user_id is required" in create_task_description
     helper_description = cast(
         "str",
         tools["followupboss_search_people_in_smart_list"].description,
@@ -5681,7 +5700,8 @@ async def test_public_uncontacted_leads_tool_filters_missing_last_communication(
         "assignedUserId": "7",
         "fields": (
             "assignedTo,assignedUserId,contacted,created,emails,firstName,id,"
-            "lastActivity,lastCommunication,lastName,name,phones,source,stage"
+            "lastActivity,lastCommunication,lastName,name,phones,price,source,sourceUrl,"
+            "stage,tags"
         ),
         "limit": "100",
         "offset": "0",

@@ -528,6 +528,10 @@ def test_read_only_tool_specs_include_expanded_read_surfaces() -> None:
     assert "prefer followupboss_list_uncontacted_leads" in (
         specs["followupboss_search_people"].description
     )
+    assert "email, phone, or notes as fields" in specs["followupboss_search_people"].description
+    assert "Custom field filter keys must start with custom" in (
+        specs["followupboss_search_people"].description
+    )
     assert {
         "assigned_user_id",
         "assigned_user_name",
@@ -545,6 +549,33 @@ def test_read_only_tool_specs_include_expanded_read_surfaces() -> None:
     assert "fallback after an Eligible For Transfer smart-list search" in (
         specs["followupboss_list_uncontacted_leads"].description
     )
+    assert "Field requests may include price, sourceUrl, and tags" in (
+        specs["followupboss_list_uncontacted_leads"].description
+    )
+    assert cast(
+        dict[str, object],
+        uncontacted_properties["fields"],
+    )["items"] == {
+        "type": "string",
+        "enum": [
+            "id",
+            "name",
+            "firstName",
+            "lastName",
+            "created",
+            "assignedUserId",
+            "stage",
+            "source",
+            "lastActivity",
+            "lastCommunication",
+            "contacted",
+            "emails",
+            "phones",
+            "price",
+            "sourceUrl",
+            "tags",
+        ],
+    }
     assert {"assigned_user_name", "smart_list_name", "source", "stage", "mine"}.issubset(
         helper_properties
     )

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from contextlib import AbstractContextManager
 from typing import Literal, Protocol, cast
@@ -11,6 +12,7 @@ from followupboss_mcp.logging import redact_value
 
 _REDACTED = "***redacted***"
 _SENTRY_INITIALIZED = False
+_TOOL_ERROR_NAME_RE = re.compile(r"\AError executing tool (?P<tool>[A-Za-z0-9_]+):")
 _SENTRY_REDACTED_KEYS = {
     "address",
     "addresses",
@@ -39,6 +41,7 @@ type SentryExtra = Mapping[str, object]
 type SentryHint = Mapping[str, object]
 type SentryMessageLevel = Literal["fatal", "critical", "error", "warning", "info", "debug"]
 type SentryTags = Mapping[str, str | int | float | bool | None]
+type SentryExceptionValue = Mapping[str, object]
 
 
 class SentryScope(Protocol):
@@ -134,6 +137,134 @@ def sanitize_sentry_event(event: Mapping[str, object]) -> SentryEvent:
     return cast(SentryEvent, _redact_sentry_payload(secret_redacted_event))
 
 
+def _coerce_mapping(value: object) -> Mapping[str, object] | None:
+    """Return `value` as a mapping when it has the expected shape."""
+    if isinstance(value, Mapping):
+        return cast(Mapping[str, object], value)
+    return None
+
+
+def _exception_values_from_event(event: Mapping[str, object]) -> list[SentryExceptionValue]:
+    """Return exception values from SDK and API-shaped Sentry events."""
+    values: list[SentryExceptionValue] = []
+    exception = _coerce_mapping(event.get("exception"))
+    exception_values = exception.get("values") if exception is not None else None
+    if isinstance(exception_values, list):
+        values.extend(
+            cast(SentryExceptionValue, value)
+            for value in exception_values
+            if isinstance(value, Mapping)
+        )
+
+    entries = event.get("entries")
+    if isinstance(entries, list):
+        for entry_value in entries:
+            entry = _coerce_mapping(entry_value)
+            if entry is None or entry.get("type") != "exception":
+                continue
+            data = _coerce_mapping(entry.get("data"))
+            entry_values = data.get("values") if data is not None else None
+            if isinstance(entry_values, list):
+                values.extend(
+                    cast(SentryExceptionValue, value)
+                    for value in entry_values
+                    if isinstance(value, Mapping)
+                )
+    return values
+
+
+def _exception_type(value: SentryExceptionValue) -> str:
+    """Return the exception type for one Sentry exception value."""
+    raw_type = value.get("type")
+    return raw_type if isinstance(raw_type, str) else ""
+
+
+def _exception_message(value: SentryExceptionValue) -> str:
+    """Return the exception message for one Sentry exception value."""
+    raw_value = value.get("value")
+    return raw_value if isinstance(raw_value, str) else ""
+
+
+def _exception_mechanism_handled(value: SentryExceptionValue) -> bool | None:
+    """Return the handled flag from one Sentry exception value when present."""
+    mechanism = _coerce_mapping(value.get("mechanism"))
+    handled = mechanism.get("handled") if mechanism is not None else None
+    return handled if isinstance(handled, bool) else None
+
+
+def _tool_error_name(values: list[SentryExceptionValue]) -> str | None:
+    """Return the FastMCP tool name from a ToolError chain when available."""
+    for value in values:
+        if _exception_type(value) != "ToolError":
+            continue
+        match = _TOOL_ERROR_NAME_RE.match(_exception_message(value))
+        if match is not None:
+            return match.group("tool")
+    return None
+
+
+def _tag_sentry_event(event: SentryEvent, key: str, value: str) -> None:
+    """Attach one tag to a Sentry event without dropping existing tags."""
+    raw_tags = event.get("tags")
+    tags = dict(cast(Mapping[str, object], raw_tags)) if isinstance(raw_tags, Mapping) else {}
+    tags[key] = value
+    event["tags"] = tags
+
+
+def _classify_expected_mcp_error(values: list[SentryExceptionValue]) -> tuple[bool, str] | None:
+    """Classify expected MCP/client error noise without dropping the event."""
+    if not values:
+        return None
+
+    types = {_exception_type(value) for value in values}
+    messages = "\n".join(_exception_message(value) for value in values)
+    handled_flags = [_exception_mechanism_handled(value) for value in values]
+    handled = any(flag is True for flag in handled_flags)
+    has_tool_error = "ToolError" in types
+
+    if "AdminShutdown" in types:
+        return True, "admin_shutdown"
+    if "ClosedResourceError" in types and handled:
+        return True, "closed_resource"
+    if not has_tool_error:
+        return None
+    if "ValidationError" in types or "validation error for" in messages:
+        return True, "validation"
+    if "FollowUpBossValidationError" in types:
+        return True, "followupboss_validation"
+    if "FollowUpBossForbiddenError" in types:
+        return True, "followupboss_forbidden"
+    if "FollowUpBossNotFoundError" in types:
+        return True, "followupboss_not_found"
+    if "Smart list named" in messages and "was not found" in messages:
+        return True, "missing_smart_list"
+    if "Custom field keys must use Follow Up Boss field names" in messages:
+        return True, "followupboss_validation"
+    if "Deep pagination disabled" in messages:
+        return True, "followupboss_validation"
+    if "Requested resource was not found" in messages:
+        return True, "followupboss_not_found"
+    if "You do not have access" in messages:
+        return True, "followupboss_forbidden"
+    return False, "tool_error"
+
+
+def _tag_expected_mcp_error(event: SentryEvent) -> SentryEvent:
+    """Add MCP error classification tags to Sentry events where applicable."""
+    values = _exception_values_from_event(event)
+    classification = _classify_expected_mcp_error(values)
+    if classification is None:
+        return event
+
+    expected, kind = classification
+    tool_name = _tool_error_name(values)
+    _tag_sentry_event(event, "mcp_error_expected", str(expected).lower())
+    _tag_sentry_event(event, "mcp_error_kind", kind)
+    if tool_name is not None:
+        _tag_sentry_event(event, "mcp_tool_name", tool_name)
+    return event
+
+
 def before_send(event: SentryEvent, hint: SentryHint) -> SentryEvent | None:
     """Sanitize one Sentry event before submission.
 
@@ -146,7 +277,7 @@ def before_send(event: SentryEvent, hint: SentryHint) -> SentryEvent | None:
         The sanitized Sentry event.
     """
     del hint
-    return sanitize_sentry_event(event)
+    return _tag_expected_mcp_error(sanitize_sentry_event(event))
 
 
 def _stringify_sentry_tag(value: str | int | float | bool | None) -> str | None:

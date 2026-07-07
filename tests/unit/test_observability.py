@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from pydantic import ValidationError
@@ -40,6 +40,14 @@ def _clear_sentry_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     for key in _SENTRY_ENV_KEYS:
         monkeypatch.delenv(key, raising=False)
+
+
+def _event_tags(event: dict[str, object] | None) -> dict[str, object]:
+    """Return one Sentry event's tags after asserting the event was kept."""
+    assert event is not None
+    tags = event.get("tags")
+    assert isinstance(tags, dict)
+    return cast(dict[str, object], tags)
 
 
 def test_sentry_settings_normalize_and_validate() -> None:
@@ -141,6 +149,153 @@ def test_sanitize_sentry_event_redacts_secrets_and_customer_payloads() -> None:
     assert extra["items"] == [{"note": "***redacted***"}, "kept-scalar"]
 
     assert before_send(event, {"exc_info": object()}) == sanitized
+
+
+def test_before_send_tags_expected_tool_validation_errors() -> None:
+    """Handled FastMCP validation ToolErrors should be tagged but kept."""
+    event: dict[str, object] = {
+        "tags": {"entrypoint": "followupboss-mcp-hosted"},
+        "exception": {
+            "values": [
+                {
+                    "type": "ValidationError",
+                    "value": "1 validation error for CreateTaskRequest",
+                    "mechanism": {"handled": True},
+                },
+                {
+                    "type": "ToolError",
+                    "value": (
+                        "Error executing tool followupboss_create_task: "
+                        "1 validation error for CreateTaskRequest"
+                    ),
+                    "mechanism": {"handled": True},
+                },
+            ]
+        },
+    }
+
+    tags = _event_tags(before_send(event, {"exc_info": object()}))
+
+    assert tags["entrypoint"] == "followupboss-mcp-hosted"
+    assert tags["mcp_tool_name"] == "followupboss_create_task"
+    assert tags["mcp_error_expected"] == "true"
+    assert tags["mcp_error_kind"] == "validation"
+
+
+@pytest.mark.parametrize(
+    ("error_type", "message", "expected_kind"),
+    [
+        (
+            "FollowUpBossValidationError",
+            "Deep pagination disabled, use 'nextLink' url.",
+            "followupboss_validation",
+        ),
+        (
+            "FollowUpBossForbiddenError",
+            "You do not have access to delete pipelines.",
+            "followupboss_forbidden",
+        ),
+        (
+            "FollowUpBossNotFoundError",
+            "Requested resource was not found.",
+            "followupboss_not_found",
+        ),
+        (
+            "RuntimeError",
+            "Smart list named '0-3 Months' was not found.",
+            "missing_smart_list",
+        ),
+    ],
+)
+def test_before_send_tags_expected_client_tool_errors(
+    error_type: str,
+    message: str,
+    expected_kind: str,
+) -> None:
+    """Handled client/upstream ToolErrors should be tagged by kind and kept."""
+    event: dict[str, object] = {
+        "exception": {
+            "values": [
+                {
+                    "type": error_type,
+                    "value": message,
+                    "mechanism": {"handled": True},
+                },
+                {
+                    "type": "ToolError",
+                    "value": f"Error executing tool followupboss_search_people: {message}",
+                    "mechanism": {"handled": True},
+                },
+            ]
+        },
+    }
+
+    tags = _event_tags(before_send(event, {"exc_info": object()}))
+
+    assert tags["mcp_tool_name"] == "followupboss_search_people"
+    assert tags["mcp_error_expected"] == "true"
+    assert tags["mcp_error_kind"] == expected_kind
+
+
+def test_before_send_tags_unknown_tool_errors_as_unexpected() -> None:
+    """Unknown FastMCP ToolErrors should remain visible as unexpected."""
+    event: dict[str, object] = {
+        "exception": {
+            "values": [
+                {
+                    "type": "RuntimeError",
+                    "value": "Unexpected repo-owned failure",
+                    "mechanism": {"handled": True},
+                },
+                {
+                    "type": "ToolError",
+                    "value": (
+                        "Error executing tool followupboss_get_identity: "
+                        "Unexpected repo-owned failure"
+                    ),
+                    "mechanism": {"handled": True},
+                },
+            ]
+        },
+    }
+
+    tags = _event_tags(before_send(event, {"exc_info": object()}))
+
+    assert tags["mcp_tool_name"] == "followupboss_get_identity"
+    assert tags["mcp_error_expected"] == "false"
+    assert tags["mcp_error_kind"] == "tool_error"
+
+
+@pytest.mark.parametrize(
+    ("error_type", "handled", "expected_kind"),
+    [
+        ("ClosedResourceError", True, "closed_resource"),
+        ("AdminShutdown", False, "admin_shutdown"),
+    ],
+)
+def test_before_send_tags_expected_infrastructure_noise(
+    error_type: str,
+    handled: bool,
+    expected_kind: str,
+) -> None:
+    """Known staging infrastructure noise should be tagged and kept."""
+    event: dict[str, object] = {
+        "exception": {
+            "values": [
+                {
+                    "type": error_type,
+                    "value": "terminating connection due to administrator command",
+                    "mechanism": {"handled": handled},
+                }
+            ]
+        },
+    }
+
+    tags = _event_tags(before_send(event, {"exc_info": object()}))
+
+    assert "mcp_tool_name" not in tags
+    assert tags["mcp_error_expected"] == "true"
+    assert tags["mcp_error_kind"] == expected_kind
 
 
 def test_configure_sentry_skips_initialization_without_dsn(

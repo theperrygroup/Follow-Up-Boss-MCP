@@ -2050,6 +2050,25 @@ async def test_appointments_service() -> None:
         {"personId": 99, "userId": 5, "name": "Data"}
     ]
 
+    created_from_shorthand = CreateAppointmentRequest.model_validate(
+        {
+            "title": "Shorthand appointment",
+            "start": "2026-03-28T10:00:00Z",
+            "end": "2026-03-28T11:00:00Z",
+            "invitees": [
+                {"id": 99, "type": "Person", "name": "Data"},
+                {"id": 5, "type": "User", "name": "Agent"},
+            ],
+        }
+    )
+    assert created_from_shorthand.model_dump(by_alias=True, exclude_none=True)["invitees"] == [
+        {"name": "Data", "personId": 99},
+        {"name": "Agent", "userId": 5},
+    ]
+
+    with pytest.raises(ValidationError, match="Invitee shorthand type must be Person or User"):
+        AppointmentInviteeInput.model_validate({"id": 99, "type": "Contact"})
+
     updated = await service.update_appointment(
         4,
         UpdateAppointmentRequest(

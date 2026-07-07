@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
 
 from pydantic import Field, model_validator
@@ -17,6 +18,20 @@ from followupboss_mcp.models.common import (
     ResourcePicture,
     ResponseModel,
 )
+
+
+def _set_invitee_identifier(
+    payload: dict[str, object],
+    *,
+    field_name: str,
+    alias: str,
+    value: object,
+) -> None:
+    """Set a normalized invitee identifier unless a conflicting value exists."""
+    existing = payload.get(field_name, payload.get(alias))
+    if existing is not None and existing != value:
+        raise ValueError(f"Conflicting invitee {field_name} and shorthand id values.")
+    payload[alias] = value
 
 
 class AppointmentListRequest(QueryModel):
@@ -76,6 +91,41 @@ class AppointmentInviteeInput(RequestModel):
         validation_alias="userId",
         serialization_alias="userId",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_typed_id_shorthand(cls, data: object) -> object:
+        """Normalize common `{id, type}` invitee shorthand to API identifiers."""
+        if not isinstance(data, Mapping):
+            return data
+        payload = dict(data)
+        invitee_id = payload.pop("id", None)
+        invitee_type = payload.pop("type", None)
+        if invitee_id is None and invitee_type is None:
+            return payload
+        if invitee_id is None or invitee_type is None:
+            raise ValueError("Invitee shorthand requires both id and type.")
+        if not isinstance(invitee_type, str):
+            raise ValueError("Invitee shorthand type must be Person or User.")
+
+        normalized_type = invitee_type.strip().lower()
+        if normalized_type == "person":
+            _set_invitee_identifier(
+                payload,
+                field_name="person_id",
+                alias="personId",
+                value=invitee_id,
+            )
+        elif normalized_type == "user":
+            _set_invitee_identifier(
+                payload,
+                field_name="user_id",
+                alias="userId",
+                value=invitee_id,
+            )
+        else:
+            raise ValueError("Invitee shorthand type must be Person or User.")
+        return payload
 
 
 class AppointmentWriteRequest(RequestModel):

@@ -454,7 +454,10 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
             "uncontacted, never-contacted, no-communication, zero-communication, or "
             "needs-contact lead requests, use followupboss_list_uncontacted_leads "
             "so empty lastCommunication filtering and owner scope are enforced inside "
-            "the MCP boundary. "
+            "the MCP boundary. When using fields, request people response fields such "
+            "as emails and phones; do not request email, phone, or notes as fields. "
+            "For custom_field_filters, keys must be Follow Up Boss API field names "
+            "starting with custom. "
             "Do not use this broad search for "
             "'my latest lead', 'newest lead', or 'most recent lead I received'; "
             "use followupboss_get_latest_lead so the authenticated user is resolved "
@@ -514,6 +517,8 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
             "an exact owner such as Scott Willey, or mine=false only for explicitly "
             "account-wide/everyone requests. Do not use smart-list tools for these "
             "filter intents unless the user explicitly says 'smart list' or 'saved list'. "
+            "If requesting fields, use people response fields such as emails, phones, "
+            "price, sourceUrl, and tags; type is not supported by this helper. "
             "Do not use this as a fallback after an Eligible For Transfer or other "
             "named-smart-list search; answer from the smart-list-scoped result instead."
         ),
@@ -2052,7 +2057,8 @@ def _register_appointment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) 
             "and does not honor an offset suffix, so provide start and end as the "
             "user's local wall-clock time (for example 2026-05-28T15:30:00); the "
             "server converts them to UTC using the account's Follow Up Boss timezone "
-            "(auto-detected) or the FOLLOWUPBOSS_DEFAULT_TIMEZONE override."
+            "(auto-detected) or the FOLLOWUPBOSS_DEFAULT_TIMEZONE override. Invitees "
+            "may use personId/userId or shorthand {id, type: 'Person'|'User'}."
         ),
     )
     async def followupboss_create_appointment(
@@ -2081,7 +2087,8 @@ def _register_appointment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) 
             "UTC and does not honor an offset suffix, so provide start and end as the "
             "user's local wall-clock time (for example 2026-05-28T15:30:00); the "
             "server converts them to UTC using the account's Follow Up Boss timezone "
-            "(auto-detected) or the FOLLOWUPBOSS_DEFAULT_TIMEZONE override."
+            "(auto-detected) or the FOLLOWUPBOSS_DEFAULT_TIMEZONE override. Invitees "
+            "may use personId/userId or shorthand {id, type: 'Person'|'User'}."
         ),
     )
     async def followupboss_update_appointment(
@@ -2545,7 +2552,8 @@ def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
             "and does not honor an offset suffix, so provide it as the user's local "
             "wall-clock time (for example 2026-05-28T15:30:00); the server converts it "
             "to UTC using the account's Follow Up Boss timezone (auto-detected) or the "
-            "FOLLOWUPBOSS_DEFAULT_TIMEZONE override."
+            "FOLLOWUPBOSS_DEFAULT_TIMEZONE override. Either assigned_to or "
+            "assigned_user_id is required."
         ),
     )
     async def followupboss_create_task(

@@ -61,6 +61,16 @@ _LATEST_LEAD_RESPONSE_FIELDS = (
     "source",
     "lastActivity",
 )
+_UNCONTACTED_LEAD_RESPONSE_FIELDS = (
+    *_LATEST_LEAD_RESPONSE_FIELDS,
+    "lastCommunication",
+    "contacted",
+    "emails",
+    "phones",
+    "price",
+    "sourceUrl",
+    "tags",
+)
 _TASK_INTENT_RESPONSE_FIELDS = (
     "id",
     "name",
@@ -157,7 +167,9 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
                 "uncontacted, never-contacted, zero-communication, no-communication, "
                 "or needs-contact leads, prefer "
                 "followupboss_list_uncontacted_leads so empty lastCommunication "
-                "filtering is enforced. "
+                "filtering is enforced. When using fields, request people response "
+                "fields such as emails and phones; do not request email, phone, or "
+                "notes as fields. Custom field filter keys must start with custom. "
                 "Do not use this for named smart-list people prompts; use "
                 "followupboss_search_people_in_smart_list. Do not use this as a "
                 "fallback after a named-smart-list result is empty."
@@ -190,7 +202,8 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
                 "lead requests. Use followupboss_search_people only when the prompt explicitly "
                 "asks for the raw contacted=false field. Defaults to authenticated-user assigned "
                 "leads; for named owners such as Scott Willey, "
-                "pass assigned_user_name. Do not list or search smart lists for these filter "
+                "pass assigned_user_name. Field requests may include price, sourceUrl, "
+                "and tags, but not type. Do not list or search smart lists for these filter "
                 "intents unless the user explicitly says smart list or saved list. Do not "
                 "use this as a fallback after an Eligible For Transfer smart-list search; "
                 "answer from the smart-list-scoped result instead."
@@ -204,7 +217,7 @@ def read_only_battle_test_ai_tool_specs() -> tuple[BattleTestAiToolSpec, ...]:
                     ),
                     "fields": _enum_array_schema(
                         "Optional person response fields to request.",
-                        _LATEST_LEAD_RESPONSE_FIELDS,
+                        _UNCONTACTED_LEAD_RESPONSE_FIELDS,
                     ),
                     "limit": _integer_schema("Optional page size."),
                     "mine": {

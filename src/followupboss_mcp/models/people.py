@@ -18,10 +18,88 @@ from followupboss_mcp.models.common import (
     ResponseModel,
 )
 
+_PEOPLE_RESPONSE_FIELDS = frozenset(
+    {
+        "addresses",
+        "assignedLenderId",
+        "assignedLenderName",
+        "assignedTo",
+        "assignedUserId",
+        "claimed",
+        "contacted",
+        "created",
+        "createdVia",
+        "delayed",
+        "emails",
+        "firstName",
+        "id",
+        "lastActivity",
+        "lastCommunication",
+        "lastName",
+        "name",
+        "phones",
+        "picture",
+        "price",
+        "source",
+        "sourceId",
+        "sourceUrl",
+        "stage",
+        "stageId",
+        "tags",
+        "updated",
+    }
+)
+_PEOPLE_FIELD_CORRECTIONS = {
+    "email": "Use 'emails' for returned email addresses.",
+    "phone": "Use 'phones' for returned phone numbers.",
+    "notes": (
+        "'notes' is not a people projection; use followupboss_list_person_activity "
+        "for note and activity history."
+    ),
+}
+
+
+def validate_people_projection_fields(value: list[str] | None) -> list[str] | None:
+    """Validate Follow Up Boss people response projection fields.
+
+    Args:
+        value: Optional field names requested by the caller.
+
+    Returns:
+        The original field list when every field is supported.
+
+    Raises:
+        ValueError: If one or more projection fields are not known people
+            response fields.
+    """
+    if value is None:
+        return None
+    invalid_fields = sorted(set(value) - _PEOPLE_RESPONSE_FIELDS)
+    if invalid_fields:
+        corrections = [
+            _PEOPLE_FIELD_CORRECTIONS[field]
+            for field in invalid_fields
+            if field in _PEOPLE_FIELD_CORRECTIONS
+        ]
+        correction_text = f" {' '.join(corrections)}" if corrections else ""
+        allowed_fields = ", ".join(sorted(_PEOPLE_RESPONSE_FIELDS))
+        invalid = ", ".join(invalid_fields)
+        raise ValueError(
+            f"Invalid people fields: {invalid}. Allowed fields: {allowed_fields}.{correction_text}"
+        )
+    return value
+
 
 class PeopleSearchRequest(CommonListQuery):
     """Search filters for the people collection."""
 
+    fields: list[str] | None = Field(
+        default=None,
+        description=(
+            "Optional people response fields. Use emails/phones for contact values; "
+            "notes is not a people projection."
+        ),
+    )
     assigned_lender_id: int | None = Field(default=None, serialization_alias="assignedLenderId")
     assigned_lender_name: str | None = Field(
         default=None,
@@ -33,7 +111,11 @@ class PeopleSearchRequest(CommonListQuery):
     contacted: bool | None = None
     created_after: datetime | None = Field(default=None, serialization_alias="createdAfter")
     created_before: datetime | None = Field(default=None, serialization_alias="createdBefore")
-    custom_field_filters: dict[str, str] | None = Field(default=None, exclude=True)
+    custom_field_filters: dict[str, str] | None = Field(
+        default=None,
+        exclude=True,
+        description="Custom field filters keyed by Follow Up Boss API names starting with custom.",
+    )
     email: str | None = None
     first_name: str | None = Field(default=None, serialization_alias="firstName")
     include_trash: bool | None = Field(default=None, serialization_alias="includeTrash")
@@ -77,11 +159,29 @@ class PeopleSearchRequest(CommonListQuery):
             raise ValueError("People search IDs must be positive.")
         return value
 
+    @field_validator("fields")
+    @classmethod
+    def _validate_fields(cls, value: list[str] | None) -> list[str] | None:
+        """Validate people projection fields."""
+        return validate_people_projection_fields(value)
+
 
 class PersonLookupRequest(QueryModel):
     """Fields selection for a person lookup."""
 
-    fields: list[str] | None = None
+    fields: list[str] | None = Field(
+        default=None,
+        description=(
+            "Optional people response fields. Use emails/phones for contact values; "
+            "notes is not a people projection."
+        ),
+    )
+
+    @field_validator("fields")
+    @classmethod
+    def _validate_fields(cls, value: list[str] | None) -> list[str] | None:
+        """Validate people projection fields."""
+        return validate_people_projection_fields(value)
 
 
 class PersonDuplicateCheckRequest(QueryModel):
