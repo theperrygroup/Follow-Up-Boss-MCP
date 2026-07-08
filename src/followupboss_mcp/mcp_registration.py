@@ -156,8 +156,8 @@ from followupboss_mcp.models.inbox_apps import (
 from followupboss_mcp.models.notes import CreateNoteRequest
 from followupboss_mcp.models.people import (
     CreatePersonRequest,
-    PeopleSearchRequest,
     PeopleProjectionFieldsInput,
+    PeopleSearchRequest,
     UnclaimedPeopleListRequest,
 )
 from followupboss_mcp.models.people_relationships import (
