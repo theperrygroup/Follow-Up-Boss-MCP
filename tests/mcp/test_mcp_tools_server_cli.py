@@ -3850,9 +3850,7 @@ async def test_search_people_accepts_comma_separated_fields_from_public_tool() -
 
     assert result["people"][0]["id"] == 2
     assert client.calls[-1]["path"] == "/people"
-    assert client.calls[-1]["params"] == {
-        "fields": "id,firstName,lastName,phones,tags,addresses"
-    }
+    assert client.calls[-1]["params"] == {"fields": "id,firstName,lastName,phones,tags,addresses"}
 
 
 @pytest.mark.asyncio
