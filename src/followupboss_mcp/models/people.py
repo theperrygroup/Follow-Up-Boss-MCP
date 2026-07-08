@@ -18,6 +18,8 @@ from followupboss_mcp.models.common import (
     ResponseModel,
 )
 
+type PeopleProjectionFieldsInput = list[str] | str | None
+
 _PEOPLE_RESPONSE_FIELDS = frozenset(
     {
         "addresses",
@@ -57,6 +59,24 @@ _PEOPLE_FIELD_CORRECTIONS = {
         "for note and activity history."
     ),
 }
+
+
+def normalize_people_projection_fields(value: object) -> object:
+    """Normalize people projection fields from MCP and Python callers.
+
+    Args:
+        value: Raw people projection field input. MCP clients sometimes send
+            the Follow Up Boss-documented comma-separated string form, while
+            Python callers commonly use a list.
+
+    Returns:
+        A list of field names for string inputs, ``None`` for blank strings, or
+        the original value so Pydantic can report unsupported shapes.
+    """
+    if not isinstance(value, str):
+        return value
+    fields = [field.strip() for field in value.split(",") if field.strip()]
+    return fields or None
 
 
 def validate_people_projection_fields(value: list[str] | None) -> list[str] | None:
@@ -141,6 +161,12 @@ class PeopleSearchRequest(CommonListQuery):
     updated_after: datetime | None = Field(default=None, serialization_alias="updatedAfter")
     updated_before: datetime | None = Field(default=None, serialization_alias="updatedBefore")
 
+    @field_validator("fields", mode="before")
+    @classmethod
+    def _normalize_fields(cls, value: object) -> object:
+        """Normalize comma-separated people projection fields before list validation."""
+        return normalize_people_projection_fields(value)
+
     @field_validator("assigned_lender_id", "assigned_pond_id", "assigned_user_id", "smart_list_id")
     @classmethod
     def _validate_positive_ids(cls, value: int | None) -> int | None:
@@ -176,6 +202,12 @@ class PersonLookupRequest(QueryModel):
             "notes is not a people projection."
         ),
     )
+
+    @field_validator("fields", mode="before")
+    @classmethod
+    def _normalize_fields(cls, value: object) -> object:
+        """Normalize comma-separated person projection fields before list validation."""
+        return normalize_people_projection_fields(value)
 
     @field_validator("fields")
     @classmethod
