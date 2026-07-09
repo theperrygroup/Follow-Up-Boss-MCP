@@ -156,6 +156,7 @@ from followupboss_mcp.models.inbox_apps import (
 from followupboss_mcp.models.notes import CreateNoteRequest
 from followupboss_mcp.models.people import (
     CreatePersonRequest,
+    PeopleProjectionFieldsInput,
     PeopleSearchRequest,
     UnclaimedPeopleListRequest,
 )
@@ -466,7 +467,7 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
     )
     async def followupboss_search_people(
         *,
-        fields: list[str] | None = None,
+        fields: PeopleProjectionFieldsInput = None,
         id: int | None = None,
         ids: list[int] | None = None,
         id_greater_than: int | None = None,

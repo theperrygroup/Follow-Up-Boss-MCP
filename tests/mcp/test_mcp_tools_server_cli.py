@@ -3800,6 +3800,7 @@ class QueueClient:
     ) -> None:
         self.responses = responses
         self._me_response: dict[str, object] = me_response if me_response is not None else {"id": 0}
+        self.calls: list[dict[str, object]] = []
 
     async def aclose(self) -> None:
         return None
@@ -3813,10 +3814,43 @@ class QueueClient:
         json_body: Mapping[str, object] | None = None,
         params: Mapping[str, str] | None = None,
     ) -> dict[str, object] | list[object]:
-        del method, headers, json_body, params
+        self.calls.append(
+            {
+                "method": method,
+                "path": path,
+                "headers": headers,
+                "json_body": json_body,
+                "params": params,
+            }
+        )
         if path == "/me":
             return self._me_response
         return self.responses.pop(0)
+
+
+@pytest.mark.asyncio
+async def test_search_people_accepts_comma_separated_fields_from_public_tool() -> None:
+    """The public people search tool should accept documented comma-separated fields."""
+    client = QueueClient(
+        [{"_metadata": {"limit": 10, "offset": 0, "total": 1}, "people": [{"id": 2}]}],
+    )
+    server = create_server(
+        FollowUpBossSettings.model_validate({"api_key": "key"}),
+        client=client,
+    )
+    tools = {tool.name: tool for tool in await server.list_tools()}
+
+    result = await _call_public_tool(
+        server,
+        tools,
+        "followupboss_search_people",
+        fields="id, firstName, lastName, phones, tags, addresses",
+        include_ponds=True,
+    )
+
+    assert result["people"][0]["id"] == 2
+    assert client.calls[-1]["path"] == "/people"
+    assert client.calls[-1]["params"] == {"fields": "id,firstName,lastName,phones,tags,addresses"}
 
 
 @pytest.mark.asyncio
