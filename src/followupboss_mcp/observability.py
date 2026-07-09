@@ -277,7 +277,8 @@ def before_send(event: SentryEvent, hint: SentryHint) -> SentryEvent | None:
         The sanitized Sentry event.
     """
     del hint
-    return _tag_expected_mcp_error(sanitize_sentry_event(event))
+    tagged_event = _tag_expected_mcp_error(dict(event))
+    return sanitize_sentry_event(tagged_event)
 
 
 def _stringify_sentry_tag(value: str | int | float | bool | None) -> str | None:

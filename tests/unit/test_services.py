@@ -2066,6 +2066,14 @@ async def test_appointments_service() -> None:
         {"name": "Agent", "userId": 5},
     ]
 
+    with pytest.raises(ValidationError, match="Input should be a valid dictionary"):
+        AppointmentInviteeInput.model_validate("not-an-invitee")
+    with pytest.raises(ValidationError, match="Invitee shorthand requires both id and type"):
+        AppointmentInviteeInput.model_validate({"id": 99})
+    with pytest.raises(ValidationError, match="Invitee shorthand type must be Person or User"):
+        AppointmentInviteeInput.model_validate({"id": 99, "type": 42})
+    with pytest.raises(ValidationError, match="Conflicting invitee person_id and shorthand id"):
+        AppointmentInviteeInput.model_validate({"id": 99, "type": "Person", "personId": 100})
     with pytest.raises(ValidationError, match="Invitee shorthand type must be Person or User"):
         AppointmentInviteeInput.model_validate({"id": 99, "type": "Contact"})
 
