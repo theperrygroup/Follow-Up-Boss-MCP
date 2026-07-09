@@ -237,6 +237,126 @@ def test_before_send_tags_expected_client_tool_errors(
     assert tags["mcp_error_kind"] == expected_kind
 
 
+@pytest.mark.parametrize(
+    ("message", "expected_kind"),
+    [
+        (
+            "Custom field keys must use Follow Up Boss field names that start with 'custom'.",
+            "followupboss_validation",
+        ),
+        ("Deep pagination disabled, use 'nextLink' url.", "followupboss_validation"),
+        ("Requested resource was not found.", "followupboss_not_found"),
+        ("You do not have access to delete pipelines.", "followupboss_forbidden"),
+    ],
+)
+def test_before_send_tags_expected_message_only_tool_errors(
+    message: str,
+    expected_kind: str,
+) -> None:
+    """Handled ToolErrors should be classified by known safe message text."""
+    event: dict[str, object] = {
+        "exception": {
+            "values": [
+                {
+                    "type": "RuntimeError",
+                    "value": message,
+                    "mechanism": {"handled": True},
+                },
+                {
+                    "type": "ToolError",
+                    "value": f"Error executing tool followupboss_update_person: {message}",
+                    "mechanism": {"handled": True},
+                },
+            ]
+        },
+    }
+
+    tags = _event_tags(before_send(event, {"exc_info": object()}))
+
+    assert tags["mcp_tool_name"] == "followupboss_update_person"
+    assert tags["mcp_error_expected"] == "true"
+    assert tags["mcp_error_kind"] == expected_kind
+
+
+def test_before_send_reads_api_exception_entries() -> None:
+    """Sentry API-shaped exception entries should feed MCP error classification."""
+    event: dict[str, object] = {
+        "entries": [
+            "not-a-mapping",
+            {"type": "breadcrumbs", "data": {"values": []}},
+            {"type": "exception", "data": {"values": "not-a-list"}},
+            {
+                "type": "exception",
+                "data": {
+                    "values": [
+                        "not-a-value",
+                        {
+                            "type": "ToolError",
+                            "value": (
+                                "Error executing tool followupboss_search_people: "
+                                "Requested resource was not found."
+                            ),
+                            "mechanism": {"handled": True},
+                        },
+                    ]
+                },
+            },
+        ],
+    }
+
+    tags = _event_tags(before_send(event, {"exc_info": object()}))
+
+    assert tags["mcp_tool_name"] == "followupboss_search_people"
+    assert tags["mcp_error_expected"] == "true"
+    assert tags["mcp_error_kind"] == "followupboss_not_found"
+
+
+def test_before_send_leaves_non_tool_entries_unclassified() -> None:
+    """Non-tool exceptions should not receive MCP error classification tags."""
+    event: dict[str, object] = {
+        "entries": [
+            {
+                "type": "exception",
+                "data": {
+                    "values": [
+                        {
+                            "type": "RuntimeError",
+                            "value": "plain infrastructure failure",
+                            "mechanism": {"handled": True},
+                        }
+                    ]
+                },
+            }
+        ],
+    }
+
+    result = before_send(event, {"exc_info": object()})
+
+    assert result is not None
+    assert "tags" not in result
+
+
+def test_before_send_tags_unnamed_tool_errors_as_unexpected() -> None:
+    """ToolErrors without a parseable tool name should still stay visible."""
+    event: dict[str, object] = {
+        "exception": {
+            "values": [
+                {
+                    "type": "ToolError",
+                    "value": "Plain tool failure without FastMCP tool context",
+                    "mechanism": {"handled": True},
+                }
+            ]
+        },
+    }
+
+    tags = _event_tags(before_send(event, {"exc_info": object()}))
+
+    assert "mcp_tool_name" not in tags
+    assert tags["mcp_error_expected"] == "false"
+    assert tags["mcp_error_kind"] == "tool_error"
+
+
 def test_before_send_tags_unknown_tool_errors_as_unexpected() -> None:
     """Unknown FastMCP ToolErrors should remain visible as unexpected."""
     event: dict[str, object] = {
