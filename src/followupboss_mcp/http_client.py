@@ -166,11 +166,10 @@ class FollowUpBossAsyncClient:
             request_started_at = self._clock()
             self._logger.debug(
                 (
-                    "Sending Follow Up Boss request %s %s attempt=%s "
+                    "Sending Follow Up Boss request method=%s attempt=%s "
                     "headers=%s params_keys=%s json_keys=%s"
                 ),
                 method_name,
-                path,
                 attempt + 1,
                 redact_headers(request_headers),
                 sorted(params) if params is not None else None,
@@ -192,7 +191,6 @@ class FollowUpBossAsyncClient:
                     )
                     self._log_retry_attempt(
                         method=method_name,
-                        path=path,
                         attempt=attempt + 1,
                         delay_seconds=delay,
                         reason="transport_error",
@@ -204,9 +202,8 @@ class FollowUpBossAsyncClient:
                 raise FollowUpBossError("Transport error while calling Follow Up Boss.") from exc
             elapsed_ms = int((self._clock() - request_started_at) * 1000)
             self._logger.info(
-                "Follow Up Boss response %s %s status=%s elapsed_ms=%s attempts=%s",
+                "Follow Up Boss response method=%s status=%s elapsed_ms=%s attempts=%s",
                 method_name,
-                path,
                 response.status_code,
                 elapsed_ms,
                 attempt + 1,
@@ -222,7 +219,6 @@ class FollowUpBossAsyncClient:
                     )
                     self._log_retry_attempt(
                         method=method_name,
-                        path=path,
                         attempt=attempt + 1,
                         delay_seconds=delay,
                         reason="rate_limit",
@@ -248,7 +244,6 @@ class FollowUpBossAsyncClient:
                     )
                     self._log_retry_attempt(
                         method=method_name,
-                        path=path,
                         attempt=attempt + 1,
                         delay_seconds=delay,
                         reason="retryable_status",
@@ -272,7 +267,6 @@ class FollowUpBossAsyncClient:
         self,
         *,
         method: str,
-        path: str,
         attempt: int,
         delay_seconds: float,
         reason: str,
@@ -284,7 +278,6 @@ class FollowUpBossAsyncClient:
 
         Args:
             method: The uppercased HTTP method being retried.
-            path: The Follow Up Boss API path being retried.
             attempt: The 1-indexed attempt number that just failed.
             delay_seconds: The delay before the next retry.
             reason: A short machine-readable retry reason.
@@ -294,11 +287,10 @@ class FollowUpBossAsyncClient:
         """
         self._logger.warning(
             (
-                "Retrying Follow Up Boss request %s %s attempt=%s "
+                "Retrying Follow Up Boss request method=%s attempt=%s "
                 "delay_s=%.3f reason=%s status=%s retry_after_s=%s error_type=%s"
             ),
             method,
-            path,
             attempt,
             delay_seconds,
             reason,

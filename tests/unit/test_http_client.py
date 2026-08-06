@@ -83,7 +83,7 @@ async def test_request_json_logs_status_and_elapsed_time() -> None:
     clock_values = iter([1.0, 1.25])
 
     with respx.mock(assert_all_called=True) as router:
-        router.get("https://api.followupboss.com/v1/identity").mock(
+        router.get("https://api.followupboss.com/v1/appointments/424242").mock(
             return_value=httpx.Response(200, json={"id": 1})
         )
         async with FollowUpBossAsyncClient(
@@ -91,12 +91,11 @@ async def test_request_json_logs_status_and_elapsed_time() -> None:
             logger=logger,
             clock=lambda: next(clock_values),
         ) as client:
-            assert await client.request_json("GET", "/identity") == {"id": 1}
+            assert await client.request_json("GET", "/appointments/424242") == {"id": 1}
 
     log_output = stream.getvalue()
-    assert (
-        "Follow Up Boss response GET /identity status=200 elapsed_ms=250 attempts=1" in log_output
-    )
+    assert "Follow Up Boss response method=GET status=200 elapsed_ms=250 attempts=1" in log_output
+    assert "424242" not in log_output
 
 
 @pytest.mark.asyncio
@@ -111,26 +110,27 @@ async def test_request_json_debug_logs_request_shape_without_values() -> None:
     logger.addHandler(logging.StreamHandler(stream))
 
     with respx.mock(assert_all_called=True) as router:
-        router.post("https://api.followupboss.com/v1/people").mock(
+        router.post("https://api.followupboss.com/v1/appointments/424242").mock(
             return_value=httpx.Response(200, json={"id": 1})
         )
         async with FollowUpBossAsyncClient(settings, logger=logger) as client:
             assert await client.request_json(
                 "POST",
-                "/people",
+                "/appointments/424242",
                 headers={"X-Request-Id": "request-123"},
                 json_body={"firstName": "Tom"},
                 params={"source": "Portal"},
             ) == {"id": 1}
 
     log_output = stream.getvalue()
-    assert "Sending Follow Up Boss request POST /people attempt=1" in log_output
+    assert "Sending Follow Up Boss request method=POST attempt=1" in log_output
     assert "params_keys=['source']" in log_output
     assert "json_keys=['firstName']" in log_output
     assert "Authorization': '***redacted***" in log_output
     assert "X-System-Key': '***redacted***" in log_output
     assert "Portal" not in log_output
     assert "Tom" not in log_output
+    assert "424242" not in log_output
 
 
 @pytest.mark.asyncio
@@ -228,7 +228,7 @@ async def test_request_json_rate_limit_retry_and_exhaustion() -> None:
     logger.propagate = False
     logger.addHandler(logging.StreamHandler(stream))
     with respx.mock(assert_all_called=True) as router:
-        router.get("https://api.followupboss.com/v1/identity").mock(
+        router.get("https://api.followupboss.com/v1/appointments/424242").mock(
             side_effect=[
                 httpx.Response(
                     429, headers={"Retry-After": "3"}, json={"errorMessage": "slow down"}
@@ -242,12 +242,13 @@ async def test_request_json_rate_limit_retry_and_exhaustion() -> None:
             logger=logger,
             sleep=lambda delay: _record_sleep(sleep_calls, delay),
         ) as client:
-            assert await client.request_json("GET", "/identity") == {"id": 1}
+            assert await client.request_json("GET", "/appointments/424242") == {"id": 1}
     assert sleep_calls == [3.0]
     log_output = stream.getvalue()
     assert "reason=rate_limit status=429 retry_after_s=3.0 error_type=None" in log_output
-    assert "Follow Up Boss response GET /identity status=200" in log_output
+    assert "Follow Up Boss response method=GET status=200" in log_output
     assert "attempts=2" in log_output
+    assert "424242" not in log_output
 
     with respx.mock(assert_all_called=True) as router:
         router.get("https://api.followupboss.com/v1/identity").mock(

@@ -139,6 +139,8 @@ On-call symptoms to watch during revocation or rotation:
 - operational logging uses Python logging instead of mixing diagnostics into the protocol stream
 - debug logging is safe for transport inspection because sensitive headers are redacted and
   request/query payloads are summarized by key instead of emitting raw values
+- dynamic API paths are omitted from request, response, and retry logs so resource identifiers do
+  not leak through operational diagnostics
 
 ## Request Hardening
 
