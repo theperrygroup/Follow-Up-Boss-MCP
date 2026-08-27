@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, cast
 
 import pytest
 from starlette.testclient import TestClient
@@ -13,6 +13,12 @@ from followupboss_mcp.hosted_auth import (
     DevelopmentHostedTokenVerifier,
     HostedAuthSettings,
     HostedVerifiedIdentity,
+)
+from followupboss_mcp.hosted_oauth import (
+    HostedOAuthApplication,
+    HostedOAuthSettings,
+    HostedOAuthStore,
+    HostedOAuthTenantProvisioner,
 )
 from followupboss_mcp.hosted_rate_limits import (
     HostedEndpointRateLimiter,
@@ -186,6 +192,48 @@ def _tenant_store() -> DevelopmentTenantStore:
             ),
         ],
     )
+
+
+def test_oauth_discovery_uses_one_exact_authorization_server_issuer() -> None:
+    """Protected-resource and authorization-server metadata must agree exactly."""
+    issuer = "https://mcp.example.com"
+    resource = "https://mcp.example.com/mcp"
+    hosted_auth = HostedAuthSettings.model_validate(
+        {
+            "issuer_url": issuer,
+            "resource_server_url": resource,
+            "required_scopes": ["followupboss:mcp"],
+        }
+    )
+    oauth_application = HostedOAuthApplication(
+        settings=HostedOAuthSettings.model_validate(
+            {
+                "issuer_url": issuer,
+                "resource_server_url": resource,
+                "required_scopes": ["followupboss:mcp"],
+                "fub_client_id": "client-id",
+                "fub_client_secret": "placeholder-secret",
+                "fub_callback_url": ("https://mcp.example.com/oauth/follow-up-boss/callback"),
+                "token_secret_prefix": "followupboss/test/",
+            }
+        ),
+        store=cast(HostedOAuthStore, object()),
+        tenant_provisioner=cast(HostedOAuthTenantProvisioner, object()),
+    )
+    server = create_server(
+        hosted_auth=hosted_auth,
+        hosted_token_verifier=_hosted_token_verifier(),
+        tenant_store=_tenant_store(),
+        hosted_oauth_application=oauth_application,
+    )
+
+    with TestClient(server.streamable_http_app()) as client:
+        protected = client.get("/.well-known/oauth-protected-resource/mcp")
+        authorization = client.get("/.well-known/oauth-authorization-server")
+
+    assert protected.status_code == 200
+    assert authorization.status_code == 200
+    assert authorization.json()["issuer"] == protected.json()["authorization_servers"][0]
 
 
 class UnavailableHostedTenantStore(TenantStore):

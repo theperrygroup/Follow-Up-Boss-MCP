@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Sequence
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Callable, Sequence
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from pathlib import Path
 from typing import Protocol
 
@@ -141,6 +141,7 @@ class FollowUpBossFastMCP(FastMCP):
 
     _hosted_rate_limiter: HostedEndpointRateLimiter | None = None
     _hosted_oauth_application: HostedOAuthApplication | None = None
+    _application_lifespan: Callable[[Starlette], AbstractAsyncContextManager[None]] | None = None
 
     def streamable_http_app(self) -> Starlette:
         """Return the streamable HTTP app with hosted abuse controls applied.
@@ -155,20 +156,30 @@ class FollowUpBossFastMCP(FastMCP):
                 if oauth_route.path not in existing_paths:
                     app.routes.append(oauth_route)
 
-        if self._hosted_rate_limiter is None or self._token_verifier is None:
-            return app
+        if self._hosted_rate_limiter is not None and self._token_verifier is not None:
+            for route in app.routes:
+                if (
+                    isinstance(route, Route)
+                    and route.path == self.settings.streamable_http_path
+                    and not isinstance(route.app, HostedRateLimitMiddleware)
+                ):
+                    route.app = HostedRateLimitMiddleware(
+                        route.app,
+                        rate_limiter=self._hosted_rate_limiter,
+                    )
+                    break
 
-        for route in app.routes:
-            if (
-                isinstance(route, Route)
-                and route.path == self.settings.streamable_http_path
-                and not isinstance(route.app, HostedRateLimitMiddleware)
-            ):
-                route.app = HostedRateLimitMiddleware(
-                    route.app,
-                    rate_limiter=self._hosted_rate_limiter,
-                )
-                break
+        if self._application_lifespan is not None:
+            application_lifespan = self._application_lifespan
+            session_manager_lifespan = app.router.lifespan_context
+
+            @asynccontextmanager
+            async def lifespan(starlette_app: Starlette) -> AsyncIterator[None]:
+                async with application_lifespan(starlette_app):
+                    async with session_manager_lifespan(starlette_app):
+                        yield
+
+            app.router.lifespan_context = lifespan
         return app
 
 
@@ -294,8 +305,10 @@ def create_server(
         else resolved_server_settings.streamable_http_path
     )
 
+    application_lifespan_active = False
+
     @asynccontextmanager
-    async def lifespan(_: FastMCP) -> AsyncIterator[None]:
+    async def managed_lifespan() -> AsyncIterator[None]:
         opened_resources: list[AsyncManagedResource] = []
         try:
             for resource in managed_resources:
@@ -315,6 +328,24 @@ def create_server(
                         await resolved_hosted_rate_limiter.aclose()
                     if hosted_oauth_application is not None:
                         await hosted_oauth_application.aclose()
+
+    @asynccontextmanager
+    async def lifespan(_: FastMCP) -> AsyncIterator[None]:
+        if application_lifespan_active:
+            yield
+            return
+        async with managed_lifespan():
+            yield
+
+    @asynccontextmanager
+    async def application_lifespan(_: Starlette) -> AsyncIterator[None]:
+        nonlocal application_lifespan_active
+        application_lifespan_active = True
+        try:
+            async with managed_lifespan():
+                yield
+        finally:
+            application_lifespan_active = False
 
     mcp = FollowUpBossFastMCP(
         "Follow Up Boss MCP",
@@ -347,6 +378,7 @@ def create_server(
     )
     mcp._hosted_rate_limiter = resolved_hosted_rate_limiter
     mcp._hosted_oauth_application = hosted_oauth_application
+    mcp._application_lifespan = application_lifespan
     register_server_surface(
         mcp,
         adapter,

@@ -251,7 +251,7 @@ def test_settings_and_metadata_validation() -> None:
     )
 
     settings = _settings()
-    assert settings.issuer == "https://mcp.example.com"
+    assert settings.issuer == "https://mcp.example.com/"
     assert settings.resource_server == "https://mcp.example.com/mcp"
     assert settings.scope_string == "followupboss:mcp"
     assert settings.endpoint_url("/oauth/token") == "https://mcp.example.com/oauth/token"
@@ -267,7 +267,7 @@ def test_settings_and_metadata_validation() -> None:
             "fub_base_url": "api.followupboss.com/v1/",
         }
     )
-    assert normalized_settings.issuer == "https://mcp.example.com"
+    assert normalized_settings.issuer == "https://mcp.example.com/"
     assert normalized_settings.resource_server == "https://mcp.example.com/mcp"
     assert str(normalized_settings.fub_authorize_url) == (
         "https://app.followupboss.com/oauth/authorize"
@@ -327,7 +327,7 @@ def test_settings_and_metadata_validation() -> None:
     response = client.get("/.well-known/oauth-authorization-server")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["issuer"] == "https://mcp.example.com"
+    assert payload["issuer"] == "https://mcp.example.com/"
     assert payload["registration_endpoint"] == "https://mcp.example.com/oauth/register"
     assert payload["logo_uri"] == "https://mcp.example.com/assets/follow-up-boss-logo.png"
 

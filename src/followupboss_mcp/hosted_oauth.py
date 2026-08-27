@@ -401,12 +401,12 @@ class HostedOAuthSettings(BaseModel):
 
     @property
     def issuer(self) -> str:
-        """Return the normalized issuer URL without a trailing slash.
+        """Return the canonical issuer URL advertised by protected-resource metadata.
 
         Returns:
             OAuth issuer URL.
         """
-        return str(self.issuer_url).rstrip("/")
+        return str(self.issuer_url)
 
     @property
     def resource_server(self) -> str:
@@ -436,7 +436,7 @@ class HostedOAuthSettings(BaseModel):
             Absolute endpoint URL.
         """
         normalized_path = "/" + path.lstrip("/")
-        return f"{self.issuer}{normalized_path}"
+        return f"{self.issuer.rstrip('/')}{normalized_path}"
 
 
 class HostedOAuthDynamicClient(BaseModel):

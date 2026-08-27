@@ -568,6 +568,52 @@ async def test_create_server_hosted_lifespan_opens_and_closes_managed_resources(
 
 
 @pytest.mark.asyncio
+async def test_streamable_http_application_owns_shared_resource_lifecycle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One MCP session ending must not close process-wide hosted resources."""
+
+    class RecordingResource:
+        """Async managed resource that records application lifecycle events."""
+
+        def __init__(self, events: list[str]) -> None:
+            self._events = events
+
+        async def open(self) -> None:
+            """Record process startup."""
+            self._events.append("open")
+
+        async def aclose(self) -> None:
+            """Record process shutdown."""
+            self._events.append("close")
+
+    monkeypatch.setattr(
+        "followupboss_mcp.mcp_server.register_server_surface",
+        _noop_register_server_surface,
+    )
+    events: list[str] = []
+    server = cast(
+        FollowUpBossFastMCP,
+        create_server(
+            hosted_auth=_hosted_auth_settings(),
+            hosted_token_verifier=_hosted_token_verifier(),
+            tenant_store=_tenant_store(),
+            managed_resources=(RecordingResource(events),),
+        ),
+    )
+    app = server.streamable_http_app()
+
+    async with app.router.lifespan_context(app):
+        assert events == ["open"]
+        for _ in range(2):
+            async with server._mcp_server.lifespan(server._mcp_server):
+                assert events == ["open"]
+            assert events == ["open"]
+
+    assert events == ["open", "close"]
+
+
+@pytest.mark.asyncio
 async def test_create_server_local_lifespan_skips_rate_limiter_shutdown(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
