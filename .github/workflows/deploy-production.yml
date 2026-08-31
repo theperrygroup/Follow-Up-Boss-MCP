@@ -396,6 +396,7 @@ jobs:
       HOSTED_RESOURCE_SERVER_URL: ${{ vars.HOSTED_RESOURCE_SERVER_URL }}
       LOG_GROUP_NAME: ${{ vars.LOG_GROUP_NAME }}
       TASK_EXECUTION_ROLE_ARN: ${{ secrets.TASK_EXECUTION_ROLE_ARN }}
+      TASK_ROLE_ARN: ${{ secrets.TASK_ROLE_ARN }}
       TENANT_DATABASE_URL_SECRET_ARN: ${{ secrets.TENANT_DATABASE_URL_SECRET_ARN }}
       REQUESTED_OPERATION: ${{ github.event_name == 'push' && 'verify-ready' || inputs.operation == 'deploy' && 'verify-ready' || inputs.operation }}
       EXPECTED_ACCESS_UNBOUND: ${{ inputs.expected_access_unbound }}
@@ -422,6 +423,7 @@ jobs:
             HOSTED_RESOURCE_SERVER_URL
             LOG_GROUP_NAME
             TASK_EXECUTION_ROLE_ARN
+            TASK_ROLE_ARN
             TENANT_DATABASE_URL_SECRET_ARN
           )
           for name in "${required_values[@]}"; do
@@ -570,9 +572,6 @@ jobs:
       - name: Verify or explicitly adopt one database secret version
         shell: bash
         run: |
-          aws secretsmanager describe-secret \
-            --secret-id "${TENANT_DATABASE_URL_SECRET_ARN}" \
-            --region "${AWS_REGION}" > "${RUNNER_TEMP}/database-secret-metadata.json"
           aws ecs describe-services \
             --cluster "${ECS_CLUSTER}" \
             --services "${ECS_SERVICE}" \
@@ -598,6 +597,36 @@ jobs:
           aws ecs describe-task-definition \
             --task-definition "${service_task_definition}" \
             --region "${AWS_REGION}" > "${RUNNER_TEMP}/service-task-definition.json"
+          running_database_secret="$(
+            jq -r '
+              [
+                .taskDefinition.containerDefinitions[]
+                | select(.name == "followupboss-mcp-hosted")
+                | .secrets[]
+                | select(.name == "FOLLOWUPBOSS_TENANT_DATABASE_URL")
+                | .valueFrom
+              ]
+              | if length == 1 then .[0] else empty end
+            ' "${RUNNER_TEMP}/service-task-definition.json"
+          )"
+          database_version_prefix="${TENANT_DATABASE_URL_SECRET_ARN}:::"
+          if [ "${running_database_secret}" = "${TENANT_DATABASE_URL_SECRET_ARN}" ]; then
+            if [ "${REQUESTED_OPERATION}" != "expand" ]; then
+              printf "The running service still uses a bare database secret ARN; dispatch the explicit expand operation to adopt its proven current version.\n" >&2
+              exit 1
+            fi
+            metadata_probe_required="true"
+          elif [[ "${running_database_secret}" == "${database_version_prefix}"* ]]; then
+            running_database_version="${running_database_secret#"${database_version_prefix}"}"
+            if [ -z "${running_database_version}" ] || [[ "${running_database_version}" == *:* ]]; then
+              printf "Running service used an invalid database secret version reference.\n" >&2
+              exit 1
+            fi
+            metadata_probe_required="false"
+          else
+            printf "Running service used an unexpected database secret reference.\n" >&2
+            exit 1
+          fi
           aws ecs list-tasks \
             --cluster "${ECS_CLUSTER}" \
             --service-name "${ECS_SERVICE}" \
@@ -623,7 +652,265 @@ jobs:
             printf "Running task set changed before database pinning.\n" >&2
             exit 1
           fi
-          aws ecs register-task-definition --generate-cli-skeleton > "${RUNNER_TEMP}/register-task-skeleton.json"
+          if [ "${metadata_probe_required}" = "true" ]; then
+            aws ecs register-task-definition --generate-cli-skeleton > "${RUNNER_TEMP}/register-task-skeleton.json"
+            jq -e '.services[0].networkConfiguration' \
+              "${RUNNER_TEMP}/production-service.json" > "${RUNNER_TEMP}/metadata-probe-network.json"
+            python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          temp = Path(os.environ["RUNNER_TEMP"])
+          payload = json.loads(
+              (temp / "service-task-definition.json").read_text(encoding="utf-8")
+          )
+          task_definition = payload["taskDefinition"]
+          containers = [
+              item
+              for item in task_definition.get("containerDefinitions", [])
+              if item.get("name") == "followupboss-mcp-hosted"
+          ]
+          if len(containers) != 1:
+              raise SystemExit(
+                  "Running task definition did not contain exactly one hosted container."
+              )
+          container = containers[0]
+          if task_definition.get("taskRoleArn") != os.environ["TASK_ROLE_ARN"]:
+              raise SystemExit("Running service did not use the configured task role.")
+          if task_definition.get("executionRoleArn") != os.environ["TASK_EXECUTION_ROLE_ARN"]:
+              raise SystemExit("Running service did not use the configured execution role.")
+          running_tasks = json.loads(
+              (temp / "prepin-tasks.json").read_text(encoding="utf-8")
+          ).get("tasks", [])
+          running_images = [
+              candidate
+              for task in running_tasks
+              for candidate in task.get("containers", [])
+              if candidate.get("name") == "followupboss-mcp-hosted"
+          ]
+          running_digests = {
+              candidate.get("imageDigest", "") for candidate in running_images
+          }
+          if (
+              len(running_images) != len(running_tasks)
+              or {candidate.get("image", "") for candidate in running_images}
+              != {container["image"]}
+              or len(running_digests) != 1
+              or not re.fullmatch(r"sha256:[0-9a-f]{64}", next(iter(running_digests), ""))
+          ):
+              raise SystemExit("Could not bind the metadata probe to one running image digest.")
+          image_without_digest = container["image"].split("@", maxsplit=1)[0]
+          last_slash = image_without_digest.rfind("/")
+          last_colon = image_without_digest.rfind(":")
+          image_repository = (
+              image_without_digest[:last_colon]
+              if last_colon > last_slash
+              else image_without_digest
+          )
+          if not image_repository:
+              raise SystemExit("Running task definition used an invalid image reference.")
+          probe_image = f"{image_repository}@{next(iter(running_digests))}"
+          skeleton = json.loads(
+              (temp / "register-task-skeleton.json").read_text(encoding="utf-8")
+          )
+          registerable_keys = {
+              "cpu",
+              "enableFaultInjection",
+              "executionRoleArn",
+              "memory",
+              "networkMode",
+              "requiresCompatibilities",
+              "runtimePlatform",
+              "taskRoleArn",
+          }
+          registerable = {
+              key: value
+              for key, value in task_definition.items()
+              if key in registerable_keys and key in skeleton
+          }
+          registerable["family"] = "followupboss-mcp-database-secret-metadata"
+          probe_script = """\
+          import hashlib
+          import json
+          import os
+
+          import boto3
+          from botocore.config import Config
+
+          metadata = boto3.client(
+              "secretsmanager",
+              region_name=os.environ["AWS_REGION"],
+              config=Config(
+                  connect_timeout=5,
+                  read_timeout=10,
+                  retries={"max_attempts": 3, "mode": "standard"},
+              ),
+          ).describe_secret(SecretId=os.environ["TENANT_DATABASE_URL_SECRET_ARN"])
+          receipt = {
+              "LastChangedDate": metadata["LastChangedDate"].isoformat(),
+              "SecretArnSha256": hashlib.sha256(
+                  metadata["ARN"].encode("utf-8")
+              ).hexdigest(),
+              "VersionIdsToStages": metadata.get("VersionIdsToStages", {}),
+          }
+          print(
+              "DATABASE_SECRET_METADATA="
+              + json.dumps(receipt, separators=(",", ":"), sort_keys=True),
+              flush=True,
+          )
+          """
+          registerable["containerDefinitions"] = [
+              {
+                  "name": "database-secret-metadata",
+                  "image": probe_image,
+                  "essential": True,
+                  "entryPoint": ["python", "-c"],
+                  "command": [probe_script],
+                  "environment": [
+                      {"name": "AWS_REGION", "value": os.environ["AWS_REGION"]},
+                      {
+                          "name": "TENANT_DATABASE_URL_SECRET_ARN",
+                          "value": os.environ["TENANT_DATABASE_URL_SECRET_ARN"],
+                      },
+                  ],
+                  "logConfiguration": {
+                      "logDriver": "awslogs",
+                      "options": {
+                          "awslogs-group": os.environ["LOG_GROUP_NAME"],
+                          "awslogs-region": os.environ["AWS_REGION"],
+                          "awslogs-stream-prefix": "migration",
+                      },
+                  },
+              }
+          ]
+          (temp / "metadata-probe-task-definition.json").write_text(
+              json.dumps(registerable, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          aws ecs register-task-definition \
+            --cli-input-json "file://${RUNNER_TEMP}/metadata-probe-task-definition.json" \
+            --region "${AWS_REGION}" > "${RUNNER_TEMP}/registered-metadata-probe-task.json"
+          metadata_probe_task_definition="$(
+            jq -r '.taskDefinition.taskDefinitionArn // empty' \
+              "${RUNNER_TEMP}/registered-metadata-probe-task.json"
+          )"
+          if [ -z "${metadata_probe_task_definition}" ]; then
+            printf "Database-secret metadata probe registration did not return a task-definition ARN.\n" >&2
+            exit 1
+          fi
+          aws ecs run-task \
+            --cluster "${ECS_CLUSTER}" \
+            --task-definition "${metadata_probe_task_definition}" \
+            --launch-type FARGATE \
+            --network-configuration "file://${RUNNER_TEMP}/metadata-probe-network.json" \
+            --region "${AWS_REGION}" > "${RUNNER_TEMP}/metadata-probe-run-task.json"
+          if [ "$(jq -r '.failures | length' "${RUNNER_TEMP}/metadata-probe-run-task.json")" != "0" ]; then
+            printf "ECS rejected the database-secret metadata probe.\n" >&2
+            exit 1
+          fi
+          metadata_probe_task_arn="$(
+            jq -r '.tasks[0].taskArn // empty' "${RUNNER_TEMP}/metadata-probe-run-task.json"
+          )"
+          if [ -z "${metadata_probe_task_arn}" ]; then
+            printf "ECS did not return a database-secret metadata probe task ARN.\n" >&2
+            exit 1
+          fi
+          aws ecs wait tasks-stopped \
+            --cluster "${ECS_CLUSTER}" \
+            --tasks "${metadata_probe_task_arn}" \
+            --region "${AWS_REGION}"
+          aws ecs describe-tasks \
+            --cluster "${ECS_CLUSTER}" \
+            --tasks "${metadata_probe_task_arn}" \
+            --region "${AWS_REGION}" > "${RUNNER_TEMP}/metadata-probe-task-result.json"
+          metadata_probe_exit_code="$(
+            jq -r '
+              .tasks[0].containers[]
+              | select(.name == "database-secret-metadata")
+              | .exitCode // empty
+            ' "${RUNNER_TEMP}/metadata-probe-task-result.json"
+          )"
+          metadata_probe_task_id="${metadata_probe_task_arn##*/}"
+          metadata_probe_log_stream="migration/database-secret-metadata/${metadata_probe_task_id}"
+          metadata_receipt=""
+          for _ in $(seq 1 20); do
+            if aws logs get-log-events \
+              --log-group-name "${LOG_GROUP_NAME}" \
+              --log-stream-name "${metadata_probe_log_stream}" \
+              --region "${AWS_REGION}" > "${RUNNER_TEMP}/metadata-probe-log-events.json" 2>/dev/null; then
+              metadata_receipt="$(
+                jq -r '
+                  .events[].message
+                  | select(startswith("DATABASE_SECRET_METADATA="))
+                ' "${RUNNER_TEMP}/metadata-probe-log-events.json" | tail -n 1
+              )"
+              if [ -n "${metadata_receipt}" ]; then
+                break
+              fi
+            fi
+            sleep 2
+          done
+          if [ "${metadata_probe_exit_code}" != "0" ]; then
+            printf "Database-secret metadata probe failed with exit code %s; task output was suppressed.\n" \
+              "${metadata_probe_exit_code:-unknown}" >&2
+            exit 1
+          fi
+          if [ -z "${metadata_receipt}" ]; then
+            printf "Database-secret metadata probe returned no validated receipt; failing closed.\n" >&2
+            exit 1
+          fi
+          printf "%s" "${metadata_receipt#DATABASE_SECRET_METADATA=}" \
+            > "${RUNNER_TEMP}/database-secret-metadata-receipt.json"
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          temp = Path(os.environ["RUNNER_TEMP"])
+          receipt = json.loads(
+              (temp / "database-secret-metadata-receipt.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          if set(receipt) != {
+              "LastChangedDate",
+              "SecretArnSha256",
+              "VersionIdsToStages",
+          }:
+              raise SystemExit("Database-secret metadata receipt used an unexpected schema.")
+          expected_arn_digest = hashlib.sha256(
+              os.environ["TENANT_DATABASE_URL_SECRET_ARN"].encode("utf-8")
+          ).hexdigest()
+          if receipt.get("SecretArnSha256") != expected_arn_digest:
+              raise SystemExit("Database-secret metadata receipt targeted another secret.")
+          if not isinstance(receipt.get("LastChangedDate"), str) or not receipt[
+              "LastChangedDate"
+          ]:
+              raise SystemExit("Database-secret metadata receipt omitted its change time.")
+          versions = receipt.get("VersionIdsToStages")
+          if not isinstance(versions, dict) or any(
+              not isinstance(version_id, str)
+              or not version_id
+              or not isinstance(stages, list)
+              or any(not isinstance(stage, str) for stage in stages)
+              for version_id, stages in versions.items()
+          ):
+              raise SystemExit("Database-secret metadata receipt had invalid versions.")
+          metadata = {
+              "ARN": os.environ["TENANT_DATABASE_URL_SECRET_ARN"],
+              "LastChangedDate": receipt["LastChangedDate"],
+              "VersionIdsToStages": versions,
+          }
+          (temp / "database-secret-metadata.json").write_text(
+              json.dumps(metadata),
+              encoding="utf-8",
+          )
+          PY
+          fi
           python - <<'PY'
           from datetime import datetime
           import json
@@ -640,11 +927,6 @@ jobs:
           temp = Path(os.environ["RUNNER_TEMP"])
           base_secret_arn = os.environ["TENANT_DATABASE_URL_SECRET_ARN"]
           resource = os.environ["HOSTED_RESOURCE_SERVER_URL"]
-          metadata = json.loads(
-              (temp / "database-secret-metadata.json").read_text(encoding="utf-8")
-          )
-          if metadata.get("ARN") != base_secret_arn:
-              raise SystemExit("Configured database secret must be one canonical bare ARN.")
           payload = json.loads(
               (temp / "service-task-definition.json").read_text(encoding="utf-8")
           )
@@ -686,6 +968,13 @@ jobs:
                   "dispatch the explicit expand operation to adopt its proven current version."
               )
           if pin_required:
+              metadata = json.loads(
+                  (temp / "database-secret-metadata.json").read_text(encoding="utf-8")
+              )
+              if metadata.get("ARN") != base_secret_arn:
+                  raise SystemExit(
+                      "Configured database secret must be one canonical bare ARN."
+                  )
               current_versions = [
                   version_id
                   for version_id, stages in metadata.get("VersionIdsToStages", {}).items()

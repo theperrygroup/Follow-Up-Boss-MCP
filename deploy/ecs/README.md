@@ -174,10 +174,13 @@ identifiers.
 Restrict the `production` environment's deployment branch policy to `main`. The workflow also
 rejects every other ref before a job can receive environment secrets. The OIDC deployment role must
 allow the existing ECR image upload, task-definition registration, and service update actions plus
-the migration runner's `ecs:DescribeServices`, `ecs:DescribeTaskDefinition`, `ecs:RunTask`,
-`ecs:DescribeTasks`, `ecs:ListTasks`, `logs:GetLogEvents`, and `secretsmanager:DescribeSecret`
-actions. Its `iam:PassRole` scope must include the configured task execution role used by the
-dedicated migration task. The workflow safely converts a proven bare reference once, then keeps the
+the metadata probe and migration runner's `ecs:DescribeServices`, `ecs:DescribeTaskDefinition`, `ecs:RunTask`,
+`ecs:DescribeTasks`, `ecs:ListTasks`, and `logs:GetLogEvents` actions. Its `iam:PassRole` scope must
+include the configured task and task execution roles used by the metadata probe and dedicated
+migration task. The metadata probe runs the current production image under the existing task role,
+pins that image to the digest proven on every running task, requests only
+`secretsmanager:DescribeSecret`, injects no secret values, and emits an allowlisted version-metadata
+receipt. The workflow safely converts a proven bare reference once, then keeps the
 running service, migration task, and new release on that authoritative immutable database-secret
 version. Only explicit `expand` may perform the first pin and enable the deployment circuit breaker;
 all other migration operations fail closed while the service remains bare and never update it. The

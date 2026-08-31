@@ -380,7 +380,25 @@ def test_production_workflow_uses_a_least_privilege_migration_task() -> None:
     assert "finalize-service-after.json" in workflow
     assert "running_database_secret" in workflow
     assert "running_resource" in workflow
-    assert "aws secretsmanager describe-secret" in workflow
+    assert "DATABASE_SECRET_METADATA=" in workflow
+    assert '"secretsmanager",' in workflow
+    assert 'region_name=os.environ["AWS_REGION"]' in workflow
+    assert '.describe_secret(SecretId=os.environ["TENANT_DATABASE_URL_SECRET_ARN"])' in workflow
+    assert '"SecretArnSha256": hashlib.sha256(' in workflow
+    assert 'metadata["ARN"].encode("utf-8")' in workflow
+    assert 'if [ "${metadata_probe_required}" = "true" ]; then' in workflow
+    assert 'registerable["family"] = "followupboss-mcp-database-secret-metadata"' in workflow
+    assert 'probe_image = f"{image_repository}@{next(iter(running_digests))}"' in workflow
+    assert 're.fullmatch(r"sha256:[0-9a-f]{64}"' in workflow
+    assert "from botocore.config import Config" in workflow
+    assert '"ARN": metadata.get("ARN")' not in workflow
+    assert "aws secretsmanager describe-secret" not in workflow
+    assert (
+        '"secrets":'
+        not in workflow.split('registerable["containerDefinitions"] = [', 1)[1].split(
+            '(temp / "metadata-probe-task-definition.json")', 1
+        )[0]
+    )
     assert 'pinned_secret_arn = f"{base_secret_arn}:::{current_versions[0]}"' in workflow
     assert '"PINNED_TENANT_DATABASE_URL_SECRET_ARN"' in workflow
     assert "deploymentCircuitBreaker={enable=true,rollback=true}" in workflow
