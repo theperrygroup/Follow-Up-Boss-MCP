@@ -1,4 +1,4 @@
-# MCP Usage
+# Follow Up Boss MCP Tools and Usage Guide
 
 ## Operating Modes
 

@@ -1,280 +1,244 @@
-# Follow Up Boss MCP
+<p align="center">
+  <img
+    src="https://raw.githubusercontent.com/theperrygroup/Follow-Up-Boss-MCP/main/src/followupboss_mcp/assets/follow-up-boss-logo.png"
+    width="112"
+    alt="Follow Up Boss MCP server logo"
+  >
+</p>
 
-Follow Up Boss MCP is a production-grade Python 3.12+ repository that combines:
+# Follow Up Boss MCP Server
 
-- a typed async Follow Up Boss SDK/client built on `httpx`
-- a layered domain service package built with `pydantic` v2 models
-- a production-ready MCP server built with the official Python MCP SDK and `FastMCP`
+Connect ChatGPT, Claude, Cursor, and other AI assistants to the Follow Up Boss real estate CRM
+through the Model Context Protocol (MCP). Search leads, review activity, manage tasks and
+appointments, work with deals, and run CRM workflows using natural language.
 
-The repository uses only official Follow Up Boss API documentation and official MCP documentation as design authority. It includes a real Follow Up Boss doc-ingestion step, an explicit API coverage matrix, strict static typing, deterministic tests, and enforced 100% line and 100% branch coverage for all production code under `src/followupboss_mcp`.
+[![CI](https://github.com/theperrygroup/Follow-Up-Boss-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/theperrygroup/Follow-Up-Boss-MCP/actions/workflows/ci.yml)
+[![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![MCP](https://img.shields.io/badge/MCP-Streamable_HTTP-6f42c1)](https://modelcontextprotocol.io/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/LICENSE)
 
-## Source Of Truth
+## Connect with one URL
 
-- Follow Up Boss API docs: <https://docs.followupboss.com/reference/getting-started>
-- MCP build-server docs: <https://modelcontextprotocol.io/docs/develop/build-server>
-- MCP Inspector docs: <https://modelcontextprotocol.io/docs/tools/inspector>
-- MCP debugging docs: <https://modelcontextprotocol.io/docs/tools/debugging>
-- Official MCP Python SDK: <https://github.com/modelcontextprotocol/python-sdk>
+Most people only need the hosted MCP server. You do **not** need to clone this repository, install
+Python, run a server, or paste a Follow Up Boss API key into your AI client.
 
-## Architecture Summary
-
-The repository is intentionally layered:
-
-1. `config.py`, `auth.py`, `constants.py`, and `logging.py` handle configuration, auth, and safe logging.
-2. `retry.py`, `rate_limits.py`, `pagination.py`, and `http_client.py` centralize transport behavior.
-3. `models/*` and `services/*` provide typed Follow Up Boss operations.
-4. `webhooks.py` contains reusable webhook signature verification and fast-ack helpers.
-5. `mcp_tools.py`, `mcp_registration.py`, `mcp_server.py`, and `cli.py` expose the typed client through a predictable MCP surface.
-6. `hosted_auth.py`, `hosted_oauth.py`, `hosted_rate_limits.py`, and `hosted_reference.py` provide the shared hosted deployment path.
-7. `battle_tests.py` encodes prompt-level MCP routing scenarios and read-only API-oracle checks for intent hardening.
-
-More detail is in [docs/architecture.md](docs/architecture.md).
-
-## Features
-
-- API key authentication with HTTP Basic auth using the API key as the username and an empty password
-- OAuth Bearer token support
-- Configurable `X-System` and `X-System-Key` request headers
-- Configurable base URL with Follow Up Boss v1 as the default
-- JSON request and response handling
-- 429 handling with `Retry-After`
-- truncated exponential backoff with jitter for retryable 5xx failures and transport errors
-- reusable pagination helpers supporting both `next` token flow and `offset` fallback
-- typed services for Identity, People, People Relationships, Person Attachments, Events, Users, Custom Fields, Deals, Deal Custom Fields, Deal Attachments, Email Marketing, Groups, Inbox Apps, Pipelines, Ponds, Reactions, Smart Lists, Stages, Action Plans, Appointments, Appointment Outcomes, Appointment Types, Automations, Calls, Tasks, Team Inboxes, Teams, Templates, Text Messages, Threaded Replies, Timeframes, Notes, Webhook Events, and Webhooks
-- current-user profile lookup with MCP-side redaction of secret-like fields
-- people duplicate checks plus unclaimed-lead list, claim, and ignore helpers
-- explicit webhook signature verification using the exact raw request body
-- MCP tools, one resource, and one lead-event composition prompt
-- stdio and streamable HTTP transports
-- hosted OAuth authorization-server routes for dynamic client registration, Follow Up Boss browser consent delegation, and MCP-scoped bearer tokens
-- hosted branding metadata with a packaged Follow Up Boss logo served from `/assets/follow-up-boss-logo.png`, advertised as `logo_uri`, and mirrored as the issuer-host favicon at `/favicon.ico`
-- read-only battle-test scenario models for vague chatbot prompts, selected MCP tool routes, forbidden tools, and typed API-oracle comparison
-
-## Repository Layout
-
-- `src/followupboss_mcp`: production package
-- `scripts/ingest_followupboss_docs.py`: official Follow Up Boss crawler and manifest generator
-- `scripts/validate_api_coverage.py`: explicit API coverage matrix generator
-- `docs/followupboss-endpoint-manifest.json`: machine-readable Follow Up Boss manifest
-- `docs/api-coverage-matrix.md`: implementation matrix across discovered official endpoints
-- `src/followupboss_mcp/assets`: packaged hosted branding assets, including the Follow Up Boss logo and favicon used by OAuth metadata and issuer-host discovery
-- `src/followupboss_mcp/battle_tests.py`: reusable read-only battle-test scenario and oracle evaluator code
-- `examples`: runnable examples for health checks, event submission, and server transports
-- `tests`: unit, integration, contract, and MCP test suites
-
-## Installation
-
-```bash
-uv sync
-```
-
-This installs the package plus the default development group defined in `pyproject.toml`.
-
-## Environment Variables
-
-| Variable | Required | Default | Notes |
-| --- | --- | --- | --- |
-| `FOLLOWUPBOSS_API_KEY` | For `api_key` auth | None | API key used as the HTTP Basic username. The legacy alias `FOLLOW_UP_BOSS_API_KEY` is also accepted. |
-| `FOLLOWUPBOSS_ACCESS_TOKEN` | For `oauth` auth | None | OAuth access token used as a Bearer token. The legacy alias `FOLLOW_UP_BOSS_ACCESS_TOKEN` is also accepted. |
-| `FOLLOWUPBOSS_AUTH_MODE` | No | `api_key` | Valid values: `api_key`, `oauth`. The legacy alias `FOLLOW_UP_BOSS_AUTH_MODE` is also accepted. |
-| `FOLLOWUPBOSS_SYSTEM_NAME` | No | None | Sent as `X-System` when configured. Recommended for external integrations. Legacy aliases `FOLLOW_UP_BOSS_SYSTEM_NAME` and `FOLLOW_UP_BOSS_X_SYSTEM` are also accepted. |
-| `FOLLOWUPBOSS_SYSTEM_KEY` | No | None | Sent as `X-System-Key` when configured. Required for Follow Up Boss webhook verification and webhook admin scenarios. Legacy aliases `FOLLOW_UP_BOSS_SYSTEM_KEY` and `FOLLOW_UP_BOSS_X_SYSTEM_KEY` are also accepted. |
-| `FOLLOWUPBOSS_BASE_URL` | No | `https://api.followupboss.com/v1` | Override for alternate environments or proxies. The legacy alias `FOLLOW_UP_BOSS_BASE_URL` is also accepted. |
-| `FOLLOWUPBOSS_TIMEOUT_SECONDS` | No | `10.0` | Per-request timeout. Must be greater than zero. The legacy alias `FOLLOW_UP_BOSS_TIMEOUT_SECONDS` is also accepted. |
-| `FOLLOWUPBOSS_MAX_RETRIES` | No | `3` | Retry budget for retryable failures. Must be zero or greater. The legacy alias `FOLLOW_UP_BOSS_MAX_RETRIES` is also accepted. |
-| `FOLLOWUPBOSS_LOG_LEVEL` | No | `INFO` | One of `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. The legacy alias `FOLLOW_UP_BOSS_LOG_LEVEL` is also accepted. |
-| `FOLLOWUPBOSS_DEFAULT_TIMEZONE` | No | Account timezone | Optional IANA timezone override (such as `America/Denver`) used to interpret naive appointment and task datetimes. By default the server auto-detects the authenticated account's timezone from Follow Up Boss `/me`, so no configuration is needed. Follow Up Boss stores times in UTC and does not honor a timezone offset suffix on the wire, so the server converts datetimes to UTC before sending: naive values are interpreted in the resolved zone, and aware values are converted from their offset. Set this variable only to force a specific zone. The legacy alias `FOLLOW_UP_BOSS_DEFAULT_TIMEZONE` is also accepted. |
-| `SENTRY_DSN` | No | None | Enables Sentry error monitoring when set. The DSN identifies the Sentry project but does not grant access to project data. |
-| `SENTRY_ENVIRONMENT` | No | `local` | Sentry environment name. The hosted MCP deployment uses `production`. |
-| `SENTRY_RELEASE` | No | None | Sentry release identifier, such as `followupboss-mcp@0.1.0+<git-sha>`. |
-| `SENTRY_SAMPLE_RATE` | No | `1.0` | Error-event sample rate between `0.0` and `1.0`. |
-| `SENTRY_TRACES_SAMPLE_RATE` | No | None | Optional transaction trace sample rate between `0.0` and `1.0`; tracing is disabled when unset. |
-| `SENTRY_PROFILES_SAMPLE_RATE` | No | None | Optional profiling sample rate between `0.0` and `1.0`; profiling is disabled when unset. |
-| `SENTRY_ENABLE_LOGS` | No | `false` | Set `true` to send supported Python logging events to Sentry. |
-| `SENTRY_DEBUG` | No | `false` | Enables verbose Sentry SDK diagnostics; avoid in stdio MCP sessions unless debugging startup. |
-
-## Development Commands
-
-Run the exact quality gates enforced locally and in CI:
-
-```bash
-make validate
-```
-
-Run only the docs and markdown validation checks with:
-
-```bash
-make docs-check
-```
-
-For the explicit underlying commands:
-
-```bash
-uv sync
-uv export --format requirements.txt --all-groups --locked --no-editable --no-emit-project --output-file /tmp/followupboss-mcp-requirements.txt
-uvx --from pip-audit pip-audit -r /tmp/followupboss-mcp-requirements.txt --strict --disable-pip --no-deps
-uv run python scripts/validate_docs_links.py
-uv run ruff format --check .
-uv run ruff check .
-uv run mypy src tests
-uv run pytest
-uv run coverage run --branch -m pytest
-uv run coverage report --fail-under=100
-uv run python -m followupboss_mcp.cli --help
-```
-
-Build and validate the distribution artifacts with:
-
-```bash
-make build-smoke
-```
-
-Run the optional live checks only when sandbox credentials are available:
-
-```bash
-FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-identity-check
-FOLLOWUPBOSS_RUN_LIVE_TESTS=1 make live-contract-check
-```
-
-`live-identity-check` is the quick auth and transport smoke path. `live-contract-check`
-adds a broader suite across identity, users, people, timeframes, MCP-layer `/me`
-redaction, note reactions, registered-system person attachments when configured,
-and disposable person-centered note, task, and appointment write-and-rollback flows.
-
-Both targets auto-load a repository-local `.env` when present, so manual export is optional for the common local workflow.
-
-## Running The MCP Server
-
-### Stdio
-
-```bash
-uv run python -m followupboss_mcp.cli stdio
-```
-
-### Streamable HTTP
-
-```bash
-uv run python -m followupboss_mcp.cli streamable-http --host 127.0.0.1 --port 8000 --path /mcp
-```
-
-Hosted multi-tenant operator guidance lives in
-`docs/hosted-deployment-guide.md` and `docs/customer-onboarding-flow.md`.
-Treat the local commands above as developer workflows, not as the production
-recipe for the shared hosted deployment. The repository now also ships
-`followupboss-mcp-hosted` as the reference hosted entrypoint described in the
-hosted deployment guide. Hosted deployments can expose OAuth authorization
-server routes that let Cursor delegate browser consent to Follow Up Boss and
-receive MCP-scoped hosted bearer tokens.
-
-The current production deployment is served at:
+**MCP server URL**
 
 ```text
 https://fub.theperry.group/mcp
 ```
 
-The same issuer host also serves OAuth discovery and branding endpoints:
+1. Open your AI client's apps, connectors, or MCP settings.
+2. Choose **Add custom connector**, **Create app**, or **Add remote MCP server**.
+3. Paste `https://fub.theperry.group/mcp` as the server URL.
+4. If prompted, choose **Streamable HTTP** and **OAuth**.
+5. Complete the browser sign-in and authorize access to Follow Up Boss.
+6. Enable the new connector in a conversation and ask: **“Who am I in Follow Up Boss?”**
 
-```text
-https://fub.theperry.group/.well-known/oauth-authorization-server
-https://fub.theperry.group/.well-known/openid-configuration
-https://fub.theperry.group/assets/follow-up-boss-logo.png
-https://fub.theperry.group/favicon.ico
-```
+The client should return your Follow Up Boss identity. That confirms the connection and
+authorization flow are working.
 
-The hosted OAuth metadata includes `logo_uri` so MCP clients can discover the
-packaged Follow Up Boss logo without hard-coding an asset path. The same logo is
-also exported as `/favicon.ico` so clients that infer branding from the issuer
-domain receive the MCP-specific icon rather than a generic domain icon.
+### Where to paste the URL
 
-### Production Deployment
+| Client | Setup path |
+| --- | --- |
+| **ChatGPT** | Enable developer mode, then go to **Settings → Apps → Create**, provide the MCP endpoint, choose OAuth, and scan the tools. Full MCP availability depends on your ChatGPT plan and workspace permissions. See [OpenAI's MCP app guide](https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt). |
+| **Claude** | Go to **Customize → Connectors → + → Add custom connector**, then paste the URL and connect. Team and Enterprise workspaces require an owner to add the connector first. See [Anthropic's remote MCP guide](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp). |
+| **Cursor** | Add a remote MCP server in Cursor's MCP settings, use the URL above, and complete OAuth when Cursor opens the browser. See the [Cursor MCP documentation](https://cursor.com/docs/mcp). |
+| **Other clients** | Use any client that supports remote **Streamable HTTP** MCP servers with OAuth and dynamic client registration. |
 
-The production GitHub Actions workflow is `.github/workflows/deploy-production.yml`.
-It deploys automatically on pushes to `main` and can also be started manually
-with `workflow_dispatch`. The workflow builds the hosted image, pushes it to
-ECR, renders the ECS task definition from the production environment variables, and
-updates the `followupboss-mcp-hosted` ECS service.
+Client labels change over time. Use the exact hosted URL shown above.
 
-Pushing to a non-`main` branch does not deploy production unless that branch is
-merged into `main` or the workflow is manually dispatched for the desired ref.
+## Things you can ask
 
-## Examples
+- “Show me my newest lead.”
+- “Which of my tasks are overdue?”
+- “Find my uncontacted Zillow leads.”
+- “Find my Zillow leads in the Eligible For Transfer smart list.”
+- “Show the active deals for Jordan Smith.”
+- “Find Jordan Smith, then create a follow-up task for them tomorrow at 9:00 AM and assign it to
+  me.”
+- “Find Jordan Smith, then schedule an appointment with them next Tuesday afternoon.”
+- “Find Jordan Smith, then use their person ID to summarize recent calls, texts, emails, and
+  appointments.”
 
-Identity-based health check:
+Your AI client may ask for confirmation before it creates, updates, or deletes CRM data.
 
-```bash
-uv run python examples/identity_check.py
-```
+## What the Follow Up Boss MCP can do
 
-Canonical lead ingestion via `POST /events`:
+The server exposes more than 150 tools across the Follow Up Boss API.
 
-```bash
-uv run python examples/send_lead_event.py
-```
+| Area | Examples |
+| --- | --- |
+| **Leads and contacts** | Search people, find the latest or uncontacted leads, check duplicates, review person activity, claim leads, and manage relationships. |
+| **Daily work** | List overdue, due-today, and upcoming tasks; create follow-ups; and manage appointments, types, and outcomes. |
+| **Deals and pipeline** | Work with deals, stages, pipelines, smart lists, ponds, deal custom fields, and attachments. |
+| **Communication** | Review calls, text messages, email events, and lead events; add notes or retrieve and update a known note by ID. |
+| **Automation and teams** | Use action plans, automations, groups, teams, team inboxes, templates, and round-robin settings. |
+| **Administration** | Work with users, custom fields, webhooks, email campaigns, and registered inbox apps when the connected account has permission. |
 
-Run the MCP server directly from example scripts:
+See the [complete MCP tool catalog and usage guide](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/docs/mcp-usage.md)
+for the available tools and common workflows.
 
-```bash
-uv run python examples/run_mcp_stdio.py
-uv run python examples/run_mcp_streamable_http.py
-```
+## Choose the right setup
 
-## MCP Inspector
+| Goal | Recommended path | What you need |
+| --- | --- | --- |
+| Connect an AI assistant to Follow Up Boss | **Hosted MCP** | The URL above and a Follow Up Boss login |
+| Develop or test the Python package | **Local development** | Git, Python 3.12+, `uv`, and test credentials |
+| Operate your own shared deployment | **Self-hosting** | HTTPS infrastructure, PostgreSQL, Redis, AWS Secrets Manager, and a Follow Up Boss OAuth app |
 
-The official MCP docs recommend using MCP Inspector during development. From the repository root:
+Most users only need the hosted path, troubleshooting, and FAQ. Local development and self-hosting
+are for developers and operators.
 
-```bash
-npx @modelcontextprotocol/inspector uv run followupboss-mcp stdio
-```
+## How the hosted connection works
 
-For a streamable HTTP server, start the server first and then connect Inspector to the HTTP endpoint you exposed.
+Your client discovers the server's OAuth configuration, sends you to Follow Up Boss to approve
+access, and receives a separate MCP-scoped token. You never put a Follow Up Boss API key or password
+in the MCP configuration. The hosted service resolves your account and credential again on every
+tool call instead of sharing a client between tenants.
 
-## Documentation
+Requested CRM data is returned to your AI client so it can answer you. That client's provider and
+workspace policies govern how it processes and retains the conversation, so only connect a client
+that your organization approves for CRM data.
 
-- [docs/architecture.md](docs/architecture.md)
-- [CONTRIBUTING.md](CONTRIBUTING.md)
-- [docs/followupboss-doc-ingestion.md](docs/followupboss-doc-ingestion.md)
-- [docs/api-coverage-matrix.md](docs/api-coverage-matrix.md)
-- [docs/hosted-deployment-guide.md](docs/hosted-deployment-guide.md)
-- [deploy/ecs/README.md](deploy/ecs/README.md)
-- [docs/customer-onboarding-flow.md](docs/customer-onboarding-flow.md)
-- [docs/mcp-usage.md](docs/mcp-usage.md)
-- [docs/mcp-validation-checklist.md](docs/mcp-validation-checklist.md)
-- [docs/testing.md](docs/testing.md)
-- [docs/security.md](docs/security.md)
-- [docs/security-incident-playbook.md](docs/security-incident-playbook.md)
-- [docs/release-checklist.md](docs/release-checklist.md)
-- [docs/final-validation-report.md](docs/final-validation-report.md)
+### Permissions and write access
+
+- The integration can only access data allowed by the Follow Up Boss user who authorizes it.
+- The server includes create, update, and delete tools—not only read tools.
+- Review tool requests before approving actions that change CRM data.
+- If your client supports tool-level controls, disable write or administrative tools when you only
+  need search and reporting.
+
+Read [Security](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/docs/security.md) for
+the authentication, credential storage, isolation, logging, revocation, and rate-limit details.
+
+This is an independently developed, community integration. It is not an official Follow Up Boss
+product and is not endorsed by Follow Up Boss.
+
+The hosted endpoint at `fub.theperry.group` is operated by The Perry Group. For non-sensitive setup
+support, [open a GitHub issue](https://github.com/theperrygroup/Follow-Up-Boss-MCP/issues). For a
+security issue or a lost or compromised client, follow the private reporting and revocation steps
+in the [security policy](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/SECURITY.md).
+Never include credentials, tokens, or customer data in a public issue.
 
 ## Troubleshooting
 
-- `FOLLOWUPBOSS_API_KEY must be provided`: set `FOLLOWUPBOSS_API_KEY` or switch to `FOLLOWUPBOSS_AUTH_MODE=oauth` with `FOLLOWUPBOSS_ACCESS_TOKEN`.
-- `401` or `403` errors: verify the credential, the integration user permissions, and whether the API key owner has access to the endpoint you are calling.
-- `429` errors: Follow Up Boss returned a rate limit. The client respects `Retry-After`, but sustained rate limiting usually means the caller should reduce request volume.
-- Note or call mutations immediately after person creation can fail if the person is not visible yet. Use the event-ingestion path or the service wait helper for eventual-consistency-sensitive flows.
-- Custom field writes must use the Follow Up Boss field `name` such as `customBirthday`, not the UI label.
-- In stdio mode, never write operational logs to stdout. The server uses Python logging rather than printing MCP diagnostics to stdout.
+- **The URL shows `401` in a browser:** This is expected. `/mcp` is a protected machine-to-machine
+  endpoint, not a web page. Paste it inside an MCP client to start OAuth.
+- **The sign-in window does not open:** Confirm the client supports remote Streamable HTTP with
+  OAuth, allow pop-ups, then remove and add the connector again.
+- **Tools are missing:** Use the client's **Refresh tools** or **Scan tools** action. A workspace
+  admin may need to approve newly discovered actions.
+- **A tool returns `401`:** Reconnect the integration to repeat authorization. Automatic token
+  refresh varies by client, so some clients may ask you to sign in again after the connection has
+  been idle or its access token expires.
+- **A tool returns `403`:** The connected Follow Up Boss user may lack permission for that record
+  or action, or the operation may require registered-system headers that are not available to the
+  connection.
+- **A tool returns `429`:** Wait briefly, then retry with a narrower request.
 
-## Security Notes
+## FAQ
 
-- Secrets are loaded through environment variables and represented as `SecretStr` inside settings.
-- Authorization and `X-System-Key` values are redacted in logs and object representations.
-- Caller-supplied overrides for `Authorization`, `X-System`, `X-System-Key`, and `Content-Type` are rejected at the HTTP client boundary.
-- Webhook verification uses HMAC-SHA256 over the base64-encoded raw request body with `X-System-Key`.
-- Webhook receivers should acknowledge with a fast `2xx` response and move longer processing off the request thread.
-- CI now includes dependency audit and secret-scanning automation without a temporary vulnerability exception in the current lockfile state.
-- Successful HTTP responses now emit method, path, status, and elapsed-time logs through the existing stderr-safe logger.
+### What is a Follow Up Boss MCP server?
 
-More detail is in [docs/security.md](docs/security.md).
+It is a Model Context Protocol server that translates AI tool calls into authenticated Follow Up
+Boss API operations. It lets an AI assistant work with CRM data without manually exporting or
+re-entering records.
 
-## Coverage Guarantee
+### Do I need Python or an API key?
 
-This repository enforces:
+Not for the hosted service. Paste the hosted URL into a compatible AI client and complete OAuth.
+Python and API credentials are only needed for local development or self-hosting.
 
-- `mypy --strict`
-- `ruff check`
-- `ruff format --check`
-- passing `pytest`
-- `coverage run --branch -m pytest`
-- `coverage report --fail-under=100`
+### Does this work with ChatGPT, Claude, and Cursor?
 
-The coverage gate is scoped to all production code in `src/followupboss_mcp`, and both line coverage and branch coverage must remain at `100.00%`.
+The hosted endpoint uses remote Streamable HTTP MCP and OAuth. ChatGPT, Claude, and Cursor support
+remote MCP, subject to their current plan, workspace, and token-refresh requirements. Use the
+client-specific links in [Where to paste the URL](#where-to-paste-the-url).
+
+### Can the AI change my Follow Up Boss data?
+
+Yes. The server includes tools that create, update, and delete records. The available data and
+actions are limited by the permissions of the Follow Up Boss account you authorize and any action
+controls in your AI client.
+
+## Developer and operator setup
+
+The hosted URL requires no local installation. Use the following sections only to work on the code
+or run your own deployment.
+
+### Local development
+
+Use this path only when you want to develop or run the server yourself. It requires Python 3.12+,
+[`uv`](https://docs.astral.sh/uv/), and a Follow Up Boss API key or OAuth token for a test account.
+
+```bash
+git clone https://github.com/theperrygroup/Follow-Up-Boss-MCP.git
+cd Follow-Up-Boss-MCP
+uv sync
+export FOLLOWUPBOSS_API_KEY="your-test-api-key"
+uv run followupboss-mcp stdio
+```
+
+To use a Follow Up Boss OAuth access token for local development instead of an API key:
+
+```bash
+export FOLLOWUPBOSS_AUTH_MODE="oauth"
+export FOLLOWUPBOSS_ACCESS_TOKEN="your-test-access-token"
+uv run followupboss-mcp stdio
+```
+
+To expose a local HTTP endpoint instead:
+
+```bash
+uv run followupboss-mcp streamable-http --host 127.0.0.1 --port 8000 --path /mcp
+```
+
+The URL is then `http://127.0.0.1:8000/mcp`. Do not commit real credentials. See
+[MCP Usage](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/docs/mcp-usage.md) for OAuth
+and system-header settings, and [Contributing](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/CONTRIBUTING.md)
+for validation commands.
+
+### Self-hosting
+
+The production entrypoint adds delegated OAuth, tenant isolation, PostgreSQL token metadata, AWS
+Secrets Manager, Redis rate limiting, and ECS/Fargate assets. First, configure the required
+infrastructure and environment described in the
+[hosted deployment guide](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/docs/hosted-deployment-guide.md).
+Then run:
+
+```bash
+uv run followupboss-mcp-hosted --host 0.0.0.0 --port 8000 --path /mcp
+```
+
+Local transports are single-tenant developer paths, not shared production servers.
+
+## Documentation
+
+### Using the MCP
+
+- [MCP tool catalog and usage guide](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/docs/mcp-usage.md)
+- [Security model](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/docs/security.md)
+- [MCP validation checklist](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/docs/mcp-validation-checklist.md)
+
+### Developing the project
+
+- [Contributing](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/CONTRIBUTING.md)
+- [Architecture](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/docs/architecture.md)
+- [Testing](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/docs/testing.md)
+- [Follow Up Boss API coverage matrix](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/docs/api-coverage-matrix.md)
+- [Final validation report](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/docs/final-validation-report.md)
+
+### Operating a hosted deployment
+
+- [Hosted deployment guide](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/docs/hosted-deployment-guide.md)
+- [Customer onboarding flow](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/docs/customer-onboarding-flow.md)
+- [ECS deployment guide](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/deploy/ecs/README.md)
+- [Security incident playbook](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/docs/security-incident-playbook.md)
+- [Release checklist](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/docs/release-checklist.md)
+
+## Contributing
+
+Issues and pull requests are welcome. Read [CONTRIBUTING.md](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/CONTRIBUTING.md),
+keep secrets and customer data out of commits, and run `make validate` before opening a pull request.

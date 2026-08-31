@@ -263,9 +263,13 @@ def _validate_readme_docs_links(readme_path: Path) -> list[ValidationIssue]:
         "docs/final-validation-report.md",
     }
     readme_text = readme_path.read_text(encoding="utf-8")
+    link_targets = {
+        target.strip() for target in _MARKDOWN_LINK_RE.findall(_strip_code_blocks(readme_text))
+    }
+    canonical_docs_prefix = "https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/"
     issues: list[ValidationIssue] = []
     for link in sorted(required_links):
-        if f"({link})" not in readme_text:
+        if link not in link_targets and f"{canonical_docs_prefix}{link}" not in link_targets:
             issues.append(
                 ValidationIssue(
                     message=f"README is missing documentation link: {link}",

@@ -5,11 +5,31 @@ build-backend = "hatchling.build"
 [project]
 name = "followupboss-mcp"
 version = "0.1.0"
-description = "Production-grade Follow Up Boss MCP server and typed Python SDK."
+description = "Remote MCP server for the Follow Up Boss real estate CRM, with hosted OAuth and a typed Python SDK."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
+license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "John Perry" }]
+keywords = [
+  "ai-agents",
+  "crm",
+  "follow-up-boss",
+  "followupboss",
+  "mcp",
+  "mcp-server",
+  "model-context-protocol",
+  "real-estate",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Framework :: AsyncIO",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Typing :: Typed",
+]
 dependencies = [
   "beautifulsoup4>=4.12.3,<5",
   "boto3>=1.42.78",
@@ -26,6 +46,12 @@ dependencies = [
   "sentry-sdk>=2.59.0",
   "starlette>=1.3.1,<2",
 ]
+
+[project.urls]
+Homepage = "https://github.com/theperrygroup/Follow-Up-Boss-MCP"
+Documentation = "https://github.com/theperrygroup/Follow-Up-Boss-MCP#readme"
+Repository = "https://github.com/theperrygroup/Follow-Up-Boss-MCP.git"
+Issues = "https://github.com/theperrygroup/Follow-Up-Boss-MCP/issues"
 
 [project.optional-dependencies]
 dev = [
