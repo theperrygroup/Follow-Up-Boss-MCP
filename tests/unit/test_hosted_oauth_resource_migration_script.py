@@ -418,7 +418,7 @@ def test_production_workflow_uses_a_least_privilege_migration_task() -> None:
     assert '[ "${deployment_strategy}" != "ROLLING" ]' in workflow
     assert "database-prepin-service.json" in workflow
     assert '--arg deployment_id "${initial_deployment_id}"' in workflow
-    assert '.services[0].deployments[0].id == $deployment_id' in workflow
+    assert ".services[0].deployments[0].id == $deployment_id" in workflow
     assert '[ "${expected_deployment_id}" = "${initial_deployment_id}" ]' in workflow
     assert '[ "${deployment_id}" != "${expected_deployment_id}" ]' in workflow
     assert workflow.count("--force-new-deployment") == 2
