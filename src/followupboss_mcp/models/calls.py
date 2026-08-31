@@ -2,9 +2,20 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import Field
 
 from followupboss_mcp.models.common import QueryModel, RequestModel, ResponseModel
+
+type CallOutcome = Literal[
+    "Interested",
+    "Not Interested",
+    "Left Message",
+    "No Answer",
+    "Busy",
+    "Bad Number",
+]
 
 
 class CallListRequest(QueryModel):
@@ -25,7 +36,7 @@ class CallWriteRequest(RequestModel):
     from_number: str | None = Field(default=None, serialization_alias="fromNumber")
     is_incoming: bool | None = Field(default=None, serialization_alias="isIncoming")
     note: str | None = None
-    outcome: str | None = None
+    outcome: CallOutcome | None = None
     person_id: int | None = Field(default=None, serialization_alias="personId")
     phone: str | None = None
     recording_url: str | None = Field(default=None, serialization_alias="recordingUrl")

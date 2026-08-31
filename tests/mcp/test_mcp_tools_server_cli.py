@@ -234,7 +234,12 @@ from followupboss_mcp.models.stages import (
     StageListRequest,
     StageRecord,
 )
-from followupboss_mcp.models.tasks import CreateTaskRequest, TaskListRequest, TaskRecord
+from followupboss_mcp.models.tasks import (
+    CreateTaskRequest,
+    TaskListRequest,
+    TaskRecord,
+    UpdateTaskRequest,
+)
 from followupboss_mcp.models.team_inboxes import (
     TeamInboxListRequest,
     TeamInboxRecord,
@@ -277,6 +282,7 @@ from followupboss_mcp.tenant_runtime import ServiceBundle
 from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.streamable_http import streamable_http_client
+from mcp.server.fastmcp.exceptions import ToolError
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _SENTRY_ENV_KEYS = (
@@ -551,7 +557,9 @@ class StubBundle:
         self.event_search_requests: list[EventSearchRequest] = []
         self.deal_list_requests: list[DealListRequest] = []
         self.people_search_requests: list[PeopleSearchRequest] = []
+        self.task_create_requests: list[CreateTaskRequest] = []
         self.task_list_requests: list[TaskListRequest] = []
+        self.task_update_requests: list[UpdateTaskRequest] = []
         self.text_message_list_requests: list[TextMessageListRequest] = []
         self.user_list_requests: list[UserListRequest] = []
 
@@ -1692,11 +1700,12 @@ class StubBundle:
         async def tasks_get(task_id: int) -> TaskRecord:
             return TaskRecord(id=task_id, personId=2, assignedTo="Data", type="Call")
 
-        async def tasks_create(_: CreateTaskRequest) -> TaskRecord:
+        async def tasks_create(request: CreateTaskRequest) -> TaskRecord:
+            self.task_create_requests.append(request)
             return TaskRecord(id=18, personId=2, assignedTo="Data", type="Email")
 
-        async def tasks_update(task_id: int, request: object) -> TaskRecord:
-            del request
+        async def tasks_update(task_id: int, request: UpdateTaskRequest) -> TaskRecord:
+            self.task_update_requests.append(request)
             return TaskRecord(id=task_id, personId=2, assignedTo="Data", type="Text")
 
         async def tasks_delete(task_id: int) -> None:
@@ -2152,10 +2161,13 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert uncontacted_alias_input.assigned_user_name == "Geordi"
     assert uncontacted_alias_input.source == "Zillow"
     assert ListUncontactedLeadsToolInput(fields=["id", "name"]).fields == ["id", "name"]
-    assert ListUncontactedLeadsToolInput(fields=["price", "sourceUrl", "tags"]).fields == [
+    assert ListUncontactedLeadsToolInput(
+        fields=["price", "sourceUrl", "tags", "updated"]
+    ).fields == [
         "price",
         "sourceUrl",
         "tags",
+        "updated",
     ]
     with pytest.raises(ValidationError, match="assigned_user_id must be a positive"):
         ListUncontactedLeadsToolInput(assigned_user_id=0)
@@ -3341,17 +3353,25 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert stub.task_list_requests[-1].due_start is not None
     assert stub.task_list_requests[-1].is_completed is False
     assert stub.task_list_requests[-1].limit == 10
-    assert ListMyTaskIntentToolInput(fields=["id", "name", "dueDate"]).fields == [
+    assert ListMyTaskIntentToolInput(
+        fields=["id", "name", "created", "dueDate", "dueDateTime"]
+    ).fields == [
         "id",
         "name",
+        "created",
         "dueDate",
+        "dueDateTime",
     ]
-    with pytest.raises(ValidationError, match="Unsupported task fields"):
+    with pytest.raises(ValidationError, match="personName"):
         ListMyTaskIntentToolInput(fields=["id", "personName"])
     assert (await adapter.get_task(GetTaskToolInput(task_id=18)))["id"] == 18
     assert (
-        await adapter.create_task(CreateTaskRequest(person_id=1, assigned_to="Data", type="Email"))
+        await adapter.create_task(
+            CreateTaskRequest(person_id=1, assigned_to="Geordi", type="Email")
+        )
     )["id"] == 18
+    assert stub.task_create_requests[-1].assigned_to is None
+    assert stub.task_create_requests[-1].assigned_user_id == 6
     assert (await adapter.update_task(UpdateTaskToolInput(task_id=19, type="Text")))["id"] == 19
     assert (await adapter.delete_task(DeleteTaskToolInput(task_id=20))) == {
         "deleted": True,
@@ -3581,6 +3601,122 @@ async def test_communication_mutations_reject_mismatched_attribution() -> None:
         await adapter.update_call(UpdateCallToolInput(call_id=12, user_id=999))
 
     assert stub.call_create_requests == []
+
+
+@pytest.mark.asyncio
+async def test_create_task_resolves_named_assignee_to_id() -> None:
+    """A public task assignee name should never be serialized as `assignedTo`."""
+    stub = StubBundle()
+    adapter = FollowUpBossToolAdapter(stub.bundle)
+
+    await adapter.create_task(CreateTaskRequest(person_id=1, assigned_to="Geordi", type="Email"))
+
+    assert stub.task_create_requests[-1].assigned_to is None
+    assert stub.task_create_requests[-1].assigned_user_id == 6
+
+
+@pytest.mark.asyncio
+async def test_update_task_resolves_named_assignee_to_id() -> None:
+    """A public task update should never serialize an assignee as `assignedTo`."""
+    stub = StubBundle()
+    adapter = FollowUpBossToolAdapter(stub.bundle)
+
+    await adapter.update_task(UpdateTaskToolInput(task_id=19, assigned_to="Geordi"))
+
+    assert stub.task_update_requests[-1].assigned_to is None
+    assert stub.task_update_requests[-1].assigned_user_id == 6
+
+
+@pytest.mark.asyncio
+async def test_task_assignee_resolution_is_exact_paginated_and_id_preserving() -> None:
+    """Task assignees should resolve exactly, page users, and preserve explicit IDs."""
+    stub = StubBundle()
+    adapter = FollowUpBossToolAdapter(stub.bundle)
+    user_request_count = len(stub.user_list_requests)
+
+    await adapter.create_task(
+        CreateTaskRequest(
+            person_id=1,
+            assigned_to="Ignored Name",
+            assigned_user_id=42,
+        )
+    )
+    await adapter.update_task(
+        UpdateTaskToolInput(
+            task_id=19,
+            assigned_to="Ignored Name",
+            assigned_user_id=43,
+        )
+    )
+    assert stub.task_create_requests[-1].assigned_user_id == 42
+    assert stub.task_update_requests[-1].assigned_user_id == 43
+    assert len(stub.user_list_requests) == user_request_count
+
+    paginated_requests: list[UserListRequest] = []
+
+    async def list_paginated_users(request: UserListRequest) -> PageResult[UserRecord]:
+        paginated_requests.append(request)
+        if request.offset == 0:
+            return PageResult(
+                items=[UserRecord(id=5, name="Other Owner")],
+                metadata=PaginationMetadata(
+                    count=1, limit=1, next_token=None, next_link=None, offset=0, total=2
+                ),
+            )
+        return PageResult(
+            items=[UserRecord(id=6, firstName="Geordi", lastName="La Forge")],
+            metadata=PaginationMetadata(
+                count=1, limit=1, next_token=None, next_link=None, offset=1, total=2
+            ),
+        )
+
+    paginated_adapter = FollowUpBossToolAdapter(
+        replace(stub.bundle, users=_service_stub(list_users=list_paginated_users))
+    )
+    await paginated_adapter.create_task(
+        CreateTaskRequest(person_id=1, assigned_to="Geordi La Forge")
+    )
+    assert [request.offset for request in paginated_requests] == [0, 1]
+    assert stub.task_create_requests[-1].assigned_user_id == 6
+
+    async def list_deleted_user(_: UserListRequest) -> PageResult[UserRecord]:
+        return PageResult(
+            items=[UserRecord(id=7, name="Geordi", status="Deleted")],
+            metadata=_page_metadata(),
+        )
+
+    missing_adapter = FollowUpBossToolAdapter(
+        replace(stub.bundle, users=_service_stub(list_users=list_deleted_user))
+    )
+    with pytest.raises(RuntimeError, match="was not found"):
+        await missing_adapter.create_task(CreateTaskRequest(person_id=1, assigned_to="Geordi"))
+
+    async def list_ambiguous_users(_: UserListRequest) -> PageResult[UserRecord]:
+        return PageResult(
+            items=[UserRecord(id=8, name="Geordi"), UserRecord(id=9, name="Geordi")],
+            metadata=_page_metadata(),
+        )
+
+    ambiguous_adapter = FollowUpBossToolAdapter(
+        replace(stub.bundle, users=_service_stub(list_users=list_ambiguous_users))
+    )
+    with pytest.raises(RuntimeError, match="ambiguous; matched IDs"):
+        await ambiguous_adapter.create_task(CreateTaskRequest(person_id=1, assigned_to="Geordi"))
+
+
+def test_call_outcomes_reject_values_outside_the_documented_contract() -> None:
+    """Create and update inputs should reject unsupported call outcomes locally."""
+    with pytest.raises(ValidationError, match="Voicemail"):
+        CreateCallRequest.model_validate(
+            {
+                "person_id": 99,
+                "phone": "555-2222",
+                "is_incoming": False,
+                "outcome": "Voicemail",
+            }
+        )
+    with pytest.raises(ValidationError, match="Voicemail"):
+        UpdateCallToolInput.model_validate({"call_id": 12, "outcome": "Voicemail"})
 
 
 @pytest.mark.asyncio
@@ -3851,6 +3987,181 @@ async def test_search_people_accepts_comma_separated_fields_from_public_tool() -
     assert result["people"][0]["id"] == 2
     assert client.calls[-1]["path"] == "/people"
     assert client.calls[-1]["params"] == {"fields": "id,firstName,lastName,phones,tags,addresses"}
+
+
+@pytest.mark.asyncio
+async def test_task_and_call_tools_publish_documented_field_enums() -> None:
+    """Public schemas should steer callers to supported task fields and call outcomes."""
+    server = create_server(FollowUpBossSettings.model_validate({"api_key": "key"}))
+    tools = {tool.name: tool for tool in await server.list_tools()}
+
+    call_outcomes = [
+        "Interested",
+        "Not Interested",
+        "Left Message",
+        "No Answer",
+        "Busy",
+        "Bad Number",
+    ]
+    for tool_name in ("followupboss_create_call", "followupboss_update_call"):
+        assert tools[tool_name].inputSchema["$defs"]["CallOutcome"]["enum"] == call_outcomes
+
+    task_fields = tools["followupboss_list_my_overdue_tasks"].inputSchema["$defs"][
+        "TaskProjectionField"
+    ]["enum"]
+    assert "created" in task_fields
+    assert "dueDateTime" in task_fields
+    assert "person" in task_fields
+    assert "personName" not in task_fields
+
+
+@pytest.mark.asyncio
+async def test_list_users_accepts_documented_comma_separated_projection_fields() -> None:
+    """The public users tool should normalize documented comma-separated fields."""
+    client = QueueClient(
+        [{"_metadata": {"limit": 10, "offset": 0, "total": 1}, "users": [{"id": 9}]}],
+    )
+    server = create_server(
+        FollowUpBossSettings.model_validate({"api_key": "key"}),
+        client=client,
+    )
+    tools = {tool.name: tool for tool in await server.list_tools()}
+
+    result = await _call_public_tool(
+        server,
+        tools,
+        "followupboss_list_users",
+        fields="id, name, email, role",
+    )
+
+    assert result["users"][0]["id"] == 9
+    assert client.calls[-1]["path"] == "/users"
+    assert client.calls[-1]["params"] == {"fields": "id,name,email,role"}
+
+
+def test_user_list_request_rejects_unsupported_projection_with_tool_guidance() -> None:
+    """Unsupported user projections should fail locally and identify the correct tool."""
+    assert UserListRequest.model_validate({"fields": " , "}).fields is None
+    with pytest.raises(ValidationError, match="followupboss_list_teams"):
+        UserListRequest(fields=["id", "teams"])
+    with pytest.raises(ValidationError, match="Invalid user fields: unsupported"):
+        UserListRequest(fields=["unsupported"])
+
+
+@pytest.mark.asyncio
+async def test_text_message_list_request_requires_an_identifying_filter() -> None:
+    """Broad text-message collection reads should fail before reaching Follow Up Boss."""
+    client = QueueClient(
+        [
+            {
+                "_metadata": {"limit": 10, "offset": 0, "total": 1},
+                "textmessages": [{"id": 50}],
+            }
+        ],
+    )
+    server = create_server(
+        FollowUpBossSettings.model_validate({"api_key": "key"}),
+        client=client,
+    )
+    tools = {tool.name: tool for tool in await server.list_tools()}
+
+    with pytest.raises(ToolError, match="identifying filter"):
+        await _call_public_tool(server, tools, "followupboss_list_text_messages")
+    with pytest.raises(ToolError, match="identifying filter"):
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_text_messages",
+            from_number=" ",
+        )
+    with pytest.raises(ToolError, match="positive Follow Up Boss person ID"):
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_text_messages",
+            person_id=0,
+        )
+    assert client.calls == []
+
+    result = await _call_public_tool(
+        server,
+        tools,
+        "followupboss_list_text_messages",
+        from_number="+15550100",
+    )
+
+    assert result["textmessages"][0]["id"] == 50
+    assert client.calls[-1]["params"] == {"fromNumber": "+15550100"}
+    assert TextMessageListRequest(person_id=42).person_id == 42
+    assert TextMessageListRequest(from_number="+15550100").from_number == "+15550100"
+    assert TextMessageListRequest(to_number="+15550101").to_number == "+15550101"
+
+
+@pytest.mark.asyncio
+async def test_send_email_events_publishes_typed_nested_event_schema() -> None:
+    """The public batch tool should expose required fields for each nested email event."""
+    client = QueueClient([{"emEventIds": [1], "recipientsNotFound": []}])
+    server = create_server(
+        FollowUpBossSettings.model_validate({"api_key": "key"}),
+        client=client,
+    )
+    tools = {tool.name: tool for tool in await server.list_tools()}
+    schema = tools["followupboss_send_email_events"].inputSchema
+    properties = schema.get("properties", {})
+    assert isinstance(properties, dict)
+    em_events_schema = properties["em_events"]
+    assert isinstance(em_events_schema, dict)
+    assert em_events_schema["items"] == {"$ref": "#/$defs/CreateEmailEventRequest"}
+
+    definitions = schema.get("$defs", {})
+    assert isinstance(definitions, dict)
+    event_schema = definitions["CreateEmailEventRequest"]
+    assert isinstance(event_schema, dict)
+    assert event_schema["additionalProperties"] is False
+    assert set(event_schema["required"]) == {"campaign_id", "occurred", "recipient", "type"}
+    assert set(event_schema["properties"]) == {
+        "campaign_id",
+        "occurred",
+        "person_id",
+        "recipient",
+        "type",
+        "url",
+        "user_id",
+    }
+
+    with pytest.raises(ToolError, match="campaign_id"):
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_send_email_events",
+            [{"from": "sender@example.invalid", "personId": 1}],
+        )
+    assert client.calls == []
+
+    result = await _call_public_tool(
+        server,
+        tools,
+        "followupboss_send_email_events",
+        [
+            {
+                "campaign_id": 1,
+                "occurred": "2026-01-01T00:00:00Z",
+                "recipient": "recipient@example.invalid",
+                "type": "delivered",
+            }
+        ],
+    )
+    assert result["emEventIds"] == [1]
+    assert client.calls[-1]["json_body"] == {
+        "emEvents": [
+            {
+                "campaignId": 1,
+                "occurred": "2026-01-01T00:00:00Z",
+                "recipient": "recipient@example.invalid",
+                "type": "delivered",
+            }
+        ]
+    }
 
 
 @pytest.mark.asyncio
@@ -4558,7 +4869,11 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     create_call_description = cast("str", tools["followupboss_create_call"].description)
     assert "attributed to the authenticated user" in create_call_description
     assert "rejects mismatched user IDs" in create_call_description
+    list_users_description = cast("str", tools["followupboss_list_users"].description)
+    assert "comma-separated" in list_users_description
+    assert "followupboss_list_teams" in list_users_description
     list_text_description = cast("str", tools["followupboss_list_text_messages"].description)
+    assert "at least one identifying filter" in list_text_description
     assert "read-only" in list_text_description
     assert "does not provide API support to log or send texts" in list_text_description
     assert "followupboss_list_my_overdue_tasks" in list_tasks_description
@@ -5404,7 +5719,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     assert (await _call_public_tool(server, tools, "followupboss_get_task", 17))["id"] == 17
     assert (
         await _call_public_tool(
-            server, tools, "followupboss_create_task", 1, assigned_to="Data", type="Email"
+            server, tools, "followupboss_create_task", 1, assigned_user_id=7, type="Email"
         )
     )["id"] == 18
     assert (await _call_public_tool(server, tools, "followupboss_update_task", 19, type="Text"))[
@@ -5462,6 +5777,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
             server,
             tools,
             "followupboss_list_text_messages",
+            person_id=2,
         )
     )["textmessages"][0]["id"] == 50
     assert (await _call_public_tool(server, tools, "followupboss_get_text_message", 51))["id"] == 51
@@ -5735,7 +6051,7 @@ async def test_public_uncontacted_leads_tool_filters_missing_last_communication(
         "fields": (
             "assignedTo,assignedUserId,contacted,created,emails,firstName,id,"
             "lastActivity,lastCommunication,lastName,name,phones,price,source,sourceUrl,"
-            "stage,tags"
+            "stage,tags,updated"
         ),
         "limit": "100",
         "offset": "0",

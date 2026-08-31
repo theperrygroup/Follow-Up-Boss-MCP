@@ -107,6 +107,7 @@ from followupboss_mcp.models.people import (
 from followupboss_mcp.models.people_relationships import (
     CreatePeopleRelationshipRequest,
     PeopleRelationshipListRequest,
+    PeopleRelationshipRecord,
     UpdatePeopleRelationshipRequest,
 )
 from followupboss_mcp.models.pipelines import (
@@ -1549,6 +1550,26 @@ async def test_people_relationships_service() -> None:
         await scalar_payload_service.list_people_relationships()
 
 
+def test_people_relationship_record_normalizes_single_social_data_item() -> None:
+    """A singleton socialData object from Follow Up Boss should parse as one item."""
+    relationship = PeopleRelationshipRecord.model_validate(
+        {
+            "id": 423,
+            "socialData": {
+                "name": "Example Profile",
+                "url": "https://example.invalid/profile",
+            },
+        }
+    )
+
+    assert relationship.social_data == [
+        {
+            "name": "Example Profile",
+            "url": "https://example.invalid/profile",
+        }
+    ]
+
+
 @pytest.mark.asyncio
 async def test_attachment_services() -> None:
     """Attachment services should map get, create, update, and delete behavior correctly."""
@@ -2297,6 +2318,12 @@ async def test_deals_service() -> None:
 
     with pytest.raises(FollowUpBossValidationError, match="Deal custom field keys"):
         DealsService.validate_deal_custom_field_names({"ClosePrice": 1})
+
+    with pytest.raises(ValidationError, match="Deal custom field keys"):
+        CreateDealRequest(name="New deal", stage_id=7, custom_fields={"ClosePrice": 1})
+
+    with pytest.raises(ValidationError, match="Deal custom field keys"):
+        UpdateDealRequest(custom_fields={"ClosePrice": 1})
 
     with pytest.raises(ValidationError, match="Dropdown deal custom fields must provide"):
         CreateDealCustomFieldRequest(label="Priority", type="dropdown")

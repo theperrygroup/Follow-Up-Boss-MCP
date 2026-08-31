@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from pydantic import Field, model_validator
+from collections.abc import Mapping
+
+from pydantic import Field, field_validator, model_validator
 
 from followupboss_mcp.models.common import (
     EmailAddress,
@@ -92,3 +94,11 @@ class PeopleRelationshipRecord(ResponseModel):
     type: str | None = None
     updated: str | None = None
     updated_by_id: int | None = Field(default=None, alias="updatedById")
+
+    @field_validator("social_data", mode="before")
+    @classmethod
+    def _normalize_social_data(cls, value: object) -> object:
+        """Wrap the API's singleton socialData object in its canonical list shape."""
+        if isinstance(value, Mapping):
+            return [dict(value)]
+        return value

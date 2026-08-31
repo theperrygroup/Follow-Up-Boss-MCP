@@ -3,11 +3,30 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import AliasChoices, Field, model_validator
 
 from followupboss_mcp.datetimes import normalize_optional_datetime
 from followupboss_mcp.models.common import CommonListQuery, JsonValue, RequestModel, ResponseModel
+
+type TaskProjectionField = Literal[
+    "assignedTo",
+    "assignedUserId",
+    "completed",
+    "created",
+    "createdBy",
+    "dueDate",
+    "dueDateTime",
+    "id",
+    "isCompleted",
+    "name",
+    "person",
+    "personId",
+    "type",
+    "updated",
+    "updatedBy",
+]
 
 
 class TaskListRequest(CommonListQuery):

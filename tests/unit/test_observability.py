@@ -151,8 +151,8 @@ def test_sanitize_sentry_event_redacts_secrets_and_customer_payloads() -> None:
     assert before_send(event, {"exc_info": object()}) == sanitized
 
 
-def test_before_send_tags_expected_tool_validation_errors() -> None:
-    """Handled FastMCP validation ToolErrors should be tagged but kept."""
+def test_before_send_drops_local_request_validation_errors() -> None:
+    """Handled request-model validation should be filtered before submission."""
     event: dict[str, object] = {
         "tags": {"entrypoint": "followupboss-mcp-hosted"},
         "exception": {
@@ -161,6 +161,22 @@ def test_before_send_tags_expected_tool_validation_errors() -> None:
                     "type": "ValidationError",
                     "value": "1 validation error for CreateTaskRequest",
                     "mechanism": {"handled": True},
+                    "stacktrace": {
+                        "frames": [
+                            {
+                                "module": "mcp.server.fastmcp.utilities.func_metadata",
+                                "function": "call_fn_with_arg_validation",
+                            },
+                            {
+                                "module": "followupboss_mcp.mcp_registration",
+                                "function": "followupboss_create_task",
+                            },
+                            {
+                                "module": "followupboss_mcp.mcp_registration",
+                                "function": "_validated_request",
+                            },
+                        ]
+                    },
                 },
                 {
                     "type": "ToolError",
@@ -174,45 +190,92 @@ def test_before_send_tags_expected_tool_validation_errors() -> None:
         },
     }
 
-    tags = _event_tags(before_send(event, {"exc_info": object()}))
+    assert before_send(event, {"exc_info": object()}) is None
 
-    assert tags["entrypoint"] == "followupboss-mcp-hosted"
-    assert tags["mcp_tool_name"] == "followupboss_create_task"
-    assert tags["mcp_error_expected"] == "true"
-    assert tags["mcp_error_kind"] == "validation"
+
+def test_before_send_drops_fastmcp_argument_validation_errors() -> None:
+    """FastMCP signature validation should be filtered when no tool code ran."""
+    event: dict[str, object] = {
+        "exception": {
+            "values": [
+                {
+                    "type": "ValidationError",
+                    "value": "1 validation error for followupboss_list_usersArguments",
+                    "mechanism": {"handled": True},
+                    "stacktrace": {
+                        "frames": [
+                            {
+                                "module": "mcp.server.fastmcp.tools.base",
+                                "function": "run",
+                            },
+                            {
+                                "module": "mcp.server.fastmcp.utilities.func_metadata",
+                                "function": "call_fn_with_arg_validation",
+                            },
+                        ]
+                    },
+                },
+                {
+                    "type": "ToolError",
+                    "value": (
+                        "Error executing tool followupboss_list_users: "
+                        "1 validation error for followupboss_list_usersArguments"
+                    ),
+                    "mechanism": {"handled": True},
+                },
+            ]
+        },
+    }
+
+    assert before_send(event, {"exc_info": object()}) is None
+
+
+def test_local_input_validation_requires_validation_error_and_frame_list() -> None:
+    """Only validation errors with recognizable frame lists count as local input noise."""
+    assert (
+        observability._is_local_input_validation(  # pyright: ignore[reportPrivateUsage]
+            {"type": "RuntimeError", "value": "not validation"}
+        )
+        is False
+    )
+    assert (
+        observability._is_local_input_validation(  # pyright: ignore[reportPrivateUsage]
+            {"type": "ValidationError", "stacktrace": {"frames": "not-a-list"}}
+        )
+        is False
+    )
+
+
+def test_has_stack_frame_requires_frame_list() -> None:
+    """Stack-frame matching should fail closed for malformed Sentry payloads."""
+    assert (
+        observability._has_stack_frame(  # pyright: ignore[reportPrivateUsage]
+            {"stacktrace": {"frames": "not-a-list"}},
+            module="followupboss_mcp.mcp_tools",
+            functions=frozenset({"_single_result"}),
+        )
+        is False
+    )
 
 
 @pytest.mark.parametrize(
-    ("error_type", "message", "expected_kind"),
+    ("error_type", "message"),
     [
-        (
-            "FollowUpBossValidationError",
-            "Deep pagination disabled, use 'nextLink' url.",
-            "followupboss_validation",
-        ),
         (
             "FollowUpBossForbiddenError",
             "You do not have access to delete pipelines.",
-            "followupboss_forbidden",
         ),
         (
             "FollowUpBossNotFoundError",
             "Requested resource was not found.",
-            "followupboss_not_found",
-        ),
-        (
-            "RuntimeError",
-            "Smart list named '0-3 Months' was not found.",
-            "missing_smart_list",
         ),
     ],
 )
-def test_before_send_tags_expected_client_tool_errors(
+def test_before_send_drops_typed_expected_client_tool_errors(
     error_type: str,
     message: str,
-    expected_kind: str,
 ) -> None:
-    """Handled client/upstream ToolErrors should be tagged by kind and kept."""
+    """Handled typed not-found and forbidden client failures should be filtered."""
     event: dict[str, object] = {
         "exception": {
             "values": [
@@ -230,11 +293,167 @@ def test_before_send_tags_expected_client_tool_errors(
         },
     }
 
+    assert before_send(event, {"exc_info": object()}) is None
+
+
+def test_expected_typed_client_chain_rejects_invalid_wrapper_shapes() -> None:
+    """Typed-client filtering should fail closed when the wrapper chain is malformed."""
+    assert (
+        observability._is_expected_typed_client_chain(  # pyright: ignore[reportPrivateUsage]
+            [
+                {
+                    "type": "FollowUpBossNotFoundError",
+                    "value": "Requested resource was not found.",
+                    "mechanism": {"handled": True},
+                },
+                {
+                    "type": "ValueError",
+                    "value": "unexpected extra error",
+                    "mechanism": {"handled": True},
+                },
+            ],
+            error_type="FollowUpBossNotFoundError",
+        )
+        is False
+    )
+    assert (
+        observability._is_expected_typed_client_chain(  # pyright: ignore[reportPrivateUsage]
+            [
+                {
+                    "type": "FollowUpBossNotFoundError",
+                    "value": "Requested resource was not found.",
+                    "mechanism": {"handled": True},
+                },
+                {
+                    "type": "FollowUpBossNotFoundError",
+                    "value": "Requested resource was not found.",
+                    "mechanism": {"handled": True},
+                },
+            ],
+            error_type="FollowUpBossNotFoundError",
+        )
+        is False
+    )
+    assert (
+        observability._is_expected_typed_client_chain(  # pyright: ignore[reportPrivateUsage]
+            [
+                {
+                    "type": "FollowUpBossNotFoundError",
+                    "value": "",
+                    "mechanism": {"handled": True},
+                },
+                {
+                    "type": "ToolError",
+                    "value": "Error executing tool followupboss_get_person: ",
+                    "mechanism": {"handled": True},
+                },
+            ],
+            error_type="FollowUpBossNotFoundError",
+        )
+        is False
+    )
+    assert (
+        observability._is_expected_typed_client_chain(  # pyright: ignore[reportPrivateUsage]
+            [
+                {
+                    "type": "FollowUpBossNotFoundError",
+                    "value": "Requested resource was not found.",
+                    "mechanism": {"handled": True},
+                },
+                {
+                    "type": "ToolError",
+                    "value": "Tool failed without a parseable wrapper",
+                    "mechanism": {"handled": True},
+                },
+            ],
+            error_type="FollowUpBossNotFoundError",
+        )
+        is False
+    )
+
+
+def test_before_send_keeps_broad_upstream_validation_errors() -> None:
+    """Upstream validation failures should remain visible for code/config triage."""
+    message = "Invalid field(s) in the fields parameter: teams"
+    event: dict[str, object] = {
+        "exception": {
+            "values": [
+                {
+                    "type": "FollowUpBossValidationError",
+                    "value": message,
+                    "mechanism": {"handled": True},
+                },
+                {
+                    "type": "ToolError",
+                    "value": f"Error executing tool followupboss_list_users: {message}",
+                    "mechanism": {"handled": True},
+                },
+            ]
+        },
+    }
+
     tags = _event_tags(before_send(event, {"exc_info": object()}))
 
-    assert tags["mcp_tool_name"] == "followupboss_search_people"
-    assert tags["mcp_error_expected"] == "true"
-    assert tags["mcp_error_kind"] == expected_kind
+    assert tags["mcp_tool_name"] == "followupboss_list_users"
+    assert tags["mcp_error_expected"] == "false"
+    assert tags["mcp_error_kind"] == "followupboss_validation"
+
+
+def test_before_send_keeps_unhandled_typed_client_error() -> None:
+    """Typed client failures should be filtered only when the chain is handled."""
+    message = "Requested resource was not found."
+    event: dict[str, object] = {
+        "exception": {
+            "values": [
+                {
+                    "type": "FollowUpBossNotFoundError",
+                    "value": message,
+                    "mechanism": {"handled": False},
+                },
+                {
+                    "type": "ToolError",
+                    "value": f"Error executing tool followupboss_get_person: {message}",
+                    "mechanism": {"handled": False},
+                },
+            ]
+        },
+    }
+
+    tags = _event_tags(before_send(event, {"exc_info": object()}))
+
+    assert tags["mcp_error_expected"] == "false"
+    assert tags["mcp_error_kind"] == "followupboss_not_found"
+
+
+def test_before_send_keeps_mixed_typed_client_error_chain() -> None:
+    """A typed client error must not hide an unexpected error in the same chain."""
+    message = "Requested resource was not found."
+    event: dict[str, object] = {
+        "exception": {
+            "values": [
+                {
+                    "type": "FollowUpBossNotFoundError",
+                    "value": message,
+                    "mechanism": {"handled": True},
+                },
+                {
+                    "type": "RuntimeError",
+                    "value": "Unexpected repo-owned failure",
+                    "mechanism": {"handled": True},
+                },
+                {
+                    "type": "ToolError",
+                    "value": f"Error executing tool followupboss_get_person: {message}",
+                    "mechanism": {"handled": True},
+                },
+            ]
+        }
+    }
+
+    tags = _event_tags(before_send(event, {"exc_info": object()}))
+
+    assert tags["mcp_error_expected"] == "false"
+    assert tags["mcp_error_kind"] == "followupboss_not_found"
 
 
 @pytest.mark.parametrize(
@@ -253,7 +472,7 @@ def test_before_send_tags_expected_message_only_tool_errors(
     message: str,
     expected_kind: str,
 ) -> None:
-    """Handled ToolErrors should be classified by known safe message text."""
+    """Message-only ToolErrors should stay visible despite familiar text."""
     event: dict[str, object] = {
         "exception": {
             "values": [
@@ -274,12 +493,80 @@ def test_before_send_tags_expected_message_only_tool_errors(
     tags = _event_tags(before_send(event, {"exc_info": object()}))
 
     assert tags["mcp_tool_name"] == "followupboss_update_person"
-    assert tags["mcp_error_expected"] == "true"
+    assert tags["mcp_error_expected"] == "false"
     assert tags["mcp_error_kind"] == expected_kind
 
 
+def test_before_send_drops_missing_smart_list_tool_error() -> None:
+    """A handled missing-smart-list lookup should be filtered as client noise."""
+    message = "Smart list named '0-3 Months' was not found."
+    event: dict[str, object] = {
+        "exception": {
+            "values": [
+                {
+                    "type": "RuntimeError",
+                    "value": message,
+                    "mechanism": {"handled": True},
+                    "stacktrace": {
+                        "frames": [
+                            {
+                                "module": "followupboss_mcp.mcp_tools",
+                                "function": "_resolve_smart_list_by_name",
+                            }
+                        ]
+                    },
+                },
+                {
+                    "type": "ToolError",
+                    "value": (
+                        f"Error executing tool followupboss_search_people_in_smart_list: {message}"
+                    ),
+                    "mechanism": {"handled": True},
+                },
+            ]
+        },
+    }
+
+    assert before_send(event, {"exc_info": object()}) is None
+
+
+def test_before_send_keeps_missing_smart_list_message_from_wrong_tool() -> None:
+    """Smart-list text from an unrelated tool must remain observable."""
+    message = "Smart list named '0-3 Months' was not found."
+    event: dict[str, object] = {
+        "exception": {
+            "values": [
+                {
+                    "type": "RuntimeError",
+                    "value": message,
+                    "mechanism": {"handled": True},
+                    "stacktrace": {
+                        "frames": [
+                            {
+                                "module": "followupboss_mcp.mcp_tools",
+                                "function": "_resolve_smart_list_by_name",
+                            }
+                        ]
+                    },
+                },
+                {
+                    "type": "ToolError",
+                    "value": f"Error executing tool followupboss_update_person: {message}",
+                    "mechanism": {"handled": True},
+                },
+            ]
+        }
+    }
+
+    tags = _event_tags(before_send(event, {"exc_info": object()}))
+
+    assert tags["mcp_tool_name"] == "followupboss_update_person"
+    assert tags["mcp_error_expected"] == "false"
+    assert tags["mcp_error_kind"] == "missing_smart_list"
+
+
 def test_before_send_reads_api_exception_entries() -> None:
-    """Sentry API-shaped exception entries should feed MCP error classification."""
+    """Sentry API-shaped message-only exceptions should stay visible."""
     event: dict[str, object] = {
         "entries": [
             "not-a-mapping",
@@ -307,8 +594,142 @@ def test_before_send_reads_api_exception_entries() -> None:
     tags = _event_tags(before_send(event, {"exc_info": object()}))
 
     assert tags["mcp_tool_name"] == "followupboss_search_people"
-    assert tags["mcp_error_expected"] == "true"
+    assert tags["mcp_error_expected"] == "false"
     assert tags["mcp_error_kind"] == "followupboss_not_found"
+
+
+def test_before_send_keeps_issue_11_response_schema_validation() -> None:
+    """Response-record validation from issue 11 must remain observable."""
+    message = "1 validation error for PeopleRelationshipRecord"
+    event: dict[str, object] = {
+        "entries": [
+            {
+                "type": "exception",
+                "data": {
+                    "values": [
+                        {
+                            "type": "ValidationError",
+                            "value": message,
+                            "mechanism": {"handled": True},
+                            "stacktrace": {
+                                "frames": [
+                                    {
+                                        "module": "mcp.server.fastmcp.utilities.func_metadata",
+                                        "function": "call_fn_with_arg_validation",
+                                    },
+                                    {
+                                        "module": "followupboss_mcp.mcp_registration",
+                                        "function": "followupboss_list_people_relationships",
+                                    },
+                                    {
+                                        "module": "followupboss_mcp.mcp_tools",
+                                        "function": "list_people_relationships",
+                                    },
+                                    {
+                                        "module": "followupboss_mcp.services.people_relationships",
+                                        "function": "list_people_relationships",
+                                    },
+                                ]
+                            },
+                        },
+                        {
+                            "type": "ToolError",
+                            "value": (
+                                "Error executing tool "
+                                f"followupboss_list_people_relationships: {message}"
+                            ),
+                            "mechanism": {"handled": True},
+                        },
+                    ]
+                },
+            }
+        ]
+    }
+
+    tags = _event_tags(before_send(event, {"exc_info": object()}))
+
+    assert tags["mcp_tool_name"] == "followupboss_list_people_relationships"
+    assert tags["mcp_error_expected"] == "false"
+    assert tags["mcp_error_kind"] == "validation"
+
+
+def test_before_send_keeps_validation_without_a_proven_input_boundary() -> None:
+    """Ambiguous ValidationErrors should not be hidden by title matching."""
+    message = "1 validation error for UnknownRecord"
+    event: dict[str, object] = {
+        "exception": {
+            "values": [
+                {
+                    "type": "ValidationError",
+                    "value": message,
+                    "mechanism": {"handled": True},
+                },
+                {
+                    "type": "ToolError",
+                    "value": f"Error executing tool followupboss_unknown: {message}",
+                    "mechanism": {"handled": True},
+                },
+            ]
+        },
+    }
+
+    tags = _event_tags(before_send(event, {"exc_info": object()}))
+
+    assert tags["mcp_error_expected"] == "false"
+    assert tags["mcp_error_kind"] == "validation"
+
+
+def test_before_send_keeps_validation_with_only_malformed_stack_frames() -> None:
+    """Malformed frame data must not turn ambiguous validation into filtered noise."""
+    message = "1 validation error for UnknownRecord"
+    event: dict[str, object] = {
+        "exception": {
+            "values": [
+                {
+                    "type": "ValidationError",
+                    "value": message,
+                    "mechanism": {"handled": True},
+                    "stacktrace": {"frames": ["not-a-frame"]},
+                },
+                {
+                    "type": "ToolError",
+                    "value": f"Error executing tool followupboss_unknown: {message}",
+                    "mechanism": {"handled": True},
+                },
+            ]
+        },
+    }
+
+    tags = _event_tags(before_send(event, {"exc_info": object()}))
+
+    assert tags["mcp_error_expected"] == "false"
+    assert tags["mcp_error_kind"] == "validation"
+
+
+def test_before_send_keeps_message_only_validation_error() -> None:
+    """Validation-like text without a typed exception should remain visible."""
+    message = "1 validation error for UpstreamRecord"
+    event: dict[str, object] = {
+        "exception": {
+            "values": [
+                {
+                    "type": "RuntimeError",
+                    "value": message,
+                    "mechanism": {"handled": True},
+                },
+                {
+                    "type": "ToolError",
+                    "value": f"Error executing tool followupboss_unknown: {message}",
+                    "mechanism": {"handled": True},
+                },
+            ]
+        },
+    }
+
+    tags = _event_tags(before_send(event, {"exc_info": object()}))
+
+    assert tags["mcp_error_expected"] == "false"
+    assert tags["mcp_error_kind"] == "validation"
 
 
 def test_before_send_leaves_non_tool_entries_unclassified() -> None:
@@ -386,36 +807,72 @@ def test_before_send_tags_unknown_tool_errors_as_unexpected() -> None:
     assert tags["mcp_error_kind"] == "tool_error"
 
 
-@pytest.mark.parametrize(
-    ("error_type", "handled", "expected_kind"),
-    [
-        ("ClosedResourceError", True, "closed_resource"),
-        ("AdminShutdown", False, "admin_shutdown"),
-    ],
-)
+@pytest.mark.parametrize("error_type", ["ClosedResourceError", "AdminShutdown"])
 def test_before_send_tags_expected_infrastructure_noise(
     error_type: str,
-    handled: bool,
-    expected_kind: str,
 ) -> None:
-    """Known staging infrastructure noise should be tagged and kept."""
+    """Known, fully handled shutdown noise should be filtered before submission."""
     event: dict[str, object] = {
         "exception": {
             "values": [
                 {
                     "type": error_type,
                     "value": "terminating connection due to administrator command",
-                    "mechanism": {"handled": handled},
+                    "mechanism": {"handled": True},
                 }
             ]
         },
     }
 
-    tags = _event_tags(before_send(event, {"exc_info": object()}))
+    assert before_send(event, {"exc_info": object()}) is None
 
-    assert "mcp_tool_name" not in tags
-    assert tags["mcp_error_expected"] == "true"
-    assert tags["mcp_error_kind"] == expected_kind
+
+@pytest.mark.parametrize("error_type", ["ClosedResourceError", "AdminShutdown"])
+def test_before_send_keeps_unhandled_infrastructure_error(error_type: str) -> None:
+    """An unhandled infrastructure failure should remain observable."""
+    event: dict[str, object] = {
+        "exception": {
+            "values": [
+                {
+                    "type": error_type,
+                    "value": "connection closed outside handled shutdown",
+                    "mechanism": {"handled": False},
+                }
+            ]
+        }
+    }
+
+    result = before_send(event, {"exc_info": object()})
+
+    assert result is not None
+    assert result["exception"] == event["exception"]
+    assert _event_tags(result)["mcp_error_expected"] == "false"
+
+
+def test_before_send_keeps_mixed_closed_resource_chain() -> None:
+    """A handled close must not hide an unhandled failure in the same chain."""
+    event: dict[str, object] = {
+        "exception": {
+            "values": [
+                {
+                    "type": "RuntimeError",
+                    "value": "unhandled database outage",
+                    "mechanism": {"handled": False},
+                },
+                {
+                    "type": "ClosedResourceError",
+                    "value": "connection closed",
+                    "mechanism": {"handled": True},
+                },
+            ]
+        }
+    }
+
+    result = before_send(event, {"exc_info": object()})
+
+    assert result is not None
+    assert result["exception"] == event["exception"]
+    assert _event_tags(result)["mcp_error_expected"] == "false"
 
 
 def test_configure_sentry_skips_initialization_without_dsn(

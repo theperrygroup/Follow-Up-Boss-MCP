@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from followupboss_mcp.models.common import JsonValue, QueryModel, RequestModel, ResponseModel
 from followupboss_mcp.models.custom_fields import CustomFieldType, DropdownChoiceMap
@@ -157,6 +157,16 @@ class CreateDealRequest(RequestModel):
     team_commission: int | None = Field(default=None, serialization_alias="teamCommission")
     user_ids: list[int] | None = Field(default=None, serialization_alias="userIds")
 
+    @field_validator("custom_fields")
+    @classmethod
+    def _validate_custom_field_names(
+        cls,
+        value: dict[str, JsonValue] | None,
+    ) -> dict[str, JsonValue] | None:
+        """Reject keys that cannot name Follow Up Boss deal custom fields."""
+        _require_deal_custom_field_names(value)
+        return value
+
 
 class UpdateDealRequest(RequestModel):
     """Strict request model for updating a deal."""
@@ -188,6 +198,26 @@ class UpdateDealRequest(RequestModel):
     stage_id: int | None = Field(default=None, serialization_alias="stageId")
     team_commission: int | None = Field(default=None, serialization_alias="teamComission")
     user_ids: list[int] | None = Field(default=None, serialization_alias="userIds")
+
+    @field_validator("custom_fields")
+    @classmethod
+    def _validate_custom_field_names(
+        cls,
+        value: dict[str, JsonValue] | None,
+    ) -> dict[str, JsonValue] | None:
+        """Reject keys that cannot name Follow Up Boss deal custom fields."""
+        _require_deal_custom_field_names(value)
+        return value
+
+
+def _require_deal_custom_field_names(custom_fields: dict[str, JsonValue] | None) -> None:
+    """Require API-native deal custom field keys at the request-model boundary."""
+    if custom_fields is None:
+        return
+    if any(not name.startswith("custom") for name in custom_fields):
+        raise ValueError(
+            "Deal custom field keys must use Follow Up Boss field names that start with 'custom'."
+        )
 
 
 class DealPersonSummary(ResponseModel):

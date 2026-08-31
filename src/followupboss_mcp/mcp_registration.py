@@ -74,6 +74,7 @@ from followupboss_mcp.mcp_tools import (
     ListInboxAppParticipantsToolInput,
     ListMyTaskIntentToolInput,
     ListPersonActivityToolInput,
+    ListTextMessagesToolInput,
     ListUncontactedLeadsToolInput,
     SearchPeopleInSmartListToolInput,
     UpdateActionPlanPersonToolInput,
@@ -127,7 +128,7 @@ from followupboss_mcp.models.automations import (
     AutomationRunStatus,
     CreateAutomationPersonRequest,
 )
-from followupboss_mcp.models.calls import CallListRequest, CreateCallRequest
+from followupboss_mcp.models.calls import CallListRequest, CallOutcome, CreateCallRequest
 from followupboss_mcp.models.common import RequestModel
 from followupboss_mcp.models.custom_fields import (
     CreateCustomFieldRequest,
@@ -142,6 +143,7 @@ from followupboss_mcp.models.deals import (
 )
 from followupboss_mcp.models.email_marketing import (
     CreateEmailCampaignRequest,
+    CreateEmailEventRequest,
     CreateEmailEventsBatchRequest,
     EmailCampaignListRequest,
     EmailEventListRequest,
@@ -173,7 +175,7 @@ from followupboss_mcp.models.ponds import CreatePondRequest, PondListRequest
 from followupboss_mcp.models.reactions import ReactionRefType
 from followupboss_mcp.models.smart_lists import SmartListListRequest
 from followupboss_mcp.models.stages import CreateStageRequest, StageListRequest
-from followupboss_mcp.models.tasks import CreateTaskRequest, TaskListRequest
+from followupboss_mcp.models.tasks import CreateTaskRequest, TaskListRequest, TaskProjectionField
 from followupboss_mcp.models.team_inboxes import TeamInboxListRequest
 from followupboss_mcp.models.teams import CreateTeamRequest, TeamListRequest
 from followupboss_mcp.models.templates import (
@@ -184,11 +186,10 @@ from followupboss_mcp.models.templates import (
 from followupboss_mcp.models.text_messages import (
     CreateTextMessageTemplateRequest,
     MergeTextMessageTemplateRequest,
-    TextMessageListRequest,
     TextMessageTemplateListRequest,
 )
 from followupboss_mcp.models.timeframes import TimeframeListRequest
-from followupboss_mcp.models.users import UserListRequest
+from followupboss_mcp.models.users import UserListRequest, UserProjectionFieldsInput
 from followupboss_mcp.models.webhooks import (
     CreateWebhookRequest,
     WebhookListRequest,
@@ -1166,10 +1167,14 @@ def _register_email_marketing_tools(
 
     @mcp.tool(
         name="followupboss_send_email_events",
-        description="Post batched Follow Up Boss email marketing events.",
+        description=(
+            "Post batched Follow Up Boss email marketing events. Each event requires "
+            "campaign_id, occurred, recipient, and type; use person_id/user_id for optional "
+            "Follow Up Boss identifiers."
+        ),
     )
     async def followupboss_send_email_events(
-        em_events: list[dict[str, object]],
+        em_events: list[CreateEmailEventRequest],
     ) -> dict[str, object]:
         return await adapter.send_email_events(
             _validated_request(CreateEmailEventsBatchRequest, locals())
@@ -1584,11 +1589,16 @@ def _register_user_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
 
     @mcp.tool(
         name="followupboss_list_users",
-        description="List Follow Up Boss users with pagination metadata.",
+        description=(
+            "List Follow Up Boss users with pagination metadata. fields accepts an array or "
+            "the documented comma-separated form. Project user fields such as id, name, "
+            "email, role, groups, and teamLeaderOf; teams is not a user projection, so use "
+            "followupboss_list_teams for team membership."
+        ),
     )
     async def followupboss_list_users(
         *,
-        fields: list[str] | None = None,
+        fields: UserProjectionFieldsInput = None,
         id: int | None = None,
         ids: list[int] | None = None,
         id_greater_than: int | None = None,
@@ -2167,7 +2177,7 @@ def _register_call_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         duration: int | None = None,
         from_number: str | None = None,
         note: str | None = None,
-        outcome: str | None = None,
+        outcome: CallOutcome | None = None,
         recording_url: str | None = None,
         to_number: str | None = None,
         user_id: int | None = None,
@@ -2188,7 +2198,7 @@ def _register_call_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         from_number: str | None = None,
         is_incoming: bool | None = None,
         note: str | None = None,
-        outcome: str | None = None,
+        outcome: CallOutcome | None = None,
         person_id: int | None = None,
         phone: str | None = None,
         recording_url: str | None = None,
@@ -2490,7 +2500,7 @@ def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
     )
     async def followupboss_list_my_overdue_tasks(
         *,
-        fields: list[str] | None = None,
+        fields: list[TaskProjectionField] | None = None,
         limit: int | None = None,
         next_token: str | None = None,
         offset: int | None = None,
@@ -2510,7 +2520,7 @@ def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
     )
     async def followupboss_list_my_tasks_due_today(
         *,
-        fields: list[str] | None = None,
+        fields: list[TaskProjectionField] | None = None,
         limit: int | None = None,
         next_token: str | None = None,
         offset: int | None = None,
@@ -2530,7 +2540,7 @@ def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
     )
     async def followupboss_list_my_upcoming_tasks(
         *,
-        fields: list[str] | None = None,
+        fields: list[TaskProjectionField] | None = None,
         limit: int | None = None,
         next_token: str | None = None,
         offset: int | None = None,
@@ -2554,7 +2564,8 @@ def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
             "wall-clock time (for example 2026-05-28T15:30:00); the server converts it "
             "to UTC using the account's Follow Up Boss timezone (auto-detected) or the "
             "FOLLOWUPBOSS_DEFAULT_TIMEZONE override. Either assigned_to or "
-            "assigned_user_id is required."
+            "assigned_user_id is required. A supplied assignee name is resolved "
+            "to one exact active user ID before the task is sent."
         ),
     )
     async def followupboss_create_task(
@@ -2581,7 +2592,9 @@ def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
             "due_date_time in UTC and does not honor an offset suffix, so provide it "
             "as the user's local wall-clock time (for example 2026-05-28T15:30:00); "
             "the server converts it to UTC using the account's Follow Up Boss timezone "
-            "(auto-detected) or the FOLLOWUPBOSS_DEFAULT_TIMEZONE override."
+            "(auto-detected) or the FOLLOWUPBOSS_DEFAULT_TIMEZONE override. A supplied "
+            "assignee name is resolved to one exact active user ID before the update "
+            "is sent."
         ),
     )
     async def followupboss_update_task(
@@ -2776,8 +2789,9 @@ def _register_text_message_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter)
         name="followupboss_list_text_messages",
         description=(
             "List existing Follow Up Boss text messages with documented filters and "
-            "pagination metadata. This is read-only; Follow Up Boss does not provide "
-            "API support to log or send texts through the MCP."
+            "pagination metadata. Provide at least one identifying filter: person_id, "
+            "from_number, or to_number. This is read-only; Follow Up Boss does not "
+            "provide API support to log or send texts through the MCP."
         ),
     )
     async def followupboss_list_text_messages(
@@ -2787,7 +2801,7 @@ def _register_text_message_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter)
         to_number: str | None = None,
     ) -> dict[str, object]:
         return await adapter.list_text_messages(
-            _validated_request(TextMessageListRequest, locals())
+            _validated_request(ListTextMessagesToolInput, locals())
         )
 
     @mcp.tool(

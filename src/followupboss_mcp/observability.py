@@ -192,6 +192,49 @@ def _exception_mechanism_handled(value: SentryExceptionValue) -> bool | None:
     return handled if isinstance(handled, bool) else None
 
 
+def _is_local_input_validation(value: SentryExceptionValue) -> bool:
+    """Return whether a Pydantic error is proven to come from tool input parsing."""
+    if _exception_type(value) != "ValidationError":
+        return False
+    stacktrace = _coerce_mapping(value.get("stacktrace"))
+    raw_frames = stacktrace.get("frames") if stacktrace is not None else None
+    if not isinstance(raw_frames, list):
+        return False
+    frames = [frame for frame in raw_frames if isinstance(frame, Mapping)]
+    if any(
+        frame.get("module") == "followupboss_mcp.mcp_registration"
+        and frame.get("function") == "_validated_request"
+        for frame in frames
+    ):
+        return True
+    if not frames:
+        return False
+    final_frame = frames[-1]
+    return (
+        final_frame.get("module") == "mcp.server.fastmcp.utilities.func_metadata"
+        and final_frame.get("function") == "call_fn_with_arg_validation"
+    )
+
+
+def _has_stack_frame(
+    value: SentryExceptionValue,
+    *,
+    module: str,
+    functions: frozenset[str],
+) -> bool:
+    """Return whether an exception stack contains one exact owned frame."""
+    stacktrace = _coerce_mapping(value.get("stacktrace"))
+    raw_frames = stacktrace.get("frames") if stacktrace is not None else None
+    if not isinstance(raw_frames, list):
+        return False
+    return any(
+        isinstance(frame, Mapping)
+        and frame.get("module") == module
+        and frame.get("function") in functions
+        for frame in raw_frames
+    )
+
+
 def _tool_error_name(values: list[SentryExceptionValue]) -> str | None:
     """Return the FastMCP tool name from a ToolError chain when available."""
     for value in values:
@@ -203,6 +246,43 @@ def _tool_error_name(values: list[SentryExceptionValue]) -> str | None:
     return None
 
 
+def _is_expected_typed_client_chain(
+    values: list[SentryExceptionValue],
+    *,
+    error_type: str,
+) -> bool:
+    """Return whether a handled client-error chain has only known wrappers."""
+    if not all(_exception_mechanism_handled(value) is True for value in values):
+        return False
+    allowed_types = {error_type, "RuntimeError", "ToolError"}
+    if any(_exception_type(value) not in allowed_types for value in values):
+        return False
+    roots = [value for value in values if _exception_type(value) == error_type]
+    if len(roots) != 1:
+        return False
+    root_message = _exception_message(roots[0])
+    if not root_message:
+        return False
+    wrapper_functions = frozenset({"_delete_result", "_page_result", "_single_result"})
+    for value in values:
+        error_name = _exception_type(value)
+        message = _exception_message(value)
+        if error_name == "RuntimeError" and (
+            message != root_message
+            or not _has_stack_frame(
+                value,
+                module="followupboss_mcp.mcp_tools",
+                functions=wrapper_functions,
+            )
+        ):
+            return False
+        if error_name == "ToolError" and (
+            _tool_error_name([value]) is None or not message.endswith(f": {root_message}")
+        ):
+            return False
+    return True
+
+
 def _tag_sentry_event(event: SentryEvent, key: str, value: str) -> None:
     """Attach one tag to a Sentry event without dropping existing tags."""
     raw_tags = event.get("tags")
@@ -212,53 +292,89 @@ def _tag_sentry_event(event: SentryEvent, key: str, value: str) -> None:
 
 
 def _classify_expected_mcp_error(values: list[SentryExceptionValue]) -> tuple[bool, str] | None:
-    """Classify expected MCP/client error noise without dropping the event."""
+    """Classify whether an MCP error is safe to filter from Sentry."""
     if not values:
         return None
 
     types = {_exception_type(value) for value in values}
     messages = "\n".join(_exception_message(value) for value in values)
-    handled_flags = [_exception_mechanism_handled(value) for value in values]
-    handled = any(flag is True for flag in handled_flags)
+    chain_is_handled = all(_exception_mechanism_handled(value) is True for value in values)
     has_tool_error = "ToolError" in types
 
     if "AdminShutdown" in types:
-        return True, "admin_shutdown"
-    if "ClosedResourceError" in types and handled:
-        return True, "closed_resource"
+        return chain_is_handled and types == {"AdminShutdown"}, "admin_shutdown"
+    if "ClosedResourceError" in types:
+        return chain_is_handled and types == {"ClosedResourceError"}, "closed_resource"
     if not has_tool_error:
         return None
-    if "ValidationError" in types or "validation error for" in messages:
-        return True, "validation"
+    if "ValidationError" in types:
+        validations = [value for value in values if _exception_type(value) == "ValidationError"]
+        is_local_input = bool(validations) and all(
+            _is_local_input_validation(value) for value in validations
+        )
+        exact_types = types <= {"ValidationError", "ToolError"}
+        return chain_is_handled and exact_types and is_local_input, "validation"
+    if "validation error for" in messages:
+        return False, "validation"
     if "FollowUpBossValidationError" in types:
-        return True, "followupboss_validation"
+        return False, "followupboss_validation"
     if "FollowUpBossForbiddenError" in types:
-        return True, "followupboss_forbidden"
+        return (
+            _is_expected_typed_client_chain(
+                values,
+                error_type="FollowUpBossForbiddenError",
+            ),
+            "followupboss_forbidden",
+        )
     if "FollowUpBossNotFoundError" in types:
-        return True, "followupboss_not_found"
+        return (
+            _is_expected_typed_client_chain(
+                values,
+                error_type="FollowUpBossNotFoundError",
+            ),
+            "followupboss_not_found",
+        )
     if "Smart list named" in messages and "was not found" in messages:
-        return True, "missing_smart_list"
+        tool_name = _tool_error_name(values)
+        runtime_errors = [value for value in values if _exception_type(value) == "RuntimeError"]
+        exact_smart_list_chain = (
+            chain_is_handled
+            and types <= {"RuntimeError", "ToolError"}
+            and tool_name == "followupboss_search_people_in_smart_list"
+            and bool(runtime_errors)
+            and all(
+                _has_stack_frame(
+                    value,
+                    module="followupboss_mcp.mcp_tools",
+                    functions=frozenset({"_resolve_smart_list_by_name"}),
+                )
+                for value in runtime_errors
+            )
+        )
+        return exact_smart_list_chain, "missing_smart_list"
     if "Custom field keys must use Follow Up Boss field names" in messages:
-        return True, "followupboss_validation"
+        return False, "followupboss_validation"
     if "Deep pagination disabled" in messages:
-        return True, "followupboss_validation"
+        return False, "followupboss_validation"
     if "Requested resource was not found" in messages:
-        return True, "followupboss_not_found"
+        return False, "followupboss_not_found"
     if "You do not have access" in messages:
-        return True, "followupboss_forbidden"
+        return False, "followupboss_forbidden"
     return False, "tool_error"
 
 
-def _tag_expected_mcp_error(event: SentryEvent) -> SentryEvent:
-    """Add MCP error classification tags to Sentry events where applicable."""
+def _filter_or_tag_mcp_error(event: SentryEvent) -> SentryEvent | None:
+    """Drop proven expected noise or tag a retained MCP error for triage."""
     values = _exception_values_from_event(event)
     classification = _classify_expected_mcp_error(values)
     if classification is None:
         return event
 
     expected, kind = classification
+    if expected:
+        return None
     tool_name = _tool_error_name(values)
-    _tag_sentry_event(event, "mcp_error_expected", str(expected).lower())
+    _tag_sentry_event(event, "mcp_error_expected", "false")
     _tag_sentry_event(event, "mcp_error_kind", kind)
     if tool_name is not None:
         _tag_sentry_event(event, "mcp_tool_name", tool_name)
@@ -274,11 +390,13 @@ def before_send(event: SentryEvent, hint: SentryHint) -> SentryEvent | None:
             need hint data, but the argument is part of the SDK hook contract.
 
     Returns:
-        The sanitized Sentry event.
+        The sanitized Sentry event, or `None` for proven expected noise.
     """
     del hint
-    tagged_event = _tag_expected_mcp_error(dict(event))
-    return sanitize_sentry_event(tagged_event)
+    filtered_event = _filter_or_tag_mcp_error(dict(event))
+    if filtered_event is None:
+        return None
+    return sanitize_sentry_event(filtered_event)
 
 
 def _stringify_sentry_tag(value: str | int | float | bool | None) -> str | None:

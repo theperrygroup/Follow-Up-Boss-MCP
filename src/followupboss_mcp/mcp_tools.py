@@ -134,6 +134,7 @@ from followupboss_mcp.models.stages import (
 from followupboss_mcp.models.tasks import (
     CreateTaskRequest,
     TaskListRequest,
+    TaskProjectionField,
     TaskRecord,
     UpdateTaskRequest,
 )
@@ -186,17 +187,6 @@ _LATEST_LEAD_RESPONSE_FIELDS = frozenset(
         "lastActivity",
     }
 )
-_TASK_INTENT_RESPONSE_FIELDS = frozenset(
-    {
-        "id",
-        "name",
-        "dueDate",
-        "assignedUserId",
-        "personId",
-        "isCompleted",
-        "type",
-    }
-)
 _UNCOMMUNICATED_LEAD_RESPONSE_FIELDS = frozenset(
     {
         "id",
@@ -216,6 +206,7 @@ _UNCOMMUNICATED_LEAD_RESPONSE_FIELDS = frozenset(
         "price",
         "sourceUrl",
         "tags",
+        "updated",
     }
 )
 _UNCOMMUNICATED_LEAD_FILTER_FIELDS = frozenset({"id", "lastCommunication"})
@@ -692,37 +683,10 @@ class ListUncontactedLeadsToolInput(RequestModel):
 class ListMyTaskIntentToolInput(RequestModel):
     """Tool input for listing the authenticated user's intent-scoped tasks."""
 
-    fields: list[str] | None = None
+    fields: list[TaskProjectionField] | None = None
     limit: int | None = None
     next_token: str | None = None
     offset: int | None = None
-
-    @field_validator("fields")
-    @classmethod
-    def _validate_fields(cls, value: list[str] | None) -> list[str] | None:
-        """Validate task projection fields for owned task intent helpers.
-
-        Args:
-            value: Optional field names requested by the MCP caller.
-
-        Returns:
-            The original field list when every field is supported.
-
-        Raises:
-            ValueError: If any requested field is not supported by the narrow
-                owned-task helpers.
-        """
-        if value is None:
-            return None
-        invalid_fields = sorted(set(value) - _TASK_INTENT_RESPONSE_FIELDS)
-        if invalid_fields:
-            allowed_fields = ", ".join(sorted(_TASK_INTENT_RESPONSE_FIELDS))
-            invalid = ", ".join(invalid_fields)
-            raise ValueError(
-                f"Unsupported task fields for owned task helpers: {invalid}. "
-                f"Allowed fields: {allowed_fields}."
-            )
-        return value
 
 
 class ListActiveDealsForPersonToolInput(RequestModel):
@@ -918,6 +882,36 @@ class GetTeamToolInput(RequestModel):
     """Tool input for fetching a team by ID."""
 
     team_id: int
+
+
+class ListTextMessagesToolInput(TextMessageListRequest):
+    """Tool input for listing text messages with a bounded identifying filter."""
+
+    @field_validator("from_number", "to_number")
+    @classmethod
+    def _normalize_number_filter(cls, value: str | None) -> str | None:
+        """Normalize optional text-message number filters."""
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("person_id")
+    @classmethod
+    def _validate_person_id(cls, value: int | None) -> int | None:
+        """Require positive person identifiers when supplied."""
+        if value is not None and value <= 0:
+            raise ValueError("person_id must be a positive Follow Up Boss person ID.")
+        return value
+
+    @model_validator(mode="after")
+    def _require_identifying_filter(self) -> ListTextMessagesToolInput:
+        """Require one supported filter before querying text-message history."""
+        if self.person_id is None and self.from_number is None and self.to_number is None:
+            raise ValueError(
+                "At least one identifying filter is required: person_id, from_number, or to_number."
+            )
+        return self
 
 
 class GetTextMessageToolInput(RequestModel):
@@ -2911,7 +2905,7 @@ class FollowUpBossToolAdapter:
         request = TaskListRequest(
             assigned_user_id=identity.id,
             due=due,
-            fields=tool_input.fields,
+            fields=cast(list[str] | None, tool_input.fields),
             is_completed=False,
             limit=tool_input.limit,
             next_token=tool_input.next_token,
@@ -2940,7 +2934,7 @@ class FollowUpBossToolAdapter:
         request = TaskListRequest(
             assigned_user_id=identity.id,
             due_start=_upcoming_task_due_start(),
-            fields=tool_input.fields,
+            fields=cast(list[str] | None, tool_input.fields),
             is_completed=False,
             limit=tool_input.limit,
             next_token=tool_input.next_token,
@@ -2953,14 +2947,73 @@ class FollowUpBossToolAdapter:
         return await self._single_result(lambda: self._services.tasks.get_task(tool_input.task_id))
 
     async def create_task(self, tool_input: CreateTaskRequest) -> dict[str, Any]:
-        """Create a task."""
-        return await self._single_result(lambda: self._services.tasks.create_task(tool_input))
+        """Create a task after converting any assignee name to a stable user ID."""
+
+        async def create_resolved_task() -> TaskRecord:
+            request = await self._resolved_task_create_request(tool_input)
+            return await self._services.tasks.create_task(request)
+
+        return await self._single_result(create_resolved_task)
+
+    async def _resolved_task_create_request(
+        self,
+        tool_input: CreateTaskRequest,
+    ) -> CreateTaskRequest:
+        """Return a task request that never sends the rejected `assignedTo` field.
+
+        Args:
+            tool_input: Validated public task-creation input.
+
+        Returns:
+            A copy assigned through `assignedUserId`. An explicit user ID takes
+            precedence; otherwise the supplied full name is resolved to one
+            exact active Follow Up Boss user.
+        """
+        if tool_input.assigned_user_id is not None:
+            return tool_input.model_copy(update={"assigned_to": None})
+        if tool_input.assigned_to is None:  # pragma: no cover - guarded by the model
+            raise RuntimeError("Task assignee is unavailable.")
+        assigned_user_id = await _resolve_active_user_id_by_name(
+            self._services,
+            tool_input.assigned_to,
+        )
+        return tool_input.model_copy(
+            update={"assigned_to": None, "assigned_user_id": assigned_user_id}
+        )
 
     async def update_task(self, tool_input: UpdateTaskToolInput) -> dict[str, Any]:
-        """Update a task."""
+        """Update a task after converting any assignee name to a stable user ID."""
+
+        async def update_resolved_task() -> TaskRecord:
+            request = await self._resolved_task_update_request(tool_input)
+            return await self._services.tasks.update_task(tool_input.task_id, request)
+
+        return await self._single_result(update_resolved_task)
+
+    async def _resolved_task_update_request(
+        self,
+        tool_input: UpdateTaskToolInput,
+    ) -> UpdateTaskRequest:
+        """Return a task update that never sends the rejected `assignedTo` field.
+
+        Args:
+            tool_input: Validated public task-update input.
+
+        Returns:
+            A request assigned through `assignedUserId` when an assignee was
+            supplied, with all other update fields preserved.
+        """
         request = UpdateTaskRequest.model_validate(tool_input.model_dump(exclude={"task_id"}))
-        return await self._single_result(
-            lambda: self._services.tasks.update_task(tool_input.task_id, request)
+        if request.assigned_user_id is not None:
+            return request.model_copy(update={"assigned_to": None})
+        if request.assigned_to is None:
+            return request
+        assigned_user_id = await _resolve_active_user_id_by_name(
+            self._services,
+            request.assigned_to,
+        )
+        return request.model_copy(
+            update={"assigned_to": None, "assigned_user_id": assigned_user_id}
         )
 
     async def delete_task(self, tool_input: DeleteTaskToolInput) -> dict[str, Any]:
@@ -3475,6 +3528,58 @@ def _normalize_user_name(value: str) -> str:
         Lowercased text with repeated whitespace removed.
     """
     return " ".join(value.casefold().strip().split())
+
+
+async def _resolve_active_user_id_by_name(
+    services: ServiceBundle,
+    assigned_user_name: str,
+) -> int:
+    """Resolve one exact active Follow Up Boss user name to its ID.
+
+    Args:
+        services: Active service bundle used to page through users.
+        assigned_user_name: Full user name supplied by the MCP caller.
+
+    Returns:
+        The uniquely matching active user ID.
+
+    Raises:
+        RuntimeError: If no active user or more than one active user matches.
+    """
+    users: list[UserRecord] = []
+    offset = 0
+    while True:
+        page = await services.users.list_users(
+            UserListRequest(
+                include_deleted=False,
+                limit=100,
+                name=assigned_user_name,
+                offset=offset,
+            )
+        )
+        users.extend(page.items)
+        if not page.metadata.has_next() or page.metadata.count == 0:
+            break
+        offset = page.metadata.offset + page.metadata.count
+
+    normalized_name = _normalize_user_name(assigned_user_name)
+    matches = [
+        user
+        for user in users
+        if _normalize_user_name(user.name or _user_full_name(user)) == normalized_name
+        and _is_active_user(user)
+    ]
+    if not matches:
+        raise RuntimeError(
+            f"Active Follow Up Boss user named {assigned_user_name!r} was not found."
+        )
+    if len(matches) > 1:
+        match_ids = [user.id for user in matches]
+        raise RuntimeError(
+            f"Active Follow Up Boss user named {assigned_user_name!r} is ambiguous; "
+            f"matched IDs {match_ids!r}."
+        )
+    return matches[0].id
 
 
 def _user_full_name(user: UserRecord) -> str:
