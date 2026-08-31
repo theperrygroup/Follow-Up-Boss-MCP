@@ -721,7 +721,7 @@ jobs:
               for key, value in task_definition.items()
               if key in registerable_keys and key in skeleton
           }
-          registerable["family"] = "followupboss-mcp-database-secret-metadata"
+          registerable["family"] = "followupboss-mcp-oauth-resource-migration"
           probe_script = """\
           import hashlib
           import json

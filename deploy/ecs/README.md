@@ -177,7 +177,10 @@ allow the existing ECR image upload, task-definition registration, and service u
 the metadata probe and migration runner's `ecs:DescribeServices`, `ecs:DescribeTaskDefinition`, `ecs:RunTask`,
 `ecs:DescribeTasks`, and `logs:GetLogEvents` actions. Its `iam:PassRole` scope must
 include the configured task and task execution roles used by the metadata probe and dedicated
-migration task. The metadata probe runs the current production image under the existing task role,
+migration task. Both one-shot definitions use the dedicated
+`followupboss-mcp-oauth-resource-migration` task family so the role can keep one narrow
+`ecs:RunTask` resource boundary. The metadata probe runs the current production image under the
+existing task role,
 requires the running task definition's image to be content-addressed by digest, requests only
 `secretsmanager:DescribeSecret`, injects no secret values, and emits an allowlisted version-metadata
 receipt. The workflow safely converts a proven bare reference once, then keeps the sole completed

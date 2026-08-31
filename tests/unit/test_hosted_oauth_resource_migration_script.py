@@ -356,6 +356,7 @@ def test_production_workflow_uses_a_least_privilege_migration_task() -> None:
     task_template = (
         _PROJECT_ROOT / "deploy" / "ecs" / "task-definition.migration.template.json"
     ).read_text()
+    migration_family = json.loads(task_template)["family"]
 
     assert "operation:" in workflow
     assert "authorize-production-ref" in workflow
@@ -388,7 +389,7 @@ def test_production_workflow_uses_a_least_privilege_migration_task() -> None:
     assert 'metadata["ARN"].encode("utf-8")' in workflow
     assert "version_id: sorted(stages)" in workflow
     assert 'if [ "${metadata_probe_required}" = "true" ]; then' in workflow
-    assert 'registerable["family"] = "followupboss-mcp-database-secret-metadata"' in workflow
+    assert f'registerable["family"] = "{migration_family}"' in workflow
     assert 'probe_image = container.get("image", "")' in workflow
     assert 're.fullmatch(r".+@sha256:[0-9a-f]{64}", probe_image)' in workflow
     assert "from botocore.config import Config" in workflow
