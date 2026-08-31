@@ -3,11 +3,23 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Annotated
 
 from pydantic import Field, field_validator, model_validator
 
 from followupboss_mcp.models.common import JsonValue, QueryModel, RequestModel, ResponseModel
 from followupboss_mcp.models.custom_fields import CustomFieldType, DropdownChoiceMap
+
+type DealCustomFieldsInput = Annotated[
+    dict[str, JsonValue],
+    Field(
+        description=(
+            "Deal custom fields keyed by Follow Up Boss API names beginning with 'custom'. "
+            "Use followupboss_list_deal_custom_fields to discover valid names."
+        ),
+        json_schema_extra={"propertyNames": {"pattern": "^custom"}},
+    ),
+]
 
 
 class DealListRequest(QueryModel):
@@ -130,7 +142,7 @@ class CreateDealRequest(RequestModel):
 
     agent_commission: int | None = Field(default=None, serialization_alias="agentCommission")
     commission_value: int | None = Field(default=None, serialization_alias="commissionValue")
-    custom_fields: dict[str, JsonValue] | None = None
+    custom_fields: DealCustomFieldsInput | None = None
     description: str | None = None
     due_diligence_date: date | None = Field(default=None, serialization_alias="dueDiligenceDate")
     earnest_money_due_date: date | None = Field(
@@ -173,7 +185,7 @@ class UpdateDealRequest(RequestModel):
 
     agent_commission: int | None = Field(default=None, serialization_alias="agentCommision")
     commission_value: int | None = Field(default=None, serialization_alias="commissionValue")
-    custom_fields: dict[str, JsonValue] | None = None
+    custom_fields: DealCustomFieldsInput | None = None
     description: str | None = None
     due_diligence_date: date | None = Field(default=None, serialization_alias="dueDiligenceDate")
     earnest_money_due_date: date | None = Field(

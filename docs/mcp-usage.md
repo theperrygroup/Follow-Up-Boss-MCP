@@ -154,6 +154,30 @@ For local hosted-style testing, `DevelopmentTenantStore.from_local_dev_settings(
 `DevelopmentHostedTokenVerifier` provide a development-safe bridge without changing the local CLI
 contract.
 
+## Validated Tool Inputs
+
+The MCP surface validates several Follow Up Boss contracts before making an upstream request:
+
+- `followupboss_list_users.fields` accepts either an array or the documented comma-separated
+  string. Use user projections such as `id`, `name`, `email`, `role`, `groups`, and
+  `teamLeaderOf`; `teams` is not a user projection, so use `followupboss_list_teams` for team
+  membership.
+- Every item passed to `followupboss_send_email_events` requires `campaign_id`, `occurred`,
+  `recipient`, and `type`; optional Follow Up Boss identifiers are `person_id` and `user_id`.
+- Deal `custom_fields` keys must use API-native names beginning with `custom`. Use
+  `followupboss_list_deal_custom_fields` to discover valid names before calling
+  `followupboss_create_deal` or `followupboss_update_deal`.
+- Call `outcome` must be one of `Interested`, `Not Interested`, `Left Message`, `No Answer`,
+  `Busy`, or `Bad Number`.
+- The owned-task helpers expose task response fields such as `created`, `dueDateTime`, and
+  `person`; they reject unsupported projections such as `personName`. Task writes accept either
+  `assigned_user_id` or an assignee name, which is normalized and resolved to one exact active
+  user ID before the write.
+- `followupboss_list_text_messages` requires at least one identifying filter: `person_id`,
+  `from_number`, or `to_number`.
+- `followupboss_list_uncontacted_leads` supports `updated` in its response projection in addition
+  to the existing lead fields.
+
 ## Tool Namespace
 
 All tools are namespaced with the `followupboss_` prefix.
@@ -199,7 +223,7 @@ or list calls when the intent is already clear.
 | `followupboss_search_events` | Search events with pagination metadata and supported event filters; do not use it as a substitute for note search by person ID. |
 | `followupboss_get_event` | Retrieve one event by ID. |
 | `followupboss_send_event` | Send a canonical `POST /events` lead or lead-activity payload. |
-| `followupboss_list_users` | List users with pagination metadata. |
+| `followupboss_list_users` | List users with pagination metadata and validated array or comma-separated response projections. |
 | `followupboss_get_user` | Retrieve one user by ID. |
 | `followupboss_delete_user` | Delete a user by ID, require a reassignment target, and return a structured confirmation. |
 | `followupboss_list_custom_fields` | List available Follow Up Boss custom fields. |
@@ -211,12 +235,12 @@ or list calls when the intent is already clear.
 | `followupboss_create_email_campaign` | Create an email marketing campaign. |
 | `followupboss_update_email_campaign` | Update one email marketing campaign by ID. |
 | `followupboss_list_email_events` | List email marketing events. |
-| `followupboss_send_email_events` | Post batched email marketing events. |
+| `followupboss_send_email_events` | Post typed batched email marketing events with required campaign, occurrence, recipient, and event-type fields. |
 | `followupboss_list_deals` | List deals with documented filters and pagination metadata; use `followupboss_list_active_deals_for_person` for active deals tied to a specific lead/person. |
 | `followupboss_list_active_deals_for_person` | List active, non-archived deals for a specific person/lead by explicit `person_id`. |
 | `followupboss_get_deal` | Retrieve one deal by ID. |
-| `followupboss_create_deal` | Create a deal. |
-| `followupboss_update_deal` | Update one deal by ID. |
+| `followupboss_create_deal` | Create a deal; custom-field keys must begin with `custom`. |
+| `followupboss_update_deal` | Update one deal by ID; custom-field keys must begin with `custom`. |
 | `followupboss_delete_deal` | Delete one deal by ID and return a structured confirmation. |
 | `followupboss_list_deal_custom_fields` | List deal custom fields with pagination metadata for valid write-time field names. |
 | `followupboss_get_deal_custom_field` | Retrieve one deal custom field by ID. |
@@ -307,15 +331,15 @@ or list calls when the intent is already clear.
 | `followupboss_delete_appointment` | Delete one appointment by ID and return a structured confirmation. |
 | `followupboss_list_calls` | List calls with documented filters and pagination metadata. |
 | `followupboss_get_call` | Retrieve one call by ID. |
-| `followupboss_create_call` | Create a call log entry. |
-| `followupboss_update_call` | Update one call by ID. |
+| `followupboss_create_call` | Create a call log entry with a documented call outcome. |
+| `followupboss_update_call` | Update one call by ID with a documented call outcome. |
 | `followupboss_list_tasks` | List tasks with documented filters and pagination metadata; use the owned task helpers for common "my tasks" intents. |
-| `followupboss_list_my_overdue_tasks` | List incomplete overdue tasks assigned to the authenticated user. |
-| `followupboss_list_my_tasks_due_today` | List incomplete tasks due today and assigned to the authenticated user. |
-| `followupboss_list_my_upcoming_tasks` | List incomplete future tasks assigned to the authenticated user. |
+| `followupboss_list_my_overdue_tasks` | List incomplete overdue tasks assigned to the authenticated user with validated task projections. |
+| `followupboss_list_my_tasks_due_today` | List incomplete tasks due today and assigned to the authenticated user with validated task projections. |
+| `followupboss_list_my_upcoming_tasks` | List incomplete future tasks assigned to the authenticated user with validated task projections. |
 | `followupboss_get_task` | Retrieve one task by ID. |
-| `followupboss_create_task` | Create a task for a person. |
-| `followupboss_update_task` | Update one task by explicit ID. |
+| `followupboss_create_task` | Create a task for a person, resolving an assignee name to one exact active user ID. |
+| `followupboss_update_task` | Update one task by explicit ID, resolving an assignee name to one exact active user ID. |
 | `followupboss_delete_task` | Delete one task by explicit ID and return a structured confirmation. |
 | `followupboss_list_templates` | List email templates with pagination metadata. |
 | `followupboss_get_template` | Retrieve one email template by ID. |
@@ -323,7 +347,7 @@ or list calls when the intent is already clear.
 | `followupboss_create_template` | Create an email template. |
 | `followupboss_update_template` | Update one email template by ID. |
 | `followupboss_delete_template` | Delete one email template by ID and return a structured confirmation. |
-| `followupboss_list_text_messages` | List existing text messages with documented filters and pagination metadata. Read-only; Follow Up Boss does not provide API support to log or send texts through the MCP. |
+| `followupboss_list_text_messages` | List existing text messages for an explicit person, sender number, or recipient number. Read-only; Follow Up Boss does not provide API support to log or send texts through the MCP. |
 | `followupboss_get_text_message` | Retrieve one text message by ID. |
 | `followupboss_list_text_message_templates` | List text message templates with pagination metadata. |
 | `followupboss_get_text_message_template` | Retrieve one text message template by ID. |

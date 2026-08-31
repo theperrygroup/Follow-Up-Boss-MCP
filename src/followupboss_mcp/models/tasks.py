@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import AliasChoices, Field, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 
 from followupboss_mcp.datetimes import normalize_optional_datetime
 from followupboss_mcp.models.common import CommonListQuery, JsonValue, RequestModel, ResponseModel
@@ -76,6 +76,17 @@ class TaskWriteRequest(RequestModel):
     is_completed: bool | None = Field(default=None, serialization_alias="isCompleted")
     name: str | None = None
     type: str | None = None
+
+    @field_validator("assigned_to")
+    @classmethod
+    def _normalize_assigned_to(cls, value: str | None) -> str | None:
+        """Normalize an assignee name before an exact Follow Up Boss lookup."""
+        if value is None:
+            return None
+        normalized = " ".join(value.split())
+        if not normalized:
+            raise ValueError("assigned_to must be non-empty.")
+        return normalized
 
     @model_validator(mode="after")
     def _normalize_due_date_time_to_utc(self) -> TaskWriteRequest:

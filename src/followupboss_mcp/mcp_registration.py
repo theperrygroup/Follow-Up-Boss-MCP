@@ -139,6 +139,7 @@ from followupboss_mcp.models.deals import (
     CreateDealCustomFieldRequest,
     CreateDealRequest,
     DealCustomFieldListRequest,
+    DealCustomFieldsInput,
     DealListRequest,
 )
 from followupboss_mcp.models.email_marketing import (
@@ -1899,7 +1900,10 @@ def _register_deal_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
 
     @mcp.tool(
         name="followupboss_create_deal",
-        description="Create a Follow Up Boss deal.",
+        description=(
+            "Create a Follow Up Boss deal. custom_fields keys must begin with 'custom'; "
+            "use followupboss_list_deal_custom_fields to discover valid names."
+        ),
     )
     async def followupboss_create_deal(
         name: str,
@@ -1907,7 +1911,7 @@ def _register_deal_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         *,
         agent_commission: int | None = None,
         commission_value: int | None = None,
-        custom_fields: dict[str, object] | None = None,
+        custom_fields: DealCustomFieldsInput | None = None,
         description: str | None = None,
         due_diligence_date: str | None = None,
         earnest_money_due_date: str | None = None,
@@ -1925,14 +1929,17 @@ def _register_deal_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
 
     @mcp.tool(
         name="followupboss_update_deal",
-        description="Update a Follow Up Boss deal by ID.",
+        description=(
+            "Update a Follow Up Boss deal by ID. custom_fields keys must begin with 'custom'; "
+            "use followupboss_list_deal_custom_fields to discover valid names."
+        ),
     )
     async def followupboss_update_deal(
         deal_id: int,
         *,
         agent_commission: int | None = None,
         commission_value: int | None = None,
-        custom_fields: dict[str, object] | None = None,
+        custom_fields: DealCustomFieldsInput | None = None,
         description: str | None = None,
         due_diligence_date: str | None = None,
         earnest_money_due_date: str | None = None,

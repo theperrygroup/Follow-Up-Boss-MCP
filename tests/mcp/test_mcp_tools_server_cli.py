@@ -3615,6 +3615,20 @@ async def test_create_task_resolves_named_assignee_to_id() -> None:
     assert stub.task_create_requests[-1].assigned_user_id == 6
 
 
+def test_task_assignee_names_are_normalized_and_blank_names_rejected() -> None:
+    """Task assignee names should be safe exact-lookup inputs."""
+    assert CreateTaskRequest(person_id=1, assigned_to="  Geordi   La Forge ").assigned_to == (
+        "Geordi La Forge"
+    )
+    assert UpdateTaskToolInput(task_id=19, assigned_to="  Geordi   La Forge ").assigned_to == (
+        "Geordi La Forge"
+    )
+    with pytest.raises(ValidationError, match="assigned_to must be non-empty"):
+        CreateTaskRequest(person_id=1, assigned_to="   ")
+    with pytest.raises(ValidationError, match="assigned_to must be non-empty"):
+        UpdateTaskToolInput(task_id=19, assigned_to="   ")
+
+
 @pytest.mark.asyncio
 async def test_update_task_resolves_named_assignee_to_id() -> None:
     """A public task update should never serialize an assignee as `assignedTo`."""
@@ -4013,6 +4027,53 @@ async def test_task_and_call_tools_publish_documented_field_enums() -> None:
     assert "dueDateTime" in task_fields
     assert "person" in task_fields
     assert "personName" not in task_fields
+
+    for tool_name in ("followupboss_create_deal", "followupboss_update_deal"):
+        tool_schema = tools[tool_name].inputSchema
+        custom_fields_schema = tool_schema["properties"]["custom_fields"]
+        object_reference = next(
+            option["$ref"] for option in custom_fields_schema["anyOf"] if "$ref" in option
+        )
+        object_schema = tool_schema["$defs"][object_reference.rsplit("/", maxsplit=1)[-1]]
+        assert object_schema["propertyNames"] == {"pattern": "^custom"}
+        assert "followupboss_list_deal_custom_fields" in object_schema["description"]
+
+
+@pytest.mark.asyncio
+async def test_public_create_task_resolves_assignee_name_to_id() -> None:
+    """The registered task tool should resolve a normalized name before its write."""
+    client = QueueClient(
+        [
+            {
+                "_metadata": {"limit": 100, "offset": 0, "total": 1},
+                "users": [{"id": 6, "name": "Geordi La Forge", "status": "Active"}],
+            },
+            {"id": 18, "personId": 1, "assignedUserId": 6},
+        ]
+    )
+    server = create_server(
+        FollowUpBossSettings.model_validate({"api_key": "key"}),
+        client=client,
+    )
+    tools = {tool.name: tool for tool in await server.list_tools()}
+
+    result = await _call_public_tool(
+        server,
+        tools,
+        "followupboss_create_task",
+        1,
+        assigned_to="  Geordi   La Forge ",
+    )
+
+    assert result["id"] == 18
+    assert [call["path"] for call in client.calls] == ["/me", "/users", "/tasks"]
+    assert client.calls[1]["params"] == {
+        "includeDeleted": "false",
+        "limit": "100",
+        "name": "Geordi La Forge",
+        "offset": "0",
+    }
+    assert client.calls[2]["json_body"] == {"assignedUserId": 6, "personId": 1}
 
 
 @pytest.mark.asyncio
