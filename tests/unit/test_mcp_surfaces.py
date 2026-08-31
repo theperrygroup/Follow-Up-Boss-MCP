@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -13,6 +14,7 @@ from followupboss_mcp.config import FollowUpBossTenantSettings
 from followupboss_mcp.hosted_auth import HostedAuthenticatedTenant
 from followupboss_mcp.mcp_registration import (
     _format_hosted_surface_context,
+    _load_api_coverage_matrix_resource,
     _render_api_coverage_matrix_resource,
     _render_compose_lead_event_prompt,
     _resolve_surface_runtime,
@@ -89,6 +91,36 @@ def test_surface_context_renderers_include_hosted_runtime_details() -> None:
         last_name="Agent",
         runtime=None,
     ).startswith("Create a Follow Up Boss POST /events payload")
+
+
+def test_api_coverage_resource_loads_in_source_and_packaged_layouts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The MCP resource should work in editable checkouts and installed wheels."""
+    source = tmp_path / "source" / "api-coverage-matrix.md"
+    source.parent.mkdir()
+    source.write_text("source coverage", encoding="utf-8")
+    monkeypatch.setattr(
+        "followupboss_mcp.mcp_registration._SOURCE_API_COVERAGE_RESOURCE",
+        source,
+    )
+    monkeypatch.setattr(
+        "followupboss_mcp.mcp_registration.resources.files",
+        lambda _package: tmp_path / "missing-assets",
+    )
+
+    assert _load_api_coverage_matrix_resource() == "source coverage"
+
+    packaged = tmp_path / "assets" / "api-coverage-matrix.md"
+    packaged.parent.mkdir()
+    packaged.write_text("packaged coverage", encoding="utf-8")
+    monkeypatch.setattr(
+        "followupboss_mcp.mcp_registration.resources.files",
+        lambda _package: packaged.parent,
+    )
+
+    assert _load_api_coverage_matrix_resource() == "packaged coverage"
 
 
 @pytest.mark.asyncio

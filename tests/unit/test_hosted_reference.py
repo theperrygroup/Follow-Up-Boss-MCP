@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Any, cast
 
 import pytest
-from pydantic import SecretStr, ValidationError
+from pydantic import AnyHttpUrl, SecretStr, ValidationError
 
 import followupboss_mcp.hosted_reference as hosted_reference
 from followupboss_mcp.config import FollowUpBossServerSettings, FollowUpBossTenantRuntimeDefaults
@@ -710,6 +710,7 @@ async def test_postgres_redis_hosted_oauth_store_round_trips_state_and_tokens() 
         "subject": "subject-1",
         "client_id": "client-1",
         "scopes": ["followupboss:mcp"],
+        "resource": "https://mcp.example.com/mcp",
         "credential_id": "credential-1",
         "expires_at": 2000,
         "revoked_at": None,
@@ -742,6 +743,7 @@ async def test_postgres_redis_hosted_oauth_store_round_trips_state_and_tokens() 
             "code_challenge": "challenge",
             "code_challenge_method": "plain",
             "scopes": "followupboss:mcp",
+            "resource": "https://mcp.example.com/mcp",
             "expires_at": 2000,
         }
     )
@@ -758,6 +760,7 @@ async def test_postgres_redis_hosted_oauth_store_round_trips_state_and_tokens() 
             "code_challenge": "challenge",
             "code_challenge_method": "plain",
             "scopes": "followupboss:mcp",
+            "resource": "https://mcp.example.com/mcp",
             "tenant_id": "tenant-1",
             "subject": "subject-1",
             "credential_id": "credential-1",
@@ -765,7 +768,10 @@ async def test_postgres_redis_hosted_oauth_store_round_trips_state_and_tokens() 
         }
     )
     await store.save_authorization_code(code)
-    assert await store.consume_authorization_code("code-hash") == code
+    code_wire_payload = json.loads(fake_redis.set_calls[-1][1])
+    assert "resource" not in code_wire_payload
+    consumed_code = await store.consume_authorization_code("code-hash")
+    assert consumed_code == code.model_copy(update={"resource": None})
     assert await store.consume_authorization_code("code-hash") is None
     atomic_eval_calls = [
         call
@@ -785,6 +791,7 @@ async def test_postgres_redis_hosted_oauth_store_round_trips_state_and_tokens() 
                 "subject": "subject-1",
                 "client_id": "client-1",
                 "scopes": "followupboss:mcp",
+                "resource": "https://mcp.example.com/mcp",
                 "credential_id": "credential-1",
                 "expires_at": 2000,
             }
@@ -1075,12 +1082,14 @@ async def test_postgres_hosted_token_verifier_hashes_tokens_and_returns_identity
                 "expires_at": 200,
                 "token_id": "token-1",
                 "credential_id": "credential-1",
+                "resource": "https://mcp.example.com/mcp",
             },
             None,
         ]
     )
     verifier = PostgresHostedTokenVerifier(
         pool=cast(hosted_reference.ReferenceHostedPostgresPool, factory),
+        resource_server_url="https://mcp.example.com/mcp",
         time_provider=lambda: 123,
     )
 
@@ -1091,21 +1100,35 @@ async def test_postgres_hosted_token_verifier_hashes_tokens_and_returns_identity
     assert identity.tenant_id == "tenant-1"
     assert identity.scopes == ("followupboss:mcp",)
     assert identity.credential_id == "credential-1"
+    assert identity.resource == "https://mcp.example.com/mcp"
     assert missing_identity is None
     assert factory.open_calls == 2
     assert factory.connection_requests == 2
-    assert factory.execute_calls[0][1] == (hash_hosted_bearer_token("hosted-token"), 123)
+    assert factory.execute_calls[0][1] == (
+        hash_hosted_bearer_token("hosted-token"),
+        "https://mcp.example.com/mcp",
+        123,
+    )
 
 
 def test_postgres_hosted_components_require_database_url_without_injected_pool() -> None:
     """Hosted PostgreSQL components should reject missing database URLs without a pool."""
     with pytest.raises(ValueError, match="database_url is required when pool is not provided."):
-        PostgresHostedTokenVerifier()
+        PostgresHostedTokenVerifier(resource_server_url="https://mcp.example.com/mcp")
     with pytest.raises(ValueError, match="database_url is required when pool is not provided."):
         PostgresAwsTenantStore(
             secret_store=FakeSecretStore(
                 ReferenceHostedSecretPayload.model_validate({"api_key": "secret-key"})
             )
+        )
+
+
+def test_postgres_hosted_token_verifier_rejects_non_url_resource() -> None:
+    """PostgreSQL verifier construction must reject unsupported resource types."""
+    with pytest.raises(TypeError, match="resource_server_url must be a public HTTP URL"):
+        PostgresHostedTokenVerifier(
+            pool=cast(Any, FakeConnectionFactory([])),
+            resource_server_url=cast(Any, object()),
         )
 
 
@@ -1374,7 +1397,8 @@ async def test_postgres_hosted_components_close_owned_pools(
     )
 
     verifier = PostgresHostedTokenVerifier(
-        SecretStr("postgresql://app:secret@db.example.com:5432/fub")
+        SecretStr("postgresql://app:secret@db.example.com:5432/fub"),
+        resource_server_url="https://mcp.example.com/mcp",
     )
     store = PostgresAwsTenantStore(
         SecretStr("postgresql://app:secret@db.example.com:5432/fub"),
@@ -1405,7 +1429,8 @@ async def test_postgres_hosted_components_skip_close_for_injected_pools() -> Non
     verifier_pool = FakeConnectionFactory([])
     credential_pool = FakeConnectionFactory([])
     verifier = PostgresHostedTokenVerifier(
-        pool=cast(hosted_reference.ReferenceHostedPostgresPool, verifier_pool)
+        pool=cast(hosted_reference.ReferenceHostedPostgresPool, verifier_pool),
+        resource_server_url="https://mcp.example.com/mcp",
     )
     store = PostgresAwsTenantStore(
         secret_store=FakeSecretStore(
@@ -1513,9 +1538,16 @@ def test_create_reference_hosted_server_builds_reference_components(
             captured["redis_backend"] = redis_url.get_secret_value()
 
     class FakeTokenVerifier:
-        def __init__(self, database_url: SecretStr, *, pool: object | None = None) -> None:
+        def __init__(
+            self,
+            database_url: SecretStr,
+            *,
+            resource_server_url: AnyHttpUrl | str,
+            pool: object | None = None,
+        ) -> None:
             captured["token_verifier"] = {
                 "database_url": database_url.get_secret_value(),
+                "resource_server_url": str(resource_server_url),
                 "pool": pool,
             }
 
@@ -1584,6 +1616,7 @@ def test_create_reference_hosted_server_builds_reference_components(
         captured["token_verifier"]["database_url"]
         == "postgresql://app:secret@db.example.com:5432/fub"
     )
+    assert captured["token_verifier"]["resource_server_url"] == "https://mcp.example.com/mcp"
     assert captured["tenant_store"]["pool"] is captured["token_verifier"]["pool"]
     created_kwargs = captured["create_server"]["kwargs"]
     assert created_kwargs["server_settings"].transport == "streamable-http"
@@ -1678,8 +1711,14 @@ def test_create_reference_hosted_server_builds_oauth_components(
             captured["redis_backend"] = redis_url
 
     class FakeTokenVerifier:
-        def __init__(self, database_url: SecretStr, *, pool: object | None) -> None:
-            captured["token_verifier"] = (database_url, pool)
+        def __init__(
+            self,
+            database_url: SecretStr,
+            *,
+            resource_server_url: AnyHttpUrl | str,
+            pool: object | None,
+        ) -> None:
+            captured["token_verifier"] = (database_url, str(resource_server_url), pool)
 
     class FakeServer:
         pass
@@ -1778,8 +1817,18 @@ def test_create_reference_hosted_server_loads_hosted_settings_from_environment(
             captured["redis_backend"] = redis_url.get_secret_value()
 
     class FakeTokenVerifier:
-        def __init__(self, database_url: SecretStr, *, pool: object | None = None) -> None:
-            captured["token_verifier"] = (database_url.get_secret_value(), pool)
+        def __init__(
+            self,
+            database_url: SecretStr,
+            *,
+            resource_server_url: AnyHttpUrl | str,
+            pool: object | None = None,
+        ) -> None:
+            captured["token_verifier"] = (
+                database_url.get_secret_value(),
+                str(resource_server_url),
+                pool,
+            )
 
     class FakeServer:
         pass
@@ -1820,7 +1869,8 @@ def test_create_reference_hosted_server_loads_hosted_settings_from_environment(
     assert captured["secret_store"] == ("us-east-1", "followupboss/prod/tenants/")
     assert captured["tenant_store"][0] == "postgresql://app:secret@db.example.com:5432/fub"
     assert captured["redis_backend"] == "redis://cache.example.com:6379/0"
-    assert captured["tenant_store"][2] is captured["token_verifier"][1]
+    assert captured["token_verifier"][1] == "https://mcp.example.com/mcp"
+    assert captured["tenant_store"][2] is captured["token_verifier"][2]
     assert captured["create_server"]["kwargs"]["hosted_auth"].required_scopes == (
         "followupboss:mcp",
     )
@@ -1832,7 +1882,7 @@ def test_hosted_reference_cli_parser_and_main(monkeypatch: pytest.MonkeyPatch) -
     assert parser.prog == "followupboss-mcp-hosted"
 
     created_settings: list[Any] = []
-    runs: list[str] = []
+    runs: list[tuple[str, dict[str, object]]] = []
 
     @dataclass
     class FakeServerSettings:
@@ -1853,8 +1903,8 @@ def test_hosted_reference_cli_parser_and_main(monkeypatch: pytest.MonkeyPatch) -
             )
 
     class FakeServer:
-        def run(self, transport: str) -> None:
-            runs.append(transport)
+        def run(self, transport: str, **kwargs: object) -> None:
+            runs.append((transport, kwargs))
 
     def fake_create_reference_hosted_server(*, server_settings: object) -> FakeServer:
         created_settings.append(server_settings)
@@ -1878,4 +1928,23 @@ def test_hosted_reference_cli_parser_and_main(monkeypatch: pytest.MonkeyPatch) -
     assert created_settings[1].host == "127.0.0.1"
     assert created_settings[1].port == 8000
     assert created_settings[1].streamable_http_path == "/mcp"
-    assert runs == ["streamable-http", "streamable-http"]
+    assert runs == [
+        (
+            "streamable-http",
+            {
+                "host": "0.0.0.0",
+                "port": 9000,
+                "streamable_http_path": "/alt",
+                "json_response": True,
+            },
+        ),
+        (
+            "streamable-http",
+            {
+                "host": "127.0.0.1",
+                "port": 8000,
+                "streamable_http_path": "/mcp",
+                "json_response": True,
+            },
+        ),
+    ]

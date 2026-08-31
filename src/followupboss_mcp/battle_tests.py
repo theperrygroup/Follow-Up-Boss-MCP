@@ -1132,7 +1132,9 @@ def mcp_tool_result_to_json(result: object) -> JsonValue:
     Raises:
         TypeError: If the result cannot be represented as JSON.
     """
-    structured_content = getattr(result, "structuredContent", None)
+    structured_content = getattr(result, "structured_content", None)
+    if structured_content is None:
+        structured_content = getattr(result, "structuredContent", None)
     if structured_content is not None:
         return _coerce_json_value(structured_content)
     content = getattr(result, "content", None)

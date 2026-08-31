@@ -70,7 +70,7 @@ Both targets auto-load a repository-local `.env` when present, so manual export 
 - `src/followupboss_mcp/http_client.py`: auth, headers, retries, rate limits, JSON parsing, and HTTP error mapping
 - `src/followupboss_mcp/services/`: typed Follow Up Boss operations by domain
 - `src/followupboss_mcp/mcp_tools.py`: MCP-safe adapter layer
-- `src/followupboss_mcp/mcp_registration.py`: grouped FastMCP tool, resource, and prompt registration helpers
+- `src/followupboss_mcp/mcp_registration.py`: grouped MCPServer tool, resource, and prompt registration helpers
 - `src/followupboss_mcp/mcp_server.py`: server construction, service bundle wiring, and lifespan management
 - `tests/`: unit, contract, integration, and MCP coverage
 
@@ -92,7 +92,7 @@ When you add a Follow Up Boss endpoint, update all of these layers together:
 
 - Prefer adapter tests for focused response-shaping behavior.
 - Keep at least one official MCP client interoperability test for the registered surface.
-- Avoid depending only on private FastMCP internals when a client-session test can prove the same behavior.
+- Avoid depending only on private MCPServer internals when a client-session test can prove the same behavior.
 
 ## Security Expectations
 

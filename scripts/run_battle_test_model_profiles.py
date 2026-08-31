@@ -34,20 +34,20 @@ from followupboss_mcp.tenant_runtime import build_service_bundle
 
 
 class FastMcpCallable(Protocol):
-    """Protocol for the FastMCP tool-calling surface used by this script."""
+    """Protocol for the MCPServer tool-calling surface used by this script."""
 
     async def call_tool(self, name: str, arguments: dict[str, Any]) -> object:
         """Call one registered MCP tool."""
 
 
 class FastMcpBattleTestClient:
-    """Small adapter exposing FastMCP `call_tool()` through the battle-test protocol."""
+    """Small adapter exposing MCPServer `call_tool()` through the battle-test protocol."""
 
     def __init__(self, server: FastMcpCallable) -> None:
         """Initialize the adapter.
 
         Args:
-            server: FastMCP server object returned by `create_server()`.
+            server: MCPServer object returned by `create_server()`.
         """
         self._server = server
 
@@ -56,14 +56,14 @@ class FastMcpBattleTestClient:
         name: str,
         arguments: Mapping[str, JsonValue] | None = None,
     ) -> object:
-        """Call one registered FastMCP tool.
+        """Call one registered MCPServer tool.
 
         Args:
             name: MCP tool name.
             arguments: Optional JSON-compatible tool arguments.
 
         Returns:
-            The structured tool response returned by FastMCP.
+            The structured tool response returned by MCPServer.
         """
         result = await self._server.call_tool(name, dict(arguments or {}))
         decoded_result = _decode_fastmcp_result(result)
@@ -71,10 +71,10 @@ class FastMcpBattleTestClient:
 
 
 def _decode_fastmcp_result(result: object) -> JsonValue:
-    """Decode common FastMCP tool result shapes into JSON payloads.
+    """Decode common MCPServer tool result shapes into JSON payloads.
 
     Args:
-        result: Raw `FastMCP.call_tool()` result.
+        result: Raw `MCPServer.call_tool()` result.
 
     Returns:
         Decoded JSON payload when the result is structured or JSON text,

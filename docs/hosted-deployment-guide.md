@@ -51,7 +51,7 @@ until there is a stronger need for third-party issuer federation or public-key d
 ```mermaid
 flowchart LR
     A["Hosted client"] --> B["HTTPS proxy or load balancer"]
-    B --> C["Shared FastMCP app"]
+    B --> C["Shared MCPServer app"]
     C --> D["Opaque token verifier\nPostgreSQL token table"]
     C --> E["Tenant store\nPostgreSQL metadata"]
     E --> F["AWS Secrets Manager"]
@@ -79,7 +79,7 @@ The repository reference wrapper constructs those abstractions with:
 
 The reference shared deployment needs:
 
-- one or more ASGI application instances running the FastMCP server
+- one or more ASGI application instances running the MCPServer server
 - a trusted HTTPS proxy or load balancer in front of the app instances
 - PostgreSQL for tenant metadata and hosted bearer-token metadata
 - AWS Secrets Manager for raw Follow Up Boss API keys, OAuth access tokens, and optional
@@ -112,7 +112,7 @@ The production wrapper should project these backing records into the repository 
 | --- | --- | --- |
 | `tenants` table | `tenant_id`, `tenant_slug`, `display_name`, `credential_id`, `status` | `TenantRecord` |
 | `tenant_credentials` table | `credential_id`, `tenant_id`, `auth_mode`, `system_name`, `secret_ref`, `status` | `TenantCredentialRecord` after secret resolution |
-| `hosted_access_tokens` table | `token_id`, `token_hash`, `tenant_id`, `subject`, `client_id`, `scopes`, `credential_id`, `expires_at`, `revoked_at` | `HostedVerifiedIdentity` |
+| `hosted_access_tokens` table | `token_id`, `token_hash`, `tenant_id`, `subject`, `client_id`, `scopes`, `resource`, `credential_id`, `expires_at`, `revoked_at` | `HostedVerifiedIdentity` |
 
 The raw Follow Up Boss secret payload should live only in AWS Secrets Manager. The PostgreSQL
 credential row should contain non-secret metadata plus the secret reference needed to fetch the
@@ -147,6 +147,7 @@ CREATE TABLE hosted_access_tokens (
     subject TEXT NOT NULL,
     client_id TEXT NOT NULL,
     scopes TEXT[] NOT NULL DEFAULT ARRAY['followupboss:mcp'],
+    resource TEXT NOT NULL,
     credential_id TEXT NOT NULL,
     expires_at BIGINT NULL,
     revoked_at BIGINT NULL
@@ -170,6 +171,7 @@ CREATE TABLE hosted_oauth_refresh_tokens (
     subject TEXT NOT NULL,
     client_id TEXT NOT NULL,
     scopes TEXT[] NOT NULL DEFAULT ARRAY['followupboss:mcp'],
+    resource TEXT NOT NULL,
     credential_id TEXT NOT NULL,
     expires_at BIGINT NOT NULL,
     revoked_at BIGINT NULL
@@ -183,6 +185,127 @@ CREATE INDEX hosted_oauth_refresh_tokens_active_idx
 `PostgresHostedTokenVerifier` looks up bearer tokens by the `sha256:`-prefixed token hash. The
 repository helper `hash_hosted_bearer_token(...)` produces the expected lookup value for stored
 opaque tokens.
+
+### Existing OAuth Row Transition
+
+Use `scripts/migrate_hosted_oauth_resource.py` for existing databases. It validates that the
+explicit `--resource` is canonical and exactly matches
+`FOLLOWUPBOSS_HOSTED_RESOURCE_SERVER_URL`, keeps the database URL out of the `psql` argument list,
+and defaults every write phase to a non-connecting dry run. Every SQL phase uses bounded lock and
+statement timeouts and a transaction. Write phases also use an advisory migration lock,
+parameterized resource values, reviewed row counts, and postcondition checks.
+
+The repository production workflow runs the same utility inside a dedicated, migration-only
+Fargate task in the service VPC. Merge the reviewed migration-capable release to `main`, then
+dispatch `.github/workflows/deploy-production.yml` from `main` with `operation=expand`, followed by
+`operation=status`, and finally
+`operation=backfill` with the two exact status counts and
+`acknowledge_unbound_token_audience=true`. The helper suppresses raw PostgreSQL output; CloudWatch
+and the public Actions log receive only a generic failure classification or a sanitized aggregate
+receipt. On first adoption of a bare Secrets Manager ARN, the workflow proves every running task
+was created safely after the secret's last change, resolves its exact `AWSCURRENT` version, and pins
+the stable running service and migration task to that immutable version. Only the explicit `expand`
+operation may perform that first adoption and enable ECS deployment-circuit-breaker rollback; every
+other phase fails closed while the service still uses a bare ARN and never calls `update-service`.
+Later phases reuse the already-pinned version as authoritative and never advance production merely
+because `AWSCURRENT` rotated; a secret version upgrade requires its own deploy and acceptance path.
+A normal production deployment runs the read-only `verify-ready` phase and fails before replacing
+any ECS task unless both tables have zero unbound/foreign rows and are either in the guarded rolling
+state (nullable with the canonical default) or the finalized state (`NOT NULL` with no default).
+
+After authenticated modern- and legacy-protocol live acceptance, compute separate SHA-256 digests
+of the two sanitized evidence records. Dispatch `operation=record-acceptance` with those digests,
+the exact live-tested SHA, and the task-definition ARN from the deployment receipt. That callback
+revalidates the complete live ECS task set and publishes an immutable, event-bound Actions artifact.
+Then dispatch `operation=status` again. Finalization requires `operation=finalize`,
+`old_writers_retired=true`, and only the successful `record-acceptance` run ID; it downloads and
+validates that artifact, freshly revalidates the stable service and every running task, and requires
+the artifact's SHA, task definition, and resource to match. This binds acceptance to the immutable
+image digest and rendered runtime configuration, not only the Git SHA. Use
+`operation=rollback-finalize` before rolling back the application after finalization.
+
+Set the two existing deployment values in the operator shell. Do not paste a database URL into a
+command argument:
+
+```bash
+export FOLLOWUPBOSS_HOSTED_RESOURCE_SERVER_URL="https://your-host.example/mcp"
+export FOLLOWUPBOSS_TENANT_DATABASE_URL="postgresql://..."
+```
+
+Perform the transition in this order:
+
+1. Print the expand plan, then add nullable columns with a temporary constant default equal to the
+   explicit canonical resource. The default makes an old application that omits the new column
+   write correctly bound rows throughout the rolling deployment:
+
+   ```bash
+   uv run python scripts/migrate_hosted_oauth_resource.py expand \
+     --resource "$FOLLOWUPBOSS_HOSTED_RESOURCE_SERVER_URL"
+   uv run python scripts/migrate_hosted_oauth_resource.py expand \
+     --resource "$FOLLOWUPBOSS_HOSTED_RESOURCE_SERVER_URL" --apply
+   ```
+
+2. Run read-only status. Record the `unbound_rows` values. If any `foreign_resource_rows` value is
+   nonzero, stop; the database contains more than the one asserted audience and the script will
+   not overwrite it.
+
+   ```bash
+   uv run python scripts/migrate_hosted_oauth_resource.py status \
+     --resource "$FOLLOWUPBOSS_HOSTED_RESOURCE_SERVER_URL"
+   ```
+
+3. Backfill the reviewed counts before the rolling deployment. The acknowledgement is an explicit
+   assertion that every currently unbound token was issued only for this MCP resource. Substitute
+   the two exact counts from the immediately preceding status output:
+
+   ```bash
+   uv run python scripts/migrate_hosted_oauth_resource.py backfill \
+     --resource "$FOLLOWUPBOSS_HOSTED_RESOURCE_SERVER_URL" \
+     --expect-access-unbound ACCESS_COUNT \
+     --expect-refresh-unbound REFRESH_COUNT \
+     --acknowledge-unbound-token-audience --apply
+   ```
+
+4. Roll out the resource-aware application. Old instances omit the new column and PostgreSQL applies
+   the temporary canonical default; new instances write the same value explicitly. New instances
+   can therefore accept tokens issued by either version. Do not finalize while an old writer remains,
+   because finalization removes that compatibility default.
+
+5. After confirming every old writer is retired, run status again. Both `unbound_rows` and
+   `foreign_resource_rows` must be zero, and `has_canonical_default` should be `true` for both
+   tables. If an unexpected NULL exists, investigate its writer and repeat the reviewed-count
+   backfill before continuing.
+
+6. Print the finalization plan, then remove the temporary defaults and add the `NOT NULL`
+   constraints in one transaction. The explicit flag records the operator assertion that old
+   writers are gone:
+
+   ```bash
+   uv run python scripts/migrate_hosted_oauth_resource.py finalize \
+     --resource "$FOLLOWUPBOSS_HOSTED_RESOURCE_SERVER_URL"
+   uv run python scripts/migrate_hosted_oauth_resource.py finalize \
+     --resource "$FOLLOWUPBOSS_HOSTED_RESOURCE_SERVER_URL" \
+     --old-writers-retired --apply
+   uv run python scripts/migrate_hosted_oauth_resource.py status \
+     --resource "$FOLLOWUPBOSS_HOSTED_RESOURCE_SERVER_URL"
+   ```
+
+If the unbound tokens cannot all be attributed to the one explicit resource, do not acknowledge or
+backfill them. Investigate and revoke or reissue those tokens through the normal credential
+procedure instead.
+
+Rollback is deliberately non-destructive. Before finalization, the old application can be rolled
+back without a database change because the nullable columns retain their canonical defaults. After
+finalization, first run the following command to restore those defaults and drop the `NOT NULL`
+constraints in one transaction, then roll the application back. The columns and every resource
+value remain intact for a later retry:
+
+```bash
+uv run python scripts/migrate_hosted_oauth_resource.py rollback-finalize \
+  --resource "$FOLLOWUPBOSS_HOSTED_RESOURCE_SERVER_URL"
+uv run python scripts/migrate_hosted_oauth_resource.py rollback-finalize \
+  --resource "$FOLLOWUPBOSS_HOSTED_RESOURCE_SERVER_URL" --apply
+```
 
 ## Bootstrap Configuration
 
@@ -409,7 +532,7 @@ validation.
 ## Cursor OAuth Login Flow
 
 When `FOLLOWUPBOSS_HOSTED_OAUTH_ENABLED=true`, the hosted deployment also acts as the OAuth
-authorization server advertised by FastMCP protected-resource metadata:
+authorization server advertised by MCPServer protected-resource metadata:
 
 1. Cursor discovers `/.well-known/oauth-authorization-server`.
 2. Cursor dynamically registers a public MCP client at `/oauth/register`.
@@ -520,7 +643,7 @@ TOKEN="definitely-invalid" uv run python - <<'PY'
 import asyncio
 import os
 
-import httpx
+import httpx2 as httpx
 from mcp.client.session import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
@@ -534,9 +657,9 @@ async def main() -> None:
             async with streamable_http_client(
                 os.environ["PRODUCTION_MCP_URL"],
                 http_client=http_client,
-            ) as (read_stream, write_stream, _):
+            ) as (read_stream, write_stream):
                 async with ClientSession(read_stream, write_stream) as session:
-                    await session.initialize()
+                    await session.discover()
                     await session.call_tool("followupboss_get_identity", {})
     except Exception as exc:
         print(f"expected auth failure: {type(exc).__name__}: {exc}")
@@ -559,7 +682,7 @@ import asyncio
 import json
 import os
 
-import httpx
+import httpx2 as httpx
 from mcp.client.session import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
@@ -572,9 +695,9 @@ async def main() -> None:
         async with streamable_http_client(
             os.environ["PRODUCTION_MCP_URL"],
             http_client=http_client,
-        ) as (read_stream, write_stream, _):
+        ) as (read_stream, write_stream):
             async with ClientSession(read_stream, write_stream) as session:
-                await session.initialize()
+                await session.discover()
 
                 identity = await session.call_tool("followupboss_get_identity", {})
                 own_people = await session.call_tool(
@@ -599,8 +722,8 @@ async def main() -> None:
                     },
                 )
 
-                own_count = len(own_people.structuredContent["people"])
-                other_count = len(other_people.structuredContent["people"])
+                own_count = len(own_people.structured_content["people"])
+                other_count = len(other_people.structured_content["people"])
                 if own_count < 1:
                     raise SystemExit("expected at least one own-tenant fixture result")
                 if other_count != 0:
@@ -610,7 +733,7 @@ async def main() -> None:
                     json.dumps(
                         {
                             "label": os.environ["LABEL"],
-                            "identity": identity.structuredContent,
+                            "identity": identity.structured_content,
                             "own_fixture_count": own_count,
                             "other_fixture_count": other_count,
                             "resource_count": len(resource_result.contents),

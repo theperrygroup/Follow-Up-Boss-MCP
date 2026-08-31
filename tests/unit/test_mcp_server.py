@@ -25,7 +25,7 @@ from followupboss_mcp.hosted_oauth import HostedOAuthApplication
 from followupboss_mcp.hosted_rate_limits import HostedEndpointRateLimiter, HostedRateLimitMiddleware
 from followupboss_mcp.http_client import FollowUpBossClientProtocol
 from followupboss_mcp.mcp_server import (
-    FollowUpBossFastMCP,
+    FollowUpBossMCPServer,
     _resolve_hosted_auth,
     _resolve_local_tenant_settings,
     _resolve_tenant_runtime_defaults,
@@ -39,6 +39,8 @@ from followupboss_mcp.tenant_store import (
     TenantStatus,
 )
 from mcp.server.auth.settings import AuthSettings
+from mcp.server.mcpserver import MCPServer
+from mcp.server.transport_security import TransportSecuritySettings
 
 
 def _hosted_auth_settings() -> HostedAuthSettings:
@@ -198,23 +200,81 @@ def test_resolve_local_tenant_settings_and_runtime_defaults_handle_explicit_mode
     assert _resolve_tenant_runtime_defaults(runtime_defaults) is runtime_defaults
 
 
+def test_transport_security_property_returns_configured_policy() -> None:
+    """The public property should expose the exact configured transport policy."""
+    transport_security = TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=["mcp.example.com"],
+        allowed_origins=["https://mcp.example.com"],
+    )
+    server = FollowUpBossMCPServer("Test MCP")
+
+    server.configure_streamable_http(
+        host="0.0.0.0",
+        port=9100,
+        streamable_http_path="/tenant-mcp",
+        json_response=True,
+        transport_security=transport_security,
+    )
+
+    assert server.transport_security is transport_security
+
+
+def test_run_applies_configured_streamable_http_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Streamable HTTP startup should pass every stored v2 transport option."""
+    captured: list[tuple[str, dict[str, object]]] = []
+
+    def fake_run(_: MCPServer, transport: str = "stdio", **kwargs: object) -> None:
+        captured.append((transport, kwargs))
+
+    monkeypatch.setattr(MCPServer, "run", fake_run)
+    transport_security = TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=["mcp.example.com"],
+        allowed_origins=["https://mcp.example.com"],
+    )
+    server = FollowUpBossMCPServer("Test MCP")
+    server.configure_streamable_http(
+        host="0.0.0.0",
+        port=9100,
+        streamable_http_path="/tenant-mcp",
+        json_response=True,
+        transport_security=transport_security,
+    )
+
+    server.run(transport="streamable-http")
+    server.run(transport="stdio")
+
+    assert captured == [
+        (
+            "streamable-http",
+            {
+                "host": "0.0.0.0",
+                "port": 9100,
+                "streamable_http_path": "/tenant-mcp",
+                "json_response": True,
+                "transport_security": transport_security,
+            },
+        ),
+        ("stdio", {}),
+    ]
+
+
 def test_streamable_http_app_returns_base_app_without_hosted_rate_limiter(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The hosted FastMCP subclass should return the base app when limiting is disabled."""
+    """The hosted MCPServer subclass should return the base app when limiting is disabled."""
     base_app = Starlette(routes=[Route("/mcp", _ok_route)])
 
     monkeypatch.setattr(
-        "followupboss_mcp.mcp_server.FastMCP.streamable_http_app",
-        lambda self: base_app,
+        "followupboss_mcp.mcp_server.MCPServer.streamable_http_app",
+        lambda self, **_: base_app,
     )
 
-    server = FollowUpBossFastMCP(
+    server = FollowUpBossMCPServer(
         "Test MCP",
-        host="127.0.0.1",
-        port=8000,
-        streamable_http_path="/mcp",
-        json_response=True,
         log_level="INFO",
     )
 
@@ -236,16 +296,12 @@ def test_streamable_http_app_mounts_hosted_oauth_routes(
             return (oauth_route,)
 
     monkeypatch.setattr(
-        "followupboss_mcp.mcp_server.FastMCP.streamable_http_app",
-        lambda self: base_app,
+        "followupboss_mcp.mcp_server.MCPServer.streamable_http_app",
+        lambda self, **_: base_app,
     )
 
-    server = FollowUpBossFastMCP(
+    server = FollowUpBossMCPServer(
         "Test MCP",
-        host="127.0.0.1",
-        port=8000,
-        streamable_http_path="/mcp",
-        json_response=True,
         log_level="INFO",
     )
     server._hosted_oauth_application = cast(HostedOAuthApplication, FakeHostedOAuthApplication())
@@ -271,16 +327,12 @@ def test_streamable_http_app_skips_duplicate_hosted_oauth_routes(
             return (Route("/oauth/token", _ok_route, methods=["POST"]),)
 
     monkeypatch.setattr(
-        "followupboss_mcp.mcp_server.FastMCP.streamable_http_app",
-        lambda self: base_app,
+        "followupboss_mcp.mcp_server.MCPServer.streamable_http_app",
+        lambda self, **_: base_app,
     )
 
-    server = FollowUpBossFastMCP(
+    server = FollowUpBossMCPServer(
         "Test MCP",
-        host="127.0.0.1",
-        port=8000,
-        streamable_http_path="/mcp",
-        json_response=True,
         log_level="INFO",
     )
     server._hosted_oauth_application = cast(HostedOAuthApplication, FakeHostedOAuthApplication())
@@ -297,16 +349,12 @@ def test_streamable_http_app_leaves_non_matching_routes_unwrapped(
     base_app = Starlette(routes=[Route("/other", _ok_route)])
 
     monkeypatch.setattr(
-        "followupboss_mcp.mcp_server.FastMCP.streamable_http_app",
-        lambda self: base_app,
+        "followupboss_mcp.mcp_server.MCPServer.streamable_http_app",
+        lambda self, **_: base_app,
     )
 
-    server = FollowUpBossFastMCP(
+    server = FollowUpBossMCPServer(
         "Test MCP",
-        host="127.0.0.1",
-        port=8000,
-        streamable_http_path="/mcp",
-        json_response=True,
         log_level="INFO",
     )
     _, token_verifier = _resolve_hosted_auth(
@@ -334,18 +382,15 @@ def test_create_server_uses_explicit_server_settings_and_local_single_tenant_pat
         _noop_register_server_surface,
     )
 
-    server = cast(
-        FollowUpBossFastMCP,
-        create_server(
-            FollowUpBossSettings.model_validate({"api_key": "local-key"}),
-            server_settings=FollowUpBossServerSettings.model_validate(
-                {
-                    "host": "0.0.0.0",
-                    "port": 9100,
-                    "streamable_http_path": "/tenant",
-                    "log_level": "debug",
-                }
-            ),
+    server = create_server(
+        FollowUpBossSettings.model_validate({"api_key": "local-key"}),
+        server_settings=FollowUpBossServerSettings.model_validate(
+            {
+                "host": "0.0.0.0",
+                "port": 9100,
+                "streamable_http_path": "/tenant",
+                "log_level": "debug",
+            }
         ),
     )
 
@@ -407,16 +452,13 @@ async def test_create_server_hosted_lifespan_allows_no_shared_client(
         _noop_register_server_surface,
     )
 
-    server = cast(
-        FollowUpBossFastMCP,
-        create_server(
-            hosted_auth=_hosted_auth_settings(),
-            hosted_token_verifier=_hosted_token_verifier(),
-            tenant_store=_tenant_store(),
-        ),
+    server = create_server(
+        hosted_auth=_hosted_auth_settings(),
+        hosted_token_verifier=_hosted_token_verifier(),
+        tenant_store=_tenant_store(),
     )
 
-    async with server._mcp_server.lifespan(server._mcp_server):
+    async with server._lowlevel_server.lifespan(server._lowlevel_server):
         assert server._hosted_rate_limiter is not None
 
 
@@ -441,17 +483,14 @@ async def test_create_server_hosted_lifespan_closes_rate_limiter(
         _noop_register_server_surface,
     )
     rate_limiter = RecordingRateLimiter()
-    server = cast(
-        FollowUpBossFastMCP,
-        create_server(
-            hosted_auth=_hosted_auth_settings(),
-            hosted_token_verifier=_hosted_token_verifier(),
-            tenant_store=_tenant_store(),
-            hosted_rate_limiter=rate_limiter,
-        ),
+    server = create_server(
+        hosted_auth=_hosted_auth_settings(),
+        hosted_token_verifier=_hosted_token_verifier(),
+        tenant_store=_tenant_store(),
+        hosted_rate_limiter=rate_limiter,
     )
 
-    async with server._mcp_server.lifespan(server._mcp_server):
+    async with server._lowlevel_server.lifespan(server._lowlevel_server):
         assert rate_limiter.closed is False
     assert rate_limiter.closed is True
 
@@ -481,17 +520,14 @@ async def test_create_server_hosted_lifespan_closes_oauth_application(
         _noop_register_server_surface,
     )
     oauth_application = RecordingOAuthApplication()
-    server = cast(
-        FollowUpBossFastMCP,
-        create_server(
-            hosted_auth=_hosted_auth_settings(),
-            hosted_token_verifier=_hosted_token_verifier(),
-            tenant_store=_tenant_store(),
-            hosted_oauth_application=cast(HostedOAuthApplication, oauth_application),
-        ),
+    server = create_server(
+        hosted_auth=_hosted_auth_settings(),
+        hosted_token_verifier=_hosted_token_verifier(),
+        tenant_store=_tenant_store(),
+        hosted_oauth_application=cast(HostedOAuthApplication, oauth_application),
     )
 
-    async with server._mcp_server.lifespan(server._mcp_server):
+    async with server._lowlevel_server.lifespan(server._lowlevel_server):
         assert oauth_application.closed is False
     assert oauth_application.closed is True
 
@@ -544,18 +580,15 @@ async def test_create_server_hosted_lifespan_opens_and_closes_managed_resources(
         RecordingResource("first", events),
         RecordingResource("second", events),
     )
-    server = cast(
-        FollowUpBossFastMCP,
-        create_server(
-            hosted_auth=_hosted_auth_settings(),
-            hosted_token_verifier=_hosted_token_verifier(),
-            tenant_store=_tenant_store(),
-            hosted_rate_limiter=rate_limiter,
-            managed_resources=resources,
-        ),
+    server = create_server(
+        hosted_auth=_hosted_auth_settings(),
+        hosted_token_verifier=_hosted_token_verifier(),
+        tenant_store=_tenant_store(),
+        hosted_rate_limiter=rate_limiter,
+        managed_resources=resources,
     )
 
-    async with server._mcp_server.lifespan(server._mcp_server):
+    async with server._lowlevel_server.lifespan(server._lowlevel_server):
         assert events == ["open:first", "open:second"]
         assert rate_limiter.closed is False
     assert events == [
@@ -571,7 +604,7 @@ async def test_create_server_hosted_lifespan_opens_and_closes_managed_resources(
 async def test_streamable_http_application_owns_shared_resource_lifecycle(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """One MCP session ending must not close process-wide hosted resources."""
+    """The v2 application lifespan should own process-wide hosted resources once."""
 
     class RecordingResource:
         """Async managed resource that records application lifecycle events."""
@@ -592,23 +625,16 @@ async def test_streamable_http_application_owns_shared_resource_lifecycle(
         _noop_register_server_surface,
     )
     events: list[str] = []
-    server = cast(
-        FollowUpBossFastMCP,
-        create_server(
-            hosted_auth=_hosted_auth_settings(),
-            hosted_token_verifier=_hosted_token_verifier(),
-            tenant_store=_tenant_store(),
-            managed_resources=(RecordingResource(events),),
-        ),
+    server = create_server(
+        hosted_auth=_hosted_auth_settings(),
+        hosted_token_verifier=_hosted_token_verifier(),
+        tenant_store=_tenant_store(),
+        managed_resources=(RecordingResource(events),),
     )
     app = server.streamable_http_app()
 
     async with app.router.lifespan_context(app):
         assert events == ["open"]
-        for _ in range(2):
-            async with server._mcp_server.lifespan(server._mcp_server):
-                assert events == ["open"]
-            assert events == ["open"]
 
     assert events == ["open", "close"]
 
@@ -658,15 +684,12 @@ async def test_create_server_local_lifespan_skips_rate_limiter_shutdown(
     events: list[str] = []
     client = RecordingClient()
     resources = (RecordingResource("only", events),)
-    server = cast(
-        FollowUpBossFastMCP,
-        create_server(
-            client=cast(FollowUpBossClientProtocol, client),
-            managed_resources=resources,
-        ),
+    server = create_server(
+        client=cast(FollowUpBossClientProtocol, client),
+        managed_resources=resources,
     )
 
-    async with server._mcp_server.lifespan(server._mcp_server):
+    async with server._lowlevel_server.lifespan(server._lowlevel_server):
         assert events == ["open:only"]
         assert client.closed is False
     assert events == ["open:only", "close:only"]

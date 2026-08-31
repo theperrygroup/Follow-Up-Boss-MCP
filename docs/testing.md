@@ -9,7 +9,7 @@ Test directories are organized by intent:
 - `tests/unit`: transport, helpers, models, and service-level behavior
 - `tests/integration`: runtime entrypoints and server lifecycle behavior
 - `tests/contracts`: edge contracts for shared utilities
-- `tests/mcp`: MCP adapter, FastMCP registration, official stdio and streamable HTTP client interoperability, prompt, resource, and CLI behavior
+- `tests/mcp`: MCP adapter, MCPServer registration, official stdio and streamable HTTP client interoperability, prompt, resource, and CLI behavior
 
 ## Mocking Strategy
 
@@ -40,9 +40,15 @@ The default suite covers:
 - eventual-consistency polling for newly created people
 - webhook signature verification and fast-ack helpers
 - MCP tool success and failure paths
-- FastMCP resource and prompt registration
+- MCPServer resource and prompt registration
 - official stdio MCP client interoperability for tools, resources, and prompts
 - official streamable HTTP MCP client interoperability for tools, resources, and prompts
+- MCP `2026-07-28` discovery, sessionless calls, required HTTP headers, cache metadata, and
+  protocol-error behavior
+- legacy initialization against the same streamable HTTP endpoint
+- exact OAuth `resource` binding across authorization codes, access tokens, and refresh tokens
+- OAuth CIMD discovery, DNS/IP SSRF defenses, exact redirect matching, response-size limits,
+  bounded success caching, failure non-caching, and DCR fallback compatibility
 - CLI startup and `__main__` execution behavior
 
 ## Coverage Commands

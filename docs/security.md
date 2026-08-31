@@ -21,10 +21,31 @@ normalized into one canonical `HostedVerifiedIdentity` payload with these non-se
 - optional `expires_at`
 - optional `token_id`
 - optional `credential_id`
+- `resource`, which must equal the production MCP resource
+  `https://fub.theperry.group/mcp` for the token to be accepted
+
+The identity model keeps `resource` nullable only so migration and compatibility code can
+deserialize older records. A hosted request never treats a missing resource as an implicit
+audience. `PostgresHostedTokenVerifier` selects a token by both its hash and the configured
+resource, and `HostedTenantTokenVerifier` repeats the exact comparison before resolving a tenant.
+The resulting `HostedAccessToken` carries the same resource into the MCP auth context.
 
 The hosted auth layer always resolves `tenant_id` through `TenantStore` before any Follow Up Boss
 client is created. When a token includes `credential_id`, the auth layer also enforces that the
 stored tenant credential still matches that binding.
+
+### Exact OAuth Resource Binding
+
+Production uses one canonical protected-resource identifier:
+`https://fub.theperry.group/mcp`. OAuth authorization requests and both authorization-code and
+refresh-token grant requests must supply that exact `resource` value. The hosted issuer carries it
+through pending authorization, authorization-code validation, access-token metadata, and
+refresh-token metadata.
+
+Missing or different request values fail with OAuth `invalid_target`. A persisted authorization
+code or refresh token for another resource also fails with `invalid_target` and cannot mint a token
+for this server. On the MCP endpoint, an access token whose identity has no resource or a different
+resource fails as `401 invalid_token` before tenant or credential resolution.
 
 ## Secret Handling
 
@@ -44,6 +65,35 @@ Hosted tenant credentials are re-resolved for every authenticated call. The host
 builds a fresh request-scoped Follow Up Boss client from the currently stored credential and closes
 that client after the call, so hosted mode does not reuse one startup-time client or one cached
 secret across tenants.
+
+## Resource-Bound Token Storage And Migration
+
+PostgreSQL stores the canonical `resource` on both `hosted_access_tokens` and
+`hosted_oauth_refresh_tokens`. New OAuth issuance writes it explicitly to both rows. Refresh grants
+must repeat the canonical resource and match the stored refresh-token resource; only after all
+grant checks pass is the old refresh token revoked and a replacement access/refresh pair issued
+with the same binding.
+
+Existing databases use a staged compatibility lifecycle:
+
+1. Expand adds nullable `resource` columns with a temporary constant default of
+   `https://fub.theperry.group/mcp` on both tables. An old writer that omits the column therefore
+   still creates a canonically bound row during an application overlap.
+2. Status distinguishes unbound rows, canonical rows, and foreign-resource rows. Backfill is
+   allowed only after an operator acknowledges the exact reviewed unbound counts and asserts that
+   those rows were issued solely for this MCP resource; any foreign resource fails closed.
+3. The resource-aware application writes the canonical value explicitly and rejects NULL or
+   foreign-resource access tokens.
+4. After every old writer is retired and both tables have zero unbound or foreign rows, finalize
+   drops the temporary defaults and makes both columns `NOT NULL`.
+5. A post-finalization application rollback first restores the canonical defaults and then makes
+   the columns nullable. It does not erase any resource value.
+
+Short-lived Redis state has a narrower rolling-deployment bridge. A pending authorization or
+authorization-code record written in the old wire shape may omit `resource`; the new application
+binds only that missing value to its one configured canonical resource. An explicit different
+value is never rewritten or accepted. This bridge does not make missing PostgreSQL access- or
+refresh-token resources valid.
 
 ## Hosted Token Revocation And Credential Rotation
 
@@ -96,6 +146,9 @@ before switching the binding.
 | Condition | Operator-visible behavior | Primary audit signal |
 | --- | --- | --- |
 | Revoked, unknown, or expired bearer token | `401` with `invalid_token` / `Authentication required` | `hosted_auth_failed` with `reason=token_verification_failed` |
+| Missing or different `resource` on an OAuth authorization or token request | OAuth `invalid_target`; registered-client authorization errors are returned through the redirect | OAuth request failure before token issuance |
+| Stored authorization code or refresh token has a different resource | OAuth `invalid_target`; no token pair is issued | OAuth grant failure before tenant runtime creation |
+| Access-token identity is missing the canonical resource or names another resource | `401` with `invalid_token` before tenant resolution | `hosted_auth_failed` with `reason=token_verification_failed` for PostgreSQL lookup misses or `reason=token_resource_mismatch` for another verifier backend |
 | Disabled tenant | `401` with `invalid_token` before any Follow Up Boss client is created | `tenant_resolution_failed` with `reason=tenant_disabled` |
 | Revoked or missing tenant credential | `401` with `invalid_token` before any Follow Up Boss client is created | `tenant_resolution_failed` with `reason=credential_revoked` or `reason=credential_not_found` |
 | Tenant or secret store outage during auth | `401` with `invalid_token` and no backend error details | `tenant_resolution_failed` with `reason=tenant_store_unavailable` or `reason=tenant_secret_store_unavailable` |
@@ -112,6 +165,9 @@ unavailable.` rather than using stale tenant credentials.
   such as `tenant_id`, `subject`, `client_id`, and optional `token_id` / `credential_id`.
 - `hosted_auth_failed` is the first place to look after a revoke. Repeated hits usually mean stale
   clients are still presenting an old bearer token.
+- `hosted_auth_failed` with `token_resource_mismatch` means an otherwise parsed identity did not
+  target `https://fub.theperry.group/mcp`. PostgreSQL-backed missing or foreign-resource rows do not
+  satisfy the resource-filtered token lookup and normally appear as `token_verification_failed`.
 - `tenant_resolution_succeeded` confirms the active tenant and current credential mapping were
   resolved successfully.
 - `tenant_resolution_failed` is the main incident triage signal. Watch the `reason` field for

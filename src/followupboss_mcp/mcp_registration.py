@@ -1,9 +1,12 @@
-"""Grouped FastMCP registration helpers for the Follow Up Boss server."""
+"""Grouped MCP server registration helpers for the Follow Up Boss server."""
 
 from __future__ import annotations
 
 from datetime import datetime
+from importlib import resources
 from pathlib import Path
+
+from pydantic import ValidationError
 
 from followupboss_mcp.mcp_tools import (
     AddInboxAppMessageToolInput,
@@ -197,9 +200,15 @@ from followupboss_mcp.models.webhooks import (
 )
 from followupboss_mcp.observability import capture_sentry_exception
 from followupboss_mcp.tenant_runtime import TenantRuntime, TenantRuntimeFactory
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 
 _API_COVERAGE_RESOURCE_URI = "followupboss://api-coverage-matrix"
+_API_COVERAGE_RESOURCE_PACKAGE = "followupboss_mcp.assets"
+_API_COVERAGE_RESOURCE_NAME = "api-coverage-matrix.md"
+_SOURCE_API_COVERAGE_RESOURCE = (
+    Path(__file__).resolve().parents[2] / "docs" / _API_COVERAGE_RESOURCE_NAME
+)
 _COMPOSE_LEAD_EVENT_PROMPT_NAME = "followupboss_compose_lead_event"
 _HOSTED_PUBLIC_RESOURCE_URIS: frozenset[str] = frozenset()
 _HOSTED_PUBLIC_PROMPT_NAMES: frozenset[str] = frozenset()
@@ -227,22 +236,26 @@ def _validated_request[ModelT: RequestModel](
         for key, value in values.items()
         if key in model_type.model_fields and (exclude is None or key not in exclude)
     }
-    return model_type.model_validate(payload)
+    try:
+        return model_type.model_validate(payload)
+    except ValidationError as exc:
+        # SDK v2 masks arbitrary handler exceptions as unexpected tool crashes.
+        # These are anticipated user-input failures, so preserve their actionable
+        # validation guidance through the public MCP tool surface.
+        raise ToolError(str(exc)) from exc
 
 
 def register_server_surface(
-    mcp: FastMCP,
+    mcp: MCPServer,
     adapter: FollowUpBossToolAdapter,
     *,
-    project_root: Path,
     tenant_runtime_factory: TenantRuntimeFactory | None = None,
 ) -> None:
     """Register the complete Follow Up Boss MCP surface.
 
     Args:
-        mcp: The FastMCP server instance to extend.
+        mcp: The MCP server instance to extend.
         adapter: The typed MCP adapter that delegates to domain services.
-        project_root: The repository root used for resource-backed content.
         tenant_runtime_factory: Optional hosted runtime factory used to resolve
             tenant context for non-tool MCP surfaces.
     """
@@ -278,7 +291,6 @@ def register_server_surface(
     _register_webhook_tools(mcp, adapter)
     _register_resources_and_prompts(
         mcp,
-        project_root=project_root,
         tenant_runtime_factory=tenant_runtime_factory,
     )
 
@@ -364,6 +376,16 @@ def _render_api_coverage_matrix_resource(
     return f"{resource_text.rstrip()}\n\n---\n\n{_format_hosted_surface_context(runtime)}\n"
 
 
+def _load_api_coverage_matrix_resource() -> str:
+    """Load the packaged matrix, with a source fallback for editable installs."""
+    packaged_resource = resources.files(_API_COVERAGE_RESOURCE_PACKAGE).joinpath(
+        _API_COVERAGE_RESOURCE_NAME
+    )
+    if packaged_resource.is_file():
+        return packaged_resource.read_text(encoding="utf-8")
+    return _SOURCE_API_COVERAGE_RESOURCE.read_text(encoding="utf-8")
+
+
 def _render_compose_lead_event_prompt(
     *,
     source: str,
@@ -409,11 +431,11 @@ def _render_compose_lead_event_prompt(
     )
 
 
-def _register_identity_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+def _register_identity_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> None:
     """Register identity-related MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -427,11 +449,11 @@ def _register_identity_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> 
         return await adapter.get_identity()
 
 
-def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+def _register_people_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> None:
     """Register people-related MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -768,13 +790,13 @@ def _register_people_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> No
 
 
 def _register_people_relationship_tools(
-    mcp: FastMCP,
+    mcp: MCPServer,
     adapter: FollowUpBossToolAdapter,
 ) -> None:
     """Register people-relationship-related MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -853,11 +875,11 @@ def _register_people_relationship_tools(
         )
 
 
-def _register_timeframe_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+def _register_timeframe_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> None:
     """Register timeframe-related MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -869,11 +891,11 @@ def _register_timeframe_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) ->
         return await adapter.list_timeframes(_validated_request(TimeframeListRequest, locals()))
 
 
-def _register_attachment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+def _register_attachment_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> None:
     """Register deal and person attachment MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -976,11 +998,11 @@ def _register_attachment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -
         )
 
 
-def _register_reaction_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+def _register_reaction_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> None:
     """Register reaction-related MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -1015,11 +1037,11 @@ def _register_reaction_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> 
         return await adapter.delete_reaction(_validated_request(DeleteReactionToolInput, locals()))
 
 
-def _register_threaded_reply_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+def _register_threaded_reply_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> None:
     """Register threaded-reply-related MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -1033,11 +1055,11 @@ def _register_threaded_reply_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapte
         )
 
 
-def _register_event_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+def _register_event_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> None:
     """Register event-related MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -1098,13 +1120,13 @@ def _register_event_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> Non
 
 
 def _register_email_marketing_tools(
-    mcp: FastMCP,
+    mcp: MCPServer,
     adapter: FollowUpBossToolAdapter,
 ) -> None:
     """Register email-marketing-related MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -1182,11 +1204,11 @@ def _register_email_marketing_tools(
         )
 
 
-def _register_action_plan_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+def _register_action_plan_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> None:
     """Register action-plan-related MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -1248,11 +1270,11 @@ def _register_action_plan_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) 
         )
 
 
-def _register_automation_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+def _register_automation_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> None:
     """Register automation-related MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -1329,11 +1351,11 @@ def _register_automation_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -
         )
 
 
-def _register_group_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+def _register_group_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> None:
     """Register group-related MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -1409,11 +1431,11 @@ def _register_group_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> Non
         return await adapter.delete_group(_validated_request(DeleteGroupToolInput, locals()))
 
 
-def _register_inbox_app_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+def _register_inbox_app_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> None:
     """Register inbox-app-related MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -1571,11 +1593,11 @@ def _register_inbox_app_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) ->
         )
 
 
-def _register_user_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+def _register_user_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> None:
     """Register user-related MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -1631,13 +1653,13 @@ def _register_user_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
 
 
 def _register_appointment_metadata_tools(
-    mcp: FastMCP,
+    mcp: MCPServer,
     adapter: FollowUpBossToolAdapter,
 ) -> None:
     """Register appointment outcome and appointment type MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -1770,11 +1792,11 @@ def _register_appointment_metadata_tools(
         )
 
 
-def _register_custom_field_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+def _register_custom_field_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> None:
     """Register custom-field-related MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -1851,11 +1873,11 @@ def _register_custom_field_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter)
         )
 
 
-def _register_deal_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+def _register_deal_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> None:
     """Register deal-related MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -2035,11 +2057,11 @@ def _register_deal_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         )
 
 
-def _register_appointment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+def _register_appointment_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> None:
     """Register appointment-related MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -2138,11 +2160,11 @@ def _register_appointment_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) 
         )
 
 
-def _register_call_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+def _register_call_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> None:
     """Register call-related MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -2215,11 +2237,11 @@ def _register_call_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         return await adapter.update_call(_validated_request(UpdateCallToolInput, locals()))
 
 
-def _register_pipeline_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+def _register_pipeline_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> None:
     """Register pipeline-related MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -2298,11 +2320,11 @@ def _register_pipeline_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> 
         return await adapter.delete_pipeline(_validated_request(DeletePipelineToolInput, locals()))
 
 
-def _register_pond_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+def _register_pond_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> None:
     """Register pond-related MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -2356,11 +2378,11 @@ def _register_pond_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         return await adapter.delete_pond(_validated_request(DeletePondToolInput, locals()))
 
 
-def _register_smart_list_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+def _register_smart_list_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> None:
     """Register smart-list-related MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -2392,11 +2414,11 @@ def _register_smart_list_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -
         return await adapter.get_smart_list(_validated_request(GetSmartListToolInput, locals()))
 
 
-def _register_stage_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+def _register_stage_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> None:
     """Register stage-related MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -2453,11 +2475,11 @@ def _register_stage_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> Non
         return await adapter.delete_stage(_validated_request(DeleteStageToolInput, locals()))
 
 
-def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+def _register_task_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> None:
     """Register task-related MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -2630,11 +2652,11 @@ def _register_task_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         return await adapter.delete_task(_validated_request(DeleteTaskToolInput, locals()))
 
 
-def _register_team_inbox_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+def _register_team_inbox_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> None:
     """Register team inbox related MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -2646,11 +2668,11 @@ def _register_team_inbox_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -
         return await adapter.list_team_inboxes(_validated_request(TeamInboxListRequest, locals()))
 
 
-def _register_team_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+def _register_team_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> None:
     """Register team-related MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -2708,11 +2730,11 @@ def _register_team_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         return await adapter.delete_team(_validated_request(DeleteTeamToolInput, locals()))
 
 
-def _register_template_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+def _register_template_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> None:
     """Register template-related MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -2784,11 +2806,11 @@ def _register_template_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> 
         return await adapter.delete_template(_validated_request(DeleteTemplateToolInput, locals()))
 
 
-def _register_text_message_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+def _register_text_message_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> None:
     """Register text message and text message template MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -2893,11 +2915,11 @@ def _register_text_message_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter)
         )
 
 
-def _register_note_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+def _register_note_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> None:
     """Register note-related MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -2957,11 +2979,11 @@ def _register_note_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None
         return await adapter.delete_note(_validated_request(DeleteNoteToolInput, locals()))
 
 
-def _register_webhook_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> None:
+def _register_webhook_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> None:
     """Register webhook-related MCP tools.
 
     Args:
-        mcp: The FastMCP server instance.
+        mcp: The MCP server instance.
         adapter: The typed Follow Up Boss tool adapter.
     """
 
@@ -3030,16 +3052,14 @@ def _register_webhook_tools(mcp: FastMCP, adapter: FollowUpBossToolAdapter) -> N
 
 
 def _register_resources_and_prompts(
-    mcp: FastMCP,
+    mcp: MCPServer,
     *,
-    project_root: Path,
     tenant_runtime_factory: TenantRuntimeFactory | None,
 ) -> None:
     """Register MCP resources and prompts.
 
     Args:
-        mcp: The FastMCP server instance.
-        project_root: The repository root used for file-backed resources.
+        mcp: The MCP server instance.
         tenant_runtime_factory: Optional hosted runtime factory used to resolve
             tenant context for resource and prompt handlers.
     """
@@ -3051,9 +3071,7 @@ def _register_resources_and_prompts(
         mime_type="text/markdown",
     )
     async def followupboss_api_coverage_matrix() -> str:
-        resource_text = (project_root / "docs" / "api-coverage-matrix.md").read_text(
-            encoding="utf-8"
-        )
+        resource_text = _load_api_coverage_matrix_resource()
         runtime = await _resolve_surface_runtime(
             surface_name=_API_COVERAGE_RESOURCE_URI,
             public_surface_names=_HOSTED_PUBLIC_RESOURCE_URIS,

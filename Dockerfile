@@ -1,24 +1,21 @@
-FROM python:3.12-slim
+FROM ghcr.io/astral-sh/uv:0.11.32@sha256:df4cae8f3a96d175e2e5f992e597550000edbe78fdc2594d5cd8de1a217f504c AS uv
+FROM python:3.12-slim@sha256:09f7da3bc104798d0afb40bc08d23ab2da20a76130cec1f2ef170848f5d85217
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT=/opt/venv \
+    PATH="/opt/venv/bin:${PATH}"
 
 WORKDIR /app
 
-RUN apt-get update \
-    && apt-get install --yes --no-install-recommends ca-certificates curl \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY pyproject.toml README.md /app/
+COPY --from=uv /uv /uvx /bin/
+COPY pyproject.toml uv.lock README.md /app/
 COPY src /app/src
-COPY docs/api-coverage-matrix.md /tmp/api-coverage-matrix.md
+COPY docs/api-coverage-matrix.md /app/docs/api-coverage-matrix.md
 
-RUN python -m pip install --upgrade pip \
-    && python -m pip install . \
-    && mkdir -p /usr/local/lib/python3.12/docs \
-    && cp /tmp/api-coverage-matrix.md /usr/local/lib/python3.12/docs/api-coverage-matrix.md \
-    && rm /tmp/api-coverage-matrix.md
+RUN uv sync --frozen --no-dev --no-editable
 
 RUN useradd --create-home --home-dir /home/appuser --shell /usr/sbin/nologin appuser
 

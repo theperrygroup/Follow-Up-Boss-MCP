@@ -1,15 +1,15 @@
-"""FastMCP server construction."""
+"""MCP server construction."""
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable, Sequence
-from contextlib import AbstractAsyncContextManager, asynccontextmanager
-from pathlib import Path
-from typing import Protocol
+from collections.abc import AsyncIterator, Sequence
+from contextlib import asynccontextmanager
+from typing import Any, Literal, Protocol
 
 from starlette.applications import Starlette
 from starlette.routing import Route
 
+from followupboss_mcp import __version__
 from followupboss_mcp.config import (
     FollowUpBossServerSettings,
     FollowUpBossSettings,
@@ -42,13 +42,15 @@ from followupboss_mcp.tenant_runtime import (
 )
 from followupboss_mcp.tenant_store import TenantStore
 from mcp.server.auth.settings import AuthSettings
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
+from mcp.server.streamable_http import EventStore
+from mcp.server.transport_security import TransportSecuritySettings
 
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_DEFAULT_MAX_REQUEST_BODY_SIZE = 4 * 1024 * 1024
 
 
 class AsyncManagedResource(Protocol):
-    """Protocol for async resources managed by the FastMCP lifespan."""
+    """Protocol for async resources managed by the MCP server lifespan."""
 
     async def open(self) -> None:
         """Open the resource before the server starts handling requests."""
@@ -63,7 +65,7 @@ def _resolve_hosted_auth(
     hosted_token_verifier: HostedIdentityVerifier | None,
     tenant_store: TenantStore | None,
 ) -> tuple[AuthSettings | None, HostedTenantTokenVerifier | None]:
-    """Validate hosted-auth inputs and build FastMCP auth objects.
+    """Validate hosted-auth inputs and build MCP server auth objects.
 
     Args:
         hosted_auth: Hosted resource-server auth settings.
@@ -73,7 +75,7 @@ def _resolve_hosted_auth(
             claim into one active tenant.
 
     Returns:
-        The FastMCP auth settings and token verifier, or `(None, None)` when
+        The MCP auth settings and token verifier, or `(None, None)` when
         hosted auth is disabled.
 
     Raises:
@@ -88,6 +90,7 @@ def _resolve_hosted_auth(
     return hosted_auth.to_mcp_auth_settings(), HostedTenantTokenVerifier(
         identity_verifier=hosted_token_verifier,
         tenant_store=tenant_store,
+        expected_resource=str(hosted_auth.resource_server_url),
     )
 
 
@@ -136,20 +139,151 @@ def _resolve_tenant_runtime_defaults(
     return settings
 
 
-class FollowUpBossFastMCP(FastMCP):
-    """FastMCP subclass with hosted endpoint abuse controls."""
+def _transport_security_settings(
+    *,
+    hosted_auth: HostedAuthSettings | None,
+    host: str,
+    port: int,
+) -> TransportSecuritySettings:
+    """Build an explicit Host and Origin allowlist for Streamable HTTP.
+
+    The v2 SDK only enables its localhost defaults when the app factory receives
+    a loopback host. Hosted deployments bind to a wildcard address, so their
+    public resource URL must be translated into an explicit allowlist instead
+    of silently disabling DNS-rebinding protection.
+
+    Args:
+        hosted_auth: Optional hosted resource-server settings whose public URL
+            identifies the production Host and Origin.
+        host: Configured server bind host.
+        port: Configured server bind port.
+
+    Returns:
+        Enabled transport-security settings for production and loopback access.
+    """
+    allowed_hosts = {
+        "127.0.0.1",
+        "127.0.0.1:*",
+        "localhost",
+        "localhost:*",
+        "[::1]",
+        "[::1]:*",
+    }
+    allowed_origins = {
+        "http://127.0.0.1",
+        "http://127.0.0.1:*",
+        "http://localhost",
+        "http://localhost:*",
+        "http://[::1]",
+        "http://[::1]:*",
+    }
+
+    if hosted_auth is not None:
+        resource_url = hosted_auth.resource_server_url
+        public_host = resource_url.host
+        public_port = resource_url.port
+        # ``AnyHttpUrl`` guarantees both values; keep the guard for defensive callers.
+        if public_host is None or public_port is None:  # pragma: no cover
+            raise ValueError("hosted resource_server_url must include a valid host and port.")
+        allowed_hosts.add(public_host)
+        allowed_hosts.add(f"{public_host}:{public_port}")
+        public_origin = f"{resource_url.scheme}://{public_host}"
+        allowed_origins.add(public_origin)
+        allowed_origins.add(f"{public_origin}:{public_port}")
+    elif host not in {"0.0.0.0", "::", "[::]"}:
+        bind_host = f"[{host}]" if ":" in host and not host.startswith("[") else host
+        allowed_hosts.add(bind_host)
+        allowed_hosts.add(f"{bind_host}:{port}")
+        allowed_origins.add(f"http://{bind_host}")
+        allowed_origins.add(f"http://{bind_host}:{port}")
+
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=sorted(allowed_hosts),
+        allowed_origins=sorted(allowed_origins),
+    )
+
+
+class FollowUpBossMCPServer(MCPServer):
+    """MCPServer subclass with hosted endpoint abuse controls."""
 
     _hosted_rate_limiter: HostedEndpointRateLimiter | None = None
     _hosted_oauth_application: HostedOAuthApplication | None = None
-    _application_lifespan: Callable[[Starlette], AbstractAsyncContextManager[None]] | None = None
+    _streamable_http_host = "127.0.0.1"
+    _streamable_http_port = 8000
+    _streamable_http_path = "/mcp"
+    _streamable_http_json_response = True
+    _transport_security = _transport_security_settings(
+        hosted_auth=None,
+        host=_streamable_http_host,
+        port=_streamable_http_port,
+    )
 
-    def streamable_http_app(self) -> Starlette:
+    @property
+    def transport_security(self) -> TransportSecuritySettings:
+        """Return the configured Streamable HTTP transport security policy."""
+        return self._transport_security
+
+    def configure_streamable_http(
+        self,
+        *,
+        host: str,
+        port: int,
+        streamable_http_path: str,
+        json_response: bool,
+        transport_security: TransportSecuritySettings,
+    ) -> None:
+        """Store application-owned defaults moved off the v2 constructor."""
+        self._streamable_http_host = host
+        self._streamable_http_port = port
+        self._streamable_http_path = streamable_http_path
+        self._streamable_http_json_response = json_response
+        self._transport_security = transport_security
+
+    def run(
+        self,
+        transport: Literal["stdio", "sse", "streamable-http"] = "stdio",
+        **kwargs: Any,
+    ) -> None:
+        """Run the server, applying configured v2 Streamable HTTP defaults."""
+        if transport == "streamable-http":
+            kwargs.setdefault("host", self._streamable_http_host)
+            kwargs.setdefault("port", self._streamable_http_port)
+            kwargs.setdefault("streamable_http_path", self._streamable_http_path)
+            kwargs.setdefault("json_response", self._streamable_http_json_response)
+            kwargs.setdefault("transport_security", self._transport_security)
+        super().run(transport=transport, **kwargs)
+
+    def streamable_http_app(
+        self,
+        *,
+        streamable_http_path: str | None = None,
+        json_response: bool | None = None,
+        stateless_http: bool = False,
+        event_store: EventStore | None = None,
+        retry_interval: int | None = None,
+        max_request_body_size: int = _DEFAULT_MAX_REQUEST_BODY_SIZE,
+        transport_security: TransportSecuritySettings | None = None,
+        host: str | None = None,
+    ) -> Starlette:
         """Return the streamable HTTP app with hosted abuse controls applied.
 
         Returns:
             The configured streamable HTTP Starlette application.
         """
-        app = super().streamable_http_app()
+        resolved_path = streamable_http_path or self._streamable_http_path
+        app = super().streamable_http_app(
+            streamable_http_path=resolved_path,
+            json_response=(
+                self._streamable_http_json_response if json_response is None else json_response
+            ),
+            stateless_http=stateless_http,
+            event_store=event_store,
+            retry_interval=retry_interval,
+            max_request_body_size=max_request_body_size,
+            transport_security=transport_security or self._transport_security,
+            host=host or self._streamable_http_host,
+        )
         if self._hosted_oauth_application is not None:
             existing_paths = {getattr(route, "path", None) for route in app.routes}
             for oauth_route in self._hosted_oauth_application.routes():
@@ -160,7 +294,7 @@ class FollowUpBossFastMCP(FastMCP):
             for route in app.routes:
                 if (
                     isinstance(route, Route)
-                    and route.path == self.settings.streamable_http_path
+                    and route.path == resolved_path
                     and not isinstance(route.app, HostedRateLimitMiddleware)
                 ):
                     route.app = HostedRateLimitMiddleware(
@@ -169,18 +303,11 @@ class FollowUpBossFastMCP(FastMCP):
                     )
                     break
 
-        if self._application_lifespan is not None:
-            application_lifespan = self._application_lifespan
-            session_manager_lifespan = app.router.lifespan_context
-
-            @asynccontextmanager
-            async def lifespan(starlette_app: Starlette) -> AsyncIterator[None]:
-                async with application_lifespan(starlette_app):
-                    async with session_manager_lifespan(starlette_app):
-                        yield
-
-            app.router.lifespan_context = lifespan
         return app
+
+
+# Compatibility alias for callers that imported the project-specific v1 name.
+FollowUpBossFastMCP = FollowUpBossMCPServer
 
 
 def create_server(
@@ -200,8 +327,8 @@ def create_server(
     host: str | None = None,
     port: int | None = None,
     streamable_http_path: str | None = None,
-) -> FastMCP:
-    """Create and register the FastMCP server.
+) -> FollowUpBossMCPServer:
+    """Create and register the MCP server.
 
     Args:
         settings: Optional non-secret hosted runtime defaults or credentialed
@@ -240,7 +367,7 @@ def create_server(
         streamable_http_path: Optional explicit streamable HTTP path override.
 
     Returns:
-        A fully registered FastMCP server. When hosted auth is enabled without
+        A fully registered MCP server. When hosted auth is enabled without
         an injected client, tenant-specific runtimes are resolved for each tool
         call instead of sharing one startup-time client.
     """
@@ -305,8 +432,6 @@ def create_server(
         else resolved_server_settings.streamable_http_path
     )
 
-    application_lifespan_active = False
-
     @asynccontextmanager
     async def managed_lifespan() -> AsyncIterator[None]:
         opened_resources: list[AsyncManagedResource] = []
@@ -330,25 +455,13 @@ def create_server(
                         await hosted_oauth_application.aclose()
 
     @asynccontextmanager
-    async def lifespan(_: FastMCP) -> AsyncIterator[None]:
-        if application_lifespan_active:
-            yield
-            return
+    async def lifespan(_: MCPServer) -> AsyncIterator[None]:
         async with managed_lifespan():
             yield
 
-    @asynccontextmanager
-    async def application_lifespan(_: Starlette) -> AsyncIterator[None]:
-        nonlocal application_lifespan_active
-        application_lifespan_active = True
-        try:
-            async with managed_lifespan():
-                yield
-        finally:
-            application_lifespan_active = False
-
-    mcp = FollowUpBossFastMCP(
+    mcp = FollowUpBossMCPServer(
         "Follow Up Boss MCP",
+        version=__version__,
         instructions=(
             "Use the typed Follow Up Boss tools for identity checks, lead search, lead ingestion, "
             "latest owned lead lookup, owned task intent helpers, lead deal lookups, "
@@ -367,10 +480,6 @@ def create_server(
             "support@followupboss.com to make it possible to search for notes associated "
             "with a FUB person ID."
         ),
-        host=resolved_host,
-        port=resolved_port,
-        streamable_http_path=resolved_streamable_http_path,
-        json_response=True,
         log_level=resolved_server_settings.log_level,
         lifespan=lifespan,
         auth=resolved_mcp_auth_settings,
@@ -378,11 +487,20 @@ def create_server(
     )
     mcp._hosted_rate_limiter = resolved_hosted_rate_limiter
     mcp._hosted_oauth_application = hosted_oauth_application
-    mcp._application_lifespan = application_lifespan
+    mcp.configure_streamable_http(
+        host=resolved_host,
+        port=resolved_port,
+        streamable_http_path=resolved_streamable_http_path,
+        json_response=True,
+        transport_security=_transport_security_settings(
+            hosted_auth=hosted_auth,
+            host=resolved_host,
+            port=resolved_port,
+        ),
+    )
     register_server_surface(
         mcp,
         adapter,
-        project_root=_PROJECT_ROOT,
         tenant_runtime_factory=runtime_factory,
     )
     return mcp

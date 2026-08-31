@@ -5,17 +5,81 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      operation:
+        description: Production operation to run from refs/heads/main.
+        required: true
+        type: choice
+        default: deploy
+        options:
+          - deploy
+          - expand
+          - status
+          - backfill
+          - record-acceptance
+          - finalize
+          - rollback-finalize
+      expected_access_unbound:
+        description: Exact access-token NULL count from the immediately preceding status run.
+        required: false
+        type: string
+      expected_refresh_unbound:
+        description: Exact refresh-token NULL count from the immediately preceding status run.
+        required: false
+        type: string
+      acknowledge_unbound_token_audience:
+        description: Assert that every NULL-resource token targeted only this MCP resource.
+        required: false
+        type: boolean
+        default: false
+      old_writers_retired:
+        description: Assert that every running ECS task uses this exact release before finalizing.
+        required: false
+        type: boolean
+        default: false
+      accepted_release_sha:
+        description: Exact deployed SHA for a record-acceptance callback.
+        required: false
+        type: string
+      accepted_task_definition_arn:
+        description: Exact live-tested ECS task-definition ARN for a record-acceptance callback.
+        required: false
+        type: string
+      modern_acceptance_evidence_sha256:
+        description: SHA-256 of the sanitized authenticated modern-protocol acceptance evidence.
+        required: false
+        type: string
+      legacy_acceptance_evidence_sha256:
+        description: SHA-256 of the sanitized authenticated legacy-protocol acceptance evidence.
+        required: false
+        type: string
+      acceptance_run_id:
+        description: Successful record-acceptance workflow run ID required by finalize.
+        required: false
+        type: string
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: deploy-production
   cancel-in-progress: false
 
 jobs:
+  authorize-production-ref:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the production ref
+        shell: bash
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            printf "Production operations may run only from refs/heads/main.\n" >&2
+            exit 1
+          fi
+
   validate:
+    needs: authorize-production-ref
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: production
     env:
@@ -46,7 +110,7 @@ jobs:
       TASK_ROLE_ARN: ${{ secrets.TASK_ROLE_ARN }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
 
@@ -97,6 +161,8 @@ jobs:
           if (
               resource.scheme != "https"
               or not resource.netloc
+              or resource.username is not None
+              or resource.password is not None
               or resource.path.rstrip("/") != "/mcp"
               or resource.params
               or resource.query
@@ -105,9 +171,18 @@ jobs:
               raise SystemExit(
                   "HOSTED_RESOURCE_SERVER_URL must be the external HTTPS MCP URL ending in /mcp."
               )
-          if issuer.scheme != "https" or issuer.netloc != resource.netloc:
+          if (
+              issuer.scheme != "https"
+              or issuer.netloc != resource.netloc
+              or issuer.username is not None
+              or issuer.password is not None
+              or issuer.path not in ("", "/")
+              or issuer.params
+              or issuer.query
+              or issuer.fragment
+          ):
               raise SystemExit(
-                  "HOSTED_ISSUER_URL must use the same HTTPS host as HOSTED_RESOURCE_SERVER_URL."
+                  "HOSTED_ISSUER_URL must be the HTTPS origin for HOSTED_RESOURCE_SERVER_URL."
               )
           PY
           oauth_enabled="$(printf "%s" "${FUB_OAUTH_ENABLED:-false}" | tr '[:upper:]' '[:lower:]')"
@@ -135,7 +210,7 @@ jobs:
           fi
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           python-version: "3.12"
           enable-cache: true
@@ -143,9 +218,940 @@ jobs:
       - name: Run release validation
         run: make release-validate
 
+  record-live-acceptance:
+    needs:
+      - authorize-production-ref
+      - validate
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.operation == 'record-acceptance'
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+      ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+      ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+      HOSTED_RESOURCE_SERVER_URL: ${{ vars.HOSTED_RESOURCE_SERVER_URL }}
+      ACCEPTED_RELEASE_SHA: ${{ inputs.accepted_release_sha }}
+      ACCEPTED_TASK_DEFINITION_ARN: ${{ inputs.accepted_task_definition_arn }}
+      MODERN_ACCEPTANCE_EVIDENCE_SHA256: ${{ inputs.modern_acceptance_evidence_sha256 }}
+      LEGACY_ACCEPTANCE_EVIDENCE_SHA256: ${{ inputs.legacy_acceptance_evidence_sha256 }}
+    steps:
+      - name: Validate the authenticated acceptance callback
+        shell: bash
+        run: |
+          if [ "${ACCEPTED_RELEASE_SHA}" != "${GITHUB_SHA}" ]; then
+            printf "Acceptance callback must target this exact main-branch SHA.\n" >&2
+            exit 1
+          fi
+          if [ -z "${ACCEPTED_TASK_DEFINITION_ARN}" ]; then
+            printf "Acceptance callback requires the exact live-tested task-definition ARN.\n" >&2
+            exit 1
+          fi
+          if ! [[ "${MODERN_ACCEPTANCE_EVIDENCE_SHA256}" =~ ^[0-9a-f]{64}$ ]] ||
+             ! [[ "${LEGACY_ACCEPTANCE_EVIDENCE_SHA256}" =~ ^[0-9a-f]{64}$ ]]; then
+            printf "Acceptance callback requires separate lowercase SHA-256 evidence digests for modern and legacy authenticated probes.\n" >&2
+            exit 1
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+
+      - name: Bind the acceptance callback to the live ECS release
+        shell: bash
+        run: |
+          aws ecs describe-services \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}" \
+            --region "${AWS_REGION}" > "${RUNNER_TEMP}/acceptance-service.json"
+          service_count="$(jq -r '.services | length' "${RUNNER_TEMP}/acceptance-service.json")"
+          failure_count="$(jq -r '.failures | length' "${RUNNER_TEMP}/acceptance-service.json")"
+          desired="$(jq -r '.services[0].desiredCount // 0' "${RUNNER_TEMP}/acceptance-service.json")"
+          running="$(jq -r '.services[0].runningCount // 0' "${RUNNER_TEMP}/acceptance-service.json")"
+          pending="$(jq -r '.services[0].pendingCount // 0' "${RUNNER_TEMP}/acceptance-service.json")"
+          deployments="$(jq -r '.services[0].deployments | length' "${RUNNER_TEMP}/acceptance-service.json")"
+          rollout_state="$(jq -r '.services[0].deployments[0].rolloutState // empty' "${RUNNER_TEMP}/acceptance-service.json")"
+          rollback_enabled="$(jq -r '.services[0].deploymentConfiguration.deploymentCircuitBreaker | .enable == true and .rollback == true' "${RUNNER_TEMP}/acceptance-service.json")"
+          service_task_definition="$(jq -r '.services[0].taskDefinition // empty' "${RUNNER_TEMP}/acceptance-service.json")"
+          if [ "${service_count}" != "1" ] || [ "${failure_count}" != "0" ] ||
+             [ "${desired}" = "0" ] || [ "${running}" != "${desired}" ] ||
+             [ "${pending}" != "0" ] || [ "${deployments}" != "1" ] ||
+             [ "${rollout_state}" != "COMPLETED" ] || [ "${rollback_enabled}" != "true" ] ||
+             [ "${service_task_definition}" != "${ACCEPTED_TASK_DEFINITION_ARN}" ]; then
+            printf "Acceptance callback does not match one stable live ECS release.\n" >&2
+            exit 1
+          fi
+          aws ecs describe-task-definition \
+            --task-definition "${service_task_definition}" \
+            --region "${AWS_REGION}" > "${RUNNER_TEMP}/acceptance-task-definition.json"
+          release="$(
+            jq -r '
+              .taskDefinition.containerDefinitions[]
+              | select(.name == "followupboss-mcp-hosted")
+              | .environment[]
+              | select(.name == "SENTRY_RELEASE")
+              | .value
+            ' "${RUNNER_TEMP}/acceptance-task-definition.json"
+          )"
+          running_resource="$(
+            jq -r '
+              .taskDefinition.containerDefinitions[]
+              | select(.name == "followupboss-mcp-hosted")
+              | .environment[]
+              | select(.name == "FOLLOWUPBOSS_HOSTED_RESOURCE_SERVER_URL")
+              | .value
+            ' "${RUNNER_TEMP}/acceptance-task-definition.json"
+          )"
+          if [ "${release}" != "followupboss-mcp@${GITHUB_SHA}" ] ||
+             [ "${running_resource}" != "${HOSTED_RESOURCE_SERVER_URL}" ]; then
+            printf "Acceptance callback release metadata does not match the selected ref and resource.\n" >&2
+            exit 1
+          fi
+          aws ecs list-tasks \
+            --cluster "${ECS_CLUSTER}" \
+            --service-name "${ECS_SERVICE}" \
+            --desired-status RUNNING \
+            --max-results 100 \
+            --region "${AWS_REGION}" > "${RUNNER_TEMP}/acceptance-task-arns.json"
+          listed="$(jq -r '.taskArns | length' "${RUNNER_TEMP}/acceptance-task-arns.json")"
+          next_token="$(jq -r '.nextToken // empty' "${RUNNER_TEMP}/acceptance-task-arns.json")"
+          if [ "${listed}" != "${desired}" ] || [ -n "${next_token}" ]; then
+            printf "Acceptance callback could not prove the complete running task set.\n" >&2
+            exit 1
+          fi
+          jq -r '.taskArns[]' "${RUNNER_TEMP}/acceptance-task-arns.json" > "${RUNNER_TEMP}/acceptance-task-arns.txt"
+          aws ecs describe-tasks \
+            --cluster "${ECS_CLUSTER}" \
+            --tasks $(<"${RUNNER_TEMP}/acceptance-task-arns.txt") \
+            --region "${AWS_REGION}" > "${RUNNER_TEMP}/acceptance-tasks.json"
+          described="$(jq -r '.tasks | length' "${RUNNER_TEMP}/acceptance-tasks.json")"
+          task_failures="$(jq -r '.failures | length' "${RUNNER_TEMP}/acceptance-tasks.json")"
+          mismatches="$(jq --arg expected "${service_task_definition}" '[.tasks[] | select(.lastStatus != "RUNNING" or .taskDefinitionArn != $expected)] | length' "${RUNNER_TEMP}/acceptance-tasks.json")"
+          if [ "${described}" != "${desired}" ] || [ "${task_failures}" != "0" ] ||
+             [ "${mismatches}" != "0" ]; then
+            printf "Acceptance callback found a mixed or incomplete running task set.\n" >&2
+            exit 1
+          fi
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          receipt = {
+              "schema": "followupboss-mcp-production-live-acceptance-v1",
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "workflow_run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              "event": os.environ["GITHUB_EVENT_NAME"],
+              "ref": os.environ["GITHUB_REF"],
+              "release_sha": os.environ["GITHUB_SHA"],
+              "task_definition_arn": os.environ["ACCEPTED_TASK_DEFINITION_ARN"],
+              "resource": os.environ["HOSTED_RESOURCE_SERVER_URL"],
+              "attested_by": os.environ["GITHUB_ACTOR"],
+              "modern_acceptance_evidence_sha256": os.environ[
+                  "MODERN_ACCEPTANCE_EVIDENCE_SHA256"
+              ],
+              "legacy_acceptance_evidence_sha256": os.environ[
+                  "LEGACY_ACCEPTANCE_EVIDENCE_SHA256"
+              ],
+          }
+          Path(os.environ["RUNNER_TEMP"], "production-live-acceptance.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          printf "Acceptance callback receipt: run=%s attempt=%s release=%s task_definition=%s.\n" \
+            "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" "${GITHUB_SHA}" "${service_task_definition}"
+
+      - name: Publish the immutable acceptance callback receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: production-live-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/production-live-acceptance.json
+          if-no-files-found: error
+          retention-days: 90
+
+  oauth-resource-migration:
+    needs:
+      - authorize-production-ref
+      - validate
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.operation != 'record-acceptance')
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+      ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+      ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+      ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+      HOSTED_RESOURCE_SERVER_URL: ${{ vars.HOSTED_RESOURCE_SERVER_URL }}
+      LOG_GROUP_NAME: ${{ vars.LOG_GROUP_NAME }}
+      TASK_EXECUTION_ROLE_ARN: ${{ secrets.TASK_EXECUTION_ROLE_ARN }}
+      TENANT_DATABASE_URL_SECRET_ARN: ${{ secrets.TENANT_DATABASE_URL_SECRET_ARN }}
+      REQUESTED_OPERATION: ${{ github.event_name == 'push' && 'verify-ready' || inputs.operation == 'deploy' && 'verify-ready' || inputs.operation }}
+      EXPECTED_ACCESS_UNBOUND: ${{ inputs.expected_access_unbound }}
+      EXPECTED_REFRESH_UNBOUND: ${{ inputs.expected_refresh_unbound }}
+      ACKNOWLEDGE_UNBOUND_TOKEN_AUDIENCE: ${{ inputs.acknowledge_unbound_token_audience }}
+      OLD_WRITERS_RETIRED: ${{ inputs.old_writers_retired }}
+      ACCEPTANCE_RUN_ID: ${{ inputs.acceptance_run_id }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+
+      - name: Validate migration request
+        shell: bash
+        run: |
+          required_values=(
+            AWS_REGION
+            AWS_ROLE_TO_ASSUME
+            ECR_REPOSITORY
+            ECS_CLUSTER
+            ECS_SERVICE
+            HOSTED_RESOURCE_SERVER_URL
+            LOG_GROUP_NAME
+            TASK_EXECUTION_ROLE_ARN
+            TENANT_DATABASE_URL_SECRET_ARN
+          )
+          for name in "${required_values[@]}"; do
+            if [ -z "${!name}" ]; then
+              printf "Missing required production migration configuration: %s\n" "${name}" >&2
+              exit 1
+            fi
+          done
+          case "${REQUESTED_OPERATION}" in
+            expand|status|verify-ready|backfill|finalize|rollback-finalize) ;;
+            *)
+              printf "Unsupported production operation.\n" >&2
+              exit 1
+              ;;
+          esac
+          if [ "${REQUESTED_OPERATION}" = "backfill" ]; then
+            if ! [[ "${EXPECTED_ACCESS_UNBOUND}" =~ ^[0-9]+$ ]] ||
+               ! [[ "${EXPECTED_REFRESH_UNBOUND}" =~ ^[0-9]+$ ]]; then
+              printf "Backfill requires exact non-negative status counts.\n" >&2
+              exit 1
+            fi
+            if [ "${ACKNOWLEDGE_UNBOUND_TOKEN_AUDIENCE}" != "true" ]; then
+              printf "Backfill requires the explicit audience acknowledgement.\n" >&2
+              exit 1
+            fi
+          fi
+          if [ "${REQUESTED_OPERATION}" = "finalize" ] &&
+             [ "${OLD_WRITERS_RETIRED}" != "true" ]; then
+            printf "Finalize requires the old-writers-retired acknowledgement.\n" >&2
+            exit 1
+          fi
+          if [ "${REQUESTED_OPERATION}" = "finalize" ] &&
+             ! [[ "${ACCEPTANCE_RUN_ID}" =~ ^[1-9][0-9]*$ ]]; then
+            printf "Finalize requires the successful record-acceptance workflow run ID.\n" >&2
+            exit 1
+          fi
+          python - <<'PY'
+          import os
+          from urllib.parse import urlparse
+
+          value = os.environ["HOSTED_RESOURCE_SERVER_URL"].strip()
+          resource = urlparse(value)
+          if (
+              resource.scheme != "https"
+              or not resource.netloc
+              or resource.path.rstrip("/") != "/mcp"
+              or resource.params
+              or resource.query
+              or resource.fragment
+          ):
+              raise SystemExit(
+                  "HOSTED_RESOURCE_SERVER_URL must be the external HTTPS MCP URL ending in /mcp."
+              )
+          PY
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+
+      - name: Resolve the immutable live-acceptance callback
+        if: env.REQUESTED_OPERATION == 'finalize'
+        shell: bash
+        run: |
+          receipt_dir="${RUNNER_TEMP}/accepted-live-receipt"
+          artifact_name=""
+          mkdir -p "${receipt_dir}"
+          gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${ACCEPTANCE_RUN_ID}" \
+            > "${RUNNER_TEMP}/acceptance-run.json"
+          run_attempt="$(jq -r '.run_attempt // 0' "${RUNNER_TEMP}/acceptance-run.json")"
+          jq -e \
+            --arg repository "${GITHUB_REPOSITORY}" \
+            --arg sha "${GITHUB_SHA}" \
+            --argjson run_id "${ACCEPTANCE_RUN_ID}" '
+              .id == $run_id
+              and .event == "workflow_dispatch"
+              and .status == "completed"
+              and .conclusion == "success"
+              and .head_branch == "main"
+              and .head_sha == $sha
+              and .path == ".github/workflows/deploy-production.yml"
+              and .repository.full_name == $repository
+              and (.run_attempt | type == "number" and . > 0)
+            ' "${RUNNER_TEMP}/acceptance-run.json" > /dev/null
+          artifact_name="production-live-acceptance-${ACCEPTANCE_RUN_ID}-${run_attempt}"
+          gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${ACCEPTANCE_RUN_ID}/artifacts?per_page=100" \
+            > "${RUNNER_TEMP}/acceptance-artifacts.json"
+          artifact_count="$(
+            jq --arg name "${artifact_name}" \
+              '[.artifacts[] | select(.name == $name and .expired == false)] | length' \
+              "${RUNNER_TEMP}/acceptance-artifacts.json"
+          )"
+          if [ "${artifact_count}" != "1" ]; then
+            printf "Finalize requires one unexpired immutable acceptance artifact from the accepted run.\n" >&2
+            exit 1
+          fi
+          gh run download "${ACCEPTANCE_RUN_ID}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --name "${artifact_name}" \
+            --dir "${receipt_dir}"
+          receipt_path="${receipt_dir}/production-live-acceptance.json"
+          if [ ! -f "${receipt_path}" ]; then
+            printf "Acceptance artifact did not contain the required receipt.\n" >&2
+            exit 1
+          fi
+          jq -e \
+            --arg repository "${GITHUB_REPOSITORY}" \
+            --arg ref "${GITHUB_REF}" \
+            --arg sha "${GITHUB_SHA}" \
+            --arg resource "${HOSTED_RESOURCE_SERVER_URL}" \
+            --argjson run_id "${ACCEPTANCE_RUN_ID}" \
+            --argjson run_attempt "${run_attempt}" '
+              keys == [
+                "attested_by",
+                "event",
+                "legacy_acceptance_evidence_sha256",
+                "modern_acceptance_evidence_sha256",
+                "ref",
+                "release_sha",
+                "repository",
+                "resource",
+                "schema",
+                "task_definition_arn",
+                "workflow_run_attempt",
+                "workflow_run_id"
+              ]
+              and .schema == "followupboss-mcp-production-live-acceptance-v1"
+              and .repository == $repository
+              and .workflow_run_id == $run_id
+              and .workflow_run_attempt == $run_attempt
+              and .event == "workflow_dispatch"
+              and .ref == $ref
+              and .release_sha == $sha
+              and .resource == $resource
+              and (.attested_by | type == "string" and length > 0)
+              and (.task_definition_arn | type == "string" and length > 0)
+              and (.modern_acceptance_evidence_sha256 | test("^[0-9a-f]{64}$"))
+              and (.legacy_acceptance_evidence_sha256 | test("^[0-9a-f]{64}$"))
+            ' "${receipt_path}" > /dev/null
+          printf "Resolved authenticated live-acceptance callback: run=%s attempt=%s.\n" \
+            "${ACCEPTANCE_RUN_ID}" "${run_attempt}"
+
+      - name: Verify or explicitly adopt one database secret version
+        shell: bash
+        run: |
+          aws secretsmanager describe-secret \
+            --secret-id "${TENANT_DATABASE_URL_SECRET_ARN}" \
+            --region "${AWS_REGION}" > "${RUNNER_TEMP}/database-secret-metadata.json"
+          aws ecs describe-services \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}" \
+            --region "${AWS_REGION}" > "${RUNNER_TEMP}/production-service.json"
+          service_count="$(jq -r '.services | length' "${RUNNER_TEMP}/production-service.json")"
+          failure_count="$(jq -r '.failures | length' "${RUNNER_TEMP}/production-service.json")"
+          desired="$(jq -r '.services[0].desiredCount // 0' "${RUNNER_TEMP}/production-service.json")"
+          running="$(jq -r '.services[0].runningCount // 0' "${RUNNER_TEMP}/production-service.json")"
+          pending="$(jq -r '.services[0].pendingCount // 0' "${RUNNER_TEMP}/production-service.json")"
+          deployments="$(jq -r '.services[0].deployments | length' "${RUNNER_TEMP}/production-service.json")"
+          rollout_state="$(jq -r '.services[0].deployments[0].rolloutState // empty' "${RUNNER_TEMP}/production-service.json")"
+          deployment_controller="$(jq -r '.services[0].deploymentController.type // empty' "${RUNNER_TEMP}/production-service.json")"
+          service_task_definition="$(jq -r '.services[0].taskDefinition // empty' "${RUNNER_TEMP}/production-service.json")"
+          if [ "${service_count}" != "1" ] || [ "${failure_count}" != "0" ] ||
+             [ "${desired}" = "0" ] || [ "${running}" != "${desired}" ] ||
+             [ "${pending}" != "0" ] || [ "${deployments}" != "1" ] ||
+             [ "${rollout_state}" != "COMPLETED" ] ||
+             [ "${deployment_controller}" != "ECS" ] ||
+             [ -z "${service_task_definition}" ]; then
+            printf "Database pinning requires one stable ECS rolling deployment.\n" >&2
+            exit 1
+          fi
+          aws ecs describe-task-definition \
+            --task-definition "${service_task_definition}" \
+            --region "${AWS_REGION}" > "${RUNNER_TEMP}/service-task-definition.json"
+          aws ecs list-tasks \
+            --cluster "${ECS_CLUSTER}" \
+            --service-name "${ECS_SERVICE}" \
+            --desired-status RUNNING \
+            --max-results 100 \
+            --region "${AWS_REGION}" > "${RUNNER_TEMP}/prepin-task-arns.json"
+          prepin_listed="$(jq -r '.taskArns | length' "${RUNNER_TEMP}/prepin-task-arns.json")"
+          prepin_next_token="$(jq -r '.nextToken // empty' "${RUNNER_TEMP}/prepin-task-arns.json")"
+          if [ "${prepin_listed}" != "${desired}" ] || [ -n "${prepin_next_token}" ]; then
+            printf "Could not prove the complete running task set before database pinning.\n" >&2
+            exit 1
+          fi
+          jq -r '.taskArns[]' "${RUNNER_TEMP}/prepin-task-arns.json" > "${RUNNER_TEMP}/prepin-task-arns.txt"
+          aws ecs describe-tasks \
+            --cluster "${ECS_CLUSTER}" \
+            --tasks $(<"${RUNNER_TEMP}/prepin-task-arns.txt") \
+            --region "${AWS_REGION}" > "${RUNNER_TEMP}/prepin-tasks.json"
+          prepin_described="$(jq -r '.tasks | length' "${RUNNER_TEMP}/prepin-tasks.json")"
+          prepin_failures="$(jq -r '.failures | length' "${RUNNER_TEMP}/prepin-tasks.json")"
+          prepin_mismatches="$(jq --arg expected "${service_task_definition}" '[.tasks[] | select(.lastStatus != "RUNNING" or .taskDefinitionArn != $expected)] | length' "${RUNNER_TEMP}/prepin-tasks.json")"
+          if [ "${prepin_described}" != "${desired}" ] || [ "${prepin_failures}" != "0" ] ||
+             [ "${prepin_mismatches}" != "0" ]; then
+            printf "Running task set changed before database pinning.\n" >&2
+            exit 1
+          fi
+          aws ecs register-task-definition --generate-cli-skeleton > "${RUNNER_TEMP}/register-task-skeleton.json"
+          python - <<'PY'
+          from datetime import datetime
+          import json
+          import os
+          from pathlib import Path
+
+          def timestamp(value: object) -> float:
+              if isinstance(value, (int, float)):
+                  return float(value)
+              if isinstance(value, str):
+                  return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+              raise ValueError("missing timestamp")
+
+          temp = Path(os.environ["RUNNER_TEMP"])
+          base_secret_arn = os.environ["TENANT_DATABASE_URL_SECRET_ARN"]
+          resource = os.environ["HOSTED_RESOURCE_SERVER_URL"]
+          metadata = json.loads(
+              (temp / "database-secret-metadata.json").read_text(encoding="utf-8")
+          )
+          if metadata.get("ARN") != base_secret_arn:
+              raise SystemExit("Configured database secret must be one canonical bare ARN.")
+          payload = json.loads(
+              (temp / "service-task-definition.json").read_text(encoding="utf-8")
+          )
+          task_definition = payload["taskDefinition"]
+          containers = [
+              item
+              for item in task_definition.get("containerDefinitions", [])
+              if item.get("name") == "followupboss-mcp-hosted"
+          ]
+          if len(containers) != 1:
+              raise SystemExit("Running task definition did not contain exactly one hosted container.")
+          container = containers[0]
+          resources = [
+              item.get("value")
+              for item in container.get("environment", [])
+              if item.get("name") == "FOLLOWUPBOSS_HOSTED_RESOURCE_SERVER_URL"
+          ]
+          database_refs = [
+              item
+              for item in container.get("secrets", [])
+              if item.get("name") == "FOLLOWUPBOSS_TENANT_DATABASE_URL"
+          ]
+          if resources != [resource] or len(database_refs) != 1:
+              raise SystemExit("Running service did not expose the exact migration target.")
+          running_secret_arn = database_refs[0].get("valueFrom", "")
+          version_prefix = f"{base_secret_arn}:::"
+          running_version = running_secret_arn.removeprefix(version_prefix)
+          if running_secret_arn != base_secret_arn and (
+              not running_secret_arn.startswith(version_prefix)
+              or not running_version
+              or ":" in running_version
+          ):
+              raise SystemExit("Running service used an unexpected database secret reference.")
+
+          pin_required = running_secret_arn == base_secret_arn
+          if pin_required and os.environ["REQUESTED_OPERATION"] != "expand":
+              raise SystemExit(
+                  "The running service still uses a bare database secret ARN; "
+                  "dispatch the explicit expand operation to adopt its proven current version."
+              )
+          if pin_required:
+              current_versions = [
+                  version_id
+                  for version_id, stages in metadata.get("VersionIdsToStages", {}).items()
+                  if "AWSCURRENT" in stages
+              ]
+              if (
+                  len(current_versions) != 1
+                  or not current_versions[0]
+                  or ":" in current_versions[0]
+              ):
+                  raise SystemExit(
+                      "Database secret did not expose exactly one valid current version."
+                  )
+              try:
+                  last_changed = timestamp(metadata.get("LastChangedDate"))
+                  running_tasks = json.loads(
+                      (temp / "prepin-tasks.json").read_text(encoding="utf-8")
+                  )["tasks"]
+                  created = [timestamp(task.get("createdAt")) for task in running_tasks]
+              except (KeyError, TypeError, ValueError) as exc:
+                  raise SystemExit(
+                      "Could not prove when running tasks resolved the database secret."
+                  ) from exc
+              if not created or any(created_at < last_changed + 30 for created_at in created):
+                  raise SystemExit(
+                      "Bare database secret cannot be pinned because a task predates its current version."
+                  )
+              pinned_secret_arn = f"{base_secret_arn}:::{current_versions[0]}"
+          else:
+              pinned_secret_arn = running_secret_arn
+
+          if pin_required:
+              skeleton = json.loads(
+                  (temp / "register-task-skeleton.json").read_text(encoding="utf-8")
+              )
+              registerable = {
+                  key: value for key, value in task_definition.items() if key in skeleton
+              }
+              if "family" not in registerable or "containerDefinitions" not in registerable:
+                  raise SystemExit("Could not preserve the running task definition for pinning.")
+              registered_containers = [
+                  item
+                  for item in registerable["containerDefinitions"]
+                  if item.get("name") == "followupboss-mcp-hosted"
+              ]
+              registered_database_refs = [
+                  item
+                  for item in registered_containers[0].get("secrets", [])
+                  if item.get("name") == "FOLLOWUPBOSS_TENANT_DATABASE_URL"
+              ]
+              registered_database_refs[0]["valueFrom"] = pinned_secret_arn
+              (temp / "pinned-service-task-definition.json").write_text(
+                  json.dumps(registerable, indent=2) + "\n",
+                  encoding="utf-8",
+              )
+
+          pin_path = temp / "pinned-database-secret-arn.txt"
+          pin_path.write_text(pinned_secret_arn, encoding="utf-8")
+          pin_path.chmod(0o600)
+          (temp / "database-pin-required.txt").write_text(
+              "true" if pin_required else "false",
+              encoding="utf-8",
+          )
+          PY
+          pin_required="$(<"${RUNNER_TEMP}/database-pin-required.txt")"
+          expected_task_definition="${service_task_definition}"
+          if [ "${pin_required}" = "true" ]; then
+            aws ecs register-task-definition \
+              --cli-input-json "file://${RUNNER_TEMP}/pinned-service-task-definition.json" \
+              --region "${AWS_REGION}" > "${RUNNER_TEMP}/registered-pinned-service-task.json"
+            expected_task_definition="$(
+              jq -r '.taskDefinition.taskDefinitionArn // empty' \
+                "${RUNNER_TEMP}/registered-pinned-service-task.json"
+            )"
+            if [ -z "${expected_task_definition}" ]; then
+              printf "Database pinning did not return a task-definition ARN.\n" >&2
+              exit 1
+            fi
+            aws ecs update-service \
+              --cluster "${ECS_CLUSTER}" \
+              --service "${ECS_SERVICE}" \
+              --task-definition "${expected_task_definition}" \
+              --deployment-configuration "deploymentCircuitBreaker={enable=true,rollback=true}" \
+              --region "${AWS_REGION}" > "${RUNNER_TEMP}/database-pin-update.json"
+          fi
+          aws ecs wait services-stable \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}" \
+            --region "${AWS_REGION}"
+          aws ecs describe-services \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}" \
+            --region "${AWS_REGION}" > "${RUNNER_TEMP}/production-service.json"
+          desired="$(jq -r '.services[0].desiredCount // 0' "${RUNNER_TEMP}/production-service.json")"
+          running="$(jq -r '.services[0].runningCount // 0' "${RUNNER_TEMP}/production-service.json")"
+          pending="$(jq -r '.services[0].pendingCount // 0' "${RUNNER_TEMP}/production-service.json")"
+          deployments="$(jq -r '.services[0].deployments | length' "${RUNNER_TEMP}/production-service.json")"
+          rollout_state="$(jq -r '.services[0].deployments[0].rolloutState // empty' "${RUNNER_TEMP}/production-service.json")"
+          deployed_task_definition="$(jq -r '.services[0].taskDefinition // empty' "${RUNNER_TEMP}/production-service.json")"
+          rollback_enabled="$(jq -r '.services[0].deploymentConfiguration.deploymentCircuitBreaker | .enable == true and .rollback == true' "${RUNNER_TEMP}/production-service.json")"
+          if [ "${desired}" = "0" ] || [ "${running}" != "${desired}" ] ||
+             [ "${pending}" != "0" ] || [ "${deployments}" != "1" ] ||
+             [ "${rollout_state}" != "COMPLETED" ] ||
+             [ "${deployed_task_definition}" != "${expected_task_definition}" ]; then
+            printf "Production service did not converge on the version-pinned database target.\n" >&2
+            exit 1
+          fi
+          if [ "${pin_required}" = "true" ] && [ "${rollback_enabled}" != "true" ]; then
+            printf "Explicit database adoption did not enable deployment-circuit-breaker rollback.\n" >&2
+            exit 1
+          fi
+          aws ecs list-tasks \
+            --cluster "${ECS_CLUSTER}" \
+            --service-name "${ECS_SERVICE}" \
+            --desired-status RUNNING \
+            --max-results 100 \
+            --region "${AWS_REGION}" > "${RUNNER_TEMP}/database-pin-task-arns.json"
+          listed="$(jq -r '.taskArns | length' "${RUNNER_TEMP}/database-pin-task-arns.json")"
+          next_token="$(jq -r '.nextToken // empty' "${RUNNER_TEMP}/database-pin-task-arns.json")"
+          if [ "${listed}" != "${desired}" ] || [ -n "${next_token}" ]; then
+            printf "Could not prove the complete version-pinned running task set.\n" >&2
+            exit 1
+          fi
+          jq -r '.taskArns[]' "${RUNNER_TEMP}/database-pin-task-arns.json" > "${RUNNER_TEMP}/database-pin-task-arns.txt"
+          aws ecs describe-tasks \
+            --cluster "${ECS_CLUSTER}" \
+            --tasks $(<"${RUNNER_TEMP}/database-pin-task-arns.txt") \
+            --region "${AWS_REGION}" > "${RUNNER_TEMP}/database-pin-tasks.json"
+          described="$(jq -r '.tasks | length' "${RUNNER_TEMP}/database-pin-tasks.json")"
+          task_failures="$(jq -r '.failures | length' "${RUNNER_TEMP}/database-pin-tasks.json")"
+          mismatches="$(jq --arg expected "${expected_task_definition}" '[.tasks[] | select(.lastStatus != "RUNNING" or .taskDefinitionArn != $expected)] | length' "${RUNNER_TEMP}/database-pin-tasks.json")"
+          if [ "${described}" != "${desired}" ] || [ "${task_failures}" != "0" ] ||
+             [ "${mismatches}" != "0" ]; then
+            printf "Not every running task uses the version-pinned task definition.\n" >&2
+            exit 1
+          fi
+          aws ecs describe-task-definition \
+            --task-definition "${expected_task_definition}" \
+            --region "${AWS_REGION}" > "${RUNNER_TEMP}/service-task-definition.json"
+          pinned_database_secret_arn="$(<"${RUNNER_TEMP}/pinned-database-secret-arn.txt")"
+          running_database_secret="$(
+            jq -r '
+              .taskDefinition.containerDefinitions[]
+              | select(.name == "followupboss-mcp-hosted")
+              | .secrets[]
+              | select(.name == "FOLLOWUPBOSS_TENANT_DATABASE_URL")
+              | .valueFrom
+            ' "${RUNNER_TEMP}/service-task-definition.json"
+          )"
+          if [ "${running_database_secret}" != "${pinned_database_secret_arn}" ]; then
+            printf "Running service did not retain the exact pinned database secret version.\n" >&2
+            exit 1
+          fi
+          jq -e '.services[0].networkConfiguration' \
+            "${RUNNER_TEMP}/production-service.json" > "${RUNNER_TEMP}/migration-network.json"
+          printf "PINNED_TENANT_DATABASE_URL_SECRET_ARN=%s\n" \
+            "${pinned_database_secret_arn}" >> "${GITHUB_ENV}"
+          printf "Database target receipt: one immutable secret version on %s running task(s).\n" \
+            "${desired}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2
+
+      - name: Build and push migration image
+        id: build-migration-image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          file: ./Dockerfile.migration
+          platforms: linux/amd64
+          provenance: false
+          push: true
+          tags: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:oauth-resource-migration-${{ github.sha }}
+          cache-from: type=gha,scope=oauth-resource-migration
+          cache-to: type=gha,mode=max,scope=oauth-resource-migration
+
+      - name: Render and register migration task definition
+        id: register-migration-task
+        shell: bash
+        env:
+          IMAGE_URI: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}@${{ steps.build-migration-image.outputs.digest }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+          from typing import Any
+
+          def replace(value: Any, replacements: dict[str, str]) -> Any:
+              if isinstance(value, str):
+                  rendered = value
+                  for placeholder, replacement in replacements.items():
+                      rendered = rendered.replace(placeholder, replacement)
+                  return rendered
+              if isinstance(value, list):
+                  return [replace(item, replacements) for item in value]
+              if isinstance(value, dict):
+                  return {key: replace(item, replacements) for key, item in value.items()}
+              return value
+
+          template = json.loads(
+              Path("deploy/ecs/task-definition.migration.template.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          rendered = replace(
+              template,
+              {
+                  "__AWS_REGION__": os.environ["AWS_REGION"],
+                  "__HOSTED_RESOURCE_SERVER_URL__": os.environ[
+                      "HOSTED_RESOURCE_SERVER_URL"
+                  ],
+                  "__IMAGE_URI__": os.environ["IMAGE_URI"],
+                  "__LOG_GROUP_NAME__": os.environ["LOG_GROUP_NAME"],
+                  "__TASK_EXECUTION_ROLE_ARN__": os.environ[
+                      "TASK_EXECUTION_ROLE_ARN"
+                  ],
+                  "__TENANT_DATABASE_URL_SECRET_ARN__": os.environ[
+                      "PINNED_TENANT_DATABASE_URL_SECRET_ARN"
+                  ],
+              },
+          )
+          rendered_text = json.dumps(rendered, indent=2) + "\n"
+          missing = sorted(set(re.findall(r"__[A-Z0-9_]+__", rendered_text)))
+          if missing:
+              raise SystemExit(f"Unrendered migration placeholders remain: {missing}")
+          Path(os.environ["RUNNER_TEMP"], "migration-task-definition.json").write_text(
+              rendered_text,
+              encoding="utf-8",
+          )
+          PY
+          aws ecs register-task-definition --cli-input-json "file://${RUNNER_TEMP}/migration-task-definition.json" --region "${AWS_REGION}" > "${RUNNER_TEMP}/registered-migration-task.json"
+          task_definition_arn="$(
+            jq -r '.taskDefinition.taskDefinitionArn // empty' "${RUNNER_TEMP}/registered-migration-task.json"
+          )"
+          if [ -z "${task_definition_arn}" ]; then
+            printf "Migration task-definition registration did not return an ARN.\n" >&2
+            exit 1
+          fi
+          printf "task_definition_arn=%s\n" "${task_definition_arn}" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify the finalization release boundary
+        if: env.REQUESTED_OPERATION == 'finalize'
+        shell: bash
+        run: |
+          receipt_path="${RUNNER_TEMP}/accepted-live-receipt/production-live-acceptance.json"
+          accepted_task_definition="$(jq -r '.task_definition_arn' "${receipt_path}")"
+          service_json="${RUNNER_TEMP}/finalize-service-before.json"
+          aws ecs describe-services \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}" \
+            --region "${AWS_REGION}" > "${service_json}"
+          service_count="$(jq -r '.services | length' "${service_json}")"
+          failure_count="$(jq -r '.failures | length' "${service_json}")"
+          desired="$(jq -r '.services[0].desiredCount // 0' "${service_json}")"
+          running="$(jq -r '.services[0].runningCount // 0' "${service_json}")"
+          pending="$(jq -r '.services[0].pendingCount // 0' "${service_json}")"
+          deployments="$(jq -r '.services[0].deployments | length' "${service_json}")"
+          rollout_state="$(jq -r '.services[0].deployments[0].rolloutState // empty' "${service_json}")"
+          deployment_controller="$(jq -r '.services[0].deploymentController.type // empty' "${service_json}")"
+          rollback_enabled="$(jq -r '.services[0].deploymentConfiguration.deploymentCircuitBreaker | .enable == true and .rollback == true' "${service_json}")"
+          service_task_definition="$(jq -r '.services[0].taskDefinition // empty' "${service_json}")"
+          if [ "${service_task_definition}" != "${accepted_task_definition}" ]; then
+            printf "Finalize task definition does not match the authenticated live acceptance.\n" >&2
+            exit 1
+          fi
+          if [ "${service_count}" != "1" ] || [ "${failure_count}" != "0" ] ||
+             [ "${desired}" = "0" ] || [ "${deployments}" != "1" ] ||
+             [ "${pending}" != "0" ] || [ "${running}" != "${desired}" ] ||
+             [ "${rollout_state}" != "COMPLETED" ] ||
+             [ "${deployment_controller}" != "ECS" ] ||
+             [ "${rollback_enabled}" != "true" ]; then
+            printf "Finalize requires one stable completed ECS deployment.\n" >&2
+            exit 1
+          fi
+          aws ecs describe-task-definition \
+            --task-definition "${service_task_definition}" \
+            --region "${AWS_REGION}" > "${RUNNER_TEMP}/finalize-task-definition.json"
+          release="$(
+            jq -r '
+              .taskDefinition.containerDefinitions[]
+              | select(.name == "followupboss-mcp-hosted")
+              | .environment[]
+              | select(.name == "SENTRY_RELEASE")
+              | .value
+            ' "${RUNNER_TEMP}/finalize-task-definition.json"
+          )"
+          running_resource="$(
+            jq -r '
+              .taskDefinition.containerDefinitions[]
+              | select(.name == "followupboss-mcp-hosted")
+              | .environment[]
+              | select(.name == "FOLLOWUPBOSS_HOSTED_RESOURCE_SERVER_URL")
+              | .value
+            ' "${RUNNER_TEMP}/finalize-task-definition.json"
+          )"
+          if [ "${release}" != "followupboss-mcp@${GITHUB_SHA}" ] ||
+             [ "${running_resource}" != "${HOSTED_RESOURCE_SERVER_URL}" ]; then
+            printf "Finalize ref does not match the running production release.\n" >&2
+            exit 1
+          fi
+          aws ecs list-tasks \
+            --cluster "${ECS_CLUSTER}" \
+            --service-name "${ECS_SERVICE}" \
+            --desired-status RUNNING \
+            --max-results 100 \
+            --region "${AWS_REGION}" > "${RUNNER_TEMP}/running-task-arns.json"
+          running_task_count="$(jq -r '.taskArns | length' "${RUNNER_TEMP}/running-task-arns.json")"
+          next_token="$(jq -r '.nextToken // empty' "${RUNNER_TEMP}/running-task-arns.json")"
+          if [ "${running_task_count}" != "${desired}" ] ||
+             [ "${running_task_count}" = "0" ] || [ -n "${next_token}" ]; then
+            printf "Finalize could not prove the complete running task set.\n" >&2
+            exit 1
+          fi
+          jq -r '.taskArns[]' "${RUNNER_TEMP}/running-task-arns.json" > "${RUNNER_TEMP}/running-task-arns.txt"
+          aws ecs describe-tasks --cluster "${ECS_CLUSTER}" --tasks $(<"${RUNNER_TEMP}/running-task-arns.txt") --region "${AWS_REGION}" > "${RUNNER_TEMP}/running-tasks.json"
+          described_task_count="$(jq -r '.tasks | length' "${RUNNER_TEMP}/running-tasks.json")"
+          described_failure_count="$(jq -r '.failures | length' "${RUNNER_TEMP}/running-tasks.json")"
+          nonrunning_count="$(jq '[.tasks[] | select(.lastStatus != "RUNNING")] | length' "${RUNNER_TEMP}/running-tasks.json")"
+          if [ "${described_failure_count}" != "0" ] ||
+             [ "${described_task_count}" != "${desired}" ] || [ "${nonrunning_count}" != "0" ]; then
+            printf "Finalize could not revalidate every running production task.\n" >&2
+            exit 1
+          fi
+          mismatches="$(
+            jq --arg expected "${service_task_definition}" '[.tasks[] | select(.taskDefinitionArn != $expected)] | length' "${RUNNER_TEMP}/running-tasks.json"
+          )"
+          if [ "${mismatches}" != "0" ]; then
+            printf "Finalize found a running task on an older task definition.\n" >&2
+            exit 1
+          fi
+          aws ecs describe-services \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}" \
+            --region "${AWS_REGION}" > "${RUNNER_TEMP}/finalize-service-after.json"
+          jq -e \
+            --arg expected "${service_task_definition}" \
+            --argjson desired "${desired}" '
+              (.failures | length) == 0
+              and (.services | length) == 1
+              and .services[0].taskDefinition == $expected
+              and .services[0].desiredCount == $desired
+              and .services[0].runningCount == $desired
+              and .services[0].pendingCount == 0
+              and (.services[0].deployments | length) == 1
+              and .services[0].deployments[0].rolloutState == "COMPLETED"
+              and .services[0].deploymentController.type == "ECS"
+              and .services[0].deploymentConfiguration.deploymentCircuitBreaker.enable == true
+              and .services[0].deploymentConfiguration.deploymentCircuitBreaker.rollback == true
+            ' "${RUNNER_TEMP}/finalize-service-after.json" > /dev/null
+          printf "Verified %s running task(s) on release %s.\n" "${running_task_count}" "${release}"
+
+      - name: Run the migration task and publish a sanitized receipt
+        shell: bash
+        env:
+          MIGRATION_TASK_DEFINITION_ARN: ${{ steps.register-migration-task.outputs.task_definition_arn }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          phase = os.environ["REQUESTED_OPERATION"]
+          command = ["verify-ready" if phase == "verify-ready" else phase]
+          command.extend(["--resource", os.environ["HOSTED_RESOURCE_SERVER_URL"]])
+          if phase in {"expand", "backfill", "finalize", "rollback-finalize"}:
+              command.append("--apply")
+          if phase == "backfill":
+              command.extend(
+                  [
+                      "--expect-access-unbound",
+                      os.environ["EXPECTED_ACCESS_UNBOUND"],
+                      "--expect-refresh-unbound",
+                      os.environ["EXPECTED_REFRESH_UNBOUND"],
+                      "--acknowledge-unbound-token-audience",
+                  ]
+              )
+          if phase == "finalize":
+              command.append("--old-writers-retired")
+          overrides = {
+              "containerOverrides": [
+                  {
+                      "name": "oauth-resource-migration",
+                      "command": command,
+                  }
+              ]
+          }
+          Path(os.environ["RUNNER_TEMP"], "migration-overrides.json").write_text(
+              json.dumps(overrides),
+              encoding="utf-8",
+          )
+          PY
+          aws ecs run-task --cluster "${ECS_CLUSTER}" --task-definition "${MIGRATION_TASK_DEFINITION_ARN}" --launch-type FARGATE --network-configuration "file://${RUNNER_TEMP}/migration-network.json" --overrides "file://${RUNNER_TEMP}/migration-overrides.json" --region "${AWS_REGION}" > "${RUNNER_TEMP}/migration-run-task.json"
+          if [ "$(jq -r '.failures | length' "${RUNNER_TEMP}/migration-run-task.json")" != "0" ]; then
+            printf "ECS rejected the migration task. Review private AWS control-plane logs.\n" >&2
+            exit 1
+          fi
+          task_arn="$(jq -r '.tasks[0].taskArn // empty' "${RUNNER_TEMP}/migration-run-task.json")"
+          if [ -z "${task_arn}" ]; then
+            printf "ECS did not return a migration task ARN.\n" >&2
+            exit 1
+          fi
+          aws ecs wait tasks-stopped --cluster "${ECS_CLUSTER}" --tasks "${task_arn}" --region "${AWS_REGION}"
+          aws ecs describe-tasks --cluster "${ECS_CLUSTER}" --tasks "${task_arn}" --region "${AWS_REGION}" > "${RUNNER_TEMP}/migration-task-result.json"
+          exit_code="$(
+            jq -r '
+              .tasks[0].containers[]
+              | select(.name == "oauth-resource-migration")
+              | .exitCode // empty
+            ' "${RUNNER_TEMP}/migration-task-result.json"
+          )"
+          task_id="${task_arn##*/}"
+          log_stream="migration/oauth-resource-migration/${task_id}"
+          receipt=""
+          for _ in $(seq 1 20); do
+            if aws logs get-log-events --log-group-name "${LOG_GROUP_NAME}" --log-stream-name "${log_stream}" --region "${AWS_REGION}" > "${RUNNER_TEMP}/migration-log-events.json" 2>/dev/null; then
+              receipt="$(
+                jq -r '
+                  .events[].message
+                  | select(startswith("MIGRATION_RECEIPT="))
+                ' "${RUNNER_TEMP}/migration-log-events.json" | tail -n 1
+              )"
+              if [ -n "${receipt}" ]; then
+                break
+              fi
+            fi
+            sleep 2
+          done
+          if [ "${exit_code}" != "0" ]; then
+            printf "Migration task failed with exit code %s; raw database output was suppressed. Verify state with a status operation before retrying.\n" "${exit_code:-unknown}" >&2
+            exit 1
+          fi
+          if [ -z "${receipt}" ]; then
+            printf "Migration succeeded but no sanitized receipt was readable; failing closed.\n" >&2
+            exit 1
+          fi
+          receipt_json="${receipt#MIGRATION_RECEIPT=}"
+          printf "%s" "${receipt_json}" > "${RUNNER_TEMP}/migration-receipt.json"
+          jq -e --arg phase "${REQUESTED_OPERATION}" --arg resource "${HOSTED_RESOURCE_SERVER_URL}" '
+              .phase == $phase
+              and .resource == $resource
+              and (.access.total_rows | type == "number")
+              and (.access.unbound_rows | type == "number")
+              and (.access.expected_resource_rows | type == "number")
+              and (.access.foreign_resource_rows | type == "number")
+              and (.refresh.total_rows | type == "number")
+              and (.refresh.unbound_rows | type == "number")
+              and (.refresh.expected_resource_rows | type == "number")
+              and (.refresh.foreign_resource_rows | type == "number")
+            ' "${RUNNER_TEMP}/migration-receipt.json" > /dev/null
+          printf "Sanitized migration receipt: "
+          jq -c . "${RUNNER_TEMP}/migration-receipt.json"
+
   deploy:
     needs:
       - validate
+      - oauth-resource-migration
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.operation == 'deploy')
+    permissions:
+      contents: read
+      id-token: write
     runs-on: ubuntu-latest
     environment: production
     env:
@@ -176,29 +1182,95 @@ jobs:
       TASK_ROLE_ARN: ${{ secrets.TASK_ROLE_ARN }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v6
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6
         with:
           aws-region: ${{ env.AWS_REGION }}
           role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
 
+      - name: Reuse the verified version-pinned database target
+        shell: bash
+        run: |
+          aws ecs describe-services \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}" \
+            --region "${AWS_REGION}" > "${RUNNER_TEMP}/predeploy-service.json"
+          service_count="$(jq -r '.services | length' "${RUNNER_TEMP}/predeploy-service.json")"
+          failure_count="$(jq -r '.failures | length' "${RUNNER_TEMP}/predeploy-service.json")"
+          desired="$(jq -r '.services[0].desiredCount // 0' "${RUNNER_TEMP}/predeploy-service.json")"
+          running="$(jq -r '.services[0].runningCount // 0' "${RUNNER_TEMP}/predeploy-service.json")"
+          pending="$(jq -r '.services[0].pendingCount // 0' "${RUNNER_TEMP}/predeploy-service.json")"
+          deployments="$(jq -r '.services[0].deployments | length' "${RUNNER_TEMP}/predeploy-service.json")"
+          rollout_state="$(jq -r '.services[0].deployments[0].rolloutState // empty' "${RUNNER_TEMP}/predeploy-service.json")"
+          task_definition="$(jq -r '.services[0].taskDefinition // empty' "${RUNNER_TEMP}/predeploy-service.json")"
+          if [ "${service_count}" != "1" ] || [ "${failure_count}" != "0" ] ||
+             [ "${desired}" = "0" ] || [ "${running}" != "${desired}" ] ||
+             [ "${pending}" != "0" ] || [ "${deployments}" != "1" ] ||
+             [ "${rollout_state}" != "COMPLETED" ] || [ -z "${task_definition}" ]; then
+            printf "Deploy requires the stable version-pinned production service.\n" >&2
+            exit 1
+          fi
+          aws ecs describe-task-definition \
+            --task-definition "${task_definition}" \
+            --region "${AWS_REGION}" > "${RUNNER_TEMP}/predeploy-task-definition.json"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          temp = Path(os.environ["RUNNER_TEMP"])
+          payload = json.loads(
+              (temp / "predeploy-task-definition.json").read_text(encoding="utf-8")
+          )
+          containers = [
+              item
+              for item in payload["taskDefinition"].get("containerDefinitions", [])
+              if item.get("name") == "followupboss-mcp-hosted"
+          ]
+          if len(containers) != 1:
+              raise SystemExit("Pinned task definition did not contain one hosted container.")
+          container = containers[0]
+          resources = [
+              item.get("value")
+              for item in container.get("environment", [])
+              if item.get("name") == "FOLLOWUPBOSS_HOSTED_RESOURCE_SERVER_URL"
+          ]
+          database_refs = [
+              item.get("valueFrom", "")
+              for item in container.get("secrets", [])
+              if item.get("name") == "FOLLOWUPBOSS_TENANT_DATABASE_URL"
+          ]
+          base_secret_arn = os.environ["TENANT_DATABASE_URL_SECRET_ARN"]
+          prefix = f"{base_secret_arn}:::"
+          if resources != [os.environ["HOSTED_RESOURCE_SERVER_URL"]] or len(database_refs) != 1:
+              raise SystemExit("Pinned task definition did not retain the migration target.")
+          version = database_refs[0].removeprefix(prefix)
+          if not database_refs[0].startswith(prefix) or not version or ":" in version:
+              raise SystemExit("Database target was not pinned to one immutable secret version.")
+          pin_path = temp / "predeploy-pinned-database-secret-arn.txt"
+          pin_path.write_text(database_refs[0], encoding="utf-8")
+          pin_path.chmod(0o600)
+          PY
+          printf "PINNED_TENANT_DATABASE_URL_SECRET_ARN=%s\n" \
+            "$(<"${RUNNER_TEMP}/predeploy-pinned-database-secret-arn.txt")" >> "${GITHUB_ENV}"
+
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
 
       - name: Log in to Amazon ECR
         id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2
 
       - name: Build and push hosted image
         id: build-image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -275,7 +1347,9 @@ jobs:
               "__SENTRY_TRACES_SAMPLE_RATE__": os.environ.get("SENTRY_TRACES_SAMPLE_RATE", ""),
               "__TASK_EXECUTION_ROLE_ARN__": os.environ["TASK_EXECUTION_ROLE_ARN"],
               "__TASK_ROLE_ARN__": os.environ["TASK_ROLE_ARN"],
-              "__TENANT_DATABASE_URL_SECRET_ARN__": os.environ["TENANT_DATABASE_URL_SECRET_ARN"],
+              "__TENANT_DATABASE_URL_SECRET_ARN__": os.environ[
+                  "PINNED_TENANT_DATABASE_URL_SECRET_ARN"
+              ],
               "__TENANT_SECRET_PREFIX__": os.environ["TENANT_SECRET_PREFIX"],
               "__TENANT_SECRET_REGION__": os.environ["TENANT_SECRET_REGION"],
           }
@@ -353,7 +1427,12 @@ jobs:
             --service "${ECS_SERVICE}" \
             --task-definition "${{ steps.register-task.outputs.task_definition_arn }}" \
             --force-new-deployment \
-            --region "${AWS_REGION}"
+            --deployment-configuration "deploymentCircuitBreaker={enable=true,rollback=true}" \
+            --region "${AWS_REGION}" > "${RUNNER_TEMP}/deployment-request.json"
+          jq -e --arg expected "${{ steps.register-task.outputs.task_definition_arn }}" '
+            .service.taskDefinition == $expected
+          ' "${RUNNER_TEMP}/deployment-request.json" > /dev/null
+          printf "Deployment requested for release %s.\n" "${GITHUB_SHA}"
 
       - name: Wait for service stability
         shell: bash
@@ -362,3 +1441,102 @@ jobs:
             --cluster "${ECS_CLUSTER}" \
             --services "${ECS_SERVICE}" \
             --region "${AWS_REGION}"
+
+      - name: Verify the deployed ECS release
+        shell: bash
+        env:
+          EXPECTED_TASK_DEFINITION: ${{ steps.register-task.outputs.task_definition_arn }}
+        run: |
+          aws ecs describe-services --cluster "${ECS_CLUSTER}" --services "${ECS_SERVICE}" --region "${AWS_REGION}" > "${RUNNER_TEMP}/deployed-service.json"
+          service_count="$(jq -r '.services | length' "${RUNNER_TEMP}/deployed-service.json")"
+          failure_count="$(jq -r '.failures | length' "${RUNNER_TEMP}/deployed-service.json")"
+          desired="$(jq -r '.services[0].desiredCount // 0' "${RUNNER_TEMP}/deployed-service.json")"
+          running="$(jq -r '.services[0].runningCount // 0' "${RUNNER_TEMP}/deployed-service.json")"
+          pending="$(jq -r '.services[0].pendingCount // 0' "${RUNNER_TEMP}/deployed-service.json")"
+          deployments="$(jq -r '.services[0].deployments | length' "${RUNNER_TEMP}/deployed-service.json")"
+          rollout_state="$(jq -r '.services[0].deployments[0].rolloutState // empty' "${RUNNER_TEMP}/deployed-service.json")"
+          deployed_task_definition="$(jq -r '.services[0].taskDefinition // empty' "${RUNNER_TEMP}/deployed-service.json")"
+          if [ "${service_count}" != "1" ] || [ "${failure_count}" != "0" ] ||
+             [ "${desired}" = "0" ] || [ "${running}" != "${desired}" ] ||
+             [ "${pending}" != "0" ] || [ "${deployments}" != "1" ] ||
+             [ "${rollout_state}" != "COMPLETED" ] ||
+             [ "${deployed_task_definition}" != "${EXPECTED_TASK_DEFINITION}" ]; then
+            printf "ECS did not converge on the requested release.\n" >&2
+            exit 1
+          fi
+          aws ecs list-tasks --cluster "${ECS_CLUSTER}" --service-name "${ECS_SERVICE}" --desired-status RUNNING --max-results 100 --region "${AWS_REGION}" > "${RUNNER_TEMP}/deployed-task-arns.json"
+          listed="$(jq -r '.taskArns | length' "${RUNNER_TEMP}/deployed-task-arns.json")"
+          next_token="$(jq -r '.nextToken // empty' "${RUNNER_TEMP}/deployed-task-arns.json")"
+          if [ "${listed}" != "${desired}" ] || [ -n "${next_token}" ]; then
+            printf "ECS did not return the complete deployed task set.\n" >&2
+            exit 1
+          fi
+          jq -r '.taskArns[]' "${RUNNER_TEMP}/deployed-task-arns.json" > "${RUNNER_TEMP}/deployed-task-arns.txt"
+          aws ecs describe-tasks --cluster "${ECS_CLUSTER}" --tasks $(<"${RUNNER_TEMP}/deployed-task-arns.txt") --region "${AWS_REGION}" > "${RUNNER_TEMP}/deployed-tasks.json"
+          described="$(jq -r '.tasks | length' "${RUNNER_TEMP}/deployed-tasks.json")"
+          task_failures="$(jq -r '.failures | length' "${RUNNER_TEMP}/deployed-tasks.json")"
+          mismatches="$(jq --arg expected "${EXPECTED_TASK_DEFINITION}" '[.tasks[] | select(.lastStatus != "RUNNING" or .taskDefinitionArn != $expected)] | length' "${RUNNER_TEMP}/deployed-tasks.json")"
+          if [ "${described}" != "${desired}" ] || [ "${task_failures}" != "0" ] ||
+             [ "${mismatches}" != "0" ]; then
+            printf "Not every running task uses the requested release.\n" >&2
+            exit 1
+          fi
+          printf "ECS deployment receipt: release=%s task_definition=%s desired=%s running=%s.\n" \
+            "${GITHUB_SHA}" "${deployed_task_definition}" "${desired}" "${running}"
+
+      - name: Verify public OAuth metadata and bearer challenge
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from urllib.error import HTTPError
+          from urllib.parse import urlsplit
+          from urllib.request import Request, urlopen
+
+          resource = os.environ["HOSTED_RESOURCE_SERVER_URL"]
+          raw_issuer = os.environ["HOSTED_ISSUER_URL"].strip()
+          split = urlsplit(resource)
+          issuer_split = urlsplit(raw_issuer)
+          if (
+              issuer_split.scheme != "https"
+              or issuer_split.netloc != split.netloc
+              or issuer_split.username is not None
+              or issuer_split.password is not None
+              or issuer_split.path not in ("", "/")
+              or issuer_split.query
+              or issuer_split.fragment
+          ):
+              raise SystemExit("Configured issuer is not the MCP HTTPS origin.")
+          origin = f"{split.scheme}://{split.netloc}"
+          issuer = f"{issuer_split.scheme}://{issuer_split.netloc}/"
+          protected_url = f"{origin}/.well-known/oauth-protected-resource{split.path}"
+          authorization_url = f"{issuer}.well-known/oauth-authorization-server"
+
+          try:
+              urlopen(Request(resource, headers={"Accept": "application/json"}), timeout=15)
+          except HTTPError as exc:
+              if exc.code != 401:
+                  raise SystemExit(f"MCP bearer challenge returned HTTP {exc.code}.") from exc
+              challenge = exc.headers.get("WWW-Authenticate", "")
+          else:
+              raise SystemExit("MCP endpoint did not require a bearer token.")
+          if protected_url not in challenge:
+              raise SystemExit("MCP bearer challenge advertised the wrong metadata URL.")
+
+          with urlopen(protected_url, timeout=15) as response:
+              protected = json.load(response)
+          with urlopen(authorization_url, timeout=15) as response:
+              authorization = json.load(response)
+          if protected.get("resource") != resource:
+              raise SystemExit("Protected-resource metadata advertised the wrong resource.")
+          if issuer not in protected.get("authorization_servers", []):
+              raise SystemExit("Protected-resource metadata advertised the wrong issuer.")
+          if authorization.get("issuer") != issuer:
+              raise SystemExit("Authorization metadata advertised the wrong issuer.")
+          if authorization.get("authorization_response_iss_parameter_supported") is not True:
+              raise SystemExit("Authorization metadata did not advertise RFC 9207 issuer binding.")
+          if authorization.get("client_id_metadata_document_supported") is not True:
+              raise SystemExit("Authorization metadata did not advertise CIMD support.")
+          print("Public OAuth metadata receipt: resource, issuer, RFC 9207, and CIMD verified.")
+          PY

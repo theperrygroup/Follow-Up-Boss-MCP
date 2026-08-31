@@ -10,12 +10,12 @@ import sys
 import textwrap
 from pathlib import Path
 
-import httpx
+import httpx2 as httpx
 import pytest
 
 from mcp.client.session import ClientSession
 from mcp.client.streamable_http import streamable_http_client
-from mcp.shared.exceptions import McpError
+from mcp.shared.exceptions import MCPError
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _SENTRY_ENV_KEYS = (
@@ -161,6 +161,7 @@ async def test_streamable_http_hosted_auth_supports_authenticated_official_clien
                         "tenant_id": "tenant-1",
                         "subject": "user-123",
                         "client_id": "portal-app",
+                        "resource": "http://127.0.0.1:{port}/mcp",
                     }}
                 )
             }}
@@ -199,16 +200,12 @@ async def test_streamable_http_hosted_auth_supports_authenticated_official_clien
             async with streamable_http_client(
                 f"http://127.0.0.1:{port}/mcp",
                 http_client=http_client,
-            ) as (
-                read_stream,
-                write_stream,
-                _,
-            ):
+            ) as (read_stream, write_stream):
                 async with ClientSession(read_stream, write_stream) as session:
                     await session.initialize()
                     identity_result = await session.call_tool("followupboss_get_identity")
-                    assert identity_result.isError is False
-                    assert identity_result.structuredContent == {"id": 1, "name": "Picard"}
+                    assert identity_result.is_error is False
+                    assert identity_result.structured_content == {"id": 1, "name": "Picard"}
     finally:
         process.terminate()
         await process.wait()
@@ -352,6 +349,7 @@ async def test_streamable_http_hosted_auth_isolates_tools_resources_and_prompts_
                         "subject": "user-123",
                         "client_id": "portal-app",
                         "credential_id": "credential-1",
+                        "resource": "http://127.0.0.1:{port}/mcp",
                     }}
                 ),
                 "tenant-two-token": HostedVerifiedIdentity.model_validate(
@@ -360,6 +358,7 @@ async def test_streamable_http_hosted_auth_isolates_tools_resources_and_prompts_
                         "subject": "user-456",
                         "client_id": "portal-app",
                         "credential_id": "credential-2",
+                        "resource": "http://127.0.0.1:{port}/mcp",
                     }}
                 ),
             }}
@@ -409,11 +408,7 @@ async def test_streamable_http_hosted_auth_isolates_tools_resources_and_prompts_
                 async with streamable_http_client(
                     f"http://127.0.0.1:{port}/mcp",
                     http_client=http_client,
-                ) as (
-                    read_stream,
-                    write_stream,
-                    _,
-                ):
+                ) as (read_stream, write_stream):
                     async with ClientSession(read_stream, write_stream) as session:
                         await session.initialize()
                         resources = await session.list_resources()
@@ -437,12 +432,12 @@ async def test_streamable_http_hosted_auth_isolates_tools_resources_and_prompts_
                         assert isinstance(prompt_text, str)
 
                         identity_result = await session.call_tool("followupboss_get_identity")
-                        assert identity_result.isError is False
-                        assert isinstance(identity_result.structuredContent, dict)
+                        assert identity_result.is_error is False
+                        assert isinstance(identity_result.structured_content, dict)
                         return {
                             "resource": resource_text,
                             "prompt": prompt_text,
-                            "tool": identity_result.structuredContent,
+                            "tool": identity_result.structured_content,
                         }
 
         first_result = await call_surface("tenant-one-token")
@@ -557,6 +552,7 @@ async def test_streamable_http_hosted_auth_resource_and_prompt_runtime_errors_re
                         "subject": "user-123",
                         "client_id": "portal-app",
                         "credential_id": "credential-1",
+                        "resource": "http://127.0.0.1:{port}/mcp",
                     }}
                 )
             }}
@@ -595,26 +591,21 @@ async def test_streamable_http_hosted_auth_resource_and_prompt_runtime_errors_re
             async with streamable_http_client(
                 f"http://127.0.0.1:{port}/mcp",
                 http_client=http_client,
-            ) as (
-                read_stream,
-                write_stream,
-                _,
-            ):
+            ) as (read_stream, write_stream):
                 async with ClientSession(read_stream, write_stream) as session:
                     await session.initialize()
 
                     resources = await session.list_resources()
-                    with pytest.raises(McpError) as resource_exc_info:
+                    with pytest.raises(MCPError) as resource_exc_info:
                         await session.read_resource(resources.resources[0].uri)
 
                     assert resource_exc_info.value.error.message == (
-                        "Error reading resource followupboss://api-coverage-matrix: "
-                        "Hosted tenant runtime is unavailable."
+                        "Error reading resource followupboss://api-coverage-matrix"
                     )
                     assert "super-secret-token" not in resource_exc_info.value.error.message
 
                     prompts = await session.list_prompts()
-                    with pytest.raises(McpError) as prompt_exc_info:
+                    with pytest.raises(MCPError) as prompt_exc_info:
                         await session.get_prompt(
                             prompts.prompts[0].name,
                             {
@@ -626,8 +617,7 @@ async def test_streamable_http_hosted_auth_resource_and_prompt_runtime_errors_re
                         )
 
                     assert prompt_exc_info.value.error.message == (
-                        "Error rendering prompt followupboss_compose_lead_event: "
-                        "Hosted tenant runtime is unavailable."
+                        "Error rendering prompt followupboss_compose_lead_event"
                     )
                     assert "super-secret-token" not in prompt_exc_info.value.error.message
     finally:

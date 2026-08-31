@@ -78,16 +78,17 @@ from followupboss_mcp.tenant_store import (
     TenantStore,
 )
 from followupboss_mcp.url_validation import normalize_public_http_url, validated_public_http_url
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 _DEFAULT_HOSTED_REQUIRED_SCOPE = "followupboss:mcp"
 _DEFAULT_REDIS_KEY_PREFIX = "followupboss:hosted_rate_limit"
 _LOGGER = logging.getLogger(__name__)
 
 _HOSTED_ACCESS_TOKEN_QUERY = """
-SELECT tenant_id, subject, client_id, scopes, expires_at, token_id, credential_id
+SELECT tenant_id, subject, client_id, scopes, expires_at, token_id, credential_id, resource
 FROM hosted_access_tokens
 WHERE token_hash = %s
+  AND resource = %s
   AND revoked_at IS NULL
   AND (expires_at IS NULL OR expires_at > %s)
 LIMIT 1
@@ -134,30 +135,49 @@ INSERT INTO hosted_access_tokens (
     subject,
     client_id,
     scopes,
+    resource,
+    credential_id,
+    expires_at,
+    revoked_at
+)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NULL)
+"""
+
+_HOSTED_OAUTH_REFRESH_TOKEN_UPSERT = """
+INSERT INTO hosted_oauth_refresh_tokens (
+    token_hash,
+    tenant_id,
+    subject,
+    client_id,
+    scopes,
+    resource,
     credential_id,
     expires_at,
     revoked_at
 )
 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NULL)
-"""
-
-_HOSTED_OAUTH_REFRESH_TOKEN_UPSERT = """
-INSERT INTO hosted_oauth_refresh_tokens (
-    token_hash, tenant_id, subject, client_id, scopes, credential_id, expires_at, revoked_at
-)
-VALUES (%s, %s, %s, %s, %s, %s, %s, NULL)
 ON CONFLICT (token_hash) DO UPDATE SET
     tenant_id = EXCLUDED.tenant_id,
     subject = EXCLUDED.subject,
     client_id = EXCLUDED.client_id,
     scopes = EXCLUDED.scopes,
+    resource = EXCLUDED.resource,
     credential_id = EXCLUDED.credential_id,
     expires_at = EXCLUDED.expires_at,
     revoked_at = NULL
 """
 
 _HOSTED_OAUTH_REFRESH_TOKEN_QUERY = """
-SELECT token_hash, tenant_id, subject, client_id, scopes, credential_id, expires_at, revoked_at
+SELECT
+    token_hash,
+    tenant_id,
+    subject,
+    client_id,
+    scopes,
+    resource,
+    credential_id,
+    expires_at,
+    revoked_at
 FROM hosted_oauth_refresh_tokens
 WHERE token_hash = %s
 LIMIT 1
@@ -533,7 +553,7 @@ class FollowUpBossHostedDeploymentSettings(BaseSettings):
         """Project the deployment settings into hosted-auth settings.
 
         Returns:
-            Hosted auth settings suitable for the FastMCP streamable HTTP
+            Hosted auth settings suitable for the MCPServer streamable HTTP
             transport.
         """
         return HostedAuthSettings.model_validate(
@@ -1356,7 +1376,10 @@ class PostgresRedisHostedOAuthStore:
         ttl = max(code.expires_at - int(time.time()), 1)
         await self._redis.set(
             self._redis_key("code", code.code_hash),
-            json.dumps(code.model_dump(mode="json"), sort_keys=True),
+            # Keep the Redis wire shape readable by the previous release during
+            # ECS overlap. The new reader binds missing resource to the single
+            # configured canonical MCP audience before issuing tokens.
+            json.dumps(code.model_dump(mode="json", exclude={"resource"}), sort_keys=True),
             ex=ttl,
         )
 
@@ -1383,6 +1406,7 @@ class PostgresRedisHostedOAuthStore:
                 token.subject,
                 token.client_id,
                 list(token.scopes),
+                token.resource,
                 token.credential_id,
                 token.expires_at,
             ),
@@ -1399,6 +1423,7 @@ class PostgresRedisHostedOAuthStore:
                 token.subject,
                 token.client_id,
                 list(token.scopes),
+                token.resource,
                 token.credential_id,
                 token.expires_at,
             ),
@@ -1438,6 +1463,7 @@ class PostgresHostedTokenVerifier(HostedIdentityVerifier):
         self,
         database_url: SecretStr | str | None = None,
         *,
+        resource_server_url: AnyHttpUrl | str,
         pool: ReferenceHostedPostgresPool | None = None,
         time_provider: Callable[[], int] | None = None,
     ) -> None:
@@ -1446,6 +1472,8 @@ class PostgresHostedTokenVerifier(HostedIdentityVerifier):
         Args:
             database_url: PostgreSQL connection string for hosted-token metadata
                 when no pool is injected.
+            resource_server_url: Canonical MCP resource identifier accepted by
+                this verifier.
             pool: Optional shared PostgreSQL pool used to reuse connections
                 across hosted token and tenant lookups.
             time_provider: Optional Unix-timestamp provider used mainly by tests.
@@ -1458,6 +1486,13 @@ class PostgresHostedTokenVerifier(HostedIdentityVerifier):
 
         self._pool = pool or ReferenceHostedPostgresPool(cast(SecretStr | str, database_url))
         self._owns_pool = pool is None
+        normalized_resource = normalize_public_http_url(
+            resource_server_url,
+            field_name="resource_server_url",
+        )
+        if not isinstance(normalized_resource, AnyHttpUrl):
+            raise TypeError("resource_server_url must be a public HTTP URL.")
+        self._resource_server_url = str(normalized_resource)
         self._time_provider = time_provider or (lambda: int(time.time()))
 
     async def verify_token(self, token: str) -> HostedVerifiedIdentity | None:
@@ -1473,7 +1508,11 @@ class PostgresHostedTokenVerifier(HostedIdentityVerifier):
         raw_row = await _fetch_optional_postgres_row(
             self._pool,
             _HOSTED_ACCESS_TOKEN_QUERY,
-            (hash_hosted_bearer_token(token), self._time_provider()),
+            (
+                hash_hosted_bearer_token(token),
+                self._resource_server_url,
+                self._time_provider(),
+            ),
         )
         if raw_row is None:
             return None
@@ -1720,7 +1759,7 @@ def create_reference_hosted_server(
     hosted_settings: FollowUpBossHostedDeploymentSettings | None = None,
     server_settings: FollowUpBossServerSettings | None = None,
     tenant_runtime_defaults: FollowUpBossTenantRuntimeDefaults | None = None,
-) -> FastMCP:
+) -> MCPServer:
     """Create the reference hosted `streamable-http` server.
 
     Args:
@@ -1735,7 +1774,7 @@ def create_reference_hosted_server(
             `FollowUpBossTenantRuntimeDefaults`.
 
     Returns:
-        The configured FastMCP server for the reference hosted deployment.
+        The configured MCP server for the reference hosted deployment.
 
     Raises:
         ValueError: If the supplied server settings do not use the
@@ -1802,6 +1841,7 @@ def create_reference_hosted_server(
         hosted_auth=resolved_hosted_settings.hosted_auth_settings(),
         hosted_token_verifier=PostgresHostedTokenVerifier(
             resolved_hosted_settings.tenant_database_url,
+            resource_server_url=resolved_hosted_settings.resource_server_url,
             pool=shared_postgres_pool,
         ),
         tenant_store=tenant_store,
@@ -1853,7 +1893,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     try:
         server = create_reference_hosted_server(server_settings=server_settings)
-        server.run(transport="streamable-http")
+        server.run(
+            transport="streamable-http",
+            host=server_settings.host,
+            port=server_settings.port,
+            streamable_http_path=server_settings.streamable_http_path,
+            json_response=True,
+        )
         return 0
     finally:
         flush_sentry()

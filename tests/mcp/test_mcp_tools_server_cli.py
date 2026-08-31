@@ -282,7 +282,9 @@ from followupboss_mcp.tenant_runtime import ServiceBundle
 from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.streamable_http import streamable_http_client
-from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.lowlevel.helper_types import ReadResourceContents
+from mcp.server.mcpserver.exceptions import ToolError
+from mcp.types import GetPromptResult
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _SENTRY_ENV_KEYS = (
@@ -524,7 +526,7 @@ async def _call_public_tool(
     Returns:
         The structured JSON payload returned by the public `server.call_tool()` helper.
     """
-    properties = tools[name].inputSchema.get("properties", {})
+    properties = tools[name].input_schema.get("properties", {})
     assert isinstance(properties, dict)
     arg_names = list(properties)
     assert len(args) <= len(arg_names)
@@ -535,6 +537,9 @@ async def _call_public_tool(
     result = await server.call_tool(name, call_arguments)
     if isinstance(result, dict):
         return result
+    structured_content = getattr(result, "structured_content", None)
+    if isinstance(structured_content, dict):
+        return structured_content
     if isinstance(result, tuple) and len(result) == 2 and isinstance(result[1], dict):
         return result[1]
     raise AssertionError(f"Unexpected public tool result for {name}: {result!r}")
@@ -4018,9 +4023,9 @@ async def test_task_and_call_tools_publish_documented_field_enums() -> None:
         "Bad Number",
     ]
     for tool_name in ("followupboss_create_call", "followupboss_update_call"):
-        assert tools[tool_name].inputSchema["$defs"]["CallOutcome"]["enum"] == call_outcomes
+        assert tools[tool_name].input_schema["$defs"]["CallOutcome"]["enum"] == call_outcomes
 
-    task_fields = tools["followupboss_list_my_overdue_tasks"].inputSchema["$defs"][
+    task_fields = tools["followupboss_list_my_overdue_tasks"].input_schema["$defs"][
         "TaskProjectionField"
     ]["enum"]
     assert "created" in task_fields
@@ -4029,7 +4034,7 @@ async def test_task_and_call_tools_publish_documented_field_enums() -> None:
     assert "personName" not in task_fields
 
     for tool_name in ("followupboss_create_deal", "followupboss_update_deal"):
-        tool_schema = tools[tool_name].inputSchema
+        tool_schema = tools[tool_name].input_schema
         custom_fields_schema = tool_schema["properties"]["custom_fields"]
         object_reference = next(
             option["$ref"] for option in custom_fields_schema["anyOf"] if "$ref" in option
@@ -4167,7 +4172,7 @@ async def test_send_email_events_publishes_typed_nested_event_schema() -> None:
         client=client,
     )
     tools = {tool.name: tool for tool in await server.list_tools()}
-    schema = tools["followupboss_send_email_events"].inputSchema
+    schema = tools["followupboss_send_email_events"].input_schema
     properties = schema.get("properties", {})
     assert isinstance(properties, dict)
     em_events_schema = properties["em_events"]
@@ -4863,7 +4868,9 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     listed_tools = await server.list_tools()
     tool_names = sorted(tool.name for tool in listed_tools)
     tools = {tool.name: tool for tool in listed_tools}
-    search_people_properties = tools["followupboss_search_people"].inputSchema.get("properties", {})
+    search_people_properties = tools["followupboss_search_people"].input_schema.get(
+        "properties", {}
+    )
     assert isinstance(search_people_properties, dict)
     assert "smart_list_id" in search_people_properties
     search_people_description = cast("str", tools["followupboss_search_people"].description)
@@ -5974,6 +5981,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
     resources = await server.list_resources()
     assert [str(resource.uri) for resource in resources] == EXPECTED_RESOURCE_URIS
     resource_contents = list(await server.read_resource(EXPECTED_RESOURCE_URIS[0]))
+    assert isinstance(resource_contents[0], ReadResourceContents)
     assert "API Coverage Matrix" in resource_contents[0].content
 
     prompts = await server.list_prompts()
@@ -5987,6 +5995,7 @@ async def test_create_server_registers_tools_resource_and_prompt() -> None:
             "email": "a@example.com",
         },
     )
+    assert isinstance(prompt_result, GetPromptResult)
     content_text = getattr(prompt_result.messages[0].content, "text", None)
     assert isinstance(content_text, str)
     assert content_text.startswith("Create a Follow Up Boss POST /events payload")
@@ -6466,26 +6475,26 @@ async def test_stdio_client_interoperates_with_server_surface() -> None:
             assert tool_names == EXPECTED_REGISTERED_TOOL_NAMES
 
             identity_result = await session.call_tool("followupboss_get_identity")
-            assert identity_result.isError is False
-            assert identity_result.structuredContent == {"id": 1, "name": "Picard"}
+            assert identity_result.is_error is False
+            assert identity_result.structured_content == {"id": 1, "name": "Picard"}
 
             me_result = await session.call_tool("followupboss_get_me")
-            assert me_result.isError is False
-            assert me_result.structuredContent is not None
-            assert me_result.structuredContent["id"] == 1
-            assert me_result.structuredContent["apiKey"] == "***redacted***"
-            assert me_result.structuredContent["algoliaKey"] == "***redacted***"
-            assert me_result.structuredContent["callingCapabilityToken"] == "***redacted***"
-            assert me_result.structuredContent["notifyBy"] == ["email", "sms"]
-            assert me_result.structuredContent["intercomSettings"]["user_hash"] == "***redacted***"
+            assert me_result.is_error is False
+            assert me_result.structured_content is not None
+            assert me_result.structured_content["id"] == 1
+            assert me_result.structured_content["apiKey"] == "***redacted***"
+            assert me_result.structured_content["algoliaKey"] == "***redacted***"
+            assert me_result.structured_content["callingCapabilityToken"] == "***redacted***"
+            assert me_result.structured_content["notifyBy"] == ["email", "sms"]
+            assert me_result.structured_content["intercomSettings"]["user_hash"] == "***redacted***"
 
             people_result = await session.call_tool(
                 "followupboss_search_people",
                 {"email": "a@example.com", "include_ponds": True},
             )
-            assert people_result.isError is False
-            assert people_result.structuredContent is not None
-            assert people_result.structuredContent["_metadata"] == {
+            assert people_result.is_error is False
+            assert people_result.structured_content is not None
+            assert people_result.structured_content["_metadata"] == {
                 "count": 1,
                 "limit": 10,
                 "next_token": None,
@@ -6493,7 +6502,7 @@ async def test_stdio_client_interoperates_with_server_surface() -> None:
                 "offset": 0,
                 "total": 1,
             }
-            people = people_result.structuredContent["people"]
+            people = people_result.structured_content["people"]
             assert isinstance(people, list)
             assert people[0]["id"] == 2
 
@@ -6501,20 +6510,20 @@ async def test_stdio_client_interoperates_with_server_surface() -> None:
                 "followupboss_create_person",
                 {"first_name": "Tom"},
             )
-            assert create_person_result.isError is False
-            assert create_person_result.structuredContent == {"id": 3, "firstName": "Tom"}
+            assert create_person_result.is_error is False
+            assert create_person_result.structured_content == {"id": 3, "firstName": "Tom"}
 
             delete_person_result = await session.call_tool(
                 "followupboss_delete_person",
                 {"person_id": 4},
             )
-            assert delete_person_result.isError is False
-            assert delete_person_result.structuredContent == {"deleted": True, "personId": 4}
+            assert delete_person_result.is_error is False
+            assert delete_person_result.structured_content == {"deleted": True, "personId": 4}
 
             timeframes_result = await session.call_tool("followupboss_list_timeframes")
-            assert timeframes_result.isError is False
-            assert timeframes_result.structuredContent is not None
-            assert timeframes_result.structuredContent["_metadata"] == {
+            assert timeframes_result.is_error is False
+            assert timeframes_result.structured_content is not None
+            assert timeframes_result.structured_content["_metadata"] == {
                 "count": 1,
                 "limit": 10,
                 "next_token": None,
@@ -6522,57 +6531,57 @@ async def test_stdio_client_interoperates_with_server_surface() -> None:
                 "offset": 0,
                 "total": 2,
             }
-            timeframes = timeframes_result.structuredContent["timeframes"]
+            timeframes = timeframes_result.structured_content["timeframes"]
             assert isinstance(timeframes, list)
             assert timeframes[0]["id"] == 10
 
             event_result = await session.call_tool("followupboss_get_event", {"event_id": 3})
-            assert event_result.isError is False
-            assert event_result.structuredContent is not None
-            assert event_result.structuredContent["id"] == 3
+            assert event_result.is_error is False
+            assert event_result.structured_content is not None
+            assert event_result.structured_content["id"] == 3
 
             tasks_result = await session.call_tool("followupboss_list_tasks", {"person_id": 2})
-            assert tasks_result.isError is False
-            assert tasks_result.structuredContent is not None
-            tasks = tasks_result.structuredContent["tasks"]
+            assert tasks_result.is_error is False
+            assert tasks_result.structured_content is not None
+            tasks = tasks_result.structured_content["tasks"]
             assert isinstance(tasks, list)
             assert tasks[0]["id"] == 4
 
             task_result = await session.call_tool("followupboss_get_task", {"task_id": 5})
-            assert task_result.isError is False
-            assert task_result.structuredContent is not None
-            assert task_result.structuredContent["id"] == 5
+            assert task_result.is_error is False
+            assert task_result.structured_content is not None
+            assert task_result.structured_content["id"] == 5
 
             calls_result = await session.call_tool("followupboss_list_calls", {"person_id": 2})
-            assert calls_result.isError is False
-            assert calls_result.structuredContent is not None
-            calls = calls_result.structuredContent["calls"]
+            assert calls_result.is_error is False
+            assert calls_result.structured_content is not None
+            calls = calls_result.structured_content["calls"]
             assert isinstance(calls, list)
             assert calls[0]["id"] == 6
 
             call_result = await session.call_tool("followupboss_get_call", {"call_id": 7})
-            assert call_result.isError is False
-            assert call_result.structuredContent is not None
-            assert call_result.structuredContent["id"] == 7
+            assert call_result.is_error is False
+            assert call_result.structured_content is not None
+            assert call_result.structured_content["id"] == 7
 
             templates_result = await session.call_tool("followupboss_list_templates")
-            assert templates_result.isError is False
-            assert templates_result.structuredContent is not None
-            templates = templates_result.structuredContent["templates"]
+            assert templates_result.is_error is False
+            assert templates_result.structured_content is not None
+            templates = templates_result.structured_content["templates"]
             assert isinstance(templates, list)
             assert templates[0]["id"] == 8
 
             template_result = await session.call_tool(
                 "followupboss_get_template", {"template_id": 9}
             )
-            assert template_result.isError is False
-            assert template_result.structuredContent is not None
-            assert template_result.structuredContent["id"] == 9
+            assert template_result.is_error is False
+            assert template_result.structured_content is not None
+            assert template_result.structured_content["id"] == 9
 
             appointments_result = await session.call_tool("followupboss_list_appointments")
-            assert appointments_result.isError is False
-            assert appointments_result.structuredContent is not None
-            appointments = appointments_result.structuredContent["appointments"]
+            assert appointments_result.is_error is False
+            assert appointments_result.structured_content is not None
+            appointments = appointments_result.structured_content["appointments"]
             assert isinstance(appointments, list)
             assert appointments[0]["id"] == 10
 
@@ -6580,13 +6589,13 @@ async def test_stdio_client_interoperates_with_server_surface() -> None:
                 "followupboss_get_appointment",
                 {"appointment_id": 11},
             )
-            assert appointment_result.isError is False
-            assert appointment_result.structuredContent is not None
-            assert appointment_result.structuredContent["id"] == 11
+            assert appointment_result.is_error is False
+            assert appointment_result.structured_content is not None
+            assert appointment_result.structured_content["id"] == 11
 
             resources = await session.list_resources()
             assert [str(resource.uri) for resource in resources.resources] == EXPECTED_RESOURCE_URIS
-            resource_result = await session.read_resource(resource_uri)
+            resource_result = await session.read_resource(str(resource_uri))
             resource_text = getattr(resource_result.contents[0], "text", None)
             assert isinstance(resource_text, str)
             assert "API Coverage Matrix" in resource_text
@@ -6704,7 +6713,6 @@ async def test_streamable_http_client_interoperates_with_server_surface() -> Non
         async with streamable_http_client(f"http://127.0.0.1:{port}/mcp") as (
             read_stream,
             write_stream,
-            _,
         ):
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
@@ -6714,28 +6722,29 @@ async def test_streamable_http_client_interoperates_with_server_surface() -> Non
                 assert tool_names == EXPECTED_REGISTERED_TOOL_NAMES
 
                 identity_result = await session.call_tool("followupboss_get_identity")
-                assert identity_result.isError is False
-                assert identity_result.structuredContent == {"id": 1, "name": "Picard"}
+                assert identity_result.is_error is False
+                assert identity_result.structured_content == {"id": 1, "name": "Picard"}
 
                 me_result = await session.call_tool("followupboss_get_me")
-                assert me_result.isError is False
-                assert me_result.structuredContent is not None
-                assert me_result.structuredContent["id"] == 1
-                assert me_result.structuredContent["apiKey"] == "***redacted***"
-                assert me_result.structuredContent["algoliaKey"] == "***redacted***"
-                assert me_result.structuredContent["callingCapabilityToken"] == "***redacted***"
-                assert me_result.structuredContent["notifyBy"] == ["email", "sms"]
+                assert me_result.is_error is False
+                assert me_result.structured_content is not None
+                assert me_result.structured_content["id"] == 1
+                assert me_result.structured_content["apiKey"] == "***redacted***"
+                assert me_result.structured_content["algoliaKey"] == "***redacted***"
+                assert me_result.structured_content["callingCapabilityToken"] == "***redacted***"
+                assert me_result.structured_content["notifyBy"] == ["email", "sms"]
                 assert (
-                    me_result.structuredContent["intercomSettings"]["user_hash"] == "***redacted***"
+                    me_result.structured_content["intercomSettings"]["user_hash"]
+                    == "***redacted***"
                 )
 
                 people_result = await session.call_tool(
                     "followupboss_search_people",
                     {"email": "a@example.com", "include_ponds": True},
                 )
-                assert people_result.isError is False
-                assert people_result.structuredContent is not None
-                assert people_result.structuredContent["_metadata"] == {
+                assert people_result.is_error is False
+                assert people_result.structured_content is not None
+                assert people_result.structured_content["_metadata"] == {
                     "count": 1,
                     "limit": 10,
                     "next_token": None,
@@ -6743,7 +6752,7 @@ async def test_streamable_http_client_interoperates_with_server_surface() -> Non
                     "offset": 0,
                     "total": 1,
                 }
-                people = people_result.structuredContent["people"]
+                people = people_result.structured_content["people"]
                 assert isinstance(people, list)
                 assert people[0]["id"] == 2
 
@@ -6751,13 +6760,13 @@ async def test_streamable_http_client_interoperates_with_server_surface() -> Non
                     "followupboss_delete_person",
                     {"person_id": 4},
                 )
-                assert delete_person_result.isError is False
-                assert delete_person_result.structuredContent == {"deleted": True, "personId": 4}
+                assert delete_person_result.is_error is False
+                assert delete_person_result.structured_content == {"deleted": True, "personId": 4}
 
                 timeframes_result = await session.call_tool("followupboss_list_timeframes")
-                assert timeframes_result.isError is False
-                assert timeframes_result.structuredContent is not None
-                assert timeframes_result.structuredContent["_metadata"] == {
+                assert timeframes_result.is_error is False
+                assert timeframes_result.structured_content is not None
+                assert timeframes_result.structured_content["_metadata"] == {
                     "count": 1,
                     "limit": 10,
                     "next_token": None,
@@ -6765,57 +6774,57 @@ async def test_streamable_http_client_interoperates_with_server_surface() -> Non
                     "offset": 0,
                     "total": 2,
                 }
-                timeframes = timeframes_result.structuredContent["timeframes"]
+                timeframes = timeframes_result.structured_content["timeframes"]
                 assert isinstance(timeframes, list)
                 assert timeframes[0]["id"] == 10
 
                 event_result = await session.call_tool("followupboss_get_event", {"event_id": 3})
-                assert event_result.isError is False
-                assert event_result.structuredContent is not None
-                assert event_result.structuredContent["id"] == 3
+                assert event_result.is_error is False
+                assert event_result.structured_content is not None
+                assert event_result.structured_content["id"] == 3
 
                 tasks_result = await session.call_tool("followupboss_list_tasks", {"person_id": 2})
-                assert tasks_result.isError is False
-                assert tasks_result.structuredContent is not None
-                tasks = tasks_result.structuredContent["tasks"]
+                assert tasks_result.is_error is False
+                assert tasks_result.structured_content is not None
+                tasks = tasks_result.structured_content["tasks"]
                 assert isinstance(tasks, list)
                 assert tasks[0]["id"] == 4
 
                 task_result = await session.call_tool("followupboss_get_task", {"task_id": 5})
-                assert task_result.isError is False
-                assert task_result.structuredContent is not None
-                assert task_result.structuredContent["id"] == 5
+                assert task_result.is_error is False
+                assert task_result.structured_content is not None
+                assert task_result.structured_content["id"] == 5
 
                 calls_result = await session.call_tool("followupboss_list_calls", {"person_id": 2})
-                assert calls_result.isError is False
-                assert calls_result.structuredContent is not None
-                calls = calls_result.structuredContent["calls"]
+                assert calls_result.is_error is False
+                assert calls_result.structured_content is not None
+                calls = calls_result.structured_content["calls"]
                 assert isinstance(calls, list)
                 assert calls[0]["id"] == 6
 
                 call_result = await session.call_tool("followupboss_get_call", {"call_id": 7})
-                assert call_result.isError is False
-                assert call_result.structuredContent is not None
-                assert call_result.structuredContent["id"] == 7
+                assert call_result.is_error is False
+                assert call_result.structured_content is not None
+                assert call_result.structured_content["id"] == 7
 
                 templates_result = await session.call_tool("followupboss_list_templates")
-                assert templates_result.isError is False
-                assert templates_result.structuredContent is not None
-                templates = templates_result.structuredContent["templates"]
+                assert templates_result.is_error is False
+                assert templates_result.structured_content is not None
+                templates = templates_result.structured_content["templates"]
                 assert isinstance(templates, list)
                 assert templates[0]["id"] == 8
 
                 template_result = await session.call_tool(
                     "followupboss_get_template", {"template_id": 9}
                 )
-                assert template_result.isError is False
-                assert template_result.structuredContent is not None
-                assert template_result.structuredContent["id"] == 9
+                assert template_result.is_error is False
+                assert template_result.structured_content is not None
+                assert template_result.structured_content["id"] == 9
 
                 appointments_result = await session.call_tool("followupboss_list_appointments")
-                assert appointments_result.isError is False
-                assert appointments_result.structuredContent is not None
-                appointments = appointments_result.structuredContent["appointments"]
+                assert appointments_result.is_error is False
+                assert appointments_result.structured_content is not None
+                appointments = appointments_result.structured_content["appointments"]
                 assert isinstance(appointments, list)
                 assert appointments[0]["id"] == 10
 
@@ -6823,15 +6832,15 @@ async def test_streamable_http_client_interoperates_with_server_surface() -> Non
                     "followupboss_get_appointment",
                     {"appointment_id": 11},
                 )
-                assert appointment_result.isError is False
-                assert appointment_result.structuredContent is not None
-                assert appointment_result.structuredContent["id"] == 11
+                assert appointment_result.is_error is False
+                assert appointment_result.structured_content is not None
+                assert appointment_result.structured_content["id"] == 11
 
                 resources = await session.list_resources()
                 assert [
                     str(resource.uri) for resource in resources.resources
                 ] == EXPECTED_RESOURCE_URIS
-                resource_result = await session.read_resource(resource_uri)
+                resource_result = await session.read_resource(str(resource_uri))
                 resource_text = getattr(resource_result.contents[0], "text", None)
                 assert isinstance(resource_text, str)
                 assert "API Coverage Matrix" in resource_text
@@ -6884,8 +6893,10 @@ def test_cli_parser_and_main(monkeypatch: pytest.MonkeyPatch) -> None:
             )
 
     class FakeServer:
-        def run(self, transport: str) -> None:
-            runs.append((transport, {}))
+        transport_security = object()
+
+        def run(self, transport: str, **kwargs: object) -> None:
+            runs.append((transport, kwargs))
 
     def fake_create_server(settings: object, **kwargs: object) -> FakeServer:
         runs.append(("create", {"settings": settings, "kwargs": kwargs}))
@@ -6911,4 +6922,11 @@ def test_cli_parser_and_main(monkeypatch: pytest.MonkeyPatch) -> None:
     assert runs[2][1]["kwargs"]["server_settings"].host == "0.0.0.0"
     assert runs[2][1]["kwargs"]["server_settings"].port == 9000
     assert runs[2][1]["kwargs"]["server_settings"].streamable_http_path == "/alt"
-    assert runs[3] == ("streamable-http", {})
+    assert runs[3][0] == "streamable-http"
+    assert runs[3][1] == {
+        "host": "0.0.0.0",
+        "port": 9000,
+        "streamable_http_path": "/alt",
+        "json_response": True,
+        "transport_security": FakeServer.transport_security,
+    }

@@ -85,7 +85,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             }
         )
         server = create_server(local_dev_settings, server_settings=resolved_server_settings)
-        server.run(transport="streamable-http")
+        server.run(
+            transport="streamable-http",
+            host=resolved_server_settings.host,
+            port=resolved_server_settings.port,
+            streamable_http_path=resolved_server_settings.streamable_http_path,
+            json_response=True,
+            transport_security=server.transport_security,
+        )
         return 0
     finally:
         flush_sentry()

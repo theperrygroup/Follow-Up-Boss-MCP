@@ -1,4 +1,4 @@
-"""Hosted inbound-auth models and FastMCP verifier adapters."""
+"""Hosted inbound-auth models and MCPServer verifier adapters."""
 
 from __future__ import annotations
 
@@ -194,6 +194,7 @@ class HostedVerifiedIdentity(BaseModel):
     expires_at: int | None = None
     token_id: str | None = None
     credential_id: str | None = None
+    resource: str | None = None
 
     @field_validator("tenant_id", "subject", "client_id")
     @classmethod
@@ -209,7 +210,7 @@ class HostedVerifiedIdentity(BaseModel):
         """
         return _normalize_required_string(value, field_name=info.field_name or "field")
 
-    @field_validator("token_id", "credential_id", mode="before")
+    @field_validator("token_id", "credential_id", "resource", mode="before")
     @classmethod
     def _validate_optional_identifiers(cls, value: object) -> object:
         """Normalize optional hosted-identity identifiers.
@@ -312,7 +313,7 @@ class HostedAuthenticatedTenant(BaseModel):
 
 
 class HostedAccessToken(AccessToken):
-    """FastMCP access token carrying hosted identity and tenant context."""
+    """MCPServer access token carrying hosted identity and tenant context."""
 
     identity: HostedVerifiedIdentity
     tenant: HostedAuthenticatedTenant
@@ -325,7 +326,7 @@ class HostedAccessToken(AccessToken):
         identity: HostedVerifiedIdentity,
         tenant: HostedAuthenticatedTenant,
     ) -> Self:
-        """Build the access token object stored in FastMCP auth context.
+        """Build the access token object stored in MCPServer auth context.
 
         Args:
             token: The raw bearer token that was verified.
@@ -333,7 +334,7 @@ class HostedAccessToken(AccessToken):
             tenant: The active tenant context resolved from the tenant store.
 
         Returns:
-            The access token object used by FastMCP's auth middleware.
+            The access token object used by MCPServer's auth middleware.
         """
         return cls.model_validate(
             {
@@ -341,6 +342,8 @@ class HostedAccessToken(AccessToken):
                 "client_id": identity.client_id,
                 "scopes": list(identity.scopes),
                 "expires_at": identity.expires_at,
+                "resource": identity.resource,
+                "subject": identity.subject,
                 "identity": identity,
                 "tenant": tenant,
             }
@@ -389,7 +392,7 @@ class HostedIdentityVerifier(Protocol):
 
 
 class HostedAuthSettings(BaseModel):
-    """FastMCP-compatible resource-server settings for hosted auth."""
+    """MCPServer-compatible resource-server settings for hosted auth."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -417,10 +420,10 @@ class HostedAuthSettings(BaseModel):
         return _normalize_scopes(value)
 
     def to_mcp_auth_settings(self) -> AuthSettings:
-        """Return the FastMCP auth settings model.
+        """Return the MCPServer auth settings model.
 
         Returns:
-            The auth settings expected by FastMCP's streamable HTTP transport.
+            The auth settings expected by MCPServer's streamable HTTP transport.
         """
         return AuthSettings(
             issuer_url=self.issuer_url,
@@ -544,26 +547,36 @@ class DevelopmentHostedTokenVerifier(HostedIdentityVerifier):
 
 
 class HostedTenantTokenVerifier(TokenVerifier):
-    """FastMCP token verifier that resolves active tenant context."""
+    """MCPServer token verifier that resolves active tenant context."""
 
     def __init__(
         self,
         *,
         identity_verifier: HostedIdentityVerifier,
         tenant_store: TenantStore,
+        expected_resource: AnyHttpUrl | str,
         logger: logging.Logger | None = None,
     ) -> None:
-        """Initialize the tenant-resolving FastMCP token verifier.
+        """Initialize the tenant-resolving MCPServer token verifier.
 
         Args:
             identity_verifier: The hosted token verifier that validates inbound
                 bearer tokens and returns verified identity claims.
             tenant_store: The tenant store used to resolve the canonical
                 `tenant_id` claim into one active tenant.
+            expected_resource: Canonical MCP resource identifier that every
+                accepted access token must target.
             logger: Optional logger used for structured audit events.
         """
         self._identity_verifier = identity_verifier
         self._tenant_store = tenant_store
+        normalized_resource = normalize_public_http_url(
+            expected_resource,
+            field_name="expected_resource",
+        )
+        if not isinstance(normalized_resource, AnyHttpUrl):
+            raise TypeError("expected_resource must be a public HTTP URL.")
+        self._expected_resource = str(normalized_resource)
         self._logger = logger
 
     async def verify_token(self, token: str) -> HostedAccessToken | None:
@@ -573,7 +586,7 @@ class HostedTenantTokenVerifier(TokenVerifier):
             token: The raw bearer token from the inbound request.
 
         Returns:
-            The hosted access token stored in FastMCP auth context when the
+            The hosted access token stored in MCPServer auth context when the
             request is authorized, otherwise `None`.
         """
         try:
@@ -600,6 +613,16 @@ class HostedTenantTokenVerifier(TokenVerifier):
                 self._logger,
                 event="hosted_auth_failed",
                 fields={"reason": "token_verification_failed"},
+            )
+            return None
+        if identity.resource != self._expected_resource:
+            emit_audit_event(
+                self._logger,
+                event="hosted_auth_failed",
+                fields={
+                    **_identity_audit_fields(identity),
+                    "reason": "token_resource_mismatch",
+                },
             )
             return None
 
@@ -670,7 +693,7 @@ class HostedTenantTokenVerifier(TokenVerifier):
 
 
 def get_hosted_access_token() -> HostedAccessToken | None:
-    """Return the current FastMCP access token when hosted auth is active.
+    """Return the current MCPServer access token when hosted auth is active.
 
     Returns:
         The hosted access token stored in auth context, otherwise `None`.

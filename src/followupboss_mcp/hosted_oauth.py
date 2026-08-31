@@ -5,18 +5,21 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import ipaddress
 import secrets
 import time
 from collections.abc import Mapping, Sequence
+from html import escape
 from importlib import resources
 from typing import Any, Protocol, Self, cast
-from urllib.parse import parse_qs, urlencode
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 import httpx
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, SecretStr, field_validator
 from starlette.requests import Request
 from starlette.responses import (
     FileResponse,
+    HTMLResponse,
     JSONResponse,
     PlainTextResponse,
     RedirectResponse,
@@ -24,6 +27,13 @@ from starlette.responses import (
 )
 from starlette.routing import Route
 
+from followupboss_mcp.cimd import (
+    ClientIdMetadataDocumentError,
+    ClientIdMetadataDocumentFetcher,
+    ClientIdMetadataResolver,
+    validate_client_id_metadata_document_url,
+    validate_oauth_redirect_uri,
+)
 from followupboss_mcp.config import FollowUpBossTenantRuntimeDefaults
 from followupboss_mcp.models.identity import IdentityResponse
 from followupboss_mcp.observability import capture_sentry_exception, capture_sentry_message
@@ -198,6 +208,7 @@ def _redirect_error(
     *,
     state: str | None,
     description: str | None = None,
+    issuer: str | None = None,
 ) -> RedirectResponse:
     """Redirect an OAuth error to a client callback.
 
@@ -206,6 +217,7 @@ def _redirect_error(
         error: OAuth error code.
         state: Optional client state to echo.
         description: Optional human-readable description.
+        issuer: Optional RFC 9207 authorization-server issuer identifier.
 
     Returns:
         Redirect response.
@@ -215,8 +227,60 @@ def _redirect_error(
         params["error_description"] = description
     if state:
         params["state"] = state
+    if issuer:
+        params["iss"] = issuer
     separator = "&" if "?" in redirect_uri else "?"
     return RedirectResponse(f"{redirect_uri}{separator}{urlencode(params)}", status_code=302)
+
+
+def _is_loopback_redirect_host(host: str) -> bool:
+    """Return whether a validated redirect hostname targets the local device."""
+    if host.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def _cimd_confirmation_response(
+    *,
+    client: HostedOAuthDynamicClient,
+    redirect_url: str,
+) -> HTMLResponse:
+    """Show the authenticated user where a self-published client will receive its code."""
+    client_host = urlsplit(client.client_id).hostname or client.client_id
+    redirect_host = urlsplit(redirect_url).hostname or "unknown"
+    loopback_warning = (
+        "<p><strong>Local-app warning:</strong> This continues to an application "
+        "running on this device.</p>"
+        if _is_loopback_redirect_host(redirect_host)
+        else ""
+    )
+    body = (
+        '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        "<title>Continue to MCP client</title></head><body>"
+        f"<h1>Continue to {escape(client.client_name)}</h1>"
+        f"<p>Client identity: <code>{escape(client_host)}</code></p>"
+        f"<p>Authorization destination: <code>{escape(redirect_host)}</code></p>"
+        f"{loopback_warning}"
+        f'<p><a data-testid="continue" rel="noreferrer" '
+        f'href="{escape(redirect_url, quote=True)}">Continue</a></p>'
+        "</body></html>"
+    )
+    return HTMLResponse(
+        body,
+        headers={
+            "Cache-Control": "no-store",
+            "Pragma": "no-cache",
+            "Content-Security-Policy": (
+                "default-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+            ),
+            "Referrer-Policy": "no-referrer",
+            "X-Frame-Options": "DENY",
+        },
+    )
 
 
 def _normalize_url_without_trailing_slash(value: object) -> str:
@@ -467,6 +531,7 @@ class HostedOAuthDynamicClient(BaseModel):
             if not isinstance(uri, str):
                 return value
             normalized_uri = _normalize_required_string(uri, field_name="redirect_uri")
+            validate_oauth_redirect_uri(normalized_uri)
             if normalized_uri not in normalized:
                 normalized.append(normalized_uri)
         return tuple(normalized)
@@ -540,6 +605,10 @@ class HostedOAuthAuthorizationCode(BaseModel):
     code_challenge: str
     code_challenge_method: str
     scopes: tuple[str, ...]
+    # Redis authorization-code records intentionally retain the pre-resource
+    # wire shape during rolling deployments. A missing value is bound to this
+    # server's one configured canonical resource at exchange time.
+    resource: str | None = None
     tenant_id: str
     subject: str
     credential_id: str
@@ -560,6 +629,12 @@ class HostedOAuthAuthorizationCode(BaseModel):
         """Require non-empty authorization-code strings."""
         return _normalize_required_string(value, field_name=str(info.field_name))
 
+    @field_validator("resource", mode="before")
+    @classmethod
+    def _validate_optional_resource(cls, value: object) -> object:
+        """Normalize an optional resource on newer in-memory code records."""
+        return _normalize_optional_string(value)
+
     @field_validator("scopes", mode="before")
     @classmethod
     def _validate_scopes(cls, value: object) -> object:
@@ -577,11 +652,19 @@ class HostedOAuthRefreshToken(BaseModel):
     subject: str
     client_id: str
     scopes: tuple[str, ...]
+    resource: str
     credential_id: str
     expires_at: int
     revoked_at: int | None = None
 
-    @field_validator("token_hash", "tenant_id", "subject", "client_id", "credential_id")
+    @field_validator(
+        "token_hash",
+        "tenant_id",
+        "subject",
+        "client_id",
+        "resource",
+        "credential_id",
+    )
     @classmethod
     def _validate_required_strings(cls, value: str, info: Any) -> str:
         """Require non-empty refresh-token strings."""
@@ -605,6 +688,7 @@ class HostedOAuthAccessTokenMetadata(BaseModel):
     subject: str
     client_id: str
     scopes: tuple[str, ...]
+    resource: str
     credential_id: str
     expires_at: int
 
@@ -614,6 +698,7 @@ class HostedOAuthAccessTokenMetadata(BaseModel):
         "tenant_id",
         "subject",
         "client_id",
+        "resource",
         "credential_id",
     )
     @classmethod
@@ -938,6 +1023,7 @@ class HostedOAuthApplication:
         store: HostedOAuthStore,
         tenant_provisioner: HostedOAuthTenantProvisioner,
         fub_client: FollowUpBossOAuthClient | None = None,
+        client_metadata_fetcher: ClientIdMetadataResolver | None = None,
         time_provider: Any | None = None,
     ) -> None:
         """Initialize the hosted OAuth route provider.
@@ -947,6 +1033,7 @@ class HostedOAuthApplication:
             store: OAuth state and token store.
             tenant_provisioner: Tenant provisioning boundary.
             fub_client: Optional injected FUB OAuth client.
+            client_metadata_fetcher: Optional secure CIMD discovery boundary.
             time_provider: Optional Unix timestamp provider.
         """
         self._settings = settings
@@ -954,6 +1041,7 @@ class HostedOAuthApplication:
         self._store = store
         self._tenant_provisioner = tenant_provisioner
         self._fub_client = fub_client or FollowUpBossOAuthClient(settings)
+        self._client_metadata_fetcher = client_metadata_fetcher or ClientIdMetadataDocumentFetcher()
         self._time_provider = time_provider or (lambda: int(time.time()))
 
     def routes(self) -> tuple[Route, ...]:
@@ -976,6 +1064,7 @@ class HostedOAuthApplication:
     async def aclose(self) -> None:
         """Close owned resources for the hosted OAuth route provider."""
         await self._fub_client.aclose()
+        await self._client_metadata_fetcher.aclose()
         for resource in (self._store, self._tenant_provisioner):
             maybe_aclose = getattr(resource, "aclose", None)
             if callable(maybe_aclose):
@@ -1003,6 +1092,8 @@ class HostedOAuthApplication:
                 "token_endpoint_auth_methods_supported": ["none"],
                 "scopes_supported": list(self._settings.required_scopes),
                 "logo_uri": self._settings.endpoint_url(_LOGO_ROUTE_PATH),
+                "authorization_response_iss_parameter_supported": True,
+                "client_id_metadata_document_supported": True,
             },
             headers={"Cache-Control": "public, max-age=3600"},
         )
@@ -1102,10 +1193,50 @@ class HostedOAuthApplication:
             return _json_error("invalid_request", "code_challenge is required.")
 
         client = await self._store.get_client(client_id)
+        is_cimd_client = client is None
         if client is None:
-            return _json_error("invalid_client", "Unknown OAuth client.", status_code=401)
-        if not client.allows_redirect_uri(redirect_uri):
+            try:
+                validate_client_id_metadata_document_url(client_id)
+            except ClientIdMetadataDocumentError:
+                return _json_error("invalid_client", "Unknown OAuth client.", status_code=401)
+            if query.get("resource") != self._settings.resource_server:
+                return _json_error("invalid_target", "resource must identify this MCP server.")
+            early_scopes = cast(tuple[str, ...], _normalize_scopes(query.get("scope")))
+            if (
+                self._settings.required_scopes
+                and early_scopes
+                and not set(self._settings.required_scopes).issubset(set(early_scopes))
+            ):
+                return _json_error("invalid_scope", "Required MCP scope was not requested.")
+            try:
+                document = await self._client_metadata_fetcher.fetch(client_id)
+                client = HostedOAuthDynamicClient.model_validate(
+                    {
+                        "client_id": document.client_id,
+                        "client_name": document.client_name,
+                        "redirect_uris": document.redirect_uris,
+                        "scope": document.scope,
+                        "token_endpoint_auth_method": document.token_endpoint_auth_method,
+                    }
+                )
+            except (ClientIdMetadataDocumentError, ValueError):
+                return _json_error("invalid_client", "Invalid OAuth client.", status_code=400)
+            if not client.allows_redirect_uri(redirect_uri):
+                return _json_error("invalid_request", "redirect_uri is not registered.")
+        elif not client.allows_redirect_uri(redirect_uri):
             return _json_error("invalid_request", "redirect_uri is not registered.")
+
+        resource = query.get("resource")
+        if resource != self._settings.resource_server:
+            if is_cimd_client:
+                return _json_error("invalid_target", "resource must identify this MCP server.")
+            return _redirect_error(
+                redirect_uri,
+                "invalid_target",
+                state=client_state,
+                description="resource must identify this MCP server.",
+                issuer=self._settings.issuer,
+            )
 
         requested_scopes = cast(tuple[str, ...], _normalize_scopes(query.get("scope")))
         if not requested_scopes:
@@ -1113,11 +1244,14 @@ class HostedOAuthApplication:
         if self._settings.required_scopes and not set(self._settings.required_scopes).issubset(
             set(requested_scopes)
         ):
+            if is_cimd_client:
+                return _json_error("invalid_scope", "Required MCP scope was not requested.")
             return _redirect_error(
                 redirect_uri,
                 "invalid_scope",
                 state=client_state,
                 description="Required MCP scope was not requested.",
+                issuer=self._settings.issuer,
             )
 
         fub_state = _new_secret_token("fub_state")
@@ -1125,12 +1259,12 @@ class HostedOAuthApplication:
             {
                 "fub_state": fub_state,
                 "client_state": client_state,
-                "client_id": client.client_id,
+                "client_id": client_id,
                 "redirect_uri": redirect_uri,
                 "code_challenge": code_challenge,
                 "code_challenge_method": code_challenge_method,
                 "scopes": requested_scopes,
-                "resource": query.get("resource"),
+                "resource": resource,
                 "expires_at": self._time_provider() + self._settings.state_seconds,
             }
         )
@@ -1152,12 +1286,45 @@ class HostedOAuthApplication:
         pending = await self._store.consume_pending_authorization(fub_state)
         if pending is None:
             return PlainTextResponse("Invalid or expired OAuth state.", status_code=400)
+        stored_client = await self._store.get_client(pending.client_id)
+        is_cimd_client = stored_client is None
+        if stored_client is None:
+            try:
+                document = await self._client_metadata_fetcher.fetch(pending.client_id)
+                client = HostedOAuthDynamicClient.model_validate(
+                    {
+                        "client_id": document.client_id,
+                        "client_name": document.client_name,
+                        "redirect_uris": document.redirect_uris,
+                        "scope": document.scope,
+                        "token_endpoint_auth_method": document.token_endpoint_auth_method,
+                    }
+                )
+            except (ClientIdMetadataDocumentError, ValueError):
+                return PlainTextResponse("Invalid OAuth client.", status_code=400)
+        else:
+            client = stored_client
+        if not client.allows_redirect_uri(pending.redirect_uri):
+            return PlainTextResponse("Invalid OAuth client redirect URI.", status_code=400)
+
+        authorized_scopes = pending.scopes or self._settings.required_scopes or client.scope
+        if self._settings.required_scopes and not set(self._settings.required_scopes).issubset(
+            set(authorized_scopes)
+        ):
+            return _redirect_error(
+                pending.redirect_uri,
+                "invalid_scope",
+                state=pending.client_state,
+                description="Required MCP scope was not requested.",
+                issuer=self._settings.issuer,
+            )
         if pending.expires_at <= self._time_provider():
             return _redirect_error(
                 pending.redirect_uri,
                 "invalid_request",
                 state=pending.client_state,
                 description="OAuth state expired.",
+                issuer=self._settings.issuer,
             )
         if request.query_params.get("response") == "denied":
             return _redirect_error(
@@ -1165,6 +1332,16 @@ class HostedOAuthApplication:
                 "access_denied",
                 state=pending.client_state,
                 description="Follow Up Boss consent was denied.",
+                issuer=self._settings.issuer,
+            )
+        pending_resource = pending.resource or self._settings.resource_server
+        if pending_resource != self._settings.resource_server:
+            return _redirect_error(
+                pending.redirect_uri,
+                "invalid_target",
+                state=pending.client_state,
+                description="resource must identify this MCP server.",
+                issuer=self._settings.issuer,
             )
         auth_code = str(request.query_params.get("code") or "")
         if not auth_code:
@@ -1173,6 +1350,7 @@ class HostedOAuthApplication:
                 "invalid_request",
                 state=pending.client_state,
                 description="Follow Up Boss authorization code was missing.",
+                issuer=self._settings.issuer,
             )
 
         try:
@@ -1187,6 +1365,7 @@ class HostedOAuthApplication:
                 "server_error",
                 state=pending.client_state,
                 description="Follow Up Boss OAuth exchange failed.",
+                issuer=self._settings.issuer,
             )
 
         try:
@@ -1200,6 +1379,7 @@ class HostedOAuthApplication:
                 "server_error",
                 state=pending.client_state,
                 description="Follow Up Boss OAuth exchange failed.",
+                issuer=self._settings.issuer,
             )
 
         try:
@@ -1214,6 +1394,7 @@ class HostedOAuthApplication:
                 "server_error",
                 state=pending.client_state,
                 description="Follow Up Boss OAuth exchange failed.",
+                issuer=self._settings.issuer,
             )
 
         raw_code = _new_secret_token("mcp_code")
@@ -1224,7 +1405,8 @@ class HostedOAuthApplication:
                 "redirect_uri": pending.redirect_uri,
                 "code_challenge": pending.code_challenge,
                 "code_challenge_method": pending.code_challenge_method,
-                "scopes": pending.scopes,
+                "scopes": authorized_scopes,
+                "resource": pending_resource,
                 "tenant_id": provisioned.tenant_id,
                 "subject": provisioned.subject,
                 "credential_id": provisioned.credential_id,
@@ -1233,11 +1415,14 @@ class HostedOAuthApplication:
         )
         await self._store.save_authorization_code(code_record)
 
-        params = {"code": raw_code}
+        params = {"code": raw_code, "iss": self._settings.issuer}
         if pending.client_state:
             params["state"] = pending.client_state
         separator = "&" if "?" in pending.redirect_uri else "?"
-        return RedirectResponse(f"{pending.redirect_uri}{separator}{urlencode(params)}")
+        redirect_url = f"{pending.redirect_uri}{separator}{urlencode(params)}"
+        if is_cimd_client:
+            return _cimd_confirmation_response(client=client, redirect_url=redirect_url)
+        return RedirectResponse(redirect_url)
 
     async def token(self, request: Request) -> JSONResponse:
         """Handle OAuth token requests.
@@ -1268,6 +1453,9 @@ class HostedOAuthApplication:
         code = payload.get("code")
         if code is None or not code.strip():
             return _json_error("invalid_grant", "Authorization code is invalid.")
+        resource = payload.get("resource")
+        if resource != self._settings.resource_server:
+            return _json_error("invalid_target", "resource must identify this MCP server.")
         code_record = await self._store.consume_authorization_code(_hash_secret(code))
         if code_record is None:
             return _json_error("invalid_grant", "Authorization code is invalid.")
@@ -1277,6 +1465,9 @@ class HostedOAuthApplication:
             return _json_error("invalid_grant", "client_id does not match authorization code.")
         if payload.get("redirect_uri") != code_record.redirect_uri:
             return _json_error("invalid_grant", "redirect_uri does not match authorization code.")
+        code_resource = code_record.resource or self._settings.resource_server
+        if resource != code_resource:
+            return _json_error("invalid_target", "resource does not match authorization code.")
         if not _verify_pkce(
             verifier=payload.get("code_verifier", ""),
             challenge=code_record.code_challenge,
@@ -1288,6 +1479,7 @@ class HostedOAuthApplication:
             subject=code_record.subject,
             client_id=code_record.client_id,
             scopes=code_record.scopes,
+            resource=code_resource,
             credential_id=code_record.credential_id,
         )
 
@@ -1303,6 +1495,9 @@ class HostedOAuthApplication:
         raw_refresh_token = payload.get("refresh_token")
         if raw_refresh_token is None or not raw_refresh_token.strip():
             return _json_error("invalid_grant", "Refresh token is invalid.")
+        resource = payload.get("resource")
+        if resource != self._settings.resource_server:
+            return _json_error("invalid_target", "resource must identify this MCP server.")
         token_record = await self._store.get_refresh_token(_hash_secret(raw_refresh_token))
         if token_record is None or token_record.revoked_at is not None:
             return _json_error("invalid_grant", "Refresh token is invalid.")
@@ -1310,6 +1505,8 @@ class HostedOAuthApplication:
             return _json_error("invalid_grant", "Refresh token expired.")
         if payload.get("client_id") != token_record.client_id:
             return _json_error("invalid_grant", "client_id does not match refresh token.")
+        if resource != token_record.resource:
+            return _json_error("invalid_target", "resource does not match refresh token.")
         await self._store.revoke_refresh_token(
             token_record.token_hash,
             revoked_at=self._time_provider(),
@@ -1319,6 +1516,7 @@ class HostedOAuthApplication:
             subject=token_record.subject,
             client_id=token_record.client_id,
             scopes=token_record.scopes,
+            resource=token_record.resource,
             credential_id=token_record.credential_id,
         )
 
@@ -1329,6 +1527,7 @@ class HostedOAuthApplication:
         subject: str,
         client_id: str,
         scopes: tuple[str, ...],
+        resource: str,
         credential_id: str,
     ) -> JSONResponse:
         """Issue and persist one MCP access/refresh token pair."""
@@ -1343,6 +1542,7 @@ class HostedOAuthApplication:
                 "subject": subject,
                 "client_id": client_id,
                 "scopes": scopes,
+                "resource": resource,
                 "credential_id": credential_id,
                 "expires_at": now + self._settings.access_token_seconds,
             }
@@ -1354,6 +1554,7 @@ class HostedOAuthApplication:
                 "subject": subject,
                 "client_id": client_id,
                 "scopes": scopes,
+                "resource": resource,
                 "credential_id": credential_id,
                 "expires_at": now + self._settings.refresh_token_seconds,
             }

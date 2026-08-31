@@ -12,6 +12,17 @@ The repository now supports two intentionally different runtime shapes:
 `stdio` remains an explicit local-development-only path. Hosted deployments should expose only
 `streamable-http`.
 
+## MCP Protocol Compatibility
+
+The server runs MCP Python SDK v2 and supports the modern `2026-07-28` protocol. Modern clients
+negotiate with `server/discover` and send independent, sessionless requests. The same `/mcp`
+endpoint also retains the legacy initialization handshake for compatible 2025-era clients, so an
+endpoint migration is not required.
+
+Streamable HTTP enforces protocol/version header consistency plus an explicit Host and Origin
+allowlist. Hosted OAuth access tokens are accepted only when their `resource` exactly matches the
+configured public MCP endpoint.
+
 ## Local Development
 
 Run the local server with:
@@ -31,11 +42,12 @@ Hosted `streamable-http` deployments add a separate inbound bearer-token layer i
 Follow Up Boss client:
 
 - Every hosted request to tools, resources, and prompts must send `Authorization: Bearer <token>`.
-- FastMCP resource-server settings come from `HostedAuthSettings`.
+- MCPServer resource-server settings come from `HostedAuthSettings`.
 - Actual token verification is delegated to a deployment-specific `HostedIdentityVerifier`.
 - The verifier may be backed by signed JWTs, opaque token lookup, or another auth system, as long
   as it returns the canonical `HostedVerifiedIdentity` payload.
-- Required verified identity fields are `tenant_id`, `subject`, and `client_id`.
+- Required accepted identity fields are `tenant_id`, `subject`, `client_id`, and the canonical
+  `resource` value for this MCP endpoint.
 - Optional verified identity fields are `scopes`, `expires_at`, `token_id`, and `credential_id`.
 - `tenant_id` is always resolved through `TenantStore` before any `FollowUpBossAsyncClient` is
   created.
@@ -47,6 +59,22 @@ That browser flow delegates user consent to Follow Up Boss OAuth, then returns M
 tokens to the client. The MCP token is distinct from the raw Follow Up Boss OAuth access token:
 raw Follow Up Boss token material is stored only in the tenant secret store and is used solely for
 upstream API calls after hosted auth resolves a tenant.
+
+The authorization-server metadata advertises MCP 2026-07-28 Client ID Metadata Document (CIMD)
+support. A client may therefore use an HTTPS metadata-document URL as its exact `client_id`
+without calling the deprecated dynamic registration endpoint first; existing DCR clients remain
+supported. During authorization, CIMD documents are fetched through DNS-pinned public addresses so
+the redirect is validated before the browser leaves for Follow Up Boss; the callback revalidates
+the document before releasing a code. Uncached discovery is limited per app instance to four
+concurrent fetches and 32 admissions per minute. Redirects, special-use IP destinations, responses
+over 5 KiB, non-JSON or malformed documents, mismatched `client_id` values, unsafe redirect URIs,
+and secret-bearing client metadata fail closed. Valid results respect HTTP cache directives with a
+24-hour maximum lifetime; errors are never cached and remain subject to the admission limit.
+
+After a successful CIMD flow, the server shows a no-store confirmation page naming the client
+identity hostname and the exact redirect hostname before exposing the short-lived PKCE-bound code.
+Loopback callbacks receive an additional local-application warning. DCR clients retain their
+existing automatic redirect behavior for compatibility.
 
 When auth fails, the hosted endpoint fails closed before any upstream Follow Up Boss credential is
 used. The common client-visible response is:
@@ -63,10 +91,10 @@ falling through to tenant runtime creation.
 
 Hosted runtime wiring is request-scoped rather than session-scoped:
 
-1. FastMCP auth middleware verifies the inbound bearer token.
+1. MCPServer auth middleware verifies the inbound bearer token.
 2. `HostedTenantTokenVerifier` resolves the token's `tenant_id` to one active tenant and
    credential pair in `TenantStore`.
-3. FastMCP stores a `HostedAccessToken` containing the verified identity and an auth-safe tenant
+3. MCPServer stores a `HostedAccessToken` containing the verified identity and an auth-safe tenant
    context.
 4. For each tool, resource, or prompt call, `TenantRuntimeFactory` re-resolves the current tenant
    from `TenantStore`.
@@ -84,7 +112,7 @@ The runtime settings are split deliberately:
 
 - `FollowUpBossServerSettings` owns bootstrap-only fields such as `transport`, `host`, `port`,
   `streamable_http_path`, and `log_level`.
-- `HostedAuthSettings` owns the FastMCP resource-server auth configuration for hosted deployments:
+- `HostedAuthSettings` owns the MCPServer resource-server auth configuration for hosted deployments:
   `issuer_url`, `resource_server_url`, and optional `required_scopes`.
 - `FollowUpBossTenantRuntimeDefaults` owns the shared non-secret hosted HTTP-client defaults:
   `base_url`, `timeout_seconds`, and `max_retries`.

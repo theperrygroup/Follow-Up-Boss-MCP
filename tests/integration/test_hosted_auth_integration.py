@@ -46,6 +46,7 @@ _INITIALIZE_REQUEST = {
         "clientInfo": {"name": "pytest", "version": "1.0"},
     },
 }
+_RESOURCE = "https://mcp.example.com/mcp"
 
 
 def _tenant_record(**overrides: object) -> TenantRecord:
@@ -97,7 +98,7 @@ def _hosted_auth_settings() -> HostedAuthSettings:
     return HostedAuthSettings.model_validate(
         {
             "issuer_url": "https://issuer.example.com",
-            "resource_server_url": "https://mcp.example.com/mcp",
+            "resource_server_url": _RESOURCE,
         }
     )
 
@@ -115,6 +116,7 @@ def _hosted_token_verifier() -> DevelopmentHostedTokenVerifier:
                     "tenant_id": "tenant-1",
                     "subject": "user-123",
                     "client_id": "portal-app",
+                    "resource": _RESOURCE,
                 }
             ),
             "expired-token": HostedVerifiedIdentity.model_validate(
@@ -122,6 +124,7 @@ def _hosted_token_verifier() -> DevelopmentHostedTokenVerifier:
                     "tenant_id": "tenant-1",
                     "subject": "user-123",
                     "client_id": "portal-app",
+                    "resource": _RESOURCE,
                     "expires_at": 1,
                 }
             ),
@@ -130,6 +133,7 @@ def _hosted_token_verifier() -> DevelopmentHostedTokenVerifier:
                     "tenant_id": "tenant-disabled",
                     "subject": "user-123",
                     "client_id": "portal-app",
+                    "resource": _RESOURCE,
                 }
             ),
             "missing-tenant-token": HostedVerifiedIdentity.model_validate(
@@ -137,6 +141,7 @@ def _hosted_token_verifier() -> DevelopmentHostedTokenVerifier:
                     "tenant_id": "tenant-missing",
                     "subject": "user-123",
                     "client_id": "portal-app",
+                    "resource": _RESOURCE,
                 }
             ),
             "revoked-token": HostedVerifiedIdentity.model_validate(
@@ -144,6 +149,7 @@ def _hosted_token_verifier() -> DevelopmentHostedTokenVerifier:
                     "tenant_id": "tenant-revoked",
                     "subject": "user-123",
                     "client_id": "portal-app",
+                    "resource": _RESOURCE,
                 }
             ),
             "wrong-tenant-token": HostedVerifiedIdentity.model_validate(
@@ -152,6 +158,7 @@ def _hosted_token_verifier() -> DevelopmentHostedTokenVerifier:
                     "subject": "user-123",
                     "client_id": "portal-app",
                     "credential_id": "credential-2",
+                    "resource": _RESOURCE,
                 }
             ),
         }
@@ -408,6 +415,7 @@ def test_hosted_streamable_http_rate_limit_budgets_are_isolated_per_tenant_and_c
                     "tenant_id": "tenant-1",
                     "subject": "user-tenant-1-a",
                     "client_id": "portal-app",
+                    "resource": _RESOURCE,
                 }
             ),
             "tenant-2-client-a": HostedVerifiedIdentity.model_validate(
@@ -415,6 +423,7 @@ def test_hosted_streamable_http_rate_limit_budgets_are_isolated_per_tenant_and_c
                     "tenant_id": "tenant-2",
                     "subject": "user-tenant-2-a",
                     "client_id": "portal-app",
+                    "resource": _RESOURCE,
                 }
             ),
             "tenant-1-client-b": HostedVerifiedIdentity.model_validate(
@@ -422,6 +431,7 @@ def test_hosted_streamable_http_rate_limit_budgets_are_isolated_per_tenant_and_c
                     "tenant_id": "tenant-1",
                     "subject": "user-tenant-1-b",
                     "client_id": "automation-app",
+                    "resource": _RESOURCE,
                 }
             ),
         }

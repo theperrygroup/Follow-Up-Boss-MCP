@@ -210,10 +210,10 @@ def _is_local_input_validation(value: SentryExceptionValue) -> bool:
     if not frames:
         return False
     final_frame = frames[-1]
-    return (
-        final_frame.get("module") == "mcp.server.fastmcp.utilities.func_metadata"
-        and final_frame.get("function") == "call_fn_with_arg_validation"
-    )
+    return final_frame.get("module") in {
+        "mcp.server.fastmcp.utilities.func_metadata",
+        "mcp.server.mcpserver.utilities.func_metadata",
+    } and final_frame.get("function") in {"call_fn_with_arg_validation", "validate_arguments"}
 
 
 def _has_stack_frame(
@@ -236,7 +236,7 @@ def _has_stack_frame(
 
 
 def _tool_error_name(values: list[SentryExceptionValue]) -> str | None:
-    """Return the FastMCP tool name from a ToolError chain when available."""
+    """Return the MCPServer tool name from a ToolError chain when available."""
     for value in values:
         if _exception_type(value) != "ToolError":
             continue

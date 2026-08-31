@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import logging
+from typing import Any, cast
 
 import pytest
 from pydantic import SecretStr, ValidationError
@@ -31,6 +32,8 @@ from followupboss_mcp.tenant_store import (
     TenantRecord,
     TenantStatus,
 )
+
+_RESOURCE = "https://mcp.example.com/mcp"
 
 
 def _tenant_record(**overrides: object) -> TenantRecord:
@@ -83,6 +86,7 @@ def test_hosted_verified_identity_and_auth_settings_validation() -> None:
             "scopes": ["tools:read", "tools:read", "tools:write"],
             "credential_id": "  credential-1  ",
             "token_id": "  token-123  ",
+            "resource": "  https://mcp.example.com/mcp  ",
             "expires_at": 1,
         }
     )
@@ -92,6 +96,7 @@ def test_hosted_verified_identity_and_auth_settings_validation() -> None:
     assert identity.scopes == ("tools:read", "tools:write")
     assert identity.credential_id == "credential-1"
     assert identity.token_id == "token-123"
+    assert identity.resource == _RESOURCE
 
     auth_settings = HostedAuthSettings.model_validate(
         {
@@ -174,6 +179,19 @@ def test_hosted_auth_normalization_helpers_preserve_invalid_shapes() -> None:
     assert _normalize_scopes(invalid_scope_sequence) is invalid_scope_sequence
 
 
+def test_hosted_tenant_token_verifier_rejects_non_url_expected_resource() -> None:
+    """Verifier construction must reject unsupported resource value types."""
+    with pytest.raises(TypeError, match="expected_resource must be a public HTTP URL"):
+        HostedTenantTokenVerifier(
+            identity_verifier=DevelopmentHostedTokenVerifier.from_mapping({}),
+            tenant_store=DevelopmentTenantStore(
+                tenants=[_tenant_record()],
+                credentials=[_credential_record()],
+            ),
+            expected_resource=cast(Any, object()),
+        )
+
+
 def test_development_hosted_token_record_accepts_secretstr_inputs() -> None:
     """Development hosted-token records should accept `SecretStr` and reject invalid types."""
     identity = HostedVerifiedIdentity.model_validate(
@@ -213,6 +231,7 @@ def test_hosted_auth_context_accessors_resolve_identity_and_tenant(
                 "subject": "user-123",
                 "client_id": "portal-app",
                 "credential_id": "credential-1",
+                "resource": _RESOURCE,
             }
         ),
         tenant=HostedAuthenticatedTenant.model_validate(
@@ -228,6 +247,8 @@ def test_hosted_auth_context_accessors_resolve_identity_and_tenant(
     monkeypatch.setattr("followupboss_mcp.hosted_auth.get_access_token", lambda: access_token)
     assert get_hosted_verified_identity() == access_token.identity
     assert get_hosted_authenticated_tenant() == access_token.tenant
+    assert access_token.resource == _RESOURCE
+    assert access_token.subject == "user-123"
 
     monkeypatch.setattr("followupboss_mcp.hosted_auth.get_access_token", lambda: None)
     assert get_hosted_verified_identity() is None
@@ -331,10 +352,12 @@ async def test_hosted_tenant_token_verifier_resolves_active_tenant_context() -> 
             "scopes": ["tools:read"],
             "credential_id": "credential-2",
             "token_id": "token-123",
+            "resource": _RESOURCE,
         }
     )
     verifier = HostedTenantTokenVerifier(
         identity_verifier=DevelopmentHostedTokenVerifier.from_mapping({"dev-token": identity}),
+        expected_resource=_RESOURCE,
         tenant_store=DevelopmentTenantStore(
             tenants=[_tenant_record()],
             credentials=[
@@ -365,6 +388,41 @@ async def test_hosted_tenant_token_verifier_resolves_active_tenant_context() -> 
 
 
 @pytest.mark.asyncio
+async def test_hosted_tenant_token_verifier_rejects_wrong_resource() -> None:
+    """A valid token for another resource must fail before tenant resolution."""
+    stream = io.StringIO()
+    logger = logging.getLogger("followupboss_mcp_test_hosted_auth_resource_audit")
+    logger.handlers.clear()
+    logger.setLevel("INFO")
+    logger.propagate = False
+    logger.addHandler(logging.StreamHandler(stream))
+    identity = HostedVerifiedIdentity.model_validate(
+        {
+            "tenant_id": "tenant-1",
+            "subject": "user-123",
+            "client_id": "portal-app",
+            "credential_id": "credential-1",
+            "resource": "https://other.example.com/mcp",
+        }
+    )
+    verifier = HostedTenantTokenVerifier(
+        identity_verifier=DevelopmentHostedTokenVerifier.from_mapping({"dev-token": identity}),
+        tenant_store=DevelopmentTenantStore(
+            tenants=[_tenant_record()],
+            credentials=[_credential_record()],
+        ),
+        expected_resource=_RESOURCE,
+        logger=logger,
+    )
+
+    assert await verifier.verify_token("dev-token") is None
+    log_output = stream.getvalue()
+    assert '"event": "hosted_auth_failed"' in log_output
+    assert '"reason": "token_resource_mismatch"' in log_output
+    assert '"event": "tenant_resolution_succeeded"' not in log_output
+
+
+@pytest.mark.asyncio
 async def test_hosted_tenant_token_verifier_returns_none_for_wrong_tenant_binding() -> None:
     """Credential bindings on the token should fail closed when unavailable."""
     stream = io.StringIO()
@@ -382,10 +440,12 @@ async def test_hosted_tenant_token_verifier_returns_none_for_wrong_tenant_bindin
                         "subject": "user-123",
                         "client_id": "portal-app",
                         "credential_id": "credential-2",
+                        "resource": _RESOURCE,
                     }
                 )
             }
         ),
+        expected_resource=_RESOURCE,
         tenant_store=DevelopmentTenantStore(
             tenants=[_tenant_record()],
             credentials=[_credential_record()],
@@ -419,10 +479,12 @@ async def test_hosted_tenant_token_verifier_rejects_legacy_account_oauth_credent
                         "subject": "fub-user-456",
                         "client_id": "portal-app",
                         "credential_id": "cred-fub-account-1746230763-oauth-primary",
+                        "resource": _RESOURCE,
                     }
                 )
             }
         ),
+        expected_resource=_RESOURCE,
         tenant_store=DevelopmentTenantStore(
             tenants=[
                 _tenant_record(
@@ -459,6 +521,7 @@ async def test_hosted_tenant_token_verifier_emits_audit_event_for_failed_verific
     logger.addHandler(logging.StreamHandler(stream))
     verifier = HostedTenantTokenVerifier(
         identity_verifier=DevelopmentHostedTokenVerifier.from_mapping({}),
+        expected_resource=_RESOURCE,
         tenant_store=DevelopmentTenantStore(
             tenants=[_tenant_record()],
             credentials=[_credential_record()],
@@ -512,6 +575,7 @@ async def test_hosted_tenant_token_verifier_emits_audit_event_for_verifier_outag
     logger.addHandler(logging.StreamHandler(stream))
     verifier = HostedTenantTokenVerifier(
         identity_verifier=UnavailableHostedIdentityVerifier(),
+        expected_resource=_RESOURCE,
         tenant_store=DevelopmentTenantStore(
             tenants=[_tenant_record()],
             credentials=[_credential_record()],
@@ -576,10 +640,12 @@ async def test_hosted_tenant_token_verifier_reports_tenant_store_outage(
                         "client_id": "portal-app",
                         "credential_id": "credential-1",
                         "token_id": "token-123",
+                        "resource": _RESOURCE,
                     }
                 )
             }
         ),
+        expected_resource=_RESOURCE,
         tenant_store=UnavailableTenantStore(
             tenants=[_tenant_record()],
             credentials=[_credential_record()],

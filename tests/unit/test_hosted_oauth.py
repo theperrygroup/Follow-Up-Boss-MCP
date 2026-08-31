@@ -10,11 +10,13 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
+from bs4 import BeautifulSoup
 from pydantic import ValidationError
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
 import followupboss_mcp.hosted_oauth as hosted_oauth
+from followupboss_mcp.cimd import ClientIdMetadataDocument, ClientIdMetadataDocumentError
 from followupboss_mcp.hosted_oauth import (
     FollowUpBossOAuthClient,
     FollowUpBossOAuthIdentity,
@@ -215,15 +217,56 @@ class FakeFubOAuthClient:
         self.closed = True
 
 
+class FakeClientMetadataDocumentFetcher:
+    """Deterministic external CIMD boundary for authorization-route tests."""
+
+    def __init__(
+        self,
+        document: ClientIdMetadataDocument,
+        *,
+        error: Exception | None = None,
+    ) -> None:
+        """Store the document returned after user authentication."""
+        self.document = document
+        self.error = error
+        self.client_ids: list[str] = []
+        self.closed = False
+
+    async def fetch(self, client_id: str) -> ClientIdMetadataDocument:
+        """Return the configured client metadata document."""
+        self.client_ids.append(client_id)
+        if self.error is not None:
+            raise self.error
+        return self.document
+
+    async def aclose(self) -> None:
+        """Mark the fake fetcher as closed."""
+        self.closed = True
+
+
 def _app(
     *,
     store: FakeOAuthStore | None = None,
     provisioner: FakeTenantProvisioner | None = None,
     fub_client: FakeFubOAuthClient | None = None,
+    client_metadata_fetcher: FakeClientMetadataDocumentFetcher | None = None,
     now: int = 1000,
 ) -> tuple[TestClient, FakeOAuthStore, FakeTenantProvisioner, FakeFubOAuthClient]:
     """Build a TestClient around the hosted OAuth routes."""
     resolved_store = store or FakeOAuthStore()
+    resolved_store.clients.setdefault(
+        "client-1",
+        HostedOAuthDynamicClient.model_validate(
+            {
+                "client_id": "client-1",
+                "redirect_uris": [
+                    "http://127.0.0.1/callback",
+                    "http://127.0.0.1/callback?existing=1",
+                ],
+                "scope": "followupboss:mcp",
+            }
+        ),
+    )
     resolved_provisioner = provisioner or FakeTenantProvisioner()
     resolved_fub_client = fub_client or FakeFubOAuthClient()
     oauth = HostedOAuthApplication(
@@ -231,6 +274,7 @@ def _app(
         store=resolved_store,
         tenant_provisioner=resolved_provisioner,
         fub_client=cast(Any, resolved_fub_client),
+        client_metadata_fetcher=client_metadata_fetcher,
         time_provider=lambda: now,
     )
     return (
@@ -249,6 +293,7 @@ def test_settings_and_metadata_validation() -> None:
     assert str(hosted_oauth._default_fub_token_url()) == (
         "https://app.followupboss.com/oauth/token"
     )
+    assert str(hosted_oauth._default_fub_base_url()) == "https://api.followupboss.com/v1"
 
     settings = _settings()
     assert settings.issuer == "https://mcp.example.com/"
@@ -330,6 +375,8 @@ def test_settings_and_metadata_validation() -> None:
     assert payload["issuer"] == "https://mcp.example.com/"
     assert payload["registration_endpoint"] == "https://mcp.example.com/oauth/register"
     assert payload["logo_uri"] == "https://mcp.example.com/assets/follow-up-boss-logo.png"
+    assert payload["authorization_response_iss_parameter_supported"] is True
+    assert payload["client_id_metadata_document_supported"] is True
 
     logo_response = client.get("/assets/follow-up-boss-logo.png")
     assert logo_response.status_code == 200
@@ -451,6 +498,7 @@ def test_register_authorize_callback_token_and_refresh_flow() -> None:
             "state": "cursor-state",
             "code_challenge": _s256(verifier),
             "code_challenge_method": "S256",
+            "resource": "https://mcp.example.com/mcp",
         },
         follow_redirects=False,
     )
@@ -466,6 +514,7 @@ def test_register_authorize_callback_token_and_refresh_flow() -> None:
     assert callback.status_code == 307
     callback_query = parse_qs(urlparse(callback.headers["location"]).query)
     assert callback_query["state"] == ["cursor-state"]
+    assert callback_query["iss"] == ["https://mcp.example.com/"]
     mcp_code = callback_query["code"][0]
     assert provisioner.calls[0][0].account_id == "1746230763"
 
@@ -477,6 +526,7 @@ def test_register_authorize_callback_token_and_refresh_flow() -> None:
             "client_id": client_id,
             "redirect_uri": "http://127.0.0.1:3344/callback",
             "code_verifier": verifier,
+            "resource": "https://mcp.example.com/mcp",
         },
     )
     assert token.status_code == 200
@@ -484,6 +534,7 @@ def test_register_authorize_callback_token_and_refresh_flow() -> None:
     assert token_payload["token_type"] == "Bearer"
     assert token_payload["scope"] == "followupboss:mcp"
     assert len(store.access_tokens) == 1
+    assert store.access_tokens[0].resource == "https://mcp.example.com/mcp"
 
     refresh = client.post(
         "/oauth/token",
@@ -491,11 +542,327 @@ def test_register_authorize_callback_token_and_refresh_flow() -> None:
             "grant_type": "refresh_token",
             "refresh_token": token_payload["refresh_token"],
             "client_id": client_id,
+            "resource": "https://mcp.example.com/mcp",
         },
     )
     assert refresh.status_code == 200
     assert refresh.json()["access_token"].startswith("mcp_at_")
     assert store.revoked_refresh_tokens
+    assert all(
+        token.resource == "https://mcp.example.com/mcp" for token in store.refresh_tokens.values()
+    )
+
+
+def test_cimd_client_completes_post_auth_code_and_token_flow() -> None:
+    """A URL client is validated before and after FUB auth and retains audience binding."""
+    client_id = "https://client.example.com/oauth/client.json"
+    metadata_fetcher = FakeClientMetadataDocumentFetcher(
+        ClientIdMetadataDocument.model_validate(
+            {
+                "client_id": client_id,
+                "client_name": "Example MCP Client",
+                "redirect_uris": ["https://client.example.com/oauth/callback"],
+                "scope": "followupboss:mcp",
+            }
+        )
+    )
+    client, store, _, _ = _app(client_metadata_fetcher=metadata_fetcher)
+    verifier = "cimd-verifier"
+
+    authorize = client.get(
+        "/oauth/authorize",
+        params={
+            "response_type": "code",
+            "client_id": client_id,
+            "redirect_uri": "https://client.example.com/oauth/callback",
+            "scope": "followupboss:mcp",
+            "state": "cimd-state",
+            "code_challenge": _s256(verifier),
+            "code_challenge_method": "S256",
+            "resource": "https://mcp.example.com/mcp",
+        },
+        follow_redirects=False,
+    )
+    assert authorize.status_code == 307
+    assert metadata_fetcher.client_ids == [client_id]
+
+    fub_state = parse_qs(urlparse(authorize.headers["location"]).query)["state"][0]
+    callback = client.get(
+        "/oauth/follow-up-boss/callback",
+        params={"state": fub_state, "response": "approved", "code": "fub-code"},
+        follow_redirects=False,
+    )
+    assert callback.status_code == 200
+    assert metadata_fetcher.client_ids == [client_id, client_id]
+    assert callback.headers["cache-control"] == "no-store"
+    assert callback.headers["x-frame-options"] == "DENY"
+    assert "client.example.com" in callback.text
+    confirmation = BeautifulSoup(callback.text, "html.parser")
+    continue_link = confirmation.find("a", attrs={"data-testid": "continue"})
+    assert continue_link is not None
+    callback_query = parse_qs(urlparse(str(continue_link["href"])).query)
+    assert callback_query["state"] == ["cimd-state"]
+    assert callback_query["iss"] == ["https://mcp.example.com/"]
+
+    token = client.post(
+        "/oauth/token",
+        data={
+            "grant_type": "authorization_code",
+            "code": callback_query["code"][0],
+            "client_id": client_id,
+            "redirect_uri": "https://client.example.com/oauth/callback",
+            "code_verifier": verifier,
+            "resource": "https://mcp.example.com/mcp",
+        },
+    )
+    assert token.status_code == 200
+    assert store.access_tokens[0].client_id == client_id
+    assert store.access_tokens[0].resource == "https://mcp.example.com/mcp"
+
+
+def test_cimd_callback_never_redirects_to_an_unvalidated_uri() -> None:
+    """Authorization never leaves the server before the document validates the redirect."""
+    client_id = "https://client.example.com/oauth/client.json"
+    metadata_fetcher = FakeClientMetadataDocumentFetcher(
+        ClientIdMetadataDocument.model_validate(
+            {
+                "client_id": client_id,
+                "client_name": "Example MCP Client",
+                "redirect_uris": ["https://client.example.com/safe-callback"],
+            }
+        )
+    )
+    client, store, provisioner, _ = _app(client_metadata_fetcher=metadata_fetcher)
+    authorize = client.get(
+        "/oauth/authorize",
+        params={
+            "response_type": "code",
+            "client_id": client_id,
+            "redirect_uri": "https://attacker.example/callback",
+            "code_challenge": "challenge",
+            "resource": "https://mcp.example.com/mcp",
+        },
+        follow_redirects=False,
+    )
+    assert authorize.status_code == 400
+    assert authorize.json()["error"] == "invalid_request"
+    assert "location" not in authorize.headers
+    assert metadata_fetcher.client_ids == [client_id]
+    assert store.pending == {}
+    assert store.codes == {}
+    assert provisioner.calls == []
+
+
+@pytest.mark.parametrize(
+    "redirect_uri",
+    [
+        "http://localhost:3344/callback",
+        "http://127.0.0.1:3344/callback",
+    ],
+)
+def test_cimd_confirmation_escapes_client_names_and_warns_for_loopback(
+    redirect_uri: str,
+) -> None:
+    """The post-auth confirmation makes a local callback conspicuous without HTML injection."""
+    client_id = "https://client.example.com/oauth/client.json"
+    metadata_fetcher = FakeClientMetadataDocumentFetcher(
+        ClientIdMetadataDocument.model_validate(
+            {
+                "client_id": client_id,
+                "client_name": "<script>alert(1)</script>",
+                "redirect_uris": [redirect_uri],
+            }
+        )
+    )
+    client, _, _, _ = _app(client_metadata_fetcher=metadata_fetcher)
+    authorize = client.get(
+        "/oauth/authorize",
+        params={
+            "response_type": "code",
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "code_challenge": "challenge",
+            "resource": "https://mcp.example.com/mcp",
+        },
+        follow_redirects=False,
+    )
+    fub_state = parse_qs(urlparse(authorize.headers["location"]).query)["state"][0]
+
+    callback = client.get(
+        "/oauth/follow-up-boss/callback",
+        params={"state": fub_state, "response": "approved", "code": "fub-code"},
+        follow_redirects=False,
+    )
+
+    assert callback.status_code == 200
+    assert "Local-app warning" in callback.text
+    assert "<script>" not in callback.text
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in callback.text
+
+
+def test_cimd_callback_rejects_a_metadata_fetch_failure_locally() -> None:
+    """An unavailable client document must not start FUB auth or provision a tenant."""
+    client_id = "https://client.example.com/oauth/client.json"
+    redirect_uri = "https://client.example.com/oauth/callback"
+    metadata_fetcher = FakeClientMetadataDocumentFetcher(
+        ClientIdMetadataDocument.model_validate(
+            {
+                "client_id": client_id,
+                "client_name": "Example MCP Client",
+                "redirect_uris": [redirect_uri],
+            }
+        ),
+        error=ClientIdMetadataDocumentError("metadata unavailable"),
+    )
+    client, store, provisioner, _ = _app(client_metadata_fetcher=metadata_fetcher)
+    authorize = client.get(
+        "/oauth/authorize",
+        params={
+            "response_type": "code",
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "code_challenge": "challenge",
+            "resource": "https://mcp.example.com/mcp",
+        },
+        follow_redirects=False,
+    )
+    assert authorize.status_code == 400
+    assert authorize.json()["error"] == "invalid_client"
+    assert "location" not in authorize.headers
+    assert metadata_fetcher.client_ids == [client_id]
+    assert store.pending == {}
+    assert store.codes == {}
+    assert provisioner.calls == []
+
+
+@pytest.mark.parametrize(
+    ("callback_mode", "expected_text"),
+    [
+        ("fetch_error", "Invalid OAuth client."),
+        ("redirect_changed", "Invalid OAuth client redirect URI."),
+    ],
+)
+def test_cimd_callback_revalidates_client_metadata_before_redirecting(
+    callback_mode: str,
+    expected_text: str,
+) -> None:
+    """A changed or unavailable CIMD document fails locally after FUB authentication."""
+    client_id = "https://client.example.com/oauth/client.json"
+    redirect_uri = "https://client.example.com/oauth/callback"
+    metadata_fetcher = FakeClientMetadataDocumentFetcher(
+        ClientIdMetadataDocument.model_validate(
+            {
+                "client_id": client_id,
+                "client_name": "Example MCP Client",
+                "redirect_uris": [redirect_uri],
+            }
+        )
+    )
+    client, store, provisioner, _ = _app(client_metadata_fetcher=metadata_fetcher)
+    authorize = client.get(
+        "/oauth/authorize",
+        params={
+            "response_type": "code",
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "code_challenge": "challenge",
+            "resource": "https://mcp.example.com/mcp",
+        },
+        follow_redirects=False,
+    )
+    fub_state = parse_qs(urlparse(authorize.headers["location"]).query)["state"][0]
+
+    if callback_mode == "fetch_error":
+        metadata_fetcher.error = ClientIdMetadataDocumentError("metadata unavailable")
+    else:
+        metadata_fetcher.document = ClientIdMetadataDocument.model_validate(
+            {
+                "client_id": client_id,
+                "client_name": "Example MCP Client",
+                "redirect_uris": ["https://client.example.com/different-callback"],
+            }
+        )
+
+    callback = client.get(
+        "/oauth/follow-up-boss/callback",
+        params={"state": fub_state, "response": "approved", "code": "fub-code"},
+        follow_redirects=False,
+    )
+
+    assert callback.status_code == 400
+    assert callback.text == expected_text
+    assert "location" not in callback.headers
+    assert metadata_fetcher.client_ids == [client_id, client_id]
+    assert store.codes == {}
+    assert provisioner.calls == []
+
+
+@pytest.mark.parametrize("drift", ["resource", "scope"])
+def test_cimd_authorize_rechecks_security_invariants_after_discovery(
+    monkeypatch: pytest.MonkeyPatch,
+    drift: str,
+) -> None:
+    """Post-discovery checks fail locally if a validation dependency changes mid-request."""
+    client_id = "https://client.example.com/oauth/client.json"
+    redirect_uri = "https://client.example.com/oauth/callback"
+    metadata_fetcher = FakeClientMetadataDocumentFetcher(
+        ClientIdMetadataDocument.model_validate(
+            {
+                "client_id": client_id,
+                "client_name": "Example MCP Client",
+                "redirect_uris": [redirect_uri],
+                "scope": "followupboss:mcp",
+            }
+        )
+    )
+    client, store, _, _ = _app(client_metadata_fetcher=metadata_fetcher)
+
+    if drift == "resource":
+        resource_reads = 0
+
+        def drifting_resource_server(_: HostedOAuthSettings) -> str:
+            nonlocal resource_reads
+            resource_reads += 1
+            if resource_reads == 1:
+                return "https://mcp.example.com/mcp"
+            return "https://other.example.com/mcp"
+
+        monkeypatch.setattr(
+            HostedOAuthSettings,
+            "resource_server",
+            property(drifting_resource_server),
+        )
+    else:
+        original_normalize_scopes = hosted_oauth._normalize_scopes
+        scope_normalizations = 0
+
+        def drifting_normalize_scopes(value: object) -> object:
+            nonlocal scope_normalizations
+            scope_normalizations += 1
+            if scope_normalizations >= 3:
+                return ("other:scope",)
+            return original_normalize_scopes(value)
+
+        monkeypatch.setattr(hosted_oauth, "_normalize_scopes", drifting_normalize_scopes)
+
+    response = client.get(
+        "/oauth/authorize",
+        params={
+            "response_type": "code",
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "scope": "followupboss:mcp",
+            "code_challenge": "challenge",
+            "resource": "https://mcp.example.com/mcp",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"] == f"invalid_{'target' if drift == 'resource' else 'scope'}"
+    assert "location" not in response.headers
+    assert metadata_fetcher.client_ids == [client_id]
+    assert store.pending == {}
 
 
 @pytest.mark.asyncio
@@ -538,6 +905,14 @@ def test_register_client_rejects_invalid_metadata() -> None:
     response = client.post("/oauth/register", json={"redirect_uris": "not-a-list"})
     assert response.status_code == 400
     assert response.json()["error"] == "invalid_client_metadata"
+    for redirect_uri in (
+        "http://attacker.example/callback",
+        "javascript:alert(1)",
+        "ftp://client.example/callback",
+    ):
+        response = client.post("/oauth/register", json={"redirect_uris": [redirect_uri]})
+        assert response.status_code == 400
+        assert response.json()["error"] == "invalid_client_metadata"
 
 
 @pytest.mark.parametrize(
@@ -582,6 +957,7 @@ def test_authorize_rejects_unknown_client_and_bad_redirect_or_scope() -> None:
         "code_challenge": "challenge",
         "client_id": "missing",
         "redirect_uri": "http://127.0.0.1/callback",
+        "resource": "https://mcp.example.com/mcp",
     }
     assert client.get("/oauth/authorize", params=base_params).json()["error"] == "invalid_client"
 
@@ -613,6 +989,7 @@ def test_authorize_uses_default_scopes_when_scope_is_omitted() -> None:
             "code_challenge": "plain-verifier",
             "client_id": "client-1",
             "redirect_uri": "http://127.0.0.1/callback",
+            "resource": "https://mcp.example.com/mcp",
         },
         follow_redirects=False,
     )
@@ -620,6 +997,71 @@ def test_authorize_uses_default_scopes_when_scope_is_omitted() -> None:
     assert response.status_code == 307
     pending = next(iter(store.pending.values()))
     assert pending.scopes == ("followupboss:mcp",)
+    assert pending.resource == "https://mcp.example.com/mcp"
+
+
+@pytest.mark.parametrize("resource", [None, "https://other.example.com/mcp"])
+def test_authorize_requires_the_configured_mcp_resource(resource: str | None) -> None:
+    """Authorization requests must target this exact MCP resource."""
+    client, store, _, _ = _app()
+    store.clients["client-1"] = HostedOAuthDynamicClient.model_validate(
+        {
+            "client_id": "client-1",
+            "redirect_uris": ["http://127.0.0.1/callback"],
+            "scope": "followupboss:mcp",
+        }
+    )
+    params = {
+        "response_type": "code",
+        "code_challenge": "verifier",
+        "client_id": "client-1",
+        "redirect_uri": "http://127.0.0.1/callback",
+        "state": "client-state",
+    }
+    if resource is not None:
+        params["resource"] = resource
+
+    response = client.get(
+        "/oauth/authorize",
+        params=params,
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    query = parse_qs(urlparse(response.headers["location"]).query)
+    assert query["error"] == ["invalid_target"]
+    assert query["state"] == ["client-state"]
+    assert query["iss"] == ["https://mcp.example.com/"]
+    assert store.pending == {}
+
+
+@pytest.mark.parametrize(
+    ("request_overrides", "expected_error"),
+    [
+        ({"resource": "https://other.example.com/mcp"}, "invalid_target"),
+        ({"resource": "https://mcp.example.com/mcp", "scope": "other:scope"}, "invalid_scope"),
+    ],
+)
+def test_cimd_authorize_errors_stay_local_before_client_validation(
+    request_overrides: Mapping[str, str],
+    expected_error: str,
+) -> None:
+    """An unregistered URL client must not receive pre-validation error redirects."""
+    client, store, _, _ = _app()
+    params = {
+        "response_type": "code",
+        "code_challenge": "challenge",
+        "client_id": "https://client.example.com/oauth/client.json",
+        "redirect_uri": "https://client.example.com/oauth/callback",
+        **request_overrides,
+    }
+
+    response = client.get("/oauth/authorize", params=params, follow_redirects=False)
+
+    assert response.status_code == 400
+    assert response.json()["error"] == expected_error
+    assert "location" not in response.headers
+    assert store.pending == {}
 
 
 @pytest.mark.parametrize(
@@ -647,6 +1089,7 @@ def test_callback_rejects_invalid_or_denied_fub_results(
             "code_challenge": "challenge",
             "code_challenge_method": "plain",
             "scopes": "followupboss:mcp",
+            "resource": "https://mcp.example.com/mcp",
             "expires_at": 1060,
         }
     )
@@ -686,6 +1129,7 @@ def test_callback_rejects_expired_state_and_exchange_failures(
             "code_challenge": "challenge",
             "code_challenge_method": "plain",
             "scopes": "followupboss:mcp",
+            "resource": "https://mcp.example.com/mcp",
             "expires_at": 1000,
         }
     )
@@ -705,6 +1149,7 @@ def test_callback_rejects_expired_state_and_exchange_failures(
             "code_challenge": "challenge",
             "code_challenge_method": "plain",
             "scopes": "followupboss:mcp",
+            "resource": "https://mcp.example.com/mcp",
             "expires_at": 2060,
         }
     )
@@ -724,8 +1169,74 @@ def test_callback_rejects_expired_state_and_exchange_failures(
         "client_id": "client-1",
         "has_client_state": False,
         "requested_scopes": ["followupboss:mcp"],
-        "resource": None,
+        "resource": "https://mcp.example.com/mcp",
     }
+
+
+def test_callback_rejects_pending_authorization_for_another_resource() -> None:
+    """A persisted callback state for another audience must fail closed."""
+    client, store, provisioner, _ = _app()
+    store.pending["wrong-resource"] = HostedOAuthPendingAuthorization.model_validate(
+        {
+            "fub_state": "wrong-resource",
+            "client_state": "client-state",
+            "client_id": "client-1",
+            "redirect_uri": "http://127.0.0.1/callback",
+            "code_challenge": "verifier",
+            "code_challenge_method": "plain",
+            "scopes": "followupboss:mcp",
+            "resource": "https://other.example.com/mcp",
+            "expires_at": 1060,
+        }
+    )
+
+    response = client.get(
+        "/oauth/follow-up-boss/callback",
+        params={
+            "state": "wrong-resource",
+            "response": "approved",
+            "code": "fub-code",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    query = parse_qs(urlparse(response.headers["location"]).query)
+    assert query["error"] == ["invalid_target"]
+    assert query["state"] == ["client-state"]
+    assert query["iss"] == ["https://mcp.example.com/"]
+    assert provisioner.calls == []
+
+
+def test_callback_rejects_persisted_authorization_without_required_scope() -> None:
+    """A stale or tampered pending record cannot bypass the required MCP scope."""
+    client, store, provisioner, _ = _app()
+    store.pending["wrong-scope"] = HostedOAuthPendingAuthorization.model_validate(
+        {
+            "fub_state": "wrong-scope",
+            "client_state": "client-state",
+            "client_id": "client-1",
+            "redirect_uri": "http://127.0.0.1/callback",
+            "code_challenge": "verifier",
+            "code_challenge_method": "plain",
+            "scopes": "other:scope",
+            "resource": "https://mcp.example.com/mcp",
+            "expires_at": 1060,
+        }
+    )
+
+    response = client.get(
+        "/oauth/follow-up-boss/callback",
+        params={"state": "wrong-scope", "response": "approved", "code": "fub-code"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    query = parse_qs(urlparse(response.headers["location"]).query)
+    assert query["error"] == ["invalid_scope"]
+    assert query["state"] == ["client-state"]
+    assert query["iss"] == ["https://mcp.example.com/"]
+    assert provisioner.calls == []
 
 
 def test_callback_captures_identity_and_provisioning_failures(
@@ -758,6 +1269,7 @@ def test_callback_captures_identity_and_provisioning_failures(
             "code_challenge": "challenge",
             "code_challenge_method": "plain",
             "scopes": "followupboss:mcp",
+            "resource": "https://mcp.example.com/mcp",
             "expires_at": 2060,
         }
     )
@@ -781,6 +1293,7 @@ def test_callback_captures_identity_and_provisioning_failures(
             "code_challenge": "challenge",
             "code_challenge_method": "plain",
             "scopes": "followupboss:mcp",
+            "resource": "https://mcp.example.com/mcp",
             "expires_at": 2060,
         }
     )
@@ -807,6 +1320,7 @@ def test_callback_success_without_client_state_preserves_existing_query() -> Non
             "code_challenge": "challenge",
             "code_challenge_method": "plain",
             "scopes": "followupboss:mcp",
+            "resource": "https://mcp.example.com/mcp",
             "expires_at": 1060,
         }
     )
@@ -834,7 +1348,11 @@ def test_token_endpoint_rejects_invalid_grants() -> None:
     assert (
         client.post(
             "/oauth/token",
-            data={"grant_type": "authorization_code", "code": "missing"},
+            data={
+                "grant_type": "authorization_code",
+                "code": "missing",
+                "resource": "https://mcp.example.com/mcp",
+            },
         ).json()["error"]
         == "invalid_grant"
     )
@@ -855,6 +1373,7 @@ def test_token_endpoint_rejects_invalid_grants() -> None:
                 "code_challenge": "verifier",
                 "code_challenge_method": "plain",
                 "scopes": "followupboss:mcp",
+                "resource": "https://mcp.example.com/mcp",
                 "tenant_id": "tenant-1",
                 "subject": "subject-1",
                 "credential_id": "credential-1",
@@ -865,7 +1384,11 @@ def test_token_endpoint_rejects_invalid_grants() -> None:
     assert (
         client.post(
             "/oauth/token",
-            data={"grant_type": "authorization_code", "code": "code"},
+            data={
+                "grant_type": "authorization_code",
+                "code": "code",
+                "resource": "https://mcp.example.com/mcp",
+            },
         ).json()["error"]
         == "invalid_grant"
     )
@@ -878,6 +1401,7 @@ def test_token_endpoint_rejects_invalid_grants() -> None:
             "code_challenge": "verifier",
             "code_challenge_method": "plain",
             "scopes": "followupboss:mcp",
+            "resource": "https://mcp.example.com/mcp",
             "tenant_id": "tenant-1",
             "subject": "subject-1",
             "credential_id": "credential-1",
@@ -894,6 +1418,7 @@ def test_token_endpoint_rejects_invalid_grants() -> None:
                 "client_id": "wrong-client",
                 "redirect_uri": "http://127.0.0.1/callback",
                 "code_verifier": "verifier",
+                "resource": "https://mcp.example.com/mcp",
             },
         ).json()["error"]
         == "invalid_grant"
@@ -912,6 +1437,7 @@ def test_token_endpoint_rejects_invalid_grants() -> None:
                 "client_id": "client-1",
                 "redirect_uri": "http://wrong/callback",
                 "code_verifier": "verifier",
+                "resource": "https://mcp.example.com/mcp",
             },
         ).json()["error"]
         == "invalid_grant"
@@ -930,6 +1456,7 @@ def test_token_endpoint_rejects_invalid_grants() -> None:
                 "client_id": "client-1",
                 "redirect_uri": "http://127.0.0.1/callback",
                 "code_verifier": "wrong-verifier",
+                "resource": "https://mcp.example.com/mcp",
             },
         ).json()["error"]
         == "invalid_grant"
@@ -942,6 +1469,7 @@ def test_token_endpoint_rejects_invalid_grants() -> None:
             "subject": "subject-1",
             "client_id": "client-1",
             "scopes": "followupboss:mcp",
+            "resource": "https://mcp.example.com/mcp",
             "credential_id": "credential-1",
             "expires_at": 999,
         }
@@ -953,6 +1481,7 @@ def test_token_endpoint_rejects_invalid_grants() -> None:
                 "grant_type": "refresh_token",
                 "refresh_token": "missing",
                 "client_id": "client-1",
+                "resource": "https://mcp.example.com/mcp",
             },
         ).json()["error"]
         == "invalid_grant"
@@ -978,6 +1507,7 @@ def test_token_endpoint_rejects_invalid_grants() -> None:
                 "subject": "subject-1",
                 "client_id": updates.get("client_id", "other-client"),
                 "scopes": "followupboss:mcp",
+                "resource": "https://mcp.example.com/mcp",
                 "credential_id": "credential-1",
                 "expires_at": updates["expires_at"],
                 "revoked_at": updates.get("revoked_at"),
@@ -989,9 +1519,197 @@ def test_token_endpoint_rejects_invalid_grants() -> None:
                 "grant_type": "refresh_token",
                 "refresh_token": raw_refresh,
                 "client_id": "wrong-client" if raw_refresh == "client-refresh" else "client-1",
+                "resource": "https://mcp.example.com/mcp",
             },
         )
         assert response.json()["error"] == "invalid_grant"
+
+
+@pytest.mark.parametrize("resource", [None, "https://other.example.com/mcp"])
+def test_token_endpoint_requires_resource_for_code_and_refresh_grants(
+    resource: str | None,
+) -> None:
+    """Both token grants must repeat the configured MCP resource."""
+    client, store, _, _ = _app(now=1000)
+    raw_code = "resource-code"
+    code_hash = "sha256:" + hashlib.sha256(raw_code.encode()).hexdigest()
+    store.codes[code_hash] = HostedOAuthAuthorizationCode.model_validate(
+        {
+            "code_hash": code_hash,
+            "client_id": "client-1",
+            "redirect_uri": "http://127.0.0.1/callback",
+            "code_challenge": "verifier",
+            "code_challenge_method": "plain",
+            "scopes": "followupboss:mcp",
+            "resource": "https://mcp.example.com/mcp",
+            "tenant_id": "tenant-1",
+            "subject": "subject-1",
+            "credential_id": "credential-1",
+            "expires_at": 1060,
+        }
+    )
+    raw_refresh = "resource-refresh"
+    refresh_hash = "sha256:" + hashlib.sha256(raw_refresh.encode()).hexdigest()
+    store.refresh_tokens[refresh_hash] = HostedOAuthRefreshToken.model_validate(
+        {
+            "token_hash": refresh_hash,
+            "tenant_id": "tenant-1",
+            "subject": "subject-1",
+            "client_id": "client-1",
+            "scopes": "followupboss:mcp",
+            "resource": "https://mcp.example.com/mcp",
+            "credential_id": "credential-1",
+            "expires_at": 1060,
+        }
+    )
+    code_data = {
+        "grant_type": "authorization_code",
+        "code": raw_code,
+        "client_id": "client-1",
+        "redirect_uri": "http://127.0.0.1/callback",
+        "code_verifier": "verifier",
+    }
+    refresh_data = {
+        "grant_type": "refresh_token",
+        "refresh_token": raw_refresh,
+        "client_id": "client-1",
+    }
+    if resource is not None:
+        code_data["resource"] = resource
+        refresh_data["resource"] = resource
+
+    code_response = client.post("/oauth/token", data=code_data)
+    refresh_response = client.post("/oauth/token", data=refresh_data)
+
+    assert code_response.status_code == 400
+    assert code_response.json()["error"] == "invalid_target"
+    assert refresh_response.status_code == 400
+    assert refresh_response.json()["error"] == "invalid_target"
+    assert code_hash in store.codes
+    assert store.revoked_refresh_tokens == []
+
+
+def test_token_endpoint_binds_a_legacy_authorization_code_to_the_canonical_resource() -> None:
+    """A predeploy Redis code without resource remains redeemable only for this server."""
+    client, store, _, _ = _app(now=1000)
+    raw_code = "legacy-resource-code"
+    code_hash = "sha256:" + hashlib.sha256(raw_code.encode()).hexdigest()
+    store.codes[code_hash] = HostedOAuthAuthorizationCode.model_validate(
+        {
+            "code_hash": code_hash,
+            "client_id": "client-1",
+            "redirect_uri": "http://127.0.0.1/callback",
+            "code_challenge": "verifier",
+            "code_challenge_method": "plain",
+            "scopes": "followupboss:mcp",
+            "tenant_id": "tenant-1",
+            "subject": "subject-1",
+            "credential_id": "credential-1",
+            "expires_at": 1060,
+        }
+    )
+
+    response = client.post(
+        "/oauth/token",
+        data={
+            "grant_type": "authorization_code",
+            "code": raw_code,
+            "client_id": "client-1",
+            "redirect_uri": "http://127.0.0.1/callback",
+            "code_verifier": "verifier",
+            "resource": "https://mcp.example.com/mcp",
+        },
+    )
+
+    assert response.status_code == 200
+    assert store.access_tokens[0].resource == "https://mcp.example.com/mcp"
+
+
+def test_callback_binds_legacy_pending_state_to_the_canonical_resource() -> None:
+    """An in-flight predeploy login without resource remains safe across ECS overlap."""
+    client, store, _, _ = _app(now=1000)
+    store.pending["legacy-state"] = HostedOAuthPendingAuthorization.model_validate(
+        {
+            "fub_state": "legacy-state",
+            "client_id": "client-1",
+            "redirect_uri": "http://127.0.0.1/callback",
+            "code_challenge": "verifier",
+            "code_challenge_method": "plain",
+            "scopes": "followupboss:mcp",
+            "expires_at": 1060,
+        }
+    )
+
+    response = client.get(
+        "/oauth/follow-up-boss/callback",
+        params={"state": "legacy-state", "response": "approved", "code": "fub-code"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 307
+    assert len(store.codes) == 1
+    assert next(iter(store.codes.values())).resource == "https://mcp.example.com/mcp"
+
+
+def test_token_endpoint_rejects_persisted_resource_mismatches() -> None:
+    """Stored grants for another audience must never mint this server's tokens."""
+    client, store, _, _ = _app(now=1000)
+    raw_code = "wrong-audience-code"
+    code_hash = "sha256:" + hashlib.sha256(raw_code.encode()).hexdigest()
+    store.codes[code_hash] = HostedOAuthAuthorizationCode.model_validate(
+        {
+            "code_hash": code_hash,
+            "client_id": "client-1",
+            "redirect_uri": "http://127.0.0.1/callback",
+            "code_challenge": "verifier",
+            "code_challenge_method": "plain",
+            "scopes": "followupboss:mcp",
+            "resource": "https://other.example.com/mcp",
+            "tenant_id": "tenant-1",
+            "subject": "subject-1",
+            "credential_id": "credential-1",
+            "expires_at": 1060,
+        }
+    )
+    raw_refresh = "wrong-audience-refresh"
+    refresh_hash = "sha256:" + hashlib.sha256(raw_refresh.encode()).hexdigest()
+    store.refresh_tokens[refresh_hash] = HostedOAuthRefreshToken.model_validate(
+        {
+            "token_hash": refresh_hash,
+            "tenant_id": "tenant-1",
+            "subject": "subject-1",
+            "client_id": "client-1",
+            "scopes": "followupboss:mcp",
+            "resource": "https://other.example.com/mcp",
+            "credential_id": "credential-1",
+            "expires_at": 1060,
+        }
+    )
+
+    code_response = client.post(
+        "/oauth/token",
+        data={
+            "grant_type": "authorization_code",
+            "code": raw_code,
+            "client_id": "client-1",
+            "redirect_uri": "http://127.0.0.1/callback",
+            "code_verifier": "verifier",
+            "resource": "https://mcp.example.com/mcp",
+        },
+    )
+    refresh_response = client.post(
+        "/oauth/token",
+        data={
+            "grant_type": "refresh_token",
+            "refresh_token": raw_refresh,
+            "client_id": "client-1",
+            "resource": "https://mcp.example.com/mcp",
+        },
+    )
+
+    assert code_response.json()["error"] == "invalid_target"
+    assert refresh_response.json()["error"] == "invalid_target"
+    assert store.revoked_refresh_tokens == []
 
 
 def test_pkce_helper_rejects_missing_or_unknown_methods() -> None:

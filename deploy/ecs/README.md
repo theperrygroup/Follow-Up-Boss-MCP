@@ -165,7 +165,23 @@ Keep the project DSN in the GitHub `production` environment's `SENTRY_DSN` varia
 hardcoding it in this template.
 
 The production workflow sets `SENTRY_RELEASE` to `followupboss-mcp@${{ github.sha }}` when rendering
-the task definition.
+the task definition. Its sanitized deployment receipt includes the exact registered task-definition
+ARN. After authenticated modern and legacy live probes, use the workflow's `record-acceptance`
+operation to bind separate sanitized-evidence digests to that ARN and Git SHA in an immutable
+Actions artifact. Finalization accepts the successful callback run ID, not operator-supplied release
+identifiers.
+
+Restrict the `production` environment's deployment branch policy to `main`. The workflow also
+rejects every other ref before a job can receive environment secrets. The OIDC deployment role must
+allow the existing ECR image upload, task-definition registration, and service update actions plus
+the migration runner's `ecs:DescribeServices`, `ecs:DescribeTaskDefinition`, `ecs:RunTask`,
+`ecs:DescribeTasks`, `ecs:ListTasks`, `logs:GetLogEvents`, and `secretsmanager:DescribeSecret`
+actions. Its `iam:PassRole` scope must include the configured task execution role used by the
+dedicated migration task. The workflow safely converts a proven bare reference once, then keeps the
+running service, migration task, and new release on that authoritative immutable database-secret
+version. Only explicit `expand` may perform the first pin and enable the deployment circuit breaker;
+all other migration operations fail closed while the service remains bare and never update it. The
+workflow never auto-advances an already-pinned service during secret rotation.
 
 Set `FUB_OAUTH_ENABLED=true` only after configuring the hosted OAuth app. When OAuth is enabled,
 also configure these variables:
@@ -178,7 +194,7 @@ Configure the same `production` environment with these secrets:
 
 - `AWS_ROLE_TO_ASSUME`
 - `REDIS_URL_SECRET_ARN`
-- `TENANT_DATABASE_URL_SECRET_ARN`
+- `TENANT_DATABASE_URL_SECRET_ARN` (the canonical bare Secrets Manager ARN; do not append a version)
 - `TASK_EXECUTION_ROLE_ARN`
 - `TASK_ROLE_ARN`
 

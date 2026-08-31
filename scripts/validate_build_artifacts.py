@@ -87,8 +87,12 @@ def main() -> None:
                 str(python_path),
                 "-c",
                 (
+                    "from importlib import resources; "
                     "import followupboss_mcp; "
                     "assert followupboss_mcp.__version__; "
+                    "coverage = resources.files('followupboss_mcp.assets')"
+                    ".joinpath('api-coverage-matrix.md').read_text(encoding='utf-8'); "
+                    "assert '# API Coverage Matrix' in coverage; "
                     "print(followupboss_mcp.__version__)"
                 ),
             ]

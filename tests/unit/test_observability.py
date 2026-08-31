@@ -230,6 +230,43 @@ def test_before_send_drops_fastmcp_argument_validation_errors() -> None:
     assert before_send(event, {"exc_info": object()}) is None
 
 
+def test_before_send_drops_mcpserver_argument_validation_errors() -> None:
+    """MCPServer v2 signature validation should remain filtered as input noise."""
+    event: dict[str, object] = {
+        "exception": {
+            "values": [
+                {
+                    "type": "ValidationError",
+                    "value": "1 validation error for followupboss_list_usersArguments",
+                    "mechanism": {"handled": True},
+                    "stacktrace": {
+                        "frames": [
+                            {
+                                "module": "mcp.server.mcpserver.tools.base",
+                                "function": "run",
+                            },
+                            {
+                                "module": "mcp.server.mcpserver.utilities.func_metadata",
+                                "function": "validate_arguments",
+                            },
+                        ]
+                    },
+                },
+                {
+                    "type": "ToolError",
+                    "value": (
+                        "Error executing tool followupboss_list_users: "
+                        "1 validation error for followupboss_list_usersArguments"
+                    ),
+                    "mechanism": {"handled": True},
+                },
+            ]
+        },
+    }
+
+    assert before_send(event, {"exc_info": object()}) is None
+
+
 def test_local_input_validation_requires_validation_error_and_frame_list() -> None:
     """Only validation errors with recognizable frame lists count as local input noise."""
     assert (

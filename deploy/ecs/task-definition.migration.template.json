@@ -1,0 +1,42 @@
+{
+  "family": "followupboss-mcp-oauth-resource-migration",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "__TASK_EXECUTION_ROLE_ARN__",
+  "containerDefinitions": [
+    {
+      "name": "oauth-resource-migration",
+      "image": "__IMAGE_URI__",
+      "essential": true,
+      "command": [
+        "status",
+        "--resource",
+        "__HOSTED_RESOURCE_SERVER_URL__"
+      ],
+      "environment": [
+        {
+          "name": "FOLLOWUPBOSS_HOSTED_RESOURCE_SERVER_URL",
+          "value": "__HOSTED_RESOURCE_SERVER_URL__"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "FOLLOWUPBOSS_TENANT_DATABASE_URL",
+          "valueFrom": "__TENANT_DATABASE_URL_SECRET_ARN__"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "__LOG_GROUP_NAME__",
+          "awslogs-region": "__AWS_REGION__",
+          "awslogs-stream-prefix": "migration"
+        }
+      }
+    }
+  ]
+}

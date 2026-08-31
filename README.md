@@ -38,6 +38,9 @@ https://fub.theperry.group/mcp
 The client should return your Follow Up Boss identity. That confirms the connection and
 authorization flow are working.
 
+The endpoint supports MCP `2026-07-28` discovery and sessionless requests while retaining the
+legacy initialization handshake for compatible clients.
+
 ### Where to paste the URL
 
 | Client | Setup path |
@@ -45,7 +48,7 @@ authorization flow are working.
 | **ChatGPT** | Enable developer mode, then go to **Settings → Apps → Create**, provide the MCP endpoint, choose OAuth, and scan the tools. Full MCP availability depends on your ChatGPT plan and workspace permissions. See [OpenAI's MCP app guide](https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt). |
 | **Claude** | Go to **Customize → Connectors → + → Add custom connector**, then paste the URL and connect. Team and Enterprise workspaces require an owner to add the connector first. See [Anthropic's remote MCP guide](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp). |
 | **Cursor** | Add a remote MCP server in Cursor's MCP settings, use the URL above, and complete OAuth when Cursor opens the browser. See the [Cursor MCP documentation](https://cursor.com/docs/mcp). |
-| **Other clients** | Use any client that supports remote **Streamable HTTP** MCP servers with OAuth and dynamic client registration. |
+| **Other clients** | Use a client that supports remote **Streamable HTTP** MCP servers with OAuth and Client ID Metadata Documents (CIMD), or the legacy dynamic-registration fallback. |
 
 Client labels change over time. Use the exact hosted URL shown above.
 

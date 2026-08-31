@@ -19,8 +19,12 @@ The repository is structured so that:
 
 - `src/followupboss_mcp/config.py`: split server bootstrap settings from tenant runtime settings,
   plus a backward-compatible local wrapper.
-- `src/followupboss_mcp/hosted_auth.py`: canonical hosted bearer-token identity models, FastMCP
+- `src/followupboss_mcp/hosted_auth.py`: canonical hosted bearer-token identity models, MCPServer
   token verifier, and auth-context helpers.
+- `src/followupboss_mcp/hosted_oauth.py`: MCP OAuth authorization, PKCE code exchange, refresh-token
+  rotation, and exact protected-resource propagation.
+- `src/followupboss_mcp/hosted_reference.py`: PostgreSQL/Redis/AWS reference backends, including
+  resource-filtered access-token lookup and resource-bound token persistence.
 - `src/followupboss_mcp/tenant_store.py`: tenant and credential resolution abstraction plus
   development-backed implementations.
 - `src/followupboss_mcp/tenant_runtime.py`: request-scoped tenant runtime model and service-bundle
@@ -50,9 +54,9 @@ The repository is structured so that:
 - `src/followupboss_mcp/webhooks.py`: signature verification, parsed webhook notification helpers,
   fast-ack helpers.
 - `src/followupboss_mcp/mcp_tools.py`: MCP-safe adapter over typed services.
-- `src/followupboss_mcp/mcp_registration.py`: grouped FastMCP registration helpers for tools, the
+- `src/followupboss_mcp/mcp_registration.py`: grouped MCPServer registration helpers for tools, the
   resource, and the prompt, plus hosted runtime resolution for non-tool surfaces.
-- `src/followupboss_mcp/mcp_server.py`: FastMCP construction, hosted auth and rate-limit wiring,
+- `src/followupboss_mcp/mcp_server.py`: MCPServer construction, hosted auth and rate-limit wiring,
   and local versus request-scoped service-bundle assembly.
 - `src/followupboss_mcp/cli.py`: `stdio` and local `streamable-http` entrypoint.
 
@@ -71,7 +75,7 @@ The runtime configuration is separated intentionally:
 
 - `FollowUpBossServerSettings` owns server-only bootstrap fields such as transport, host, port,
   mount path, and log level.
-- `HostedAuthSettings` owns the FastMCP resource-server settings for hosted bearer-token auth:
+- `HostedAuthSettings` owns the MCPServer resource-server settings for hosted bearer-token auth:
   `issuer_url`, `resource_server_url`, and optional `required_scopes`.
 - `FollowUpBossTenantRuntimeDefaults` owns the shared non-secret Follow Up Boss HTTP-client
   defaults used by hosted deployments: `base_url`, `timeout_seconds`, and `max_retries`.
@@ -92,7 +96,7 @@ Credential material itself is always loaded from `TenantStore` in hosted mode.
 
 ## Hosted Auth Contract
 
-Hosted `streamable-http` uses FastMCP's `auth` and `token_verifier` hooks.
+Hosted `streamable-http` uses MCPServer's `auth` and `token_verifier` hooks.
 `HostedIdentityVerifier` verifies the raw bearer token into `HostedVerifiedIdentity`, which carries:
 
 - required `tenant_id`
@@ -102,15 +106,65 @@ Hosted `streamable-http` uses FastMCP's `auth` and `token_verifier` hooks.
 - optional `expires_at`
 - optional `token_id`
 - optional `credential_id`
+- `resource`, required to equal the configured protected resource before the identity is accepted
 
 `HostedTenantTokenVerifier` then resolves `tenant_id` through `TenantStore`, checks optional
-`credential_id` binding, emits audit events, and stores a `HostedAccessToken` in the FastMCP auth
-context.
+`credential_id` binding, emits audit events, and stores a `HostedAccessToken` with the same
+resource in the MCPServer auth context. `HostedVerifiedIdentity.resource` remains type-optional
+only for legacy-record deserialization; neither the PostgreSQL verifier nor the tenant verifier
+accepts a missing value.
 
 All registered hosted MCP surfaces share the same auth boundary. Tools, the
 `followupboss://api-coverage-matrix` resource, and the `followupboss_compose_lead_event` prompt all
 require the authenticated tenant context. There are no intentionally public hosted resources or
 prompts in the current design.
+
+### Canonical Protected Resource
+
+The production resource identifier is exactly `https://fub.theperry.group/mcp`. Protected-resource
+metadata, OAuth authorization, authorization-code exchange, refresh exchange, persisted token
+metadata, and bearer-token verification all use that same value.
+
+The authorization endpoint requires the exact `resource` parameter and saves it with pending
+authorization state. The callback binds the authorization code to that resource. Both token grant
+types require the client to repeat the exact value:
+
+- an authorization-code grant must match both the configured server resource and the code binding
+- a refresh grant must match both the configured server resource and the stored refresh-token
+  binding
+- successful issuance writes the resource explicitly to the new access-token and refresh-token
+  rows
+- refresh rotation revokes the presented refresh token only after the resource and other grant
+  checks pass, then issues a replacement pair with the same resource
+
+A missing or different request resource, or a persisted grant for another resource, returns OAuth
+`invalid_target`. For MCP bearer authentication, the PostgreSQL lookup includes both `token_hash`
+and `resource`, and `HostedTenantTokenVerifier` performs an additional exact identity comparison.
+Failure occurs before tenant resolution.
+
+### Token Storage And Rolling Compatibility
+
+The durable PostgreSQL token records have matching audience fields:
+
+- `hosted_access_tokens.resource` is projected into `HostedVerifiedIdentity.resource`
+- `hosted_oauth_refresh_tokens.resource` is loaded for every refresh grant and copied to the
+  replacement token pair
+
+The database transition starts with nullable columns and a temporary constant default equal to
+`https://fub.theperry.group/mcp`. Old application instances can omit the column while the default
+still binds their writes; new instances write it explicitly. An acknowledged, count-checked
+backfill is permitted only for NULL rows known to belong to this resource. Foreign-resource rows,
+unexpected defaults, mixed schema states, or changed counts stop the transition. After all old
+writers are retired, finalization removes the defaults and enforces `NOT NULL` on both tables.
+Rollback of finalization restores the canonical defaults before making the columns nullable and
+preserves all existing bindings.
+
+Redis carries only short-lived OAuth state and authorization codes. During an application overlap,
+the new reader accepts a legacy pending state or authorization-code payload with no `resource` and
+binds that absence to the server's single canonical resource. The current authorization-code
+writer also retains the old Redis wire shape so the prior release can read it. Any explicit
+different resource is rejected; the compatibility rule does not apply to durable PostgreSQL token
+rows.
 
 ## Runtime Layering
 
@@ -118,7 +172,7 @@ prompts in the current design.
 flowchart LR
     A["Caller"] --> B{"Runtime mode"}
     B -->|"local dev"| C["Static service bundle"]
-    B -->|"hosted HTTP"| D["FastMCP auth + tenant resolution"]
+    B -->|"hosted HTTP"| D["MCPServer auth + tenant resolution"]
     D --> E["Request-scoped tenant runtime"]
     C --> F["MCP tools, resources, and prompts"]
     E --> F
@@ -132,9 +186,12 @@ flowchart LR
 ## Hosted Request Lifecycle
 
 1. A hosted caller sends a bearer token to the `streamable-http` endpoint.
-2. FastMCP auth middleware calls `HostedTenantTokenVerifier`.
-3. The verifier delegates raw token validation to the deployment-specific `HostedIdentityVerifier`.
-4. The verifier resolves the active tenant and credential from `TenantStore` and stores a
+2. MCPServer auth middleware calls `HostedTenantTokenVerifier`.
+3. The verifier delegates raw token validation to the deployment-specific `HostedIdentityVerifier`,
+   whose PostgreSQL implementation looks up the token hash only under the configured canonical
+   resource.
+4. The verifier rejects a missing or different identity resource, then resolves the active tenant
+   and credential from `TenantStore` and stores a
    `HostedAccessToken` in auth context.
 5. A tool, resource, or prompt handler asks `TenantRuntimeFactory` for the current tenant runtime.
 6. `TenantRuntimeFactory` re-resolves the tenant from `TenantStore` for the active call, checks
@@ -160,7 +217,7 @@ hosted product path.
 
 ## Hosted Endpoint Rate Limiting
 
-When hosted auth is enabled, `FollowUpBossFastMCP.streamable_http_app()` wraps the configured MCP
+When hosted auth is enabled, `FollowUpBossMCPServer.streamable_http_app()` wraps the configured MCP
 route with `HostedRateLimitMiddleware`. That limiter is partitioned by `tenant_id` and `client_id`,
 with an optional IP dimension left disabled by default until proxy trust is defined.
 

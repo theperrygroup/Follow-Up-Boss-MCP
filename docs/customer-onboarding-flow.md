@@ -24,7 +24,8 @@ The reference onboarding flow uses three backing records:
 | --- | --- | --- |
 | `tenants` row | Stable tenant identity and active credential binding | `TenantRecord` |
 | `tenant_credentials` row plus AWS Secrets Manager payload | Follow Up Boss auth mode plus secret reference | `TenantCredentialRecord` |
-| `hosted_access_tokens` row | Operator-issued bearer-token metadata and revocation state | `HostedVerifiedIdentity` |
+| `hosted_access_tokens` row | Resource-bound bearer-token metadata and revocation state | `HostedVerifiedIdentity` |
+| `hosted_oauth_refresh_tokens` row | Resource-bound refresh metadata and rotation state | `HostedOAuthRefreshToken` |
 
 Reference fields:
 
@@ -53,6 +54,19 @@ Reference fields:
 - `subject`
 - `client_id`
 - `scopes`
+- `resource`
+- `credential_id`
+- `expires_at`
+- `revoked_at`
+
+### `hosted_oauth_refresh_tokens`
+
+- `token_hash`
+- `tenant_id`
+- `subject`
+- `client_id`
+- `scopes`
+- `resource`
 - `credential_id`
 - `expires_at`
 - `revoked_at`
@@ -76,6 +90,8 @@ Before creating a tenant, collect:
 - the client integration identifier to place in hosted tokens, such as `customer-portal` or
   `zapier-prod`
 - token owner or subject identifier, such as a service account name or customer admin principal
+- confirmation that the client targets the production protected resource exactly as
+  `https://fub.theperry.group/mcp`
 
 For the first hosted release, the data model and runtime remain dual-mode. The default operator
 path should still prefer API key onboarding when the customer does not specifically need OAuth.
@@ -179,17 +195,24 @@ After validation succeeds, flip:
 No hosted token should succeed for a disabled tenant. Keeping activation as a separate step makes
 rollout, rollback, and customer-communication timing much simpler.
 
-### 5. Issue Hosted Bearer Tokens
+### 5. Issue Resource-Bound Hosted Tokens
 
-The reference hosted auth backend uses operator-issued opaque bearer tokens.
+The hosted OAuth server issues opaque bearer and refresh tokens for one protected resource:
+`https://fub.theperry.group/mcp`. A controlled operator backend may seed an opaque access-token
+row directly, but it must apply the same exact resource binding.
 
 Token issuance flow:
 
-1. generate a cryptographically random raw bearer token
-2. return the raw token to the customer only once
-3. hash the token before storing it in PostgreSQL
-4. store the token metadata row with tenant binding, expiry, and revocation fields
-5. on each request, resolve the hash into `HostedVerifiedIdentity`
+1. require the authorization request to include
+   `resource=https://fub.theperry.group/mcp`
+2. carry that value through pending authorization and bind the authorization code to it
+3. require the authorization-code token request to repeat the same exact resource
+4. generate cryptographically random raw access and refresh tokens and return them only to the
+   client
+5. hash both tokens before storing their metadata in PostgreSQL
+6. write the exact resource to both the access-token and refresh-token rows
+7. on each MCP request, resolve the access-token hash only under that resource and project the row
+   into `HostedVerifiedIdentity`
 
 Reference token row:
 
@@ -201,18 +224,44 @@ Reference token row:
 | `subject` | `acme-admin-1` |
 | `client_id` | `customer-portal` |
 | `scopes` | `["followupboss:mcp"]` |
+| `resource` | `https://fub.theperry.group/mcp` |
 | `credential_id` | `cred-2026-03-acme-primary` |
 | `expires_at` | `1772505600` |
+| `revoked_at` | `null` |
+
+Reference refresh-token row:
+
+| Field | Example |
+| --- | --- |
+| `token_hash` | `sha256:...` |
+| `tenant_id` | `tenant-acme-prod` |
+| `subject` | `acme-admin-1` |
+| `client_id` | `customer-portal` |
+| `scopes` | `["followupboss:mcp"]` |
+| `resource` | `https://fub.theperry.group/mcp` |
+| `credential_id` | `cred-2026-03-acme-primary` |
+| `expires_at` | `1775097600` |
 | `revoked_at` | `null` |
 
 Reference rules:
 
 - always store only a one-way hash of the token
 - always bind the token to `tenant_id`
+- always bind access and refresh tokens to exactly `https://fub.theperry.group/mcp`
 - always bind the token to `credential_id` in the reference deployment so credential mismatches
   fail closed on the next request
 - use `subject` for the stable human or service principal that owns the token
 - use `client_id` for the calling application or environment
+- reject a missing or different `resource` on authorization, authorization-code, or refresh-token
+  requests with OAuth `invalid_target`
+- require a refresh request to match the stored refresh-token resource; after all checks pass,
+  revoke that refresh token and issue a new pair with the same resource
+
+The short-lived Redis compatibility rule is intentionally narrower than the durable token rules.
+During a rolling deployment, a legacy pending authorization or authorization-code payload that has
+no resource can be bound only to the one configured canonical resource. An explicit different
+resource is rejected. PostgreSQL access- and refresh-token rows with NULL or foreign resources are
+never accepted by this rule.
 
 ### 6. Customer Validation After Token Delivery
 
@@ -224,7 +273,26 @@ checks:
    fixture
 
 The tenant should be considered fully onboarded only after both checks succeed through the shared
-hosted MCP endpoint.
+hosted MCP endpoint at `https://fub.theperry.group/mcp`. A missing-resource or wrong-resource token
+must also be confirmed to fail before tenant resolution.
+
+## Existing Token Row Transition
+
+Existing PostgreSQL deployments must transition both token tables together:
+
+1. Add nullable `resource` columns with a temporary constant default of
+   `https://fub.theperry.group/mcp`. This binds writes from an old application instance that omits
+   the new column.
+2. Review status counts for both tables. Stop on any foreign-resource row.
+3. Backfill NULL rows only after acknowledging the exact reviewed access- and refresh-token counts
+   and confirming that every such token was issued only for this resource.
+4. Deploy the resource-aware writer and verifier. New writes set `resource` explicitly and NULL or
+   foreign-resource access tokens fail closed.
+5. After all old writers are retired and both unbound and foreign counts are zero, drop the
+   temporary defaults and enforce `NOT NULL` on both columns.
+
+If an application rollback is required after finalization, restore the canonical defaults before
+making the columns nullable. Do not delete the columns or erase existing resource values.
 
 ## Follow Up Boss Credential Rotation
 
@@ -253,11 +321,15 @@ Hosted bearer-token rotation is separate from Follow Up Boss credential rotation
 
 Reference rotation flow:
 
-1. mint a second active hosted bearer token row for the same tenant
-2. deliver the new raw token to the customer
-3. validate the new token against the shared deployment
-4. revoke the old hosted token
-5. confirm the old token now fails closed on the next request
+1. submit the current refresh token with the same `client_id` and exact canonical `resource`
+2. let the token endpoint validate expiry, revocation, client, and stored resource binding
+3. after validation, let the server revoke the presented refresh token and mint a replacement
+   access/refresh pair bound to the same resource
+4. validate the new access token against the shared deployment
+5. confirm the rotated refresh token can no longer be reused
+
+For a manual operator handoff instead, mint a second access token with the same canonical resource,
+validate it, then revoke the old token.
 
 Recommended overlap rule:
 
@@ -275,9 +347,16 @@ Use the smallest containment action that solves the incident:
 Expected next-request behavior:
 
 - revoked hosted token: `invalid_token`
+- access token with a missing or different resource: `invalid_token` before tenant resolution
 - disabled tenant: `invalid_token`
 - revoked or missing Follow Up Boss credential: `invalid_token`
 - mismatched `credential_id`: `invalid_token`
+
+Expected OAuth grant behavior:
+
+- missing or different authorization resource: `invalid_target`
+- missing or different authorization-code token resource: `invalid_target`
+- missing, different, or stored-mismatched refresh-token resource: `invalid_target`
 
 ## Audit Requirements
 

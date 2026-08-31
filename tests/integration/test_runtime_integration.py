@@ -56,7 +56,7 @@ async def test_create_server_lifespan_closes_injected_client() -> None:
     """The server lifespan should close the injected client on shutdown."""
     client = ClosingClient()
     server = create_server(FollowUpBossSettings.model_validate({"api_key": "key"}), client=client)
-    async with server._mcp_server.lifespan(server._mcp_server):
+    async with server._lowlevel_server.lifespan(server._lowlevel_server):
         assert client.closed is False
     assert client.closed is True
 
