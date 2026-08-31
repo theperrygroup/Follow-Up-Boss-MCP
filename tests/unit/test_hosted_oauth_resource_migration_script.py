@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -62,12 +63,57 @@ def _receipt_payload(
     }
 
 
-def _fake_psql(tmp_path: Path, *output_lines: str, preamble: str = "") -> Path:
-    """Create a psql stand-in that emits controlled stdout and exits cleanly."""
-    executable = tmp_path / "psql"
-    quoted_lines = "\n".join(f"printf '%s\\n' '{line}'" for line in output_lines)
-    executable.write_text(f"#!/bin/sh\n{preamble}\n{quoted_lines}\n", encoding="utf-8")
-    executable.chmod(0o755)
+def _fake_psql(
+    tmp_path: Path,
+    *output_lines: str,
+    verify_private_service_file: bool = False,
+) -> Path:
+    """Create a cross-platform psql stand-in with controlled stdout."""
+    stub = tmp_path / "fake_psql.py"
+    stub.write_text(
+        "\n".join(
+            (
+                "from __future__ import annotations",
+                "",
+                "import os",
+                "import sys",
+                "from pathlib import Path",
+                "",
+                f"OUTPUT_LINES = {output_lines!r}",
+                f"VERIFY_PRIVATE_SERVICE_FILE = {verify_private_service_file!r}",
+                "",
+                "if VERIFY_PRIVATE_SERVICE_FILE:",
+                '    if os.environ.get("PGSERVICE") != "followupboss_migration":',
+                "        raise SystemExit(91)",
+                '    service_file = os.environ.get("PGSERVICEFILE")',
+                "    if service_file is None or not Path(service_file).is_file():",
+                "        raise SystemExit(92)",
+                '    if "PGDATABASE" in os.environ:',
+                "        raise SystemExit(93)",
+                '    service_lines = Path(service_file).read_text(encoding="utf-8").splitlines()',
+                '    if "host=db.example.com" not in service_lines:',
+                "        raise SystemExit(94)",
+                '    if any("postgresql://" in argument for argument in sys.argv[1:]):',
+                "        raise SystemExit(95)",
+                '    if "port=5432" not in service_lines:',
+                "        raise SystemExit(96)",
+                "",
+                "for output_line in OUTPUT_LINES:",
+                "    print(output_line)",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+    if os.name == "nt":
+        executable = tmp_path / "psql.cmd"
+        command = subprocess.list2cmdline([sys.executable, str(stub)])
+        executable.write_text(f"@echo off\n{command} %*\n", encoding="utf-8")
+    else:
+        executable = tmp_path / "psql"
+        command = shlex.join([sys.executable, str(stub)])
+        executable.write_text(f'#!/bin/sh\nexec {command} "$@"\n', encoding="utf-8")
+        executable.chmod(0o755)
     return executable
 
 
@@ -180,14 +226,7 @@ def test_psql_uses_a_private_service_file_instead_of_a_connection_argv(
     psql = _fake_psql(
         tmp_path,
         f"MIGRATION_RECEIPT={json.dumps(payload)}",
-        preamble="""
-[ "$PGSERVICE" = "followupboss_migration" ] || exit 91
-[ -r "$PGSERVICEFILE" ] || exit 92
-[ -z "${PGDATABASE+x}" ] || exit 93
-grep -q '^host=db.example.com$' "$PGSERVICEFILE" || exit 94
-grep -q '^port=5432$' "$PGSERVICEFILE" || exit 96
-case "$*" in *postgresql://*) exit 95 ;; esac
-""".strip(),
+        verify_private_service_file=True,
     )
 
     result = _run_script(
