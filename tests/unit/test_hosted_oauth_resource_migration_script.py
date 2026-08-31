@@ -386,10 +386,11 @@ def test_production_workflow_uses_a_least_privilege_migration_task() -> None:
     assert '.describe_secret(SecretId=os.environ["TENANT_DATABASE_URL_SECRET_ARN"])' in workflow
     assert '"SecretArnSha256": hashlib.sha256(' in workflow
     assert 'metadata["ARN"].encode("utf-8")' in workflow
+    assert "version_id: sorted(stages)" in workflow
     assert 'if [ "${metadata_probe_required}" = "true" ]; then' in workflow
     assert 'registerable["family"] = "followupboss-mcp-database-secret-metadata"' in workflow
-    assert 'probe_image = f"{image_repository}@{next(iter(running_digests))}"' in workflow
-    assert 're.fullmatch(r"sha256:[0-9a-f]{64}"' in workflow
+    assert 'probe_image = container.get("image", "")' in workflow
+    assert 're.fullmatch(r".+@sha256:[0-9a-f]{64}", probe_image)' in workflow
     assert "from botocore.config import Config" in workflow
     assert '"ARN": metadata.get("ARN")' not in workflow
     assert "aws secretsmanager describe-secret" not in workflow
@@ -401,11 +402,28 @@ def test_production_workflow_uses_a_least_privilege_migration_task() -> None:
     )
     assert 'pinned_secret_arn = f"{base_secret_arn}:::{current_versions[0]}"' in workflow
     assert '"PINNED_TENANT_DATABASE_URL_SECRET_ARN"' in workflow
+    assert 'running_service["services"][0]["deployments"][0]["createdAt"]' in workflow
+    assert "deployment_created < last_changed + 30" in workflow
+    assert 'if "AWSPENDING" in stages' in workflow
+    assert "database-secret-metadata-after-pin.json" in workflow
+    assert "Database secret metadata changed during pinning" in workflow
+    assert "aws ecs list-tasks" not in workflow
+    assert workflow.count("aws ecs describe-tasks") == 2
+    assert '--tasks "${metadata_probe_task_arn}"' in workflow
+    assert '--tasks "${task_arn}"' in workflow
+    assert 'select(.status == "PRIMARY" and .taskDefinition == $expected)' in workflow
+    assert '[ "${deployment_status}" != "PRIMARY" ]' in workflow
+    assert '[ "${deployment_running}" != "${desired}" ]' in workflow
+    assert '[ "${deployment_pending}" != "0" ]' in workflow
+    assert '[ "${deployment_strategy}" != "ROLLING" ]' in workflow
+    assert "database-prepin-service.json" in workflow
+    assert '--arg deployment_id "${initial_deployment_id}"' in workflow
+    assert '.services[0].deployments[0].id == $deployment_id' in workflow
+    assert '[ "${expected_deployment_id}" = "${initial_deployment_id}" ]' in workflow
+    assert '[ "${deployment_id}" != "${expected_deployment_id}" ]' in workflow
+    assert workflow.count("--force-new-deployment") == 2
     assert "deploymentCircuitBreaker={enable=true,rollback=true}" in workflow
     assert "task_definition=%s" in workflow
-    assert "described_failure_count" in workflow
-    assert "described_task_count" in workflow
-    assert "nonrunning_count" in workflow
     assert 'issuer.path not in ("", "/")' in workflow
     assert 'issuer = f"{issuer_split.scheme}://{issuer_split.netloc}/"' in workflow
     assert "MIGRATION_RECEIPT=" in workflow

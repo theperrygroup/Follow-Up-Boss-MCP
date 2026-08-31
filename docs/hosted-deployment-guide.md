@@ -202,9 +202,11 @@ dispatch `.github/workflows/deploy-production.yml` from `main` with `operation=e
 `operation=backfill` with the two exact status counts and
 `acknowledge_unbound_token_audience=true`. The helper suppresses raw PostgreSQL output; CloudWatch
 and the public Actions log receive only a generic failure classification or a sanitized aggregate
-receipt. On first adoption of a bare Secrets Manager ARN, the workflow proves every running task
-was created safely after the secret's last change, resolves its exact `AWSCURRENT` version, and pins
-the stable running service and migration task to that immutable version. Only the explicit `expand`
+receipt. On first adoption of a bare Secrets Manager ARN, the workflow requires one sole completed
+ECS deployment, conservatively proves that deployment was created after the secret's last change
+and safety window, rejects a distinct `AWSPENDING` version, resolves the exact `AWSCURRENT` version,
+and pins the stable service and migration task to that immutable version. The workflow rechecks that
+the complete version metadata is unchanged after the pin, before starting migration. Only the explicit `expand`
 operation may perform that first adoption and enable ECS deployment-circuit-breaker rollback; every
 other phase fails closed while the service still uses a bare ARN and never calls `update-service`.
 Later phases reuse the already-pinned version as authoritative and never advance production merely
@@ -216,10 +218,12 @@ state (nullable with the canonical default) or the finalized state (`NOT NULL` w
 After authenticated modern- and legacy-protocol live acceptance, compute separate SHA-256 digests
 of the two sanitized evidence records. Dispatch `operation=record-acceptance` with those digests,
 the exact live-tested SHA, and the task-definition ARN from the deployment receipt. That callback
-revalidates the complete live ECS task set and publishes an immutable, event-bound Actions artifact.
+revalidates one sole completed `PRIMARY` deployment with exact task-definition and per-deployment
+counts, then publishes an immutable, event-bound Actions artifact.
 Then dispatch `operation=status` again. Finalization requires `operation=finalize`,
 `old_writers_retired=true`, and only the successful `record-acceptance` run ID; it downloads and
-validates that artifact, freshly revalidates the stable service and every running task, and requires
+validates that artifact, freshly revalidates a sole completed deployment for the accepted task
+definition (unchanged across finalization's two service snapshots), and requires
 the artifact's SHA, task definition, and resource to match. This binds acceptance to the immutable
 image digest and rendered runtime configuration, not only the Git SHA. Use
 `operation=rollback-finalize` before rolling back the application after finalization.

@@ -271,17 +271,38 @@ jobs:
             --region "${AWS_REGION}" > "${RUNNER_TEMP}/acceptance-service.json"
           service_count="$(jq -r '.services | length' "${RUNNER_TEMP}/acceptance-service.json")"
           failure_count="$(jq -r '.failures | length' "${RUNNER_TEMP}/acceptance-service.json")"
+          service_status="$(jq -r '.services[0].status // empty' "${RUNNER_TEMP}/acceptance-service.json")"
           desired="$(jq -r '.services[0].desiredCount // 0' "${RUNNER_TEMP}/acceptance-service.json")"
           running="$(jq -r '.services[0].runningCount // 0' "${RUNNER_TEMP}/acceptance-service.json")"
           pending="$(jq -r '.services[0].pendingCount // 0' "${RUNNER_TEMP}/acceptance-service.json")"
           deployments="$(jq -r '.services[0].deployments | length' "${RUNNER_TEMP}/acceptance-service.json")"
           rollout_state="$(jq -r '.services[0].deployments[0].rolloutState // empty' "${RUNNER_TEMP}/acceptance-service.json")"
+          deployment_status="$(jq -r '.services[0].deployments[0].status // empty' "${RUNNER_TEMP}/acceptance-service.json")"
+          deployment_task_definition="$(jq -r '.services[0].deployments[0].taskDefinition // empty' "${RUNNER_TEMP}/acceptance-service.json")"
+          deployment_desired="$(jq -r '.services[0].deployments[0].desiredCount // 0' "${RUNNER_TEMP}/acceptance-service.json")"
+          deployment_running="$(jq -r '.services[0].deployments[0].runningCount // 0' "${RUNNER_TEMP}/acceptance-service.json")"
+          deployment_pending="$(jq -r '.services[0].deployments[0].pendingCount // 0' "${RUNNER_TEMP}/acceptance-service.json")"
+          acceptance_deployment_id="$(jq -r '.services[0].deployments[0].id // empty' "${RUNNER_TEMP}/acceptance-service.json")"
+          deployment_controller="$(jq -r '.services[0].deploymentController.type // empty' "${RUNNER_TEMP}/acceptance-service.json")"
+          scheduling_strategy="$(jq -r '.services[0].schedulingStrategy // empty' "${RUNNER_TEMP}/acceptance-service.json")"
+          deployment_strategy="$(jq -r '.services[0].deploymentConfiguration.strategy // "ROLLING"' "${RUNNER_TEMP}/acceptance-service.json")"
           rollback_enabled="$(jq -r '.services[0].deploymentConfiguration.deploymentCircuitBreaker | .enable == true and .rollback == true' "${RUNNER_TEMP}/acceptance-service.json")"
           service_task_definition="$(jq -r '.services[0].taskDefinition // empty' "${RUNNER_TEMP}/acceptance-service.json")"
           if [ "${service_count}" != "1" ] || [ "${failure_count}" != "0" ] ||
+             [ "${service_status}" != "ACTIVE" ] ||
              [ "${desired}" = "0" ] || [ "${running}" != "${desired}" ] ||
              [ "${pending}" != "0" ] || [ "${deployments}" != "1" ] ||
-             [ "${rollout_state}" != "COMPLETED" ] || [ "${rollback_enabled}" != "true" ] ||
+             [ "${rollout_state}" != "COMPLETED" ] ||
+             [ "${deployment_status}" != "PRIMARY" ] ||
+             [ "${deployment_task_definition}" != "${service_task_definition}" ] ||
+             [ "${deployment_desired}" != "${desired}" ] ||
+             [ "${deployment_running}" != "${desired}" ] ||
+             [ "${deployment_pending}" != "0" ] ||
+             [ -z "${acceptance_deployment_id}" ] ||
+             [ "${deployment_controller}" != "ECS" ] ||
+             [ "${scheduling_strategy}" != "REPLICA" ] ||
+             [ "${deployment_strategy}" != "ROLLING" ] ||
+             [ "${rollback_enabled}" != "true" ] ||
              [ "${service_task_definition}" != "${ACCEPTED_TASK_DEFINITION_ARN}" ]; then
             printf "Acceptance callback does not match one stable live ECS release.\n" >&2
             exit 1
@@ -312,31 +333,35 @@ jobs:
             printf "Acceptance callback release metadata does not match the selected ref and resource.\n" >&2
             exit 1
           fi
-          aws ecs list-tasks \
+          aws ecs describe-services \
             --cluster "${ECS_CLUSTER}" \
-            --service-name "${ECS_SERVICE}" \
-            --desired-status RUNNING \
-            --max-results 100 \
-            --region "${AWS_REGION}" > "${RUNNER_TEMP}/acceptance-task-arns.json"
-          listed="$(jq -r '.taskArns | length' "${RUNNER_TEMP}/acceptance-task-arns.json")"
-          next_token="$(jq -r '.nextToken // empty' "${RUNNER_TEMP}/acceptance-task-arns.json")"
-          if [ "${listed}" != "${desired}" ] || [ -n "${next_token}" ]; then
-            printf "Acceptance callback could not prove the complete running task set.\n" >&2
-            exit 1
-          fi
-          jq -r '.taskArns[]' "${RUNNER_TEMP}/acceptance-task-arns.json" > "${RUNNER_TEMP}/acceptance-task-arns.txt"
-          aws ecs describe-tasks \
-            --cluster "${ECS_CLUSTER}" \
-            --tasks $(<"${RUNNER_TEMP}/acceptance-task-arns.txt") \
-            --region "${AWS_REGION}" > "${RUNNER_TEMP}/acceptance-tasks.json"
-          described="$(jq -r '.tasks | length' "${RUNNER_TEMP}/acceptance-tasks.json")"
-          task_failures="$(jq -r '.failures | length' "${RUNNER_TEMP}/acceptance-tasks.json")"
-          mismatches="$(jq --arg expected "${service_task_definition}" '[.tasks[] | select(.lastStatus != "RUNNING" or .taskDefinitionArn != $expected)] | length' "${RUNNER_TEMP}/acceptance-tasks.json")"
-          if [ "${described}" != "${desired}" ] || [ "${task_failures}" != "0" ] ||
-             [ "${mismatches}" != "0" ]; then
-            printf "Acceptance callback found a mixed or incomplete running task set.\n" >&2
-            exit 1
-          fi
+            --services "${ECS_SERVICE}" \
+            --region "${AWS_REGION}" > "${RUNNER_TEMP}/acceptance-service-after.json"
+          jq -e \
+            --arg expected "${service_task_definition}" \
+            --arg deployment_id "${acceptance_deployment_id}" \
+            --argjson desired "${desired}" '
+              (.failures | length) == 0
+              and (.services | length) == 1
+              and .services[0].status == "ACTIVE"
+              and .services[0].taskDefinition == $expected
+              and .services[0].desiredCount == $desired
+              and .services[0].runningCount == $desired
+              and .services[0].pendingCount == 0
+              and (.services[0].deployments | length) == 1
+              and .services[0].deployments[0].id == $deployment_id
+              and .services[0].deployments[0].status == "PRIMARY"
+              and .services[0].deployments[0].taskDefinition == $expected
+              and .services[0].deployments[0].desiredCount == $desired
+              and .services[0].deployments[0].runningCount == $desired
+              and .services[0].deployments[0].pendingCount == 0
+              and .services[0].deployments[0].rolloutState == "COMPLETED"
+              and .services[0].deploymentController.type == "ECS"
+              and .services[0].schedulingStrategy == "REPLICA"
+              and (.services[0].deploymentConfiguration.strategy // "ROLLING") == "ROLLING"
+              and .services[0].deploymentConfiguration.deploymentCircuitBreaker.enable == true
+              and .services[0].deploymentConfiguration.deploymentCircuitBreaker.rollback == true
+            ' "${RUNNER_TEMP}/acceptance-service-after.json" > /dev/null
           python - <<'PY'
           import json
           import os
@@ -578,19 +603,36 @@ jobs:
             --region "${AWS_REGION}" > "${RUNNER_TEMP}/production-service.json"
           service_count="$(jq -r '.services | length' "${RUNNER_TEMP}/production-service.json")"
           failure_count="$(jq -r '.failures | length' "${RUNNER_TEMP}/production-service.json")"
+          service_status="$(jq -r '.services[0].status // empty' "${RUNNER_TEMP}/production-service.json")"
           desired="$(jq -r '.services[0].desiredCount // 0' "${RUNNER_TEMP}/production-service.json")"
           running="$(jq -r '.services[0].runningCount // 0' "${RUNNER_TEMP}/production-service.json")"
           pending="$(jq -r '.services[0].pendingCount // 0' "${RUNNER_TEMP}/production-service.json")"
           deployments="$(jq -r '.services[0].deployments | length' "${RUNNER_TEMP}/production-service.json")"
           rollout_state="$(jq -r '.services[0].deployments[0].rolloutState // empty' "${RUNNER_TEMP}/production-service.json")"
+          deployment_status="$(jq -r '.services[0].deployments[0].status // empty' "${RUNNER_TEMP}/production-service.json")"
+          deployment_task_definition="$(jq -r '.services[0].deployments[0].taskDefinition // empty' "${RUNNER_TEMP}/production-service.json")"
+          deployment_desired="$(jq -r '.services[0].deployments[0].desiredCount // 0' "${RUNNER_TEMP}/production-service.json")"
+          deployment_running="$(jq -r '.services[0].deployments[0].runningCount // 0' "${RUNNER_TEMP}/production-service.json")"
+          deployment_pending="$(jq -r '.services[0].deployments[0].pendingCount // 0' "${RUNNER_TEMP}/production-service.json")"
+          initial_deployment_id="$(jq -r '.services[0].deployments[0].id // empty' "${RUNNER_TEMP}/production-service.json")"
           deployment_controller="$(jq -r '.services[0].deploymentController.type // empty' "${RUNNER_TEMP}/production-service.json")"
+          scheduling_strategy="$(jq -r '.services[0].schedulingStrategy // empty' "${RUNNER_TEMP}/production-service.json")"
+          deployment_strategy="$(jq -r '.services[0].deploymentConfiguration.strategy // "ROLLING"' "${RUNNER_TEMP}/production-service.json")"
           service_task_definition="$(jq -r '.services[0].taskDefinition // empty' "${RUNNER_TEMP}/production-service.json")"
           if [ "${service_count}" != "1" ] || [ "${failure_count}" != "0" ] ||
+             [ "${service_status}" != "ACTIVE" ] ||
              [ "${desired}" = "0" ] || [ "${running}" != "${desired}" ] ||
              [ "${pending}" != "0" ] || [ "${deployments}" != "1" ] ||
              [ "${rollout_state}" != "COMPLETED" ] ||
+             [ "${deployment_status}" != "PRIMARY" ] ||
+             [ "${deployment_task_definition}" != "${service_task_definition}" ] ||
+             [ "${deployment_desired}" != "${desired}" ] ||
+             [ "${deployment_running}" != "${desired}" ] ||
+             [ "${deployment_pending}" != "0" ] ||
              [ "${deployment_controller}" != "ECS" ] ||
-             [ -z "${service_task_definition}" ]; then
+             [ "${scheduling_strategy}" != "REPLICA" ] ||
+             [ "${deployment_strategy}" != "ROLLING" ] ||
+             [ -z "${initial_deployment_id}" ] || [ -z "${service_task_definition}" ]; then
             printf "Database pinning requires one stable ECS rolling deployment.\n" >&2
             exit 1
           fi
@@ -627,31 +669,6 @@ jobs:
             printf "Running service used an unexpected database secret reference.\n" >&2
             exit 1
           fi
-          aws ecs list-tasks \
-            --cluster "${ECS_CLUSTER}" \
-            --service-name "${ECS_SERVICE}" \
-            --desired-status RUNNING \
-            --max-results 100 \
-            --region "${AWS_REGION}" > "${RUNNER_TEMP}/prepin-task-arns.json"
-          prepin_listed="$(jq -r '.taskArns | length' "${RUNNER_TEMP}/prepin-task-arns.json")"
-          prepin_next_token="$(jq -r '.nextToken // empty' "${RUNNER_TEMP}/prepin-task-arns.json")"
-          if [ "${prepin_listed}" != "${desired}" ] || [ -n "${prepin_next_token}" ]; then
-            printf "Could not prove the complete running task set before database pinning.\n" >&2
-            exit 1
-          fi
-          jq -r '.taskArns[]' "${RUNNER_TEMP}/prepin-task-arns.json" > "${RUNNER_TEMP}/prepin-task-arns.txt"
-          aws ecs describe-tasks \
-            --cluster "${ECS_CLUSTER}" \
-            --tasks $(<"${RUNNER_TEMP}/prepin-task-arns.txt") \
-            --region "${AWS_REGION}" > "${RUNNER_TEMP}/prepin-tasks.json"
-          prepin_described="$(jq -r '.tasks | length' "${RUNNER_TEMP}/prepin-tasks.json")"
-          prepin_failures="$(jq -r '.failures | length' "${RUNNER_TEMP}/prepin-tasks.json")"
-          prepin_mismatches="$(jq --arg expected "${service_task_definition}" '[.tasks[] | select(.lastStatus != "RUNNING" or .taskDefinitionArn != $expected)] | length' "${RUNNER_TEMP}/prepin-tasks.json")"
-          if [ "${prepin_described}" != "${desired}" ] || [ "${prepin_failures}" != "0" ] ||
-             [ "${prepin_mismatches}" != "0" ]; then
-            printf "Running task set changed before database pinning.\n" >&2
-            exit 1
-          fi
           if [ "${metadata_probe_required}" = "true" ]; then
             aws ecs register-task-definition --generate-cli-skeleton > "${RUNNER_TEMP}/register-task-skeleton.json"
             jq -e '.services[0].networkConfiguration' \
@@ -681,37 +698,11 @@ jobs:
               raise SystemExit("Running service did not use the configured task role.")
           if task_definition.get("executionRoleArn") != os.environ["TASK_EXECUTION_ROLE_ARN"]:
               raise SystemExit("Running service did not use the configured execution role.")
-          running_tasks = json.loads(
-              (temp / "prepin-tasks.json").read_text(encoding="utf-8")
-          ).get("tasks", [])
-          running_images = [
-              candidate
-              for task in running_tasks
-              for candidate in task.get("containers", [])
-              if candidate.get("name") == "followupboss-mcp-hosted"
-          ]
-          running_digests = {
-              candidate.get("imageDigest", "") for candidate in running_images
-          }
-          if (
-              len(running_images) != len(running_tasks)
-              or {candidate.get("image", "") for candidate in running_images}
-              != {container["image"]}
-              or len(running_digests) != 1
-              or not re.fullmatch(r"sha256:[0-9a-f]{64}", next(iter(running_digests), ""))
-          ):
-              raise SystemExit("Could not bind the metadata probe to one running image digest.")
-          image_without_digest = container["image"].split("@", maxsplit=1)[0]
-          last_slash = image_without_digest.rfind("/")
-          last_colon = image_without_digest.rfind(":")
-          image_repository = (
-              image_without_digest[:last_colon]
-              if last_colon > last_slash
-              else image_without_digest
-          )
-          if not image_repository:
-              raise SystemExit("Running task definition used an invalid image reference.")
-          probe_image = f"{image_repository}@{next(iter(running_digests))}"
+          probe_image = container.get("image", "")
+          if not re.fullmatch(r".+@sha256:[0-9a-f]{64}", probe_image):
+              raise SystemExit(
+                  "Running task definition did not bind the metadata probe to an immutable image."
+              )
           skeleton = json.loads(
               (temp / "register-task-skeleton.json").read_text(encoding="utf-8")
           )
@@ -753,7 +744,12 @@ jobs:
               "SecretArnSha256": hashlib.sha256(
                   metadata["ARN"].encode("utf-8")
               ).hexdigest(),
-              "VersionIdsToStages": metadata.get("VersionIdsToStages", {}),
+              "VersionIdsToStages": {
+                  version_id: sorted(stages)
+                  for version_id, stages in metadata.get(
+                      "VersionIdsToStages", {}
+                  ).items()
+              },
           }
           print(
               "DATABASE_SECRET_METADATA="
@@ -801,69 +797,81 @@ jobs:
             printf "Database-secret metadata probe registration did not return a task-definition ARN.\n" >&2
             exit 1
           fi
-          aws ecs run-task \
-            --cluster "${ECS_CLUSTER}" \
-            --task-definition "${metadata_probe_task_definition}" \
-            --launch-type FARGATE \
-            --network-configuration "file://${RUNNER_TEMP}/metadata-probe-network.json" \
-            --region "${AWS_REGION}" > "${RUNNER_TEMP}/metadata-probe-run-task.json"
-          if [ "$(jq -r '.failures | length' "${RUNNER_TEMP}/metadata-probe-run-task.json")" != "0" ]; then
-            printf "ECS rejected the database-secret metadata probe.\n" >&2
-            exit 1
-          fi
-          metadata_probe_task_arn="$(
-            jq -r '.tasks[0].taskArn // empty' "${RUNNER_TEMP}/metadata-probe-run-task.json"
-          )"
-          if [ -z "${metadata_probe_task_arn}" ]; then
-            printf "ECS did not return a database-secret metadata probe task ARN.\n" >&2
-            exit 1
-          fi
-          aws ecs wait tasks-stopped \
-            --cluster "${ECS_CLUSTER}" \
-            --tasks "${metadata_probe_task_arn}" \
-            --region "${AWS_REGION}"
-          aws ecs describe-tasks \
-            --cluster "${ECS_CLUSTER}" \
-            --tasks "${metadata_probe_task_arn}" \
-            --region "${AWS_REGION}" > "${RUNNER_TEMP}/metadata-probe-task-result.json"
-          metadata_probe_exit_code="$(
-            jq -r '
-              .tasks[0].containers[]
-              | select(.name == "database-secret-metadata")
-              | .exitCode // empty
-            ' "${RUNNER_TEMP}/metadata-probe-task-result.json"
-          )"
-          metadata_probe_task_id="${metadata_probe_task_arn##*/}"
-          metadata_probe_log_stream="migration/database-secret-metadata/${metadata_probe_task_id}"
-          metadata_receipt=""
-          for _ in $(seq 1 20); do
-            if aws logs get-log-events \
-              --log-group-name "${LOG_GROUP_NAME}" \
-              --log-stream-name "${metadata_probe_log_stream}" \
-              --region "${AWS_REGION}" > "${RUNNER_TEMP}/metadata-probe-log-events.json" 2>/dev/null; then
-              metadata_receipt="$(
-                jq -r '
-                  .events[].message
-                  | select(startswith("DATABASE_SECRET_METADATA="))
-                ' "${RUNNER_TEMP}/metadata-probe-log-events.json" | tail -n 1
-              )"
-              if [ -n "${metadata_receipt}" ]; then
-                break
-              fi
+          run_metadata_probe() {
+            local receipt_path="$1"
+            local suffix="$2"
+            local run_path="${RUNNER_TEMP}/metadata-probe-run-task-${suffix}.json"
+            local result_path="${RUNNER_TEMP}/metadata-probe-task-result-${suffix}.json"
+            local events_path="${RUNNER_TEMP}/metadata-probe-log-events-${suffix}.json"
+            local metadata_probe_task_arn
+            local metadata_probe_exit_code
+            local metadata_probe_task_id
+            local metadata_probe_log_stream
+            local metadata_receipt=""
+
+            aws ecs run-task \
+              --cluster "${ECS_CLUSTER}" \
+              --task-definition "${metadata_probe_task_definition}" \
+              --launch-type FARGATE \
+              --network-configuration "file://${RUNNER_TEMP}/metadata-probe-network.json" \
+              --region "${AWS_REGION}" > "${run_path}"
+            if [ "$(jq -r '.failures | length' "${run_path}")" != "0" ]; then
+              printf "ECS rejected the database-secret metadata probe.\n" >&2
+              return 1
             fi
-            sleep 2
-          done
-          if [ "${metadata_probe_exit_code}" != "0" ]; then
-            printf "Database-secret metadata probe failed with exit code %s; task output was suppressed.\n" \
-              "${metadata_probe_exit_code:-unknown}" >&2
-            exit 1
-          fi
-          if [ -z "${metadata_receipt}" ]; then
-            printf "Database-secret metadata probe returned no validated receipt; failing closed.\n" >&2
-            exit 1
-          fi
-          printf "%s" "${metadata_receipt#DATABASE_SECRET_METADATA=}" \
-            > "${RUNNER_TEMP}/database-secret-metadata-receipt.json"
+            metadata_probe_task_arn="$(jq -r '.tasks[0].taskArn // empty' "${run_path}")"
+            if [ -z "${metadata_probe_task_arn}" ]; then
+              printf "ECS did not return a database-secret metadata probe task ARN.\n" >&2
+              return 1
+            fi
+            aws ecs wait tasks-stopped \
+              --cluster "${ECS_CLUSTER}" \
+              --tasks "${metadata_probe_task_arn}" \
+              --region "${AWS_REGION}"
+            aws ecs describe-tasks \
+              --cluster "${ECS_CLUSTER}" \
+              --tasks "${metadata_probe_task_arn}" \
+              --region "${AWS_REGION}" > "${result_path}"
+            metadata_probe_exit_code="$(
+              jq -r '
+                .tasks[0].containers[]
+                | select(.name == "database-secret-metadata")
+                | .exitCode // empty
+              ' "${result_path}"
+            )"
+            metadata_probe_task_id="${metadata_probe_task_arn##*/}"
+            metadata_probe_log_stream="migration/database-secret-metadata/${metadata_probe_task_id}"
+            for _ in $(seq 1 20); do
+              if aws logs get-log-events \
+                --log-group-name "${LOG_GROUP_NAME}" \
+                --log-stream-name "${metadata_probe_log_stream}" \
+                --region "${AWS_REGION}" > "${events_path}" 2>/dev/null; then
+                metadata_receipt="$(
+                  jq -r '
+                    .events[].message
+                    | select(startswith("DATABASE_SECRET_METADATA="))
+                  ' "${events_path}" | tail -n 1
+                )"
+                if [ -n "${metadata_receipt}" ]; then
+                  break
+                fi
+              fi
+              sleep 2
+            done
+            if [ "${metadata_probe_exit_code}" != "0" ]; then
+              printf "Database-secret metadata probe failed with exit code %s; task output was suppressed.\n" \
+                "${metadata_probe_exit_code:-unknown}" >&2
+              return 1
+            fi
+            if [ -z "${metadata_receipt}" ]; then
+              printf "Database-secret metadata probe returned no validated receipt; failing closed.\n" >&2
+              return 1
+            fi
+            printf "%s" "${metadata_receipt#DATABASE_SECRET_METADATA=}" > "${receipt_path}"
+          }
+
+          run_metadata_probe \
+            "${RUNNER_TEMP}/database-secret-metadata-receipt.json" current
           python - <<'PY'
           import hashlib
           import json
@@ -988,19 +996,31 @@ jobs:
                   raise SystemExit(
                       "Database secret did not expose exactly one valid current version."
                   )
+              pending_versions = [
+                  version_id
+                  for version_id, stages in metadata.get("VersionIdsToStages", {}).items()
+                  if "AWSPENDING" in stages
+              ]
+              if any(version_id != current_versions[0] for version_id in pending_versions):
+                  raise SystemExit(
+                      "Database secret rotation is in progress; no version was pinned."
+                  )
               try:
                   last_changed = timestamp(metadata.get("LastChangedDate"))
-                  running_tasks = json.loads(
-                      (temp / "prepin-tasks.json").read_text(encoding="utf-8")
-                  )["tasks"]
-                  created = [timestamp(task.get("createdAt")) for task in running_tasks]
+                  running_service = json.loads(
+                      (temp / "production-service.json").read_text(encoding="utf-8")
+                  )
+                  deployment_created = timestamp(
+                      running_service["services"][0]["deployments"][0]["createdAt"]
+                  )
               except (KeyError, TypeError, ValueError) as exc:
                   raise SystemExit(
-                      "Could not prove when running tasks resolved the database secret."
+                      "Could not prove when the running deployment resolved the database secret."
                   ) from exc
-              if not created or any(created_at < last_changed + 30 for created_at in created):
+              if deployment_created < last_changed + 30:
                   raise SystemExit(
-                      "Bare database secret cannot be pinned because a task predates its current version."
+                      "Bare database secret cannot be pinned because the running deployment "
+                      "predates the current version safety window."
                   )
               pinned_secret_arn = f"{base_secret_arn}:::{current_versions[0]}"
           else:
@@ -1041,7 +1061,35 @@ jobs:
           PY
           pin_required="$(<"${RUNNER_TEMP}/database-pin-required.txt")"
           expected_task_definition="${service_task_definition}"
+          expected_deployment_id="${initial_deployment_id}"
           if [ "${pin_required}" = "true" ]; then
+            aws ecs describe-services \
+              --cluster "${ECS_CLUSTER}" \
+              --services "${ECS_SERVICE}" \
+              --region "${AWS_REGION}" > "${RUNNER_TEMP}/database-prepin-service.json"
+            jq -e \
+              --arg expected "${service_task_definition}" \
+              --arg deployment_id "${initial_deployment_id}" \
+              --argjson desired "${desired}" '
+                (.failures | length) == 0
+                and (.services | length) == 1
+                and .services[0].status == "ACTIVE"
+                and .services[0].taskDefinition == $expected
+                and .services[0].desiredCount == $desired
+                and .services[0].runningCount == $desired
+                and .services[0].pendingCount == 0
+                and (.services[0].deployments | length) == 1
+                and .services[0].deployments[0].id == $deployment_id
+                and .services[0].deployments[0].status == "PRIMARY"
+                and .services[0].deployments[0].taskDefinition == $expected
+                and .services[0].deployments[0].desiredCount == $desired
+                and .services[0].deployments[0].runningCount == $desired
+                and .services[0].deployments[0].pendingCount == 0
+                and .services[0].deployments[0].rolloutState == "COMPLETED"
+                and .services[0].deploymentController.type == "ECS"
+                and .services[0].schedulingStrategy == "REPLICA"
+                and (.services[0].deploymentConfiguration.strategy // "ROLLING") == "ROLLING"
+              ' "${RUNNER_TEMP}/database-prepin-service.json" > /dev/null
             aws ecs register-task-definition \
               --cli-input-json "file://${RUNNER_TEMP}/pinned-service-task-definition.json" \
               --region "${AWS_REGION}" > "${RUNNER_TEMP}/registered-pinned-service-task.json"
@@ -1057,8 +1105,23 @@ jobs:
               --cluster "${ECS_CLUSTER}" \
               --service "${ECS_SERVICE}" \
               --task-definition "${expected_task_definition}" \
+              --force-new-deployment \
               --deployment-configuration "deploymentCircuitBreaker={enable=true,rollback=true}" \
               --region "${AWS_REGION}" > "${RUNNER_TEMP}/database-pin-update.json"
+            expected_deployment_id="$(
+              jq -r --arg expected "${expected_task_definition}" '
+                [
+                  .service.deployments[]
+                  | select(.status == "PRIMARY" and .taskDefinition == $expected)
+                ]
+                | if length == 1 then .[0].id else empty end
+              ' "${RUNNER_TEMP}/database-pin-update.json"
+            )"
+            if [ -z "${expected_deployment_id}" ] ||
+               [ "${expected_deployment_id}" = "${initial_deployment_id}" ]; then
+              printf "Database pinning did not start one fresh deployment.\n" >&2
+              exit 1
+            fi
           fi
           aws ecs wait services-stable \
             --cluster "${ECS_CLUSTER}" \
@@ -1068,47 +1131,45 @@ jobs:
             --cluster "${ECS_CLUSTER}" \
             --services "${ECS_SERVICE}" \
             --region "${AWS_REGION}" > "${RUNNER_TEMP}/production-service.json"
+          service_count="$(jq -r '.services | length' "${RUNNER_TEMP}/production-service.json")"
+          failure_count="$(jq -r '.failures | length' "${RUNNER_TEMP}/production-service.json")"
+          service_status="$(jq -r '.services[0].status // empty' "${RUNNER_TEMP}/production-service.json")"
           desired="$(jq -r '.services[0].desiredCount // 0' "${RUNNER_TEMP}/production-service.json")"
           running="$(jq -r '.services[0].runningCount // 0' "${RUNNER_TEMP}/production-service.json")"
           pending="$(jq -r '.services[0].pendingCount // 0' "${RUNNER_TEMP}/production-service.json")"
           deployments="$(jq -r '.services[0].deployments | length' "${RUNNER_TEMP}/production-service.json")"
           rollout_state="$(jq -r '.services[0].deployments[0].rolloutState // empty' "${RUNNER_TEMP}/production-service.json")"
+          deployment_id="$(jq -r '.services[0].deployments[0].id // empty' "${RUNNER_TEMP}/production-service.json")"
+          deployment_status="$(jq -r '.services[0].deployments[0].status // empty' "${RUNNER_TEMP}/production-service.json")"
+          deployment_task_definition="$(jq -r '.services[0].deployments[0].taskDefinition // empty' "${RUNNER_TEMP}/production-service.json")"
+          deployment_desired="$(jq -r '.services[0].deployments[0].desiredCount // 0' "${RUNNER_TEMP}/production-service.json")"
+          deployment_running="$(jq -r '.services[0].deployments[0].runningCount // 0' "${RUNNER_TEMP}/production-service.json")"
+          deployment_pending="$(jq -r '.services[0].deployments[0].pendingCount // 0' "${RUNNER_TEMP}/production-service.json")"
+          deployment_controller="$(jq -r '.services[0].deploymentController.type // empty' "${RUNNER_TEMP}/production-service.json")"
+          scheduling_strategy="$(jq -r '.services[0].schedulingStrategy // empty' "${RUNNER_TEMP}/production-service.json")"
+          deployment_strategy="$(jq -r '.services[0].deploymentConfiguration.strategy // "ROLLING"' "${RUNNER_TEMP}/production-service.json")"
           deployed_task_definition="$(jq -r '.services[0].taskDefinition // empty' "${RUNNER_TEMP}/production-service.json")"
           rollback_enabled="$(jq -r '.services[0].deploymentConfiguration.deploymentCircuitBreaker | .enable == true and .rollback == true' "${RUNNER_TEMP}/production-service.json")"
-          if [ "${desired}" = "0" ] || [ "${running}" != "${desired}" ] ||
+          if [ "${service_count}" != "1" ] || [ "${failure_count}" != "0" ] ||
+             [ "${service_status}" != "ACTIVE" ] ||
+             [ "${desired}" = "0" ] || [ "${running}" != "${desired}" ] ||
              [ "${pending}" != "0" ] || [ "${deployments}" != "1" ] ||
              [ "${rollout_state}" != "COMPLETED" ] ||
+             [ "${deployment_id}" != "${expected_deployment_id}" ] ||
+             [ "${deployment_status}" != "PRIMARY" ] ||
+             [ "${deployment_task_definition}" != "${expected_task_definition}" ] ||
+             [ "${deployment_desired}" != "${desired}" ] ||
+             [ "${deployment_running}" != "${desired}" ] ||
+             [ "${deployment_pending}" != "0" ] ||
+             [ "${deployment_controller}" != "ECS" ] ||
+             [ "${scheduling_strategy}" != "REPLICA" ] ||
+             [ "${deployment_strategy}" != "ROLLING" ] ||
              [ "${deployed_task_definition}" != "${expected_task_definition}" ]; then
             printf "Production service did not converge on the version-pinned database target.\n" >&2
             exit 1
           fi
           if [ "${pin_required}" = "true" ] && [ "${rollback_enabled}" != "true" ]; then
             printf "Explicit database adoption did not enable deployment-circuit-breaker rollback.\n" >&2
-            exit 1
-          fi
-          aws ecs list-tasks \
-            --cluster "${ECS_CLUSTER}" \
-            --service-name "${ECS_SERVICE}" \
-            --desired-status RUNNING \
-            --max-results 100 \
-            --region "${AWS_REGION}" > "${RUNNER_TEMP}/database-pin-task-arns.json"
-          listed="$(jq -r '.taskArns | length' "${RUNNER_TEMP}/database-pin-task-arns.json")"
-          next_token="$(jq -r '.nextToken // empty' "${RUNNER_TEMP}/database-pin-task-arns.json")"
-          if [ "${listed}" != "${desired}" ] || [ -n "${next_token}" ]; then
-            printf "Could not prove the complete version-pinned running task set.\n" >&2
-            exit 1
-          fi
-          jq -r '.taskArns[]' "${RUNNER_TEMP}/database-pin-task-arns.json" > "${RUNNER_TEMP}/database-pin-task-arns.txt"
-          aws ecs describe-tasks \
-            --cluster "${ECS_CLUSTER}" \
-            --tasks $(<"${RUNNER_TEMP}/database-pin-task-arns.txt") \
-            --region "${AWS_REGION}" > "${RUNNER_TEMP}/database-pin-tasks.json"
-          described="$(jq -r '.tasks | length' "${RUNNER_TEMP}/database-pin-tasks.json")"
-          task_failures="$(jq -r '.failures | length' "${RUNNER_TEMP}/database-pin-tasks.json")"
-          mismatches="$(jq --arg expected "${expected_task_definition}" '[.tasks[] | select(.lastStatus != "RUNNING" or .taskDefinitionArn != $expected)] | length' "${RUNNER_TEMP}/database-pin-tasks.json")"
-          if [ "${described}" != "${desired}" ] || [ "${task_failures}" != "0" ] ||
-             [ "${mismatches}" != "0" ]; then
-            printf "Not every running task uses the version-pinned task definition.\n" >&2
             exit 1
           fi
           aws ecs describe-task-definition \
@@ -1127,6 +1188,16 @@ jobs:
           if [ "${running_database_secret}" != "${pinned_database_secret_arn}" ]; then
             printf "Running service did not retain the exact pinned database secret version.\n" >&2
             exit 1
+          fi
+          if [ "${pin_required}" = "true" ]; then
+            run_metadata_probe \
+              "${RUNNER_TEMP}/database-secret-metadata-after-pin.json" after-pin
+            if ! cmp -s \
+              "${RUNNER_TEMP}/database-secret-metadata-receipt.json" \
+              "${RUNNER_TEMP}/database-secret-metadata-after-pin.json"; then
+              printf "Database secret metadata changed during pinning; migration was not started.\n" >&2
+              exit 1
+            fi
           fi
           jq -e '.services[0].networkConfiguration' \
             "${RUNNER_TEMP}/production-service.json" > "${RUNNER_TEMP}/migration-network.json"
@@ -1234,12 +1305,21 @@ jobs:
             --region "${AWS_REGION}" > "${service_json}"
           service_count="$(jq -r '.services | length' "${service_json}")"
           failure_count="$(jq -r '.failures | length' "${service_json}")"
+          service_status="$(jq -r '.services[0].status // empty' "${service_json}")"
           desired="$(jq -r '.services[0].desiredCount // 0' "${service_json}")"
           running="$(jq -r '.services[0].runningCount // 0' "${service_json}")"
           pending="$(jq -r '.services[0].pendingCount // 0' "${service_json}")"
           deployments="$(jq -r '.services[0].deployments | length' "${service_json}")"
           rollout_state="$(jq -r '.services[0].deployments[0].rolloutState // empty' "${service_json}")"
+          deployment_status="$(jq -r '.services[0].deployments[0].status // empty' "${service_json}")"
+          deployment_task_definition="$(jq -r '.services[0].deployments[0].taskDefinition // empty' "${service_json}")"
+          deployment_desired="$(jq -r '.services[0].deployments[0].desiredCount // 0' "${service_json}")"
+          deployment_running="$(jq -r '.services[0].deployments[0].runningCount // 0' "${service_json}")"
+          deployment_pending="$(jq -r '.services[0].deployments[0].pendingCount // 0' "${service_json}")"
+          finalize_deployment_id="$(jq -r '.services[0].deployments[0].id // empty' "${service_json}")"
           deployment_controller="$(jq -r '.services[0].deploymentController.type // empty' "${service_json}")"
+          scheduling_strategy="$(jq -r '.services[0].schedulingStrategy // empty' "${service_json}")"
+          deployment_strategy="$(jq -r '.services[0].deploymentConfiguration.strategy // "ROLLING"' "${service_json}")"
           rollback_enabled="$(jq -r '.services[0].deploymentConfiguration.deploymentCircuitBreaker | .enable == true and .rollback == true' "${service_json}")"
           service_task_definition="$(jq -r '.services[0].taskDefinition // empty' "${service_json}")"
           if [ "${service_task_definition}" != "${accepted_task_definition}" ]; then
@@ -1247,10 +1327,19 @@ jobs:
             exit 1
           fi
           if [ "${service_count}" != "1" ] || [ "${failure_count}" != "0" ] ||
+             [ "${service_status}" != "ACTIVE" ] ||
              [ "${desired}" = "0" ] || [ "${deployments}" != "1" ] ||
              [ "${pending}" != "0" ] || [ "${running}" != "${desired}" ] ||
              [ "${rollout_state}" != "COMPLETED" ] ||
+             [ "${deployment_status}" != "PRIMARY" ] ||
+             [ "${deployment_task_definition}" != "${service_task_definition}" ] ||
+             [ "${deployment_desired}" != "${desired}" ] ||
+             [ "${deployment_running}" != "${desired}" ] ||
+             [ "${deployment_pending}" != "0" ] ||
+             [ -z "${finalize_deployment_id}" ] ||
              [ "${deployment_controller}" != "ECS" ] ||
+             [ "${scheduling_strategy}" != "REPLICA" ] ||
+             [ "${deployment_strategy}" != "ROLLING" ] ||
              [ "${rollback_enabled}" != "true" ]; then
             printf "Finalize requires one stable completed ECS deployment.\n" >&2
             exit 1
@@ -1281,56 +1370,37 @@ jobs:
             printf "Finalize ref does not match the running production release.\n" >&2
             exit 1
           fi
-          aws ecs list-tasks \
-            --cluster "${ECS_CLUSTER}" \
-            --service-name "${ECS_SERVICE}" \
-            --desired-status RUNNING \
-            --max-results 100 \
-            --region "${AWS_REGION}" > "${RUNNER_TEMP}/running-task-arns.json"
-          running_task_count="$(jq -r '.taskArns | length' "${RUNNER_TEMP}/running-task-arns.json")"
-          next_token="$(jq -r '.nextToken // empty' "${RUNNER_TEMP}/running-task-arns.json")"
-          if [ "${running_task_count}" != "${desired}" ] ||
-             [ "${running_task_count}" = "0" ] || [ -n "${next_token}" ]; then
-            printf "Finalize could not prove the complete running task set.\n" >&2
-            exit 1
-          fi
-          jq -r '.taskArns[]' "${RUNNER_TEMP}/running-task-arns.json" > "${RUNNER_TEMP}/running-task-arns.txt"
-          aws ecs describe-tasks --cluster "${ECS_CLUSTER}" --tasks $(<"${RUNNER_TEMP}/running-task-arns.txt") --region "${AWS_REGION}" > "${RUNNER_TEMP}/running-tasks.json"
-          described_task_count="$(jq -r '.tasks | length' "${RUNNER_TEMP}/running-tasks.json")"
-          described_failure_count="$(jq -r '.failures | length' "${RUNNER_TEMP}/running-tasks.json")"
-          nonrunning_count="$(jq '[.tasks[] | select(.lastStatus != "RUNNING")] | length' "${RUNNER_TEMP}/running-tasks.json")"
-          if [ "${described_failure_count}" != "0" ] ||
-             [ "${described_task_count}" != "${desired}" ] || [ "${nonrunning_count}" != "0" ]; then
-            printf "Finalize could not revalidate every running production task.\n" >&2
-            exit 1
-          fi
-          mismatches="$(
-            jq --arg expected "${service_task_definition}" '[.tasks[] | select(.taskDefinitionArn != $expected)] | length' "${RUNNER_TEMP}/running-tasks.json"
-          )"
-          if [ "${mismatches}" != "0" ]; then
-            printf "Finalize found a running task on an older task definition.\n" >&2
-            exit 1
-          fi
           aws ecs describe-services \
             --cluster "${ECS_CLUSTER}" \
             --services "${ECS_SERVICE}" \
             --region "${AWS_REGION}" > "${RUNNER_TEMP}/finalize-service-after.json"
           jq -e \
             --arg expected "${service_task_definition}" \
+            --arg deployment_id "${finalize_deployment_id}" \
             --argjson desired "${desired}" '
               (.failures | length) == 0
               and (.services | length) == 1
+              and .services[0].status == "ACTIVE"
               and .services[0].taskDefinition == $expected
               and .services[0].desiredCount == $desired
               and .services[0].runningCount == $desired
               and .services[0].pendingCount == 0
               and (.services[0].deployments | length) == 1
+              and .services[0].deployments[0].id == $deployment_id
+              and .services[0].deployments[0].status == "PRIMARY"
+              and .services[0].deployments[0].taskDefinition == $expected
+              and .services[0].deployments[0].desiredCount == $desired
+              and .services[0].deployments[0].runningCount == $desired
+              and .services[0].deployments[0].pendingCount == 0
               and .services[0].deployments[0].rolloutState == "COMPLETED"
               and .services[0].deploymentController.type == "ECS"
+              and .services[0].schedulingStrategy == "REPLICA"
+              and (.services[0].deploymentConfiguration.strategy // "ROLLING") == "ROLLING"
               and .services[0].deploymentConfiguration.deploymentCircuitBreaker.enable == true
               and .services[0].deploymentConfiguration.deploymentCircuitBreaker.rollback == true
             ' "${RUNNER_TEMP}/finalize-service-after.json" > /dev/null
-          printf "Verified %s running task(s) on release %s.\n" "${running_task_count}" "${release}"
+          printf "Verified one converged deployment with %s running task(s) on release %s.\n" \
+            "${desired}" "${release}"
 
       - name: Run the migration task and publish a sanitized receipt
         shell: bash
@@ -1739,35 +1809,50 @@ jobs:
           aws ecs describe-services --cluster "${ECS_CLUSTER}" --services "${ECS_SERVICE}" --region "${AWS_REGION}" > "${RUNNER_TEMP}/deployed-service.json"
           service_count="$(jq -r '.services | length' "${RUNNER_TEMP}/deployed-service.json")"
           failure_count="$(jq -r '.failures | length' "${RUNNER_TEMP}/deployed-service.json")"
+          service_status="$(jq -r '.services[0].status // empty' "${RUNNER_TEMP}/deployed-service.json")"
           desired="$(jq -r '.services[0].desiredCount // 0' "${RUNNER_TEMP}/deployed-service.json")"
           running="$(jq -r '.services[0].runningCount // 0' "${RUNNER_TEMP}/deployed-service.json")"
           pending="$(jq -r '.services[0].pendingCount // 0' "${RUNNER_TEMP}/deployed-service.json")"
           deployments="$(jq -r '.services[0].deployments | length' "${RUNNER_TEMP}/deployed-service.json")"
           rollout_state="$(jq -r '.services[0].deployments[0].rolloutState // empty' "${RUNNER_TEMP}/deployed-service.json")"
+          deployment_id="$(jq -r '.services[0].deployments[0].id // empty' "${RUNNER_TEMP}/deployed-service.json")"
+          deployment_status="$(jq -r '.services[0].deployments[0].status // empty' "${RUNNER_TEMP}/deployed-service.json")"
+          deployment_task_definition="$(jq -r '.services[0].deployments[0].taskDefinition // empty' "${RUNNER_TEMP}/deployed-service.json")"
+          deployment_desired="$(jq -r '.services[0].deployments[0].desiredCount // 0' "${RUNNER_TEMP}/deployed-service.json")"
+          deployment_running="$(jq -r '.services[0].deployments[0].runningCount // 0' "${RUNNER_TEMP}/deployed-service.json")"
+          deployment_pending="$(jq -r '.services[0].deployments[0].pendingCount // 0' "${RUNNER_TEMP}/deployed-service.json")"
+          deployment_controller="$(jq -r '.services[0].deploymentController.type // empty' "${RUNNER_TEMP}/deployed-service.json")"
+          scheduling_strategy="$(jq -r '.services[0].schedulingStrategy // empty' "${RUNNER_TEMP}/deployed-service.json")"
+          deployment_strategy="$(jq -r '.services[0].deploymentConfiguration.strategy // "ROLLING"' "${RUNNER_TEMP}/deployed-service.json")"
+          rollback_enabled="$(jq -r '.services[0].deploymentConfiguration.deploymentCircuitBreaker | .enable == true and .rollback == true' "${RUNNER_TEMP}/deployed-service.json")"
           deployed_task_definition="$(jq -r '.services[0].taskDefinition // empty' "${RUNNER_TEMP}/deployed-service.json")"
+          expected_deployment_id="$(
+            jq -r --arg expected "${EXPECTED_TASK_DEFINITION}" '
+              [
+                .service.deployments[]
+                | select(.status == "PRIMARY" and .taskDefinition == $expected)
+              ]
+              | if length == 1 then .[0].id else empty end
+            ' "${RUNNER_TEMP}/deployment-request.json"
+          )"
           if [ "${service_count}" != "1" ] || [ "${failure_count}" != "0" ] ||
+             [ "${service_status}" != "ACTIVE" ] ||
              [ "${desired}" = "0" ] || [ "${running}" != "${desired}" ] ||
              [ "${pending}" != "0" ] || [ "${deployments}" != "1" ] ||
              [ "${rollout_state}" != "COMPLETED" ] ||
+             [ -z "${expected_deployment_id}" ] ||
+             [ "${deployment_id}" != "${expected_deployment_id}" ] ||
+             [ "${deployment_status}" != "PRIMARY" ] ||
+             [ "${deployment_task_definition}" != "${EXPECTED_TASK_DEFINITION}" ] ||
+             [ "${deployment_desired}" != "${desired}" ] ||
+             [ "${deployment_running}" != "${desired}" ] ||
+             [ "${deployment_pending}" != "0" ] ||
+             [ "${deployment_controller}" != "ECS" ] ||
+             [ "${scheduling_strategy}" != "REPLICA" ] ||
+             [ "${deployment_strategy}" != "ROLLING" ] ||
+             [ "${rollback_enabled}" != "true" ] ||
              [ "${deployed_task_definition}" != "${EXPECTED_TASK_DEFINITION}" ]; then
             printf "ECS did not converge on the requested release.\n" >&2
-            exit 1
-          fi
-          aws ecs list-tasks --cluster "${ECS_CLUSTER}" --service-name "${ECS_SERVICE}" --desired-status RUNNING --max-results 100 --region "${AWS_REGION}" > "${RUNNER_TEMP}/deployed-task-arns.json"
-          listed="$(jq -r '.taskArns | length' "${RUNNER_TEMP}/deployed-task-arns.json")"
-          next_token="$(jq -r '.nextToken // empty' "${RUNNER_TEMP}/deployed-task-arns.json")"
-          if [ "${listed}" != "${desired}" ] || [ -n "${next_token}" ]; then
-            printf "ECS did not return the complete deployed task set.\n" >&2
-            exit 1
-          fi
-          jq -r '.taskArns[]' "${RUNNER_TEMP}/deployed-task-arns.json" > "${RUNNER_TEMP}/deployed-task-arns.txt"
-          aws ecs describe-tasks --cluster "${ECS_CLUSTER}" --tasks $(<"${RUNNER_TEMP}/deployed-task-arns.txt") --region "${AWS_REGION}" > "${RUNNER_TEMP}/deployed-tasks.json"
-          described="$(jq -r '.tasks | length' "${RUNNER_TEMP}/deployed-tasks.json")"
-          task_failures="$(jq -r '.failures | length' "${RUNNER_TEMP}/deployed-tasks.json")"
-          mismatches="$(jq --arg expected "${EXPECTED_TASK_DEFINITION}" '[.tasks[] | select(.lastStatus != "RUNNING" or .taskDefinitionArn != $expected)] | length' "${RUNNER_TEMP}/deployed-tasks.json")"
-          if [ "${described}" != "${desired}" ] || [ "${task_failures}" != "0" ] ||
-             [ "${mismatches}" != "0" ]; then
-            printf "Not every running task uses the requested release.\n" >&2
             exit 1
           fi
           printf "ECS deployment receipt: release=%s task_definition=%s desired=%s running=%s.\n" \
