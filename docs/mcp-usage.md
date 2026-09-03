@@ -197,10 +197,10 @@ The MCP surface validates several Follow Up Boss contracts before making an upst
   `followupboss_create_deal` or `followupboss_update_deal`.
 - Call `outcome` must be one of `Interested`, `Not Interested`, `Left Message`, `No Answer`,
   `Busy`, or `Bad Number`.
-- The owned-task helpers expose task response fields such as `created`, `dueDateTime`, and
-  `person`; they reject unsupported projections such as `personName`. Task writes accept either
-  `assigned_user_id` or an assignee name, which is normalized and resolved to one exact active
-  user ID before the write.
+- The owned-task helpers expose task projections such as `created`, `dueDate`, and
+  `personId`; they reject unsupported projections such as `person`, `dueDateTime`, and
+  `personName`. Task writes accept either `assigned_user_id` or an assignee name, which
+  is normalized and resolved to one exact active user ID before the write.
 - `followupboss_list_text_messages` requires at least one identifying filter: `person_id`,
   `from_number`, or `to_number`.
 - `followupboss_list_uncontacted_leads` supports `updated` in its response projection in addition

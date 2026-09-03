@@ -3358,17 +3358,18 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert stub.task_list_requests[-1].due_start is not None
     assert stub.task_list_requests[-1].is_completed is False
     assert stub.task_list_requests[-1].limit == 10
-    assert ListMyTaskIntentToolInput(
-        fields=["id", "name", "created", "dueDate", "dueDateTime"]
-    ).fields == [
+    assert ListMyTaskIntentToolInput(fields=["id", "name", "created", "dueDate"]).fields == [
         "id",
         "name",
         "created",
         "dueDate",
-        "dueDateTime",
     ]
     with pytest.raises(ValidationError, match="personName"):
         ListMyTaskIntentToolInput(fields=["id", "personName"])
+    with pytest.raises(ValidationError, match="use 'personId'"):
+        ListMyTaskIntentToolInput(fields=["person"])
+    with pytest.raises(ValidationError, match="use 'dueDate'"):
+        ListMyTaskIntentToolInput(fields=["dueDateTime"])
     assert (await adapter.get_task(GetTaskToolInput(task_id=18)))["id"] == 18
     assert (
         await adapter.create_task(
@@ -4029,8 +4030,10 @@ async def test_task_and_call_tools_publish_documented_field_enums() -> None:
         "TaskProjectionField"
     ]["enum"]
     assert "created" in task_fields
-    assert "dueDateTime" in task_fields
-    assert "person" in task_fields
+    assert "dueDate" in task_fields
+    assert "personId" in task_fields
+    assert "dueDateTime" not in task_fields
+    assert "person" not in task_fields
     assert "personName" not in task_fields
 
     for tool_name in ("followupboss_create_deal", "followupboss_update_deal"):
@@ -4112,6 +4115,48 @@ def test_user_list_request_rejects_unsupported_projection_with_tool_guidance() -
         UserListRequest(fields=["id", "teams"])
     with pytest.raises(ValidationError, match="Invalid user fields: unsupported"):
         UserListRequest(fields=["unsupported"])
+
+
+def test_task_list_request_rejects_unsupported_projection_with_guidance() -> None:
+    """Unsupported task projections should fail locally before Follow Up Boss."""
+    assert TaskListRequest(fields=["id", "dueDate", "personId"]).fields == [
+        "id",
+        "dueDate",
+        "personId",
+    ]
+    with pytest.raises(ValidationError, match="use 'personId'"):
+        TaskListRequest(fields=["id", "person"])
+    with pytest.raises(ValidationError, match="use 'dueDate'"):
+        TaskListRequest(fields=["dueDateTime", "person"])
+    with pytest.raises(ValidationError, match="Invalid task fields: unsupported"):
+        TaskListRequest(fields=["unsupported"])
+
+
+@pytest.mark.asyncio
+async def test_list_my_overdue_tasks_rejects_invalid_projection_fields_locally() -> None:
+    """Owned-task helpers should reject invalid fields without calling Follow Up Boss."""
+    client = QueueClient([])
+    server = create_server(
+        FollowUpBossSettings.model_validate({"api_key": "key"}),
+        client=client,
+    )
+    tools = {tool.name: tool for tool in await server.list_tools()}
+
+    with pytest.raises(ToolError, match="person"):
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_my_overdue_tasks",
+            fields=["person"],
+        )
+    with pytest.raises(ToolError, match="dueDateTime"):
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_my_tasks_due_today",
+            fields=["dueDateTime", "person"],
+        )
+    assert client.calls == []
 
 
 @pytest.mark.asyncio
