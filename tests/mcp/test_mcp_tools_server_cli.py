@@ -3364,6 +3364,8 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         "created",
         "dueDate",
     ]
+    with pytest.raises(ValidationError):
+        ListMyTaskIntentToolInput.model_validate({"fields": ["id", 1]})
     with pytest.raises(ValidationError, match="personName"):
         ListMyTaskIntentToolInput(fields=["id", "personName"])
     with pytest.raises(ValidationError, match="use 'personId'"):
