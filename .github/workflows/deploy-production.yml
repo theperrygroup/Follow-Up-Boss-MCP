@@ -664,7 +664,14 @@ jobs:
               printf "Running service used an invalid database secret version reference.\n" >&2
               exit 1
             fi
-            metadata_probe_required="false"
+            # An interrupted first adoption can leave a pinned deployment before
+            # its metadata comparison succeeds. Explicit expand retries re-prove
+            # that target; later phases keep the pinned version authoritative.
+            if [ "${REQUESTED_OPERATION}" = "expand" ]; then
+              metadata_probe_required="true"
+            else
+              metadata_probe_required="false"
+            fi
           else
             printf "Running service used an unexpected database secret reference.\n" >&2
             exit 1
@@ -975,7 +982,7 @@ jobs:
                   "The running service still uses a bare database secret ARN; "
                   "dispatch the explicit expand operation to adopt its proven current version."
               )
-          if pin_required:
+          if pin_required or os.environ["REQUESTED_OPERATION"] == "expand":
               metadata = json.loads(
                   (temp / "database-secret-metadata.json").read_text(encoding="utf-8")
               )
@@ -1019,10 +1026,14 @@ jobs:
                   ) from exc
               if deployment_created < last_changed + 30:
                   raise SystemExit(
-                      "Bare database secret cannot be pinned because the running deployment "
+                      "Database secret cannot be adopted because the running deployment "
                       "predates the current version safety window."
                   )
               pinned_secret_arn = f"{base_secret_arn}:::{current_versions[0]}"
+              if not pin_required and pinned_secret_arn != running_secret_arn:
+                  raise SystemExit(
+                      "Explicit expand retry did not match the running pinned database version."
+                  )
           else:
               pinned_secret_arn = running_secret_arn
 
@@ -1127,6 +1138,9 @@ jobs:
             --cluster "${ECS_CLUSTER}" \
             --services "${ECS_SERVICE}" \
             --region "${AWS_REGION}"
+          # The AWS waiter does not require the deployment rollout to be COMPLETED.
+          convergence_deadline=$((SECONDS + 300))
+          while :; do
           aws ecs describe-services \
             --cluster "${ECS_CLUSTER}" \
             --services "${ECS_SERVICE}" \
@@ -1165,9 +1179,45 @@ jobs:
              [ "${scheduling_strategy}" != "REPLICA" ] ||
              [ "${deployment_strategy}" != "ROLLING" ] ||
              [ "${deployed_task_definition}" != "${expected_task_definition}" ]; then
-            printf "Production service did not converge on the version-pinned database target.\n" >&2
-            exit 1
+            if [ "${service_count}" != "1" ] || [ "${failure_count}" != "0" ] ||
+               [ "${service_status}" != "ACTIVE" ] || [ "${desired}" = "0" ] ||
+               [ "${deployments}" != "1" ] ||
+               [ "${deployment_id}" != "${expected_deployment_id}" ] ||
+               [ "${deployment_status}" != "PRIMARY" ] ||
+               [ "${deployment_task_definition}" != "${expected_task_definition}" ] ||
+               [ "${deployment_controller}" != "ECS" ] ||
+               [ "${scheduling_strategy}" != "REPLICA" ] ||
+               [ "${deployment_strategy}" != "ROLLING" ] ||
+               [ "${deployed_task_definition}" != "${expected_task_definition}" ] ||
+               { [ "${rollout_state}" != "IN_PROGRESS" ] && [ "${rollout_state}" != "COMPLETED" ]; } ||
+               [ "${SECONDS}" -ge "${convergence_deadline}" ]; then
+              jq -c --arg expected "${expected_task_definition}" --arg deployment_id "${expected_deployment_id}" '
+                {service_count: (.services | length), failure_count: (.failures | length),
+                 service_active: (.services[0].status == "ACTIVE"),
+                 task_definition_matches: (.services[0].taskDefinition == $expected),
+                 deployment_id_matches: (.services[0].deployments[0].id == $deployment_id),
+                 deployment_task_definition_matches: (.services[0].deployments[0].taskDefinition == $expected),
+                 deployment_primary: (.services[0].deployments[0].status == "PRIMARY"),
+                 rollout_completed: (.services[0].deployments[0].rolloutState == "COMPLETED"),
+                 rollout_in_progress: (.services[0].deployments[0].rolloutState == "IN_PROGRESS"),
+                 rollout_failed: (.services[0].deployments[0].rolloutState == "FAILED"),
+                 desired: .services[0].desiredCount, running: .services[0].runningCount,
+                 pending: .services[0].pendingCount, deployments: (.services[0].deployments | length),
+                 deployment_desired: .services[0].deployments[0].desiredCount,
+                 deployment_running: .services[0].deployments[0].runningCount,
+                 deployment_pending: .services[0].deployments[0].pendingCount,
+                 ecs_controller: (.services[0].deploymentController.type == "ECS"),
+                 replica_scheduler: (.services[0].schedulingStrategy == "REPLICA"),
+                 rolling_strategy: ((.services[0].deploymentConfiguration.strategy // "ROLLING") == "ROLLING")}
+              ' "${RUNNER_TEMP}/production-service.json" >&2
+              printf "Production service did not converge on the version-pinned database target.\n" >&2
+              exit 1
+            fi
+            sleep 15
+            continue
           fi
+          break
+          done
           if [ "${pin_required}" = "true" ] && [ "${rollback_enabled}" != "true" ]; then
             printf "Explicit database adoption did not enable deployment-circuit-breaker rollback.\n" >&2
             exit 1
@@ -1189,7 +1239,7 @@ jobs:
             printf "Running service did not retain the exact pinned database secret version.\n" >&2
             exit 1
           fi
-          if [ "${pin_required}" = "true" ]; then
+          if [ "${metadata_probe_required}" = "true" ]; then
             run_metadata_probe \
               "${RUNNER_TEMP}/database-secret-metadata-after-pin.json" after-pin
             if ! cmp -s \
@@ -1806,6 +1856,9 @@ jobs:
         env:
           EXPECTED_TASK_DEFINITION: ${{ steps.register-task.outputs.task_definition_arn }}
         run: |
+          # The AWS waiter does not require the deployment rollout to be COMPLETED.
+          convergence_deadline=$((SECONDS + 300))
+          while :; do
           aws ecs describe-services --cluster "${ECS_CLUSTER}" --services "${ECS_SERVICE}" --region "${AWS_REGION}" > "${RUNNER_TEMP}/deployed-service.json"
           service_count="$(jq -r '.services | length' "${RUNNER_TEMP}/deployed-service.json")"
           failure_count="$(jq -r '.failures | length' "${RUNNER_TEMP}/deployed-service.json")"
@@ -1852,9 +1905,47 @@ jobs:
              [ "${deployment_strategy}" != "ROLLING" ] ||
              [ "${rollback_enabled}" != "true" ] ||
              [ "${deployed_task_definition}" != "${EXPECTED_TASK_DEFINITION}" ]; then
-            printf "ECS did not converge on the requested release.\n" >&2
-            exit 1
+            if [ "${service_count}" != "1" ] || [ "${failure_count}" != "0" ] ||
+               [ "${service_status}" != "ACTIVE" ] || [ "${desired}" = "0" ] ||
+               [ "${deployments}" != "1" ] || [ -z "${expected_deployment_id}" ] ||
+               [ "${deployment_id}" != "${expected_deployment_id}" ] ||
+               [ "${deployment_status}" != "PRIMARY" ] ||
+               [ "${deployment_task_definition}" != "${EXPECTED_TASK_DEFINITION}" ] ||
+               [ "${deployment_controller}" != "ECS" ] ||
+               [ "${scheduling_strategy}" != "REPLICA" ] ||
+               [ "${deployment_strategy}" != "ROLLING" ] ||
+               [ "${rollback_enabled}" != "true" ] ||
+               [ "${deployed_task_definition}" != "${EXPECTED_TASK_DEFINITION}" ] ||
+               { [ "${rollout_state}" != "IN_PROGRESS" ] && [ "${rollout_state}" != "COMPLETED" ]; } ||
+               [ "${SECONDS}" -ge "${convergence_deadline}" ]; then
+              jq -c --arg expected "${EXPECTED_TASK_DEFINITION}" --arg deployment_id "${expected_deployment_id}" '
+                {service_count: (.services | length), failure_count: (.failures | length),
+                 service_active: (.services[0].status == "ACTIVE"),
+                 task_definition_matches: (.services[0].taskDefinition == $expected),
+                 deployment_id_matches: (.services[0].deployments[0].id == $deployment_id),
+                 deployment_task_definition_matches: (.services[0].deployments[0].taskDefinition == $expected),
+                 deployment_primary: (.services[0].deployments[0].status == "PRIMARY"),
+                 rollout_completed: (.services[0].deployments[0].rolloutState == "COMPLETED"),
+                 rollout_in_progress: (.services[0].deployments[0].rolloutState == "IN_PROGRESS"),
+                 rollout_failed: (.services[0].deployments[0].rolloutState == "FAILED"),
+                 desired: .services[0].desiredCount, running: .services[0].runningCount,
+                 pending: .services[0].pendingCount, deployments: (.services[0].deployments | length),
+                 deployment_desired: .services[0].deployments[0].desiredCount,
+                 deployment_running: .services[0].deployments[0].runningCount,
+                 deployment_pending: .services[0].deployments[0].pendingCount,
+                 ecs_controller: (.services[0].deploymentController.type == "ECS"),
+                 replica_scheduler: (.services[0].schedulingStrategy == "REPLICA"),
+                 rolling_strategy: ((.services[0].deploymentConfiguration.strategy // "ROLLING") == "ROLLING"),
+                 rollback_enabled: (.services[0].deploymentConfiguration.deploymentCircuitBreaker | .enable == true and .rollback == true)}
+              ' "${RUNNER_TEMP}/deployed-service.json" >&2
+              printf "ECS did not converge on the requested release.\n" >&2
+              exit 1
+            fi
+            sleep 15
+            continue
           fi
+          break
+          done
           printf "ECS deployment receipt: release=%s task_definition=%s desired=%s running=%s.\n" \
             "${GITHUB_SHA}" "${deployed_task_definition}" "${desired}" "${running}"
 
