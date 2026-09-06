@@ -1977,9 +1977,13 @@ jobs:
           issuer = f"{issuer_split.scheme}://{issuer_split.netloc}/"
           protected_url = f"{origin}/.well-known/oauth-protected-resource{split.path}"
           authorization_url = f"{issuer}.well-known/oauth-authorization-server"
+          probe_headers = {
+              "Accept": "application/json",
+              "User-Agent": "FollowUpBoss-MCP-Release-Validation/1.0",
+          }
 
           try:
-              urlopen(Request(resource, headers={"Accept": "application/json"}), timeout=15)
+              urlopen(Request(resource, headers=probe_headers), timeout=15)
           except HTTPError as exc:
               if exc.code != 401:
                   raise SystemExit(f"MCP bearer challenge returned HTTP {exc.code}.") from exc
@@ -1989,9 +1993,9 @@ jobs:
           if protected_url not in challenge:
               raise SystemExit("MCP bearer challenge advertised the wrong metadata URL.")
 
-          with urlopen(protected_url, timeout=15) as response:
+          with urlopen(Request(protected_url, headers=probe_headers), timeout=15) as response:
               protected = json.load(response)
-          with urlopen(authorization_url, timeout=15) as response:
+          with urlopen(Request(authorization_url, headers=probe_headers), timeout=15) as response:
               authorization = json.load(response)
           if protected.get("resource") != resource:
               raise SystemExit("Protected-resource metadata advertised the wrong resource.")
