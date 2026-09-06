@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
 from dataclasses import asdict
 from datetime import tzinfo
-from typing import Any, cast
+from typing import Any, NoReturn, cast
 from weakref import WeakKeyDictionary
 
 from pydantic import field_validator, model_validator
@@ -169,6 +169,7 @@ from followupboss_mcp.models.webhooks import (
 from followupboss_mcp.pagination import PageResult, PaginationMetadata
 from followupboss_mcp.task_intents import upcoming_task_due_start as _upcoming_task_due_start
 from followupboss_mcp.tenant_runtime import ServiceBundle, ServiceBundleResolver
+from mcp.server.mcpserver.exceptions import ToolError
 
 _ACTIVE_SERVICE_BUNDLE: ContextVar[ServiceBundle | None] = ContextVar(
     "followupboss_active_service_bundle",
@@ -1681,7 +1682,7 @@ class FollowUpBossToolAdapter:
                 )
             )
         except FollowUpBossError as exc:
-            raise RuntimeError(_mcp_safe_error(exc)) from exc
+            _raise_followupboss_tool_error(exc)
         return {
             "_metadata": asdict(page.metadata),
             "smartlist": smart_list.model_dump(
@@ -1731,7 +1732,7 @@ class FollowUpBossToolAdapter:
                 lambda: self._search_people_with_default_scope(request)
             )
         except FollowUpBossError as exc:
-            raise RuntimeError(_mcp_safe_error(exc)) from exc
+            _raise_followupboss_tool_error(exc)
 
         person = page.items[0] if page.items else None
         return {
@@ -2198,7 +2199,7 @@ class FollowUpBossToolAdapter:
         try:
             result = await self._execute_with_services(lambda: self._services.users.get_me())
         except FollowUpBossError as exc:
-            raise RuntimeError(_mcp_safe_error(exc)) from exc
+            _raise_followupboss_tool_error(exc)
         safe_result = result.redacted_for_mcp()
         return cast(
             dict[str, Any],
@@ -2432,7 +2433,7 @@ class FollowUpBossToolAdapter:
                     item.model_dump(mode="json", by_alias=True) for item in appointments.items
                 ]
         except FollowUpBossError as exc:
-            raise RuntimeError(_mcp_safe_error(exc)) from exc
+            _raise_followupboss_tool_error(exc)
 
         result["_metadata"] = metadata
         return result
@@ -3238,7 +3239,7 @@ class FollowUpBossToolAdapter:
         try:
             page = await self._execute_with_services(call)
         except FollowUpBossError as exc:
-            raise RuntimeError(_mcp_safe_error(exc)) from exc
+            _raise_followupboss_tool_error(exc)
         return {
             "_metadata": asdict(page.metadata),
             key: [item.model_dump(mode="json", by_alias=True) for item in page.items],
@@ -3249,7 +3250,7 @@ class FollowUpBossToolAdapter:
         try:
             result = cast(ResponseModel, await self._execute_with_services(call))
         except FollowUpBossError as exc:
-            raise RuntimeError(_mcp_safe_error(exc)) from exc
+            _raise_followupboss_tool_error(exc)
         return result.model_dump(
             mode="json",
             by_alias=True,
@@ -3268,7 +3269,7 @@ class FollowUpBossToolAdapter:
         try:
             await self._execute_with_services(call)
         except FollowUpBossError as exc:
-            raise RuntimeError(_mcp_safe_error(exc)) from exc
+            _raise_followupboss_tool_error(exc)
         return {"deleted": True, identifier_key: identifier_value}
 
     async def _execute_with_services(self, call: Callable[[], Awaitable[Any]]) -> Any:
@@ -3379,6 +3380,23 @@ def _mcp_safe_error(exc: FollowUpBossError) -> str:
     if isinstance(exc, FollowUpBossRateLimitError) and exc.retry_after_seconds is not None:
         return f"{exc} Retry after {exc.retry_after_seconds:.0f} seconds."
     return str(exc)
+
+
+def _raise_followupboss_tool_error(exc: FollowUpBossError) -> NoReturn:
+    """Raise an anticipated MCP ``ToolError`` for a Follow Up Boss API failure.
+
+    FastMCP SDK v2 treats non-``ToolError`` exceptions as unexpected crashes and
+    hides their messages from MCP clients. Follow Up Boss 4xx responses are
+    anticipated client or upstream outcomes, so they must surface as
+    ``ToolError``.
+
+    Args:
+        exc: The Follow Up Boss error to translate.
+
+    Raises:
+        ToolError: Always raised with a client-safe message.
+    """
+    raise ToolError(_mcp_safe_error(exc)) from exc
 
 
 def _uncommunicated_lead_fields(fields: list[str] | None) -> list[str]:
