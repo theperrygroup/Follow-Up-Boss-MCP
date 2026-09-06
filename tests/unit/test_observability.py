@@ -333,6 +333,97 @@ def test_before_send_drops_typed_expected_client_tool_errors(
     assert before_send(event, {"exc_info": object()}) is None
 
 
+def test_before_send_drops_adapter_translated_not_found_tool_errors() -> None:
+    """Adapter ToolError wrappers for Follow Up Boss 404s should be filtered."""
+    message = "Requested resource was not found."
+    event: dict[str, object] = {
+        "exception": {
+            "values": [
+                {
+                    "type": "FollowUpBossNotFoundError",
+                    "value": message,
+                    "mechanism": {"handled": True},
+                },
+                {
+                    "type": "ToolError",
+                    "value": message,
+                    "mechanism": {"handled": True},
+                },
+                {
+                    "type": "ToolError",
+                    "value": f"Error executing tool followupboss_get_user: {message}",
+                    "mechanism": {"handled": True},
+                },
+            ]
+        },
+    }
+
+    assert before_send(event, {"exc_info": object()}) is None
+
+
+def test_before_send_drops_adapter_only_not_found_tool_error() -> None:
+    """Adapter-translated 404 ToolErrors should be filtered without a FastMCP wrap."""
+    message = "Requested resource was not found."
+    event: dict[str, object] = {
+        "exception": {
+            "values": [
+                {
+                    "type": "FollowUpBossNotFoundError",
+                    "value": message,
+                    "mechanism": {"handled": True},
+                },
+                {
+                    "type": "ToolError",
+                    "value": message,
+                    "mechanism": {"handled": True},
+                },
+            ]
+        },
+    }
+
+    assert before_send(event, {"exc_info": object()}) is None
+
+
+def test_before_send_keeps_unexpected_tool_error_not_found_chain() -> None:
+    """SDK v2 crash wrappers around 404s should stay visible until translated."""
+    message = "Requested resource was not found."
+    event: dict[str, object] = {
+        "exception": {
+            "values": [
+                {
+                    "type": "FollowUpBossNotFoundError",
+                    "value": message,
+                    "mechanism": {"handled": True},
+                },
+                {
+                    "type": "RuntimeError",
+                    "value": message,
+                    "mechanism": {"handled": True},
+                    "stacktrace": {
+                        "frames": [
+                            {
+                                "module": "followupboss_mcp.mcp_tools",
+                                "function": "_single_result",
+                            }
+                        ]
+                    },
+                },
+                {
+                    "type": "UnexpectedToolError",
+                    "value": "Error executing tool followupboss_get_user",
+                    "mechanism": {"handled": True},
+                },
+            ]
+        },
+    }
+
+    result = before_send(event, {"exc_info": object()})
+
+    assert result is not None
+    tags = result.get("tags")
+    assert not isinstance(tags, dict) or "mcp_error_expected" not in tags
+
+
 def test_expected_typed_client_chain_rejects_invalid_wrapper_shapes() -> None:
     """Typed-client filtering should fail closed when the wrapper chain is malformed."""
     assert (
@@ -400,6 +491,24 @@ def test_expected_typed_client_chain_rejects_invalid_wrapper_shapes() -> None:
                 {
                     "type": "ToolError",
                     "value": "Tool failed without a parseable wrapper",
+                    "mechanism": {"handled": True},
+                },
+            ],
+            error_type="FollowUpBossNotFoundError",
+        )
+        is False
+    )
+    assert (
+        observability._is_expected_typed_client_chain(  # pyright: ignore[reportPrivateUsage]
+            [
+                {
+                    "type": "FollowUpBossNotFoundError",
+                    "value": "Requested resource was not found.",
+                    "mechanism": {"handled": True},
+                },
+                {
+                    "type": "ToolError",
+                    "value": "Error executing tool followupboss_get_user: something else",
                     "mechanism": {"handled": True},
                 },
             ],

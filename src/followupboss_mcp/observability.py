@@ -246,6 +246,45 @@ def _tool_error_name(values: list[SentryExceptionValue]) -> str | None:
     return None
 
 
+def _is_adapter_followupboss_tool_error(
+    value: SentryExceptionValue,
+    *,
+    root_message: str,
+) -> bool:
+    """Return whether a ToolError is the adapter translation of a Follow Up Boss error.
+
+    Args:
+        value: One Sentry exception value from the captured chain.
+        root_message: The Follow Up Boss error message that wrappers must preserve.
+
+    Returns:
+        ``True`` when the ToolError message is exactly the root Follow Up Boss
+        error, which is how ``_raise_followupboss_tool_error`` surfaces 4xx
+        failures before FastMCP wraps them.
+    """
+    return _exception_message(value) == root_message
+
+
+def _is_fastmcp_tool_error_wrapper(
+    value: SentryExceptionValue,
+    *,
+    root_message: str,
+) -> bool:
+    """Return whether a ToolError is FastMCP's anticipated-failure wrapper.
+
+    Args:
+        value: One Sentry exception value from the captured chain.
+        root_message: The Follow Up Boss error message that wrappers must preserve.
+
+    Returns:
+        ``True`` when the ToolError names an MCP tool and ends with the root
+        error message.
+    """
+    return _tool_error_name([value]) is not None and _exception_message(value).endswith(
+        f": {root_message}"
+    )
+
+
 def _is_expected_typed_client_chain(
     values: list[SentryExceptionValue],
     *,
@@ -276,8 +315,9 @@ def _is_expected_typed_client_chain(
             )
         ):
             return False
-        if error_name == "ToolError" and (
-            _tool_error_name([value]) is None or not message.endswith(f": {root_message}")
+        if error_name == "ToolError" and not (
+            _is_adapter_followupboss_tool_error(value, root_message=root_message)
+            or _is_fastmcp_tool_error_wrapper(value, root_message=root_message)
         ):
             return False
     return True

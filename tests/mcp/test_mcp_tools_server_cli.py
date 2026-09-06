@@ -20,6 +20,7 @@ from followupboss_mcp.cli import build_parser, main
 from followupboss_mcp.config import FollowUpBossSettings
 from followupboss_mcp.errors import (
     FollowUpBossError,
+    FollowUpBossNotFoundError,
     FollowUpBossRateLimitError,
     FollowUpBossValidationError,
 )
@@ -283,7 +284,7 @@ from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.streamable_http import streamable_http_client
 from mcp.server.lowlevel.helper_types import ReadResourceContents
-from mcp.server.mcpserver.exceptions import ToolError
+from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
 from mcp.types import GetPromptResult
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -3551,13 +3552,13 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         webhooks=services.webhooks,
     )
     adapter = FollowUpBossToolAdapter(failing)
-    with pytest.raises(RuntimeError, match="Retry after 9 seconds"):
+    with pytest.raises(ToolError, match="Retry after 9 seconds"):
         await adapter.get_identity()
-    with pytest.raises(RuntimeError, match="bad me"):
+    with pytest.raises(ToolError, match="bad me"):
         await adapter.get_me()
-    with pytest.raises(RuntimeError, match="bad people"):
+    with pytest.raises(ToolError, match="bad people"):
         await adapter.search_people(PeopleSearchRequest(include_ponds=True))
-    with pytest.raises(RuntimeError, match="bad delete"):
+    with pytest.raises(ToolError, match="bad delete"):
         await adapter.delete_note(DeleteNoteToolInput(note_id=1))
 
 
@@ -3891,8 +3892,8 @@ async def test_latest_lead_returns_none_when_owned_scope_is_empty() -> None:
 
 
 @pytest.mark.asyncio
-async def test_latest_lead_returns_safe_runtime_error_for_follow_up_boss_failures() -> None:
-    """Latest-lead helper should surface Follow Up Boss failures as safe runtime errors."""
+async def test_latest_lead_returns_tool_error_for_follow_up_boss_failures() -> None:
+    """Latest-lead helper should surface Follow Up Boss failures as MCP ToolErrors."""
     stub = StubBundle()
 
     async def failing_people_search(_: PeopleSearchRequest) -> PageResult[PersonRecord]:
@@ -3902,13 +3903,13 @@ async def test_latest_lead_returns_safe_runtime_error_for_follow_up_boss_failure
     services = replace(stub.bundle, people=_service_stub(search_people=failing_people_search))
     adapter = FollowUpBossToolAdapter(services)
 
-    with pytest.raises(RuntimeError, match="upstream exploded"):
+    with pytest.raises(ToolError, match="upstream exploded"):
         await adapter.get_latest_lead(GetLatestLeadToolInput())
 
 
 @pytest.mark.asyncio
-async def test_smart_list_helper_returns_safe_runtime_error_for_follow_up_boss_failures() -> None:
-    """Smart-list helper should surface Follow Up Boss failures as safe runtime errors."""
+async def test_smart_list_helper_returns_tool_error_for_follow_up_boss_failures() -> None:
+    """Smart-list helper should surface Follow Up Boss failures as MCP ToolErrors."""
     stub = StubBundle()
 
     async def failing_people_search(_: PeopleSearchRequest) -> PageResult[PersonRecord]:
@@ -3918,15 +3919,15 @@ async def test_smart_list_helper_returns_safe_runtime_error_for_follow_up_boss_f
     services = replace(stub.bundle, people=_service_stub(search_people=failing_people_search))
     adapter = FollowUpBossToolAdapter(services)
 
-    with pytest.raises(RuntimeError, match="upstream exploded"):
+    with pytest.raises(ToolError, match="upstream exploded"):
         await adapter.search_people_in_smart_list(
             SearchPeopleInSmartListToolInput(smart_list_name="Active Buyers")
         )
 
 
 @pytest.mark.asyncio
-async def test_person_activity_returns_safe_runtime_error_for_follow_up_boss_failures() -> None:
-    """Person-activity helper should surface Follow Up Boss failures as safe runtime errors."""
+async def test_person_activity_returns_tool_error_for_follow_up_boss_failures() -> None:
+    """Person-activity helper should surface Follow Up Boss failures as MCP ToolErrors."""
     stub = StubBundle()
 
     async def failing_people_get(
@@ -3940,7 +3941,7 @@ async def test_person_activity_returns_safe_runtime_error_for_follow_up_boss_fai
     services = replace(stub.bundle, people=_service_stub(get_person=failing_people_get))
     adapter = FollowUpBossToolAdapter(services)
 
-    with pytest.raises(RuntimeError, match="upstream exploded"):
+    with pytest.raises(ToolError, match="upstream exploded"):
         await adapter.list_person_activity(ListPersonActivityToolInput(person_id=42))
 
 
@@ -4112,6 +4113,52 @@ def test_user_list_request_rejects_unsupported_projection_with_tool_guidance() -
         UserListRequest(fields=["id", "teams"])
     with pytest.raises(ValidationError, match="Invalid user fields: unsupported"):
         UserListRequest(fields=["unsupported"])
+
+
+@pytest.mark.asyncio
+async def test_get_user_not_found_raises_anticipated_tool_error() -> None:
+    """A missing Follow Up Boss user should surface as an anticipated MCP ToolError."""
+
+    class MissingUserClient:
+        """Client stub that reproduces GET /users/{id} returning 404."""
+
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        async def aclose(self) -> None:
+            return None
+
+        async def request_json(
+            self,
+            method: str,
+            path: str,
+            *,
+            headers: Mapping[str, str] | None = None,
+            json_body: Mapping[str, object] | None = None,
+            params: Mapping[str, str] | None = None,
+        ) -> dict[str, object] | list[object]:
+            """Record the call and raise the production 404."""
+            del headers, json_body, params
+            if path == "/me":
+                return {"id": 0}
+            self.calls.append({"method": method, "path": path})
+            raise FollowUpBossNotFoundError(
+                "Requested resource was not found.",
+                status_code=404,
+            )
+
+    client = MissingUserClient()
+    server = create_server(
+        FollowUpBossSettings.model_validate({"api_key": "key"}),
+        client=client,
+    )
+    tools = {tool.name: tool for tool in await server.list_tools()}
+
+    with pytest.raises(ToolError, match="Requested resource was not found") as exc_info:
+        await _call_public_tool(server, tools, "followupboss_get_user", 364)
+
+    assert not isinstance(exc_info.value, UnexpectedToolError)
+    assert client.calls == [{"method": "GET", "path": "/users/364"}]
 
 
 @pytest.mark.asyncio
