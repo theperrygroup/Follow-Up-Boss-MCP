@@ -3552,13 +3552,13 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
         webhooks=services.webhooks,
     )
     adapter = FollowUpBossToolAdapter(failing)
-    with pytest.raises(ToolError, match="Retry after 9 seconds"):
+    with pytest.raises(RuntimeError, match="Retry after 9 seconds"):
         await adapter.get_identity()
-    with pytest.raises(ToolError, match="bad me"):
+    with pytest.raises(RuntimeError, match="bad me"):
         await adapter.get_me()
-    with pytest.raises(ToolError, match="bad people"):
+    with pytest.raises(RuntimeError, match="bad people"):
         await adapter.search_people(PeopleSearchRequest(include_ponds=True))
-    with pytest.raises(ToolError, match="bad delete"):
+    with pytest.raises(RuntimeError, match="bad delete"):
         await adapter.delete_note(DeleteNoteToolInput(note_id=1))
 
 
@@ -3892,8 +3892,8 @@ async def test_latest_lead_returns_none_when_owned_scope_is_empty() -> None:
 
 
 @pytest.mark.asyncio
-async def test_latest_lead_returns_tool_error_for_follow_up_boss_failures() -> None:
-    """Latest-lead helper should surface Follow Up Boss failures as MCP ToolErrors."""
+async def test_latest_lead_returns_safe_runtime_error_for_follow_up_boss_failures() -> None:
+    """Latest-lead helper should preserve unexpected Follow Up Boss failures."""
     stub = StubBundle()
 
     async def failing_people_search(_: PeopleSearchRequest) -> PageResult[PersonRecord]:
@@ -3903,13 +3903,13 @@ async def test_latest_lead_returns_tool_error_for_follow_up_boss_failures() -> N
     services = replace(stub.bundle, people=_service_stub(search_people=failing_people_search))
     adapter = FollowUpBossToolAdapter(services)
 
-    with pytest.raises(ToolError, match="upstream exploded"):
+    with pytest.raises(RuntimeError, match="upstream exploded"):
         await adapter.get_latest_lead(GetLatestLeadToolInput())
 
 
 @pytest.mark.asyncio
-async def test_smart_list_helper_returns_tool_error_for_follow_up_boss_failures() -> None:
-    """Smart-list helper should surface Follow Up Boss failures as MCP ToolErrors."""
+async def test_smart_list_helper_returns_safe_runtime_error_for_follow_up_boss_failures() -> None:
+    """Smart-list helper should preserve unexpected Follow Up Boss failures."""
     stub = StubBundle()
 
     async def failing_people_search(_: PeopleSearchRequest) -> PageResult[PersonRecord]:
@@ -3919,15 +3919,15 @@ async def test_smart_list_helper_returns_tool_error_for_follow_up_boss_failures(
     services = replace(stub.bundle, people=_service_stub(search_people=failing_people_search))
     adapter = FollowUpBossToolAdapter(services)
 
-    with pytest.raises(ToolError, match="upstream exploded"):
+    with pytest.raises(RuntimeError, match="upstream exploded"):
         await adapter.search_people_in_smart_list(
             SearchPeopleInSmartListToolInput(smart_list_name="Active Buyers")
         )
 
 
 @pytest.mark.asyncio
-async def test_person_activity_returns_tool_error_for_follow_up_boss_failures() -> None:
-    """Person-activity helper should surface Follow Up Boss failures as MCP ToolErrors."""
+async def test_person_activity_returns_safe_runtime_error_for_follow_up_boss_failures() -> None:
+    """Person-activity helper should preserve unexpected Follow Up Boss failures."""
     stub = StubBundle()
 
     async def failing_people_get(
@@ -3941,7 +3941,7 @@ async def test_person_activity_returns_tool_error_for_follow_up_boss_failures() 
     services = replace(stub.bundle, people=_service_stub(get_person=failing_people_get))
     adapter = FollowUpBossToolAdapter(services)
 
-    with pytest.raises(ToolError, match="upstream exploded"):
+    with pytest.raises(RuntimeError, match="upstream exploded"):
         await adapter.list_person_activity(ListPersonActivityToolInput(person_id=42))
 
 

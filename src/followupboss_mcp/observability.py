@@ -259,8 +259,8 @@ def _is_adapter_followupboss_tool_error(
 
     Returns:
         ``True`` when the ToolError message is exactly the root Follow Up Boss
-        error, which is how ``_raise_followupboss_tool_error`` surfaces 4xx
-        failures before FastMCP wraps them.
+        error, which is how ``_raise_followupboss_mcp_error`` surfaces typed
+        not-found and forbidden failures before FastMCP wraps them.
     """
     return _exception_message(value) == root_message
 
