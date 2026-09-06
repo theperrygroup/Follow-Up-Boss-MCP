@@ -620,6 +620,150 @@ def test_cimd_client_completes_post_auth_code_and_token_flow() -> None:
     assert store.access_tokens[0].resource == "https://mcp.example.com/mcp"
 
 
+@pytest.mark.parametrize("host", ["127.0.0.1", "[::1]", "localhost"])
+@pytest.mark.parametrize("portless_at_authorize", [True, False])
+@pytest.mark.parametrize("token_port", [":64627", ":64628", ""])
+def test_cimd_native_loopback_port_is_bound_through_callback_and_token_exchange(
+    host: str, portless_at_authorize: bool, token_port: str
+) -> None:
+    """Native CIMD callbacks allow a listening port but bind codes to that exact URI."""
+    client_id = "https://client.example.com/oauth/native-client.json"
+    registered_redirect = f"http://{host}/callback"
+    requested_redirect = f"http://{host}:64627/callback"
+    document = ClientIdMetadataDocument.model_validate(
+        {
+            "client_id": client_id,
+            "client_name": "Native MCP Client",
+            "redirect_uris": [registered_redirect],
+            "scope": "followupboss:mcp",
+        }
+    )
+    metadata_fetcher = FakeClientMetadataDocumentFetcher(
+        document
+        if portless_at_authorize
+        else document.model_copy(update={"redirect_uris": (requested_redirect,)})
+    )
+    client, store, _, _ = _app(client_metadata_fetcher=metadata_fetcher)
+    verifier = "native-loopback-verifier"
+    authorize = client.get(
+        "/oauth/authorize",
+        params={
+            "response_type": "code",
+            "client_id": client_id,
+            "redirect_uri": requested_redirect,
+            "scope": "followupboss:mcp",
+            "state": "native-client-state",
+            "code_challenge": _s256(verifier),
+            "code_challenge_method": "S256",
+            "resource": "https://mcp.example.com/mcp",
+        },
+        follow_redirects=False,
+    )
+    assert authorize.status_code == 307, authorize.text
+    assert metadata_fetcher.client_ids == [client_id]
+    fub_state = parse_qs(urlparse(authorize.headers["location"]).query)["state"][0]
+    assert store.pending[fub_state].redirect_uri == requested_redirect
+
+    # Callback validation must independently accept a portless registration.
+    metadata_fetcher.document = document
+    callback = client.get(
+        "/oauth/follow-up-boss/callback",
+        params={"state": fub_state, "response": "approved", "code": "fub-code"},
+        follow_redirects=False,
+    )
+    assert callback.status_code == 200, callback.text
+    assert metadata_fetcher.client_ids == [client_id, client_id]
+    assert "Local-app warning" in callback.text
+    assert callback.headers["cache-control"] == "no-store"
+    assert callback.headers["x-frame-options"] == "DENY"
+    confirmation = BeautifulSoup(callback.text, "html.parser")
+    continue_link = confirmation.find("a", attrs={"data-testid": "continue"})
+    assert continue_link is not None
+    callback_url = urlparse(str(continue_link["href"]))
+    assert callback_url._replace(query="").geturl() == requested_redirect
+    callback_query = parse_qs(callback_url.query)
+    assert callback_query["state"] == ["native-client-state"]
+    assert callback_query["iss"] == ["https://mcp.example.com/"]
+    assert next(iter(store.codes.values())).redirect_uri == requested_redirect
+
+    token = client.post(
+        "/oauth/token",
+        data={
+            "grant_type": "authorization_code",
+            "code": callback_query["code"][0],
+            "client_id": client_id,
+            "redirect_uri": f"http://{host}{token_port}/callback",
+            "code_verifier": verifier,
+            "resource": "https://mcp.example.com/mcp",
+        },
+    )
+    if token_port == ":64627":
+        assert token.status_code == 200
+        assert store.access_tokens[0].client_id == client_id
+        assert store.access_tokens[0].resource == "https://mcp.example.com/mcp"
+    else:
+        assert token.status_code == 400
+        assert token.json()["error"] == "invalid_grant"
+        assert store.access_tokens == []
+        assert store.refresh_tokens == {}
+
+
+@pytest.mark.parametrize("phase", ["authorize", "callback"])
+@pytest.mark.parametrize(
+    "registered_redirect",
+    ["http://localhost/callback", "http://127.0.0.1/different-callback"],
+)
+def test_cimd_native_loopback_port_does_not_relax_host_or_path(
+    phase: str, registered_redirect: str
+) -> None:
+    """The loopback-port allowance cannot authorize another host or callback path."""
+    client_id = "https://client.example.com/oauth/native-client.json"
+    requested_redirect = "http://127.0.0.1:64627/callback"
+    document = ClientIdMetadataDocument.model_validate(
+        {
+            "client_id": client_id,
+            "client_name": "Native MCP Client",
+            "redirect_uris": [registered_redirect],
+        }
+    )
+    metadata_fetcher = FakeClientMetadataDocumentFetcher(
+        document
+        if phase == "authorize"
+        else document.model_copy(update={"redirect_uris": (requested_redirect,)})
+    )
+    client, store, provisioner, _ = _app(client_metadata_fetcher=metadata_fetcher)
+    authorize = client.get(
+        "/oauth/authorize",
+        params={
+            "response_type": "code",
+            "client_id": client_id,
+            "redirect_uri": requested_redirect,
+            "code_challenge": "challenge",
+            "resource": "https://mcp.example.com/mcp",
+        },
+        follow_redirects=False,
+    )
+    if phase == "authorize":
+        assert authorize.status_code == 400
+        assert authorize.json()["error"] == "invalid_request"
+        assert "location" not in authorize.headers
+    else:
+        assert authorize.status_code == 307
+        fub_state = parse_qs(urlparse(authorize.headers["location"]).query)["state"][0]
+        metadata_fetcher.document = document
+        callback = client.get(
+            "/oauth/follow-up-boss/callback",
+            params={"state": fub_state, "response": "approved", "code": "fub-code"},
+            follow_redirects=False,
+        )
+        assert callback.status_code == 400
+        assert callback.text == "Invalid OAuth client redirect URI."
+        assert "location" not in callback.headers
+    assert store.pending == {}
+    assert store.codes == {}
+    assert provisioner.calls == []
+
+
 def test_cimd_callback_never_redirects_to_an_unvalidated_uri() -> None:
     """Authorization never leaves the server before the document validates the redirect."""
     client_id = "https://client.example.com/oauth/client.json"

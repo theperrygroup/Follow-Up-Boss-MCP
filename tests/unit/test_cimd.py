@@ -30,6 +30,77 @@ def _metadata_payload(client_id: str) -> dict[str, object]:
     }
 
 
+@pytest.mark.parametrize("host", ["127.0.0.1", "[::1]", "localhost"])
+@pytest.mark.parametrize("registered_port", ["", ":54321"])
+def test_metadata_allows_native_loopback_port_variation(host: str, registered_port: str) -> None:
+    """Native clients choose their listener port after metadata registration."""
+    document = ClientIdMetadataDocument.model_validate(
+        {
+            **_metadata_payload("https://chatgpt.com/oauth/codex/client.json"),
+            "redirect_uris": [f"http://{host}{registered_port}/callback?client=codex"],
+        }
+    )
+    assert document.allows_redirect_uri(f"http://{host}:64627/callback?client=codex")
+
+
+@pytest.mark.parametrize(
+    "redirect_uri",
+    [
+        "http://127.0.0.2:64627/callback",
+        "http://localhost:64627/callback",
+        "http://[::1]:64627/callback",
+        "https://127.0.0.1:64627/callback",
+        "http://127.0.0.1:64627/other",
+        "http://127.0.0.1:64627/callback/",
+        "http://127.0.0.1:64627/%63allback",
+        "http://127.0.0.1:64627/callback?",
+        "http://127.0.0.1:64627/callback?extra=1",
+        "http://127.0.0.1:64627/callback#",
+        "http://127.0.0.1:64627/callback#fragment",
+        "http://user@127.0.0.1:64627/callback",
+        "http://127.0.0.1:0/callback",
+        "http://127.0.0.1:/callback",
+        "http://127.0.0.1:65536/callback",
+        "http://127.0.0.1:bad/callback",
+        "http://127.0.0.1:64627/call\tback",
+        " http://127.0.0.1:64627/callback",
+        "HTTP://127.0.0.1:64627/callback",
+        "http://127.0.0.1:64627/callback\n",
+    ],
+)
+def test_metadata_loopback_exception_changes_only_the_port(redirect_uri: str) -> None:
+    """Port variance must never broaden a registered callback's destination."""
+    document = ClientIdMetadataDocument.model_validate(
+        {
+            **_metadata_payload("https://chatgpt.com/oauth/codex/client.json"),
+            "redirect_uris": ["http://127.0.0.1/callback"],
+        }
+    )
+    assert not document.allows_redirect_uri(redirect_uri)
+
+
+def test_metadata_https_redirect_ports_remain_exact() -> None:
+    """The native HTTP exception does not relax HTTPS callback registration."""
+    document = ClientIdMetadataDocument.model_validate(
+        _metadata_payload("https://client.example.com/oauth/client.json")
+    )
+    assert not document.allows_redirect_uri("https://client.example.com:443/oauth/callback")
+
+
+@pytest.mark.parametrize(
+    "redirect_uri", ["http://127.0.0.1/callback#", "https://client.example.com/callback#"]
+)
+def test_metadata_rejects_an_empty_redirect_fragment(redirect_uri: str) -> None:
+    """Even an empty fragment marker is forbidden in registered OAuth callbacks."""
+    with pytest.raises(ValidationError, match="redirect URI is invalid"):
+        ClientIdMetadataDocument.model_validate(
+            {
+                **_metadata_payload("https://client.example.com/oauth/client.json"),
+                "redirect_uris": [redirect_uri],
+            }
+        )
+
+
 async def _public_address(_: str, __: int) -> tuple[str, ...]:
     """Resolve test hostnames to a representative global address."""
     return ("93.184.216.34",)

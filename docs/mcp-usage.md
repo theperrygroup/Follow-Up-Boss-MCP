@@ -65,7 +65,11 @@ support. A client may therefore use an HTTPS metadata-document URL as its exact 
 without calling the deprecated dynamic registration endpoint first; existing DCR clients remain
 supported. During authorization, CIMD documents are fetched through DNS-pinned public addresses so
 the redirect is validated before the browser leaves for Follow Up Boss; the callback revalidates
-the document before releasing a code. Uncached discovery is limited per app instance to four
+the document before releasing a code. Native HTTP loopback redirects (IPv4, IPv6, or `localhost`)
+may select a different listener port at authorization time, as required by RFC 8252 and RFC 9700.
+All other URI bytes must still match, and token exchange requires the exact authorized URI,
+including its selected port. This registration rule applies to both CIMD and DCR clients.
+Uncached discovery is limited per app instance to four
 concurrent fetches and 32 admissions per minute. Redirects, special-use IP destinations, responses
 over 5 KiB, non-JSON or malformed documents, mismatched `client_id` values, unsafe redirect URIs,
 and secret-bearing client metadata fail closed. Valid results respect HTTP cache directives with a

@@ -128,8 +128,45 @@ class ClientIdMetadataDocument(BaseModel):
         return value
 
     def allows_redirect_uri(self, redirect_uri: str) -> bool:
-        """Return whether the request uses an exact registered redirect URI."""
-        return redirect_uri in self.redirect_uris
+        """Match a registered URI, allowing native HTTP loopback port selection."""
+        return oauth_redirect_uri_matches(redirect_uri, self.redirect_uris)
+
+
+def _loopback_redirect_without_port(redirect_uri: str) -> str | None:
+    """Remove only a valid HTTP loopback port, preserving all other URI bytes."""
+    if not redirect_uri.startswith("http://") or any(
+        ord(character) <= 0x20 or ord(character) == 0x7F or character == "\\"
+        for character in redirect_uri
+    ):
+        return None
+    try:
+        # This validator accepts HTTP only for literal loopback IPs or localhost.
+        validate_oauth_redirect_uri(redirect_uri)
+        parsed = urlsplit(redirect_uri)
+        port = parsed.port
+        if _port_is_explicit(parsed) and not port:
+            return None
+    except ValueError:
+        return None
+    authority = parsed.netloc if port is None else parsed.netloc.rsplit(":", 1)[0]
+    # Do not URL-normalize the path/query: even an empty '?' must remain distinct.
+    suffix = redirect_uri[len("http://") + len(parsed.netloc) :]
+    return f"http://{authority}{suffix}"
+
+
+def oauth_redirect_uri_matches(redirect_uri: str, registered_uris: Sequence[str]) -> bool:
+    """Apply exact registration matching except RFC 8252 native loopback ports.
+
+    This exception applies only to registration checks. Authorization codes must
+    remain bound to the exact requested URI, including the selected port.
+    """
+    if redirect_uri in registered_uris:
+        return True
+    loopback_uri = _loopback_redirect_without_port(redirect_uri)
+    return loopback_uri is not None and any(
+        loopback_uri == _loopback_redirect_without_port(registered_uri)
+        for registered_uri in registered_uris
+    )
 
 
 async def _resolve_addresses(host: str, port: int) -> tuple[str, ...]:
@@ -180,7 +217,7 @@ def validate_oauth_redirect_uri(redirect_uri: str) -> None:
         _ = parsed.port
     except ValueError as exc:
         raise ValueError("redirect URI is invalid.") from exc
-    if parsed.fragment or parsed.username is not None or parsed.password is not None:
+    if "#" in redirect_uri or parsed.username is not None or parsed.password is not None:
         raise ValueError("redirect URI is invalid.")
     host = parsed.hostname
     if not host:
@@ -448,6 +485,7 @@ __all__ = [
     "ClientIdMetadataDocumentError",
     "ClientIdMetadataDocumentFetcher",
     "ClientIdMetadataResolver",
+    "oauth_redirect_uri_matches",
     "validate_oauth_redirect_uri",
     "validate_client_id_metadata_document_url",
 ]

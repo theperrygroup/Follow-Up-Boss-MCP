@@ -31,6 +31,7 @@ from followupboss_mcp.cimd import (
     ClientIdMetadataDocumentError,
     ClientIdMetadataDocumentFetcher,
     ClientIdMetadataResolver,
+    oauth_redirect_uri_matches,
     validate_client_id_metadata_document_url,
     validate_oauth_redirect_uri,
 )
@@ -551,7 +552,7 @@ class HostedOAuthDynamicClient(BaseModel):
         Returns:
             `True` when the URI is registered.
         """
-        return redirect_uri in self.redirect_uris
+        return oauth_redirect_uri_matches(redirect_uri, self.redirect_uris)
 
 
 class HostedOAuthPendingAuthorization(BaseModel):
