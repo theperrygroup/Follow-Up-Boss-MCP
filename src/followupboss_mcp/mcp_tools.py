@@ -9,7 +9,7 @@ from datetime import tzinfo
 from typing import Any, cast
 from weakref import WeakKeyDictionary
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from followupboss_mcp.datetimes import (
     resolve_configured_timezone,
@@ -137,6 +137,7 @@ from followupboss_mcp.models.tasks import (
     TaskProjectionField,
     TaskRecord,
     UpdateTaskRequest,
+    validate_task_projection_fields,
 )
 from followupboss_mcp.models.team_inboxes import TeamInboxListRequest
 from followupboss_mcp.models.teams import (
@@ -683,10 +684,40 @@ class ListUncontactedLeadsToolInput(RequestModel):
 class ListMyTaskIntentToolInput(RequestModel):
     """Tool input for listing the authenticated user's intent-scoped tasks."""
 
-    fields: list[TaskProjectionField] | None = None
+    fields: list[TaskProjectionField] | None = Field(
+        default=None,
+        description=(
+            "Optional task response fields. Use personId for the related person; "
+            "person and dueDateTime are not task projections."
+        ),
+    )
     limit: int | None = None
     next_token: str | None = None
     offset: int | None = None
+
+    @field_validator("fields", mode="before")
+    @classmethod
+    def _validate_fields(cls, value: object) -> object:
+        """Reject task projections Follow Up Boss does not accept in ``fields``.
+
+        Args:
+            value: Raw field list supplied by the MCP caller.
+
+        Returns:
+            The original value when it is not a list of strings, or the list
+            after validating each name against Follow Up Boss task projections.
+
+        Raises:
+            ValueError: If one or more projection fields are not accepted by
+                Follow Up Boss ``GET /tasks``.
+        """
+        if not isinstance(value, list):
+            return value
+        fields = [item for item in value if isinstance(item, str)]
+        if len(fields) != len(value):
+            return value
+        validate_task_projection_fields(fields)
+        return value
 
 
 class ListActiveDealsForPersonToolInput(RequestModel):
