@@ -4130,6 +4130,8 @@ def test_task_list_request_rejects_unsupported_projection_with_guidance() -> Non
         TaskListRequest(fields=["id", "person"])
     with pytest.raises(ValidationError, match="use 'dueDate'"):
         TaskListRequest(fields=["dueDateTime", "person"])
+    with pytest.raises(ValidationError, match="use 'dueDate'"):
+        TaskListRequest(fields=["id", "name", "dueDateTime", "personId"])
     with pytest.raises(ValidationError, match="Invalid task fields: unsupported"):
         TaskListRequest(fields=["unsupported"])
 
@@ -4157,6 +4159,13 @@ async def test_list_my_overdue_tasks_rejects_invalid_projection_fields_locally()
             tools,
             "followupboss_list_my_tasks_due_today",
             fields=["dueDateTime", "person"],
+        )
+    with pytest.raises(ToolError, match="dueDateTime"):
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_my_upcoming_tasks",
+            fields=["id", "name", "dueDateTime", "personId"],
         )
     assert client.calls == []
 
