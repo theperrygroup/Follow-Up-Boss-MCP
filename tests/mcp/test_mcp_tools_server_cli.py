@@ -4162,6 +4162,52 @@ async def test_get_user_not_found_raises_anticipated_tool_error() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_automation_not_found_raises_anticipated_tool_error() -> None:
+    """A missing Follow Up Boss automation should surface as an anticipated MCP ToolError."""
+
+    class MissingAutomationClient:
+        """Client stub that reproduces GET /automations/{id} returning 404."""
+
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        async def aclose(self) -> None:
+            return None
+
+        async def request_json(
+            self,
+            method: str,
+            path: str,
+            *,
+            headers: Mapping[str, str] | None = None,
+            json_body: Mapping[str, object] | None = None,
+            params: Mapping[str, str] | None = None,
+        ) -> dict[str, object] | list[object]:
+            """Record the call and raise the production 404."""
+            del headers, json_body, params
+            if path == "/me":
+                return {"id": 0}
+            self.calls.append({"method": method, "path": path})
+            raise FollowUpBossNotFoundError(
+                "Requested resource was not found.",
+                status_code=404,
+            )
+
+    client = MissingAutomationClient()
+    server = create_server(
+        FollowUpBossSettings.model_validate({"api_key": "key"}),
+        client=client,
+    )
+    tools = {tool.name: tool for tool in await server.list_tools()}
+
+    with pytest.raises(ToolError, match="Requested resource was not found") as exc_info:
+        await _call_public_tool(server, tools, "followupboss_get_automation", 99)
+
+    assert not isinstance(exc_info.value, UnexpectedToolError)
+    assert client.calls == [{"method": "GET", "path": "/automations/99"}]
+
+
+@pytest.mark.asyncio
 async def test_text_message_list_request_requires_an_identifying_filter() -> None:
     """Broad text-message collection reads should fail before reaching Follow Up Boss."""
     client = QueueClient(

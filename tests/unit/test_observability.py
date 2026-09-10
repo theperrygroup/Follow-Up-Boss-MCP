@@ -333,7 +333,11 @@ def test_before_send_drops_typed_expected_client_tool_errors(
     assert before_send(event, {"exc_info": object()}) is None
 
 
-def test_before_send_drops_adapter_translated_not_found_tool_errors() -> None:
+@pytest.mark.parametrize(
+    "tool_name",
+    ["followupboss_get_user", "followupboss_get_automation"],
+)
+def test_before_send_drops_adapter_translated_not_found_tool_errors(tool_name: str) -> None:
     """Adapter ToolError wrappers for Follow Up Boss 404s should be filtered."""
     message = "Requested resource was not found."
     event: dict[str, object] = {
@@ -351,7 +355,7 @@ def test_before_send_drops_adapter_translated_not_found_tool_errors() -> None:
                 },
                 {
                     "type": "ToolError",
-                    "value": f"Error executing tool followupboss_get_user: {message}",
+                    "value": f"Error executing tool {tool_name}: {message}",
                     "mechanism": {"handled": True},
                 },
             ]
@@ -384,7 +388,11 @@ def test_before_send_drops_adapter_only_not_found_tool_error() -> None:
     assert before_send(event, {"exc_info": object()}) is None
 
 
-def test_before_send_keeps_unexpected_tool_error_not_found_chain() -> None:
+@pytest.mark.parametrize(
+    "tool_name",
+    ["followupboss_get_user", "followupboss_get_automation"],
+)
+def test_before_send_keeps_unexpected_tool_error_not_found_chain(tool_name: str) -> None:
     """SDK v2 crash wrappers around 404s should stay visible until translated."""
     message = "Requested resource was not found."
     event: dict[str, object] = {
@@ -410,7 +418,7 @@ def test_before_send_keeps_unexpected_tool_error_not_found_chain() -> None:
                 },
                 {
                     "type": "UnexpectedToolError",
-                    "value": "Error executing tool followupboss_get_user",
+                    "value": f"Error executing tool {tool_name}",
                     "mechanism": {"handled": True},
                 },
             ]
