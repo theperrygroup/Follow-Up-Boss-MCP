@@ -17,21 +17,84 @@ type TaskProjectionField = Literal[
     "created",
     "createdBy",
     "dueDate",
-    "dueDateTime",
     "id",
     "isCompleted",
     "name",
-    "person",
     "personId",
     "type",
     "updated",
     "updatedBy",
 ]
 
+_TASK_PROJECTION_FIELDS = frozenset(
+    {
+        "assignedTo",
+        "assignedUserId",
+        "completed",
+        "created",
+        "createdBy",
+        "dueDate",
+        "id",
+        "isCompleted",
+        "name",
+        "personId",
+        "type",
+        "updated",
+        "updatedBy",
+    }
+)
+_TASK_FIELD_CORRECTIONS = {
+    "dueDateTime": "'dueDateTime' is not a task projection; use 'dueDate'.",
+    "person": "'person' is not a task projection; use 'personId'.",
+}
+
+
+def validate_task_projection_fields(value: list[str] | None) -> list[str] | None:
+    """Validate Follow Up Boss task ``fields`` query projections.
+
+    Follow Up Boss accepts a ``fields`` parameter on ``GET /tasks``, but it
+    rejects nested and some response-only names such as ``person`` and
+    ``dueDateTime``. Those names remain valid on task records when ``fields`` is
+    omitted.
+
+    Args:
+        value: Optional field names requested by the caller.
+
+    Returns:
+        The original field list when every field is a supported task projection.
+
+    Raises:
+        ValueError: If one or more projection fields are not accepted by
+            Follow Up Boss ``GET /tasks``.
+    """
+    if value is None:
+        return None
+    invalid_fields = sorted(set(value) - _TASK_PROJECTION_FIELDS)
+    if invalid_fields:
+        corrections = [
+            _TASK_FIELD_CORRECTIONS[field]
+            for field in invalid_fields
+            if field in _TASK_FIELD_CORRECTIONS
+        ]
+        correction_text = f" {' '.join(corrections)}" if corrections else ""
+        allowed_fields = ", ".join(sorted(_TASK_PROJECTION_FIELDS))
+        invalid = ", ".join(invalid_fields)
+        raise ValueError(
+            f"Invalid task fields: {invalid}. Allowed fields: {allowed_fields}.{correction_text}"
+        )
+    return value
+
 
 class TaskListRequest(CommonListQuery):
     """Search filters for the tasks collection."""
 
+    fields: list[str] | None = Field(
+        default=None,
+        description=(
+            "Optional task response fields. Use personId for the related person; "
+            "person and dueDateTime are not task projections."
+        ),
+    )
     assigned_to: str | None = Field(default=None, serialization_alias="assignedTo")
     assigned_user_id: int | None = Field(default=None, serialization_alias="assignedUserId")
     due: str | None = None
@@ -41,6 +104,24 @@ class TaskListRequest(CommonListQuery):
     name: str | None = None
     person_id: int | None = Field(default=None, serialization_alias="personId")
     type: list[str] | None = None
+
+    @field_validator("fields")
+    @classmethod
+    def _validate_fields(cls, value: list[str] | None) -> list[str] | None:
+        """Validate task projection fields before querying Follow Up Boss.
+
+        Args:
+            value: Optional field names requested by the caller.
+
+        Returns:
+            The original field list when every field is a supported task
+            projection.
+
+        Raises:
+            ValueError: If one or more projection fields are not accepted by
+                Follow Up Boss ``GET /tasks``.
+        """
+        return validate_task_projection_fields(value)
 
     @model_validator(mode="after")
     def _normalize_datetimes_to_utc(self) -> TaskListRequest:
