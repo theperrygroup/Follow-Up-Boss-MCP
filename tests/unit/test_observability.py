@@ -335,7 +335,7 @@ def test_before_send_drops_typed_expected_client_tool_errors(
 
 @pytest.mark.parametrize(
     "tool_name",
-    ["followupboss_get_user", "followupboss_get_automation"],
+    ["followupboss_get_user", "followupboss_get_automation", "followupboss_add_note"],
 )
 def test_before_send_drops_adapter_translated_not_found_tool_errors(tool_name: str) -> None:
     """Adapter ToolError wrappers for Follow Up Boss 404s should be filtered."""
@@ -390,7 +390,7 @@ def test_before_send_drops_adapter_only_not_found_tool_error() -> None:
 
 @pytest.mark.parametrize(
     "tool_name",
-    ["followupboss_get_user", "followupboss_get_automation"],
+    ["followupboss_get_user", "followupboss_get_automation", "followupboss_add_note"],
 )
 def test_before_send_keeps_unexpected_tool_error_not_found_chain(tool_name: str) -> None:
     """SDK v2 crash wrappers around 404s should stay visible until translated."""
