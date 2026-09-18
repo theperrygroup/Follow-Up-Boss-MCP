@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any, cast
 
 import pytest
@@ -11,6 +12,7 @@ from followupboss_mcp import observability
 from followupboss_mcp.config import SentrySettings
 from followupboss_mcp.observability import (
     before_send,
+    before_send_transaction,
     capture_sentry_exception,
     capture_sentry_message,
     configure_sentry,
@@ -149,6 +151,125 @@ def test_sanitize_sentry_event_redacts_secrets_and_customer_payloads() -> None:
     assert extra["items"] == [{"note": "***redacted***"}, "kept-scalar"]
 
     assert before_send(event, {"exc_info": object()}) == sanitized
+
+
+def test_before_send_transaction_redacts_mcp_request_arguments_across_event_shape() -> None:
+    """Transaction scrubbing should redact MCP input values without losing trace metadata."""
+    event: dict[str, object] = {
+        "type": "transaction",
+        "transaction": "tools/call followupboss_create_task",
+        "transaction_info": {"source": "custom"},
+        "contexts": {
+            "trace": {
+                "trace_id": "trace-id",
+                "span_id": "root-span-id",
+                "op": "mcp.server",
+                "status": "ok",
+                "data": {
+                    "mcp.method.name": "tools/call",
+                    "mcp.tool.name": "followupboss_create_task",
+                    "mcp.request.argument.subject": "PRIVATE_TRACE_SUBJECT",
+                    "mcp.request.argument.payload": {
+                        "email": "PRIVATE_TRACE_EMAIL",
+                    },
+                    "safe.trace.detail": "retained-trace-detail",
+                },
+            },
+            "runtime": {"name": "CPython", "version": "3.13"},
+        },
+        "extra": {
+            "nested": {
+                "mcp.request.argument.note": "PRIVATE_NESTED_NOTE",
+                "safe.extra.detail": "retained-extra-detail",
+            }
+        },
+        "spans": [
+            {
+                "span_id": "mcp-span-id",
+                "parent_span_id": "root-span-id",
+                "op": "mcp.server",
+                "description": "tools/call followupboss_create_task",
+                "data": {
+                    "mcp.request.argument.person_id": 123,
+                    "MCP.REQUEST.ARGUMENT.phone": "PRIVATE_SPAN_PHONE",
+                    "mcp.tool.name": "followupboss_create_task",
+                    "safe.span.detail": "retained-span-detail",
+                },
+            },
+            {
+                "span_id": "nested-span-id",
+                "op": "db",
+                "data": {
+                    "db.system": "postgresql",
+                    "nested": [
+                        {
+                            "mcp.request.argument.address": "PRIVATE_NESTED_ADDRESS",
+                            "safe.nested.detail": "retained-nested-detail",
+                        }
+                    ],
+                },
+            },
+        ],
+    }
+
+    result = before_send_transaction(event, {"exc_info": object()})
+
+    assert result is not None
+    assert result is not event
+    assert result["transaction"] == "tools/call followupboss_create_task"
+    assert result["transaction_info"] == {"source": "custom"}
+    contexts = result["contexts"]
+    assert isinstance(contexts, dict)
+    trace = contexts["trace"]
+    assert isinstance(trace, dict)
+    assert trace["trace_id"] == "trace-id"
+    assert trace["span_id"] == "root-span-id"
+    assert trace["op"] == "mcp.server"
+    trace_data = trace["data"]
+    assert isinstance(trace_data, dict)
+    assert trace_data["mcp.method.name"] == "tools/call"
+    assert trace_data["mcp.tool.name"] == "followupboss_create_task"
+    assert trace_data["mcp.request.argument.subject"] == "***redacted***"
+    assert trace_data["mcp.request.argument.payload"] == "***redacted***"
+    assert trace_data["safe.trace.detail"] == "retained-trace-detail"
+    extra = result["extra"]
+    assert isinstance(extra, dict)
+    nested_extra = extra["nested"]
+    assert isinstance(nested_extra, dict)
+    assert nested_extra["mcp.request.argument.note"] == "***redacted***"
+    assert nested_extra["safe.extra.detail"] == "retained-extra-detail"
+    spans = result["spans"]
+    assert isinstance(spans, list)
+    first_span = spans[0]
+    assert isinstance(first_span, dict)
+    assert first_span["op"] == "mcp.server"
+    first_span_data = first_span["data"]
+    assert isinstance(first_span_data, dict)
+    assert first_span_data["mcp.request.argument.person_id"] == "***redacted***"
+    assert first_span_data["MCP.REQUEST.ARGUMENT.phone"] == "***redacted***"
+    assert first_span_data["mcp.tool.name"] == "followupboss_create_task"
+    assert first_span_data["safe.span.detail"] == "retained-span-detail"
+    second_span = spans[1]
+    assert isinstance(second_span, dict)
+    second_span_data = second_span["data"]
+    assert isinstance(second_span_data, dict)
+    nested_data = second_span_data["nested"]
+    assert isinstance(nested_data, list)
+    nested_item = nested_data[0]
+    assert isinstance(nested_item, dict)
+    assert nested_item["mcp.request.argument.address"] == "***redacted***"
+    assert nested_item["safe.nested.detail"] == "retained-nested-detail"
+    assert event["spans"] != spans
+    assert "PRIVATE_TRACE_SUBJECT" in json.dumps(event, sort_keys=True)
+    serialized_result = json.dumps(result, sort_keys=True)
+    for raw_argument_value in (
+        "PRIVATE_TRACE_SUBJECT",
+        "PRIVATE_TRACE_EMAIL",
+        "PRIVATE_NESTED_NOTE",
+        "PRIVATE_SPAN_PHONE",
+        "PRIVATE_NESTED_ADDRESS",
+    ):
+        assert raw_argument_value not in serialized_result
 
 
 def test_before_send_drops_local_request_validation_errors() -> None:
@@ -1128,6 +1249,7 @@ def test_configure_sentry_initializes_once_and_sets_safe_options(
     assert init_kwargs["include_local_variables"] is False
     assert init_kwargs["max_request_body_size"] == "never"
     assert init_kwargs["before_send"] is before_send
+    assert init_kwargs["before_send_transaction"] is before_send_transaction
     assert init_kwargs["in_app_include"] == ["followupboss_mcp"]
     assert tag_calls == [
         ("entrypoint", "followupboss-mcp-hosted"),

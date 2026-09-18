@@ -4088,6 +4088,210 @@ async def test_public_create_task_resolves_assignee_name_to_id() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("smart_lists", "message"),
+    [
+        ([], r"Smart list named 'Missing List' was not found"),
+        (
+            [
+                {"id": 74, "name": "Active Buyers"},
+                {"id": 75, "name": " active buyers "},
+            ],
+            r"ambiguous; matched IDs \[74, 75\]",
+        ),
+    ],
+)
+async def test_public_smart_list_name_lookup_errors_are_anticipated_tool_errors(
+    smart_lists: list[dict[str, object]],
+    message: str,
+) -> None:
+    """Named smart-list misses and collisions should be caller-correctable failures."""
+    client = QueueClient(
+        [
+            {
+                "_metadata": {"limit": 100, "offset": 0, "total": len(smart_lists)},
+                "smartlists": smart_lists,
+            }
+        ]
+    )
+    server = create_server(
+        FollowUpBossSettings.model_validate({"api_key": "key"}),
+        client=client,
+    )
+    tools = {tool.name: tool for tool in await server.list_tools()}
+
+    with pytest.raises(ToolError, match=message) as exc_info:
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_search_people_in_smart_list",
+            smart_list_name="Missing List" if not smart_lists else "Active Buyers",
+        )
+
+    assert not isinstance(exc_info.value, UnexpectedToolError)
+    assert [call["path"] for call in client.calls] == ["/smartLists"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("users", "message"),
+    [
+        (
+            [{"id": 6, "name": "Geordi", "status": "Deleted"}],
+            r"Active Follow Up Boss user named 'Geordi' was not found",
+        ),
+        (
+            [
+                {"id": 6, "name": "Geordi", "status": "Active"},
+                {"id": 7, "name": "Geordi", "status": "Active"},
+            ],
+            r"ambiguous; matched IDs \[6, 7\]",
+        ),
+    ],
+)
+async def test_public_smart_list_owner_lookup_errors_are_anticipated_tool_errors(
+    users: list[dict[str, object]],
+    message: str,
+) -> None:
+    """Named smart-list owner misses and collisions should not become server errors."""
+    client = QueueClient(
+        [
+            {
+                "_metadata": {"limit": 100, "offset": 0, "total": 1},
+                "smartlists": [{"id": 74, "name": "Active Buyers"}],
+            },
+            {
+                "_metadata": {"limit": 100, "offset": 0, "total": len(users)},
+                "users": users,
+            },
+        ]
+    )
+    server = create_server(
+        FollowUpBossSettings.model_validate({"api_key": "key"}),
+        client=client,
+    )
+    tools = {tool.name: tool for tool in await server.list_tools()}
+
+    with pytest.raises(ToolError, match=message) as exc_info:
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_search_people_in_smart_list",
+            smart_list_name="Active Buyers",
+            assigned_user_name="Geordi",
+        )
+
+    assert not isinstance(exc_info.value, UnexpectedToolError)
+    assert [call["path"] for call in client.calls] == ["/smartLists", "/users"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("users", "message"),
+    [
+        (
+            [{"id": 6, "name": "Geordi", "status": "Deleted"}],
+            r"Active Follow Up Boss user named 'Geordi' was not found",
+        ),
+        (
+            [
+                {"id": 6, "name": "Geordi", "status": "Active"},
+                {"id": 7, "name": "Geordi", "status": "Active"},
+            ],
+            r"ambiguous; matched IDs \[6, 7\]",
+        ),
+    ],
+)
+async def test_public_uncontacted_owner_lookup_errors_are_anticipated_tool_errors(
+    users: list[dict[str, object]],
+    message: str,
+) -> None:
+    """Uncontacted-lead owner lookup misses and collisions should be recoverable."""
+    client = QueueClient(
+        [
+            {
+                "_metadata": {"limit": 100, "offset": 0, "total": len(users)},
+                "users": users,
+            }
+        ]
+    )
+    server = create_server(
+        FollowUpBossSettings.model_validate({"api_key": "key"}),
+        client=client,
+    )
+    tools = {tool.name: tool for tool in await server.list_tools()}
+
+    with pytest.raises(ToolError, match=message) as exc_info:
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_uncontacted_leads",
+            assigned_user_name="Geordi",
+        )
+
+    assert not isinstance(exc_info.value, UnexpectedToolError)
+    assert [call["path"] for call in client.calls] == ["/users"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool_name", "tool_arguments"),
+    [
+        ("followupboss_create_task", (1,)),
+        ("followupboss_update_task", (19,)),
+    ],
+)
+@pytest.mark.parametrize(
+    ("users", "message"),
+    [
+        (
+            [{"id": 6, "name": "Geordi", "status": "Deleted"}],
+            r"Active Follow Up Boss user named 'Geordi' was not found",
+        ),
+        (
+            [
+                {"id": 6, "name": "Geordi", "status": "Active"},
+                {"id": 7, "name": "Geordi", "status": "Active"},
+            ],
+            r"ambiguous; matched IDs \[6, 7\]",
+        ),
+    ],
+)
+async def test_public_task_assignee_lookup_errors_are_anticipated_tool_errors(
+    tool_name: str,
+    tool_arguments: tuple[int, ...],
+    users: list[dict[str, object]],
+    message: str,
+) -> None:
+    """Task-assignee lookup misses and collisions should be caller-correctable."""
+    client = QueueClient(
+        [
+            {
+                "_metadata": {"limit": 100, "offset": 0, "total": len(users)},
+                "users": users,
+            }
+        ]
+    )
+    server = create_server(
+        FollowUpBossSettings.model_validate({"api_key": "key"}),
+        client=client,
+    )
+    tools = {tool.name: tool for tool in await server.list_tools()}
+
+    with pytest.raises(ToolError, match=message) as exc_info:
+        await _call_public_tool(
+            server,
+            tools,
+            tool_name,
+            *tool_arguments,
+            assigned_to="Geordi",
+        )
+
+    assert not isinstance(exc_info.value, UnexpectedToolError)
+    assert [call["path"] for call in client.calls] == ["/me", "/users"]
+
+
+@pytest.mark.asyncio
 async def test_list_users_accepts_documented_comma_separated_projection_fields() -> None:
     """The public users tool should normalize documented comma-separated fields."""
     client = QueueClient(
