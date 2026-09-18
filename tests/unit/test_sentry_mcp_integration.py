@@ -21,8 +21,12 @@ from mcp.client.session import ClientSession
 _REDACTED = "***redacted***"
 
 
-class OfflineSmartListClient:
-    """Return a deterministic empty smart-list collection without network access."""
+class OfflineExpectedErrorClient:
+    """Serve only the read endpoints needed by expected-error protocol calls."""
+
+    def __init__(self) -> None:
+        """Capture every request so error paths prove their side-effect boundary."""
+        self.calls: list[tuple[str, str]] = []
 
     async def aclose(self) -> None:
         """Implement the client lifecycle expected by the project server."""
@@ -37,13 +41,17 @@ class OfflineSmartListClient:
         json_body: Mapping[str, object] | None = None,
         params: Mapping[str, str] | None = None,
     ) -> dict[str, object] | list[object]:
-        """Serve the one local lookup request used by this regression."""
-        del method, headers, json_body, params
-        assert path == "/smartLists"
-        return {
-            "_metadata": {"limit": 100, "offset": 0, "total": 0},
-            "smartlists": [],
-        }
+        """Return only deterministic identity or empty-smart-list responses."""
+        del headers, json_body, params
+        self.calls.append((method, path))
+        if path == "/smartLists":
+            return {
+                "_metadata": {"limit": 100, "offset": 0, "total": 0},
+                "smartlists": [],
+            }
+        if path == "/identity":
+            return {"id": 1}
+        raise AssertionError(f"Unexpected Follow Up Boss request: {method} {path}")
 
 
 def _transaction_payloads(envelopes: list[Envelope]) -> list[dict[str, object]]:
@@ -74,10 +82,72 @@ def _mcp_argument_values(payload: object) -> list[object]:
 
 
 @pytest.mark.asyncio
-async def test_sentry_mcp_integration_handles_local_lookup_errors_over_the_protocol(
+@pytest.mark.parametrize(
+    ("tool_name", "arguments", "expected_message", "expected_calls"),
+    [
+        (
+            "followupboss_search_people_in_smart_list",
+            {"smart_list_name": "Missing confidential smart list"},
+            "Missing confidential smart list",
+            [("GET", "/smartLists")],
+        ),
+        (
+            "followupboss_list_uncontacted_leads",
+            {"next_token": "scan:1:not-a-number"},
+            "Uncontacted lead pagination token is invalid",
+            [],
+        ),
+        (
+            "followupboss_list_uncontacted_leads",
+            {"next_token": "scan:²:1"},
+            "Uncontacted lead pagination token is invalid",
+            [],
+        ),
+        (
+            "followupboss_list_uncontacted_leads",
+            {"next_token": "9" * 5000},
+            "Uncontacted lead pagination token is invalid",
+            [],
+        ),
+        (
+            "followupboss_create_pipeline",
+            {"name": "Malformed pipeline", "stages": [{"id": "not-an-int"}]},
+            "stages.0.id",
+            [],
+        ),
+        (
+            "followupboss_update_pipeline",
+            {"pipeline_id": 9, "stages": [{"id": "not-an-int"}]},
+            "stages.0.id",
+            [],
+        ),
+        (
+            "followupboss_create_call",
+            {
+                "person_id": 99,
+                "phone": "555-2222",
+                "is_incoming": False,
+                "user_id": 999,
+            },
+            "Call logs must be attributed to the authenticated Follow Up Boss user.",
+            [("GET", "/identity")],
+        ),
+        (
+            "followupboss_update_call",
+            {"call_id": 12, "user_id": 999},
+            "Call logs must remain attributed to the authenticated Follow Up Boss user.",
+            [("GET", "/identity")],
+        ),
+    ],
+)
+async def test_sentry_mcp_integration_keeps_expected_caller_errors_event_free_over_the_protocol(
     monkeypatch: pytest.MonkeyPatch,
+    tool_name: str,
+    arguments: dict[str, object],
+    expected_message: str,
+    expected_calls: list[tuple[str, str]],
 ) -> None:
-    """Expected MCP lookup failures stay actionable, event-free, and privacy-safe."""
+    """Expected MCP caller errors stay actionable, event-free, and privacy-safe."""
     captured_envelopes: list[Envelope] = []
     original_init = cast(Callable[..., object], sentry_sdk.init)
 
@@ -93,7 +163,6 @@ async def test_sentry_mcp_integration_handles_local_lookup_errors_over_the_proto
         kwargs["transport"] = InMemorySentryTransport
         return original_init(*args, **kwargs)
 
-    missing_smart_list_name = "Missing confidential smart list"
     monkeypatch.setattr(observability, "_SENTRY_INITIALIZED", False)
     monkeypatch.setattr(sentry_sdk, "init", init_with_in_memory_transport)
     sentry_settings = SentrySettings.model_validate(
@@ -107,9 +176,10 @@ async def test_sentry_mcp_integration_handles_local_lookup_errors_over_the_proto
         assert configure_sentry(sentry_settings, entrypoint="sentry-mcp-integration-test") is True
         assert sentry_sdk.get_client().get_integration(MCPIntegration) is not None
 
+        client = OfflineExpectedErrorClient()
         server = create_server(
             FollowUpBossSettings.model_validate({"api_key": "offline-test-key"}),
-            client=OfflineSmartListClient(),
+            client=client,
             sentry_settings=sentry_settings,
         )
 
@@ -117,16 +187,16 @@ async def test_sentry_mcp_integration_handles_local_lookup_errors_over_the_proto
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
                 result = await session.call_tool(
-                    "followupboss_search_people_in_smart_list",
-                    {"smart_list_name": missing_smart_list_name},
+                    tool_name,
+                    arguments,
                 )
 
         assert result.is_error is True
         assert len(result.content) == 1
         content = result.content[0]
         assert content.type == "text"
-        assert missing_smart_list_name in content.text
-        assert "was not found" in content.text
+        assert expected_message in content.text
+        assert client.calls == expected_calls
 
         sentry_sdk.flush()
         assert all(

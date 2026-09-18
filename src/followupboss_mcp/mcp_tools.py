@@ -222,6 +222,16 @@ _UNCOMMUNICATED_LEAD_MAX_SCAN_PAGES = 10
 _UNCOMMUNICATED_LEAD_TOKEN_PREFIX = "scan:"
 
 
+class LocalInputError(ToolError, RuntimeError):
+    """Represent a caller-correctable MCP-local input or policy failure.
+
+    The adapter historically exposes these failures as ``RuntimeError``.
+    Extending ``ToolError`` as well preserves that adapter contract while
+    allowing FastMCP to return an anticipated tool failure instead of
+    classifying it as an unexpected server error.
+    """
+
+
 class LocalLookupError(ToolError, RuntimeError):
     """Represent a missing or ambiguous MCP-local lookup result.
 
@@ -2838,7 +2848,7 @@ class FollowUpBossToolAdapter:
         """
         user_id = await self._authenticated_user_id()
         if tool_input.user_id is not None and tool_input.user_id != user_id:
-            raise RuntimeError(
+            raise LocalInputError(
                 "Call logs must be attributed to the authenticated Follow Up Boss user."
             )
         return tool_input.model_copy(update={"user_id": user_id})
@@ -2862,7 +2872,7 @@ class FollowUpBossToolAdapter:
         if tool_input.user_id is not None:
             user_id = await self._authenticated_user_id()
             if tool_input.user_id != user_id:
-                raise RuntimeError(
+                raise LocalInputError(
                     "Call logs must remain attributed to the authenticated Follow Up Boss user."
                 )
         return UpdateCallRequest.model_validate(tool_input.model_dump(exclude={"call_id"}))
@@ -3352,9 +3362,9 @@ async def _list_uncontacted_leads_page(
         A page of people whose `lastCommunication` is empty, plus continuation
         metadata when more raw results may need scanning.
     """
+    page_offset, fetch_offset, remaining_skip = _uncommunicated_lead_scan_state(tool_input)
     assigned_user_id = await tool_input.resolved_assigned_user_id(services)
     requested_fields = _uncommunicated_lead_fields(tool_input.fields)
-    page_offset, fetch_offset, remaining_skip = _uncommunicated_lead_scan_state(tool_input)
     page_limit = tool_input.limit or 25
     matches: list[PersonRecord] = []
     pages_scanned = 0
@@ -3490,20 +3500,26 @@ def _uncommunicated_lead_scan_state(
         search offset to start scanning from, and filtered matches to skip.
 
     Raises:
-        RuntimeError: If the supplied continuation token cannot be parsed.
+        LocalInputError: If the supplied continuation token cannot be parsed.
     """
     if tool_input.next_token is None:
         offset = tool_input.offset or 0
         return offset, 0, offset
-    if tool_input.next_token.isdigit():
-        offset = int(tool_input.next_token)
+    if tool_input.next_token.isascii() and tool_input.next_token.isdigit():
+        try:
+            offset = int(tool_input.next_token)
+        except ValueError as exc:
+            raise LocalInputError("Uncontacted lead pagination token is invalid.") from exc
         return offset, 0, offset
     if not tool_input.next_token.startswith(_UNCOMMUNICATED_LEAD_TOKEN_PREFIX):
-        raise RuntimeError("Uncontacted lead pagination token is invalid.")
+        raise LocalInputError("Uncontacted lead pagination token is invalid.")
     token_parts = tool_input.next_token.removeprefix(_UNCOMMUNICATED_LEAD_TOKEN_PREFIX).split(":")
-    if len(token_parts) != 2 or not all(part.isdigit() for part in token_parts):
-        raise RuntimeError("Uncontacted lead pagination token is invalid.")
-    raw_offset, filtered_offset = (int(part) for part in token_parts)
+    if len(token_parts) != 2 or not all(part.isascii() and part.isdigit() for part in token_parts):
+        raise LocalInputError("Uncontacted lead pagination token is invalid.")
+    try:
+        raw_offset, filtered_offset = (int(part) for part in token_parts)
+    except ValueError as exc:
+        raise LocalInputError("Uncontacted lead pagination token is invalid.") from exc
     return filtered_offset, raw_offset, 0
 
 

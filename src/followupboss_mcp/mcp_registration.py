@@ -173,7 +173,6 @@ from followupboss_mcp.models.people_relationships import (
 from followupboss_mcp.models.pipelines import (
     CreatePipelineRequest,
     PipelineListRequest,
-    PipelineStageInput,
 )
 from followupboss_mcp.models.ponds import CreatePondRequest, PondListRequest
 from followupboss_mcp.models.reactions import ReactionRefType
@@ -2272,17 +2271,7 @@ def _register_pipeline_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -
         order_weight: int | None = None,
         stages: list[dict[str, object]] | None = None,
     ) -> dict[str, object]:
-        stage_inputs = (
-            [PipelineStageInput.model_validate(stage) for stage in stages]
-            if stages is not None
-            else None
-        )
-        return await adapter.create_pipeline(
-            _validated_request(
-                CreatePipelineRequest,
-                {**locals(), "stages": stage_inputs},
-            )
-        )
+        return await adapter.create_pipeline(_validated_request(CreatePipelineRequest, locals()))
 
     @mcp.tool(
         name="followupboss_update_pipeline",
@@ -2298,17 +2287,7 @@ def _register_pipeline_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -
         order_weight: int | None = None,
         stages: list[dict[str, object]] | None = None,
     ) -> dict[str, object]:
-        stage_inputs = (
-            [PipelineStageInput.model_validate(stage) for stage in stages]
-            if stages is not None
-            else None
-        )
-        return await adapter.update_pipeline(
-            _validated_request(
-                UpdatePipelineToolInput,
-                {**locals(), "stages": stage_inputs},
-            )
-        )
+        return await adapter.update_pipeline(_validated_request(UpdatePipelineToolInput, locals()))
 
     @mcp.tool(
         name="followupboss_delete_pipeline",
