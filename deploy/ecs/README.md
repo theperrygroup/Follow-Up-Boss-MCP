@@ -35,7 +35,7 @@ Before registering the task definition, replace the placeholders below:
 | `__IMAGE_URI__` | Full ECR image URI, including tag. |
 | `__LOG_GROUP_NAME__` | CloudWatch Logs group name for the ECS service. |
 | `__REDIS_URL_SECRET_ARN__` | Secrets Manager ARN whose secret string is the complete Redis URL. |
-| `__SENTRY_DSN__` | Sentry project DSN for hosted error monitoring. Leave empty to disable Sentry. |
+| `__SENTRY_DSN__` | Sentry project DSN for hosted error monitoring. The production workflow requires a non-empty value; non-production or local renderings may leave it empty to disable Sentry. |
 | `__SENTRY_ENVIRONMENT__` | Sentry environment name. The hosted MCP deployment uses `production`. |
 | `__SENTRY_RELEASE__` | Sentry release identifier, usually package version plus Git SHA. |
 | `__SENTRY_TRACES_SAMPLE_RATE__` | Optional Sentry trace sample rate between `0.0` and `1.0`; leave empty to disable tracing. |
@@ -154,8 +154,8 @@ variables:
 - `HOSTED_ISSUER_URL`
 - `HOSTED_RESOURCE_SERVER_URL`
 - `LOG_GROUP_NAME`
-- `SENTRY_DSN` (optional; omit or leave empty to disable Sentry)
-- `SENTRY_ENVIRONMENT` (optional; defaults to `production` in the production workflow)
+- `SENTRY_DSN` (required; the production workflow rejects an empty value)
+- `SENTRY_ENVIRONMENT` (optional; defaults to lowercase `production` in the production workflow and must be lowercase `production` when set)
 - `SENTRY_TRACES_SAMPLE_RATE` (optional; leave empty to disable tracing)
 - `TENANT_SECRET_PREFIX`
 - `TENANT_SECRET_REGION`

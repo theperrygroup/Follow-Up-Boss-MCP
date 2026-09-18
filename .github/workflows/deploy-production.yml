@@ -126,6 +126,9 @@ jobs:
             HOSTED_ISSUER_URL
             HOSTED_RESOURCE_SERVER_URL
             LOG_GROUP_NAME
+            SENTRY_DSN
+            SENTRY_ENVIRONMENT
+            SENTRY_RELEASE
             TENANT_SECRET_PREFIX
             TENANT_SECRET_REGION
             AWS_ROLE_TO_ASSUME
@@ -145,9 +148,12 @@ jobs:
             printf "DEPLOYMENT_ENVIRONMENT must be production.\n" >&2
             exit 1
           fi
-          sentry_environment="$(printf "%s" "${SENTRY_ENVIRONMENT:-production}" | tr '[:upper:]' '[:lower:]')"
-          if [ "${sentry_environment}" != "production" ]; then
+          if [ "${SENTRY_ENVIRONMENT}" != "production" ]; then
             printf "SENTRY_ENVIRONMENT must be production for the hosted MCP deployment.\n" >&2
+            exit 1
+          fi
+          if [ -z "$(printf '%s' "${SENTRY_DSN}" | tr -d '[:space:]')" ]; then
+            printf "SENTRY_DSN must be non-empty.\n" >&2
             exit 1
           fi
           python - <<'PY'
@@ -1748,11 +1754,9 @@ jobs:
               "__IMAGE_URI__": os.environ["IMAGE_URI"],
               "__LOG_GROUP_NAME__": os.environ["LOG_GROUP_NAME"],
               "__REDIS_URL_SECRET_ARN__": os.environ["REDIS_URL_SECRET_ARN"],
-              "__SENTRY_DSN__": os.environ.get("SENTRY_DSN", ""),
-              "__SENTRY_ENVIRONMENT__": os.environ.get("SENTRY_ENVIRONMENT")
-              or "production",
-              "__SENTRY_RELEASE__": os.environ.get("SENTRY_RELEASE")
-              or f"followupboss-mcp@{os.environ['GITHUB_SHA']}",
+              "__SENTRY_DSN__": os.environ["SENTRY_DSN"],
+              "__SENTRY_ENVIRONMENT__": os.environ["SENTRY_ENVIRONMENT"],
+              "__SENTRY_RELEASE__": os.environ["SENTRY_RELEASE"],
               "__SENTRY_TRACES_SAMPLE_RATE__": os.environ.get("SENTRY_TRACES_SAMPLE_RATE", ""),
               "__TASK_EXECUTION_ROLE_ARN__": os.environ["TASK_EXECUTION_ROLE_ARN"],
               "__TASK_ROLE_ARN__": os.environ["TASK_ROLE_ARN"],
@@ -1808,6 +1812,66 @@ jobs:
           if missing:
               raise SystemExit(f"Unrendered ECS placeholders remain: {missing}")
           rendered_path.write_text(rendered_text, encoding="utf-8")
+          PY
+
+      - name: Verify rendered Sentry release configuration
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hmac
+          import json
+          import os
+          from pathlib import Path
+
+          failure_message = "Rendered task definition did not retain required Sentry configuration."
+
+          def fail() -> None:
+              raise SystemExit(failure_message)
+
+          expected_sentry_dsn = os.environ["SENTRY_DSN"].strip()
+          if (
+              not expected_sentry_dsn
+              or os.environ["SENTRY_ENVIRONMENT"] != "production"
+              or os.environ["SENTRY_RELEASE"] != f"followupboss-mcp@{os.environ['GITHUB_SHA']}"
+          ):
+              fail()
+
+          payload = json.loads(
+              Path("deploy/ecs/task-definition.rendered.json").read_text(encoding="utf-8")
+          )
+          if not isinstance(payload, dict):
+              fail()
+          container_definitions = payload.get("containerDefinitions")
+          if not isinstance(container_definitions, list):
+              fail()
+          containers = [
+              item
+              for item in container_definitions
+              if isinstance(item, dict) and item.get("name") == "followupboss-mcp-hosted"
+          ]
+          if len(containers) != 1:
+              fail()
+          environment = containers[0].get("environment")
+          if not isinstance(environment, list):
+              fail()
+          sentry_values: dict[str, object] = {}
+          for entry in environment:
+              if not isinstance(entry, dict):
+                  fail()
+              name = entry.get("name")
+              if name in {"SENTRY_DSN", "SENTRY_ENVIRONMENT", "SENTRY_RELEASE"}:
+                  if name in sentry_values:
+                      fail()
+                  sentry_values[name] = entry.get("value")
+          rendered_sentry_dsn = sentry_values.get("SENTRY_DSN")
+          if (
+              not isinstance(rendered_sentry_dsn, str)
+              or not rendered_sentry_dsn.strip()
+              or not hmac.compare_digest(rendered_sentry_dsn.strip(), expected_sentry_dsn)
+              or sentry_values.get("SENTRY_ENVIRONMENT") != "production"
+              or sentry_values.get("SENTRY_RELEASE") != os.environ["SENTRY_RELEASE"]
+          ):
+              fail()
           PY
 
       - name: Register ECS task definition
@@ -1946,6 +2010,62 @@ jobs:
           fi
           break
           done
+          aws ecs describe-task-definition \
+            --task-definition "${deployed_task_definition}" \
+            --region "${AWS_REGION}" > "${RUNNER_TEMP}/deployed-task-definition.json"
+          python - <<'PY'
+          import hmac
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(os.environ["RUNNER_TEMP"], "deployed-task-definition.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          containers = [
+              item
+              for item in payload["taskDefinition"].get("containerDefinitions", [])
+              if item.get("name") == "followupboss-mcp-hosted"
+          ]
+          if len(containers) != 1:
+              raise SystemExit(
+                  "Deployed task definition did not retain required Sentry configuration."
+              )
+          environment = containers[0].get("environment")
+          if not isinstance(environment, list):
+              raise SystemExit(
+                  "Deployed task definition did not retain required Sentry configuration."
+              )
+          sentry_values: dict[str, object] = {}
+          for entry in environment:
+              if not isinstance(entry, dict):
+                  raise SystemExit(
+                      "Deployed task definition did not retain required Sentry configuration."
+                  )
+              name = entry.get("name")
+              if name in {"SENTRY_DSN", "SENTRY_ENVIRONMENT", "SENTRY_RELEASE"}:
+                  if name in sentry_values:
+                      raise SystemExit(
+                          "Deployed task definition did not retain required Sentry configuration."
+                      )
+                  sentry_values[name] = entry.get("value")
+          expected_sentry_dsn = os.environ["SENTRY_DSN"].strip()
+          deployed_sentry_dsn = sentry_values.get("SENTRY_DSN")
+          if (
+              not isinstance(deployed_sentry_dsn, str)
+              or not deployed_sentry_dsn.strip()
+              or not expected_sentry_dsn
+              or not hmac.compare_digest(deployed_sentry_dsn.strip(), expected_sentry_dsn)
+              or sentry_values.get("SENTRY_ENVIRONMENT") != "production"
+              or sentry_values.get("SENTRY_RELEASE")
+              != f"followupboss-mcp@{os.environ['GITHUB_SHA']}"
+          ):
+              raise SystemExit(
+                  "Deployed task definition did not retain required Sentry configuration."
+              )
+          PY
           printf "ECS deployment receipt: release=%s task_definition=%s desired=%s running=%s.\n" \
             "${GITHUB_SHA}" "${deployed_task_definition}" "${desired}" "${running}"
 
