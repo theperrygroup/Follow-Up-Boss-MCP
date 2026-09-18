@@ -4235,6 +4235,121 @@ async def test_public_uncontacted_owner_lookup_errors_are_anticipated_tool_error
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    "next_token",
+    [
+        "not-a-number",
+        "scan:1:not-a-number",
+        "scan:1:2:3",
+    ],
+)
+async def test_public_uncontacted_invalid_continuation_tokens_are_anticipated_tool_errors(
+    next_token: str,
+) -> None:
+    """Malformed local continuation tokens must fail before any FUB request."""
+    client = QueueClient([])
+    server = create_server(
+        FollowUpBossSettings.model_validate({"api_key": "key"}),
+        client=client,
+    )
+    tools = {tool.name: tool for tool in await server.list_tools()}
+
+    with pytest.raises(ToolError, match="Uncontacted lead pagination token is invalid") as exc_info:
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_uncontacted_leads",
+            next_token=next_token,
+        )
+
+    assert not isinstance(exc_info.value, UnexpectedToolError)
+    assert client.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool_name", "tool_arguments"),
+    [
+        (
+            "followupboss_create_pipeline",
+            {
+                "name": "Malformed pipeline",
+                "stages": [{"id": "not-an-int"}],
+            },
+        ),
+        (
+            "followupboss_update_pipeline",
+            {
+                "pipeline_id": 9,
+                "stages": [{"id": "not-an-int"}],
+            },
+        ),
+    ],
+)
+async def test_public_pipeline_nested_stage_validation_errors_are_anticipated_tool_errors(
+    tool_name: str,
+    tool_arguments: dict[str, object],
+) -> None:
+    """Malformed nested stages should fail locally rather than crash or call FUB."""
+    client = QueueClient([])
+    server = create_server(
+        FollowUpBossSettings.model_validate({"api_key": "key"}),
+        client=client,
+    )
+    tools = {tool.name: tool for tool in await server.list_tools()}
+
+    with pytest.raises(ToolError, match=r"stages\.0\.id") as exc_info:
+        await _call_public_tool(server, tools, tool_name, **tool_arguments)
+
+    assert not isinstance(exc_info.value, UnexpectedToolError)
+    assert client.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool_name", "tool_arguments", "message"),
+    [
+        (
+            "followupboss_create_call",
+            {
+                "person_id": 99,
+                "phone": "555-2222",
+                "is_incoming": False,
+                "user_id": 999,
+            },
+            "Call logs must be attributed to the authenticated Follow Up Boss user.",
+        ),
+        (
+            "followupboss_update_call",
+            {
+                "call_id": 12,
+                "user_id": 999,
+            },
+            "Call logs must remain attributed to the authenticated Follow Up Boss user.",
+        ),
+    ],
+)
+async def test_public_call_attribution_mismatches_are_anticipated_tool_errors(
+    tool_name: str,
+    tool_arguments: dict[str, object],
+    message: str,
+) -> None:
+    """Cross-user call writes should be rejected before their mutation runs."""
+    client = QueueClient([{"id": 1}])
+    server = create_server(
+        FollowUpBossSettings.model_validate({"api_key": "key"}),
+        client=client,
+    )
+    tools = {tool.name: tool for tool in await server.list_tools()}
+
+    with pytest.raises(ToolError, match=message) as exc_info:
+        await _call_public_tool(server, tools, tool_name, **tool_arguments)
+
+    assert not isinstance(exc_info.value, UnexpectedToolError)
+    assert [(call["method"], call["path"]) for call in client.calls] == [("GET", "/identity")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     ("tool_name", "tool_arguments"),
     [
         ("followupboss_create_task", (1,)),
