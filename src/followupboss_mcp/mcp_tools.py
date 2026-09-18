@@ -3505,13 +3505,13 @@ def _uncommunicated_lead_scan_state(
     if tool_input.next_token is None:
         offset = tool_input.offset or 0
         return offset, 0, offset
-    if tool_input.next_token.isdigit():
+    if tool_input.next_token.isascii() and tool_input.next_token.isdigit():
         offset = int(tool_input.next_token)
         return offset, 0, offset
     if not tool_input.next_token.startswith(_UNCOMMUNICATED_LEAD_TOKEN_PREFIX):
         raise LocalInputError("Uncontacted lead pagination token is invalid.")
     token_parts = tool_input.next_token.removeprefix(_UNCOMMUNICATED_LEAD_TOKEN_PREFIX).split(":")
-    if len(token_parts) != 2 or not all(part.isdigit() for part in token_parts):
+    if len(token_parts) != 2 or not all(part.isascii() and part.isdigit() for part in token_parts):
         raise LocalInputError("Uncontacted lead pagination token is invalid.")
     raw_offset, filtered_offset = (int(part) for part in token_parts)
     return filtered_offset, raw_offset, 0

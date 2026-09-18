@@ -4238,7 +4238,10 @@ async def test_public_uncontacted_owner_lookup_errors_are_anticipated_tool_error
     "next_token",
     [
         "not-a-number",
+        "²",
         "scan:1:not-a-number",
+        "scan:²:1",
+        "scan:1:²",
         "scan:1:2:3",
     ],
 )
