@@ -13,6 +13,7 @@ from followupboss_mcp.logging import redact_value
 _REDACTED = "***redacted***"
 _SENTRY_INITIALIZED = False
 _TOOL_ERROR_NAME_RE = re.compile(r"\AError executing tool (?P<tool>[A-Za-z0-9_]+):")
+_MCP_REQUEST_ARGUMENT_PREFIX = "mcp.request.argument."
 _SENTRY_REDACTED_KEYS = {
     "address",
     "addresses",
@@ -135,6 +136,34 @@ def sanitize_sentry_event(event: Mapping[str, object]) -> SentryEvent:
     """
     secret_redacted_event = redact_value(dict(event))
     return cast(SentryEvent, _redact_sentry_payload(secret_redacted_event))
+
+
+def _is_mcp_request_argument_key(key: object) -> bool:
+    """Return whether a transaction attribute key carries raw MCP input."""
+    return isinstance(key, str) and key.lower().startswith(_MCP_REQUEST_ARGUMENT_PREFIX)
+
+
+def _redact_mcp_request_arguments(value: object) -> object:
+    """Copy a transaction payload while redacting every raw MCP argument attribute.
+
+    Sentry's MCP integration stores one raw tool argument under a dynamically
+    named ``mcp.request.argument.*`` attribute. Those attributes can appear in
+    root trace context, spans, or future nested event structures, so sanitizing
+    every mapping rather than a fixed set of paths prevents an SDK shape change
+    from exposing customer input.
+    """
+    if isinstance(value, Mapping):
+        return {
+            key: (
+                _REDACTED
+                if _is_mcp_request_argument_key(key)
+                else _redact_mcp_request_arguments(inner_value)
+            )
+            for key, inner_value in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_mcp_request_arguments(item) for item in value]
+    return value
 
 
 def _coerce_mapping(value: object) -> Mapping[str, object] | None:
@@ -439,6 +468,22 @@ def before_send(event: SentryEvent, hint: SentryHint) -> SentryEvent | None:
     return sanitize_sentry_event(filtered_event)
 
 
+def before_send_transaction(event: SentryEvent, hint: SentryHint) -> SentryEvent:
+    """Redact raw MCP tool arguments from one transaction before submission.
+
+    Args:
+        event: The serialized transaction event received from the Sentry SDK.
+        hint: Sentry hint metadata. It is unused but required by the hook
+            contract.
+
+    Returns:
+        A transaction event with raw ``mcp.request.argument.*`` values redacted
+        while all unrelated trace and span metadata is preserved.
+    """
+    del hint
+    return cast(SentryEvent, _redact_mcp_request_arguments(event))
+
+
 def _stringify_sentry_tag(value: str | int | float | bool | None) -> str | None:
     """Return a stable Sentry tag value, or `None` when the tag should be skipped.
 
@@ -622,6 +667,7 @@ def configure_sentry(
         include_local_variables=False,
         max_request_body_size="never",
         before_send=before_send,
+        before_send_transaction=before_send_transaction,
         in_app_include=["followupboss_mcp"],
     )
     _set_sentry_tags(sentry_sdk, sentry_tags)

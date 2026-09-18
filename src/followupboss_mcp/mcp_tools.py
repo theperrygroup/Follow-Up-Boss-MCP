@@ -222,6 +222,16 @@ _UNCOMMUNICATED_LEAD_MAX_SCAN_PAGES = 10
 _UNCOMMUNICATED_LEAD_TOKEN_PREFIX = "scan:"
 
 
+class LocalLookupError(ToolError, RuntimeError):
+    """Represent a missing or ambiguous MCP-local lookup result.
+
+    The adapter historically exposes these caller-correctable lookup failures
+    as ``RuntimeError``. Extending ``ToolError`` as well preserves that adapter
+    contract while allowing FastMCP to return an anticipated tool failure
+    instead of classifying it as an unexpected server error.
+    """
+
+
 class GetPersonToolInput(PersonLookupRequest):
     """Tool input for fetching a person by ID."""
 
@@ -397,12 +407,12 @@ class SearchPeopleInSmartListToolInput(RequestModel):
             and _is_active_user(user)
         ]
         if not matches:
-            raise RuntimeError(
+            raise LocalLookupError(
                 f"Active Follow Up Boss user named {assigned_user_name!r} was not found."
             )
         if len(matches) > 1:
             match_ids = [user.id for user in matches]
-            raise RuntimeError(
+            raise LocalLookupError(
                 f"Active Follow Up Boss user named {assigned_user_name!r} is ambiguous; "
                 f"matched IDs {match_ids!r}."
             )
@@ -645,12 +655,12 @@ class ListUncontactedLeadsToolInput(RequestModel):
             and _is_active_user(user)
         ]
         if not matches:
-            raise RuntimeError(
+            raise LocalLookupError(
                 f"Active Follow Up Boss user named {assigned_user_name!r} was not found."
             )
         if len(matches) > 1:
             match_ids = [user.id for user in matches]
-            raise RuntimeError(
+            raise LocalLookupError(
                 f"Active Follow Up Boss user named {assigned_user_name!r} is ambiguous; "
                 f"matched IDs {match_ids!r}."
             )
@@ -3567,10 +3577,10 @@ def _resolve_smart_list_by_name(
         if _normalize_smart_list_name(smart_list.name or "") == normalized_name
     ]
     if not matches:
-        raise RuntimeError(f"Smart list named {smart_list_name!r} was not found.")
+        raise LocalLookupError(f"Smart list named {smart_list_name!r} was not found.")
     if len(matches) > 1:
         match_ids = [smart_list.id for smart_list in matches]
-        raise RuntimeError(
+        raise LocalLookupError(
             f"Smart list named {smart_list_name!r} is ambiguous; matched IDs {match_ids!r}."
         )
     return matches[0]
@@ -3628,12 +3638,12 @@ async def _resolve_active_user_id_by_name(
         and _is_active_user(user)
     ]
     if not matches:
-        raise RuntimeError(
+        raise LocalLookupError(
             f"Active Follow Up Boss user named {assigned_user_name!r} was not found."
         )
     if len(matches) > 1:
         match_ids = [user.id for user in matches]
-        raise RuntimeError(
+        raise LocalLookupError(
             f"Active Follow Up Boss user named {assigned_user_name!r} is ambiguous; "
             f"matched IDs {match_ids!r}."
         )
