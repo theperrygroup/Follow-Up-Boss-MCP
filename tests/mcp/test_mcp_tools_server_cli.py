@@ -4239,9 +4239,11 @@ async def test_public_uncontacted_owner_lookup_errors_are_anticipated_tool_error
     [
         "not-a-number",
         "²",
+        "9" * 5000,
         "scan:1:not-a-number",
         "scan:²:1",
         "scan:1:²",
+        f"scan:{'9' * 5000}:1",
         "scan:1:2:3",
     ],
 )

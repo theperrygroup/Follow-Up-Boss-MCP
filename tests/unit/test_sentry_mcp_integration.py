@@ -104,6 +104,12 @@ def _mcp_argument_values(payload: object) -> list[object]:
             [],
         ),
         (
+            "followupboss_list_uncontacted_leads",
+            {"next_token": "9" * 5000},
+            "Uncontacted lead pagination token is invalid",
+            [],
+        ),
+        (
             "followupboss_create_pipeline",
             {"name": "Malformed pipeline", "stages": [{"id": "not-an-int"}]},
             "stages.0.id",
