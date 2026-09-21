@@ -713,8 +713,9 @@ class ListMyTaskIntentToolInput(RequestModel):
     fields: list[TaskProjectionField] | None = Field(
         default=None,
         description=(
-            "Optional task response fields. Use personId for the related person; "
-            "person and dueDateTime are not task projections."
+            "Optional task response fields. Use personId for the related person "
+            "and assignedUserId for the assignee; assignedTo, person, and "
+            "dueDateTime are not task projections."
         ),
     )
     limit: int | None = None

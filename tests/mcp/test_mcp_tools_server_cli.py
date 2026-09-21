@@ -4457,6 +4457,8 @@ def test_task_list_request_rejects_unsupported_projection_with_guidance() -> Non
         TaskListRequest(fields=["dueDateTime", "person"])
     with pytest.raises(ValidationError, match="use 'dueDate'"):
         TaskListRequest(fields=["id", "name", "dueDateTime", "personId"])
+    with pytest.raises(ValidationError, match="use 'assignedUserId'"):
+        TaskListRequest(fields=["id", "assignedTo"])
     with pytest.raises(ValidationError, match="Invalid task fields: unsupported"):
         TaskListRequest(fields=["unsupported"])
 
@@ -4492,6 +4494,13 @@ async def test_list_my_overdue_tasks_rejects_invalid_projection_fields_locally()
             "followupboss_list_my_upcoming_tasks",
             fields=["id", "name", "dueDateTime", "personId"],
         )
+    with pytest.raises(ToolError, match="assignedUserId"):
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_my_overdue_tasks",
+            fields=["id", "assignedTo"],
+        )
     assert client.calls == []
 
 
@@ -4511,6 +4520,27 @@ async def test_list_tasks_rejects_person_projection_fields_locally() -> None:
             tools,
             "followupboss_list_tasks",
             fields=["id", "name", "dueDate", "person", "type"],
+            limit=25,
+        )
+    assert [call["path"] for call in client.calls] == ["/me"]
+
+
+@pytest.mark.asyncio
+async def test_list_tasks_rejects_assigned_to_projection_fields_locally() -> None:
+    """Public list_tasks should reject the FOLLOWUPBOSS-MCP-1P assignedTo projection."""
+    client = QueueClient([])
+    server = create_server(
+        FollowUpBossSettings.model_validate({"api_key": "key"}),
+        client=client,
+    )
+    tools = {tool.name: tool for tool in await server.list_tools()}
+
+    with pytest.raises(ToolError, match="use 'assignedUserId'"):
+        await _call_public_tool(
+            server,
+            tools,
+            "followupboss_list_tasks",
+            fields=["id", "name", "assignedTo"],
             limit=25,
         )
     assert [call["path"] for call in client.calls] == ["/me"]

@@ -11,7 +11,6 @@ from followupboss_mcp.datetimes import normalize_optional_datetime
 from followupboss_mcp.models.common import CommonListQuery, JsonValue, RequestModel, ResponseModel
 
 type TaskProjectionField = Literal[
-    "assignedTo",
     "assignedUserId",
     "completed",
     "created",
@@ -28,7 +27,6 @@ type TaskProjectionField = Literal[
 
 _TASK_PROJECTION_FIELDS = frozenset(
     {
-        "assignedTo",
         "assignedUserId",
         "completed",
         "created",
@@ -44,6 +42,7 @@ _TASK_PROJECTION_FIELDS = frozenset(
     }
 )
 _TASK_FIELD_CORRECTIONS = {
+    "assignedTo": "'assignedTo' is not a task projection; use 'assignedUserId'.",
     "dueDateTime": "'dueDateTime' is not a task projection; use 'dueDate'.",
     "person": "'person' is not a task projection; use 'personId'.",
 }
@@ -53,9 +52,9 @@ def validate_task_projection_fields(value: list[str] | None) -> list[str] | None
     """Validate Follow Up Boss task ``fields`` query projections.
 
     Follow Up Boss accepts a ``fields`` parameter on ``GET /tasks``, but it
-    rejects nested and some response-only names such as ``person`` and
-    ``dueDateTime``. Those names remain valid on task records when ``fields`` is
-    omitted.
+    rejects nested and some response-only names such as ``assignedTo``,
+    ``person``, and ``dueDateTime``. Those names remain valid on task records
+    when ``fields`` is omitted.
 
     Args:
         value: Optional field names requested by the caller.
@@ -91,8 +90,9 @@ class TaskListRequest(CommonListQuery):
     fields: list[str] | None = Field(
         default=None,
         description=(
-            "Optional task response fields. Use personId for the related person; "
-            "person and dueDateTime are not task projections."
+            "Optional task response fields. Use personId for the related person "
+            "and assignedUserId for the assignee; assignedTo, person, and "
+            "dueDateTime are not task projections."
         ),
     )
     assigned_to: str | None = Field(default=None, serialization_alias="assignedTo")
