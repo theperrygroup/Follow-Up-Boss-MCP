@@ -199,6 +199,12 @@ The MCP surface validates several Follow Up Boss contracts before making an upst
 - Deal `custom_fields` keys must use API-native names beginning with `custom`. Use
   `followupboss_list_deal_custom_fields` to discover valid names before calling
   `followupboss_create_deal` or `followupboss_update_deal`.
+- `followupboss_update_person` also requires API-native `custom_fields` names beginning
+  with `custom`; discover them with `followupboss_list_custom_fields`. Email, phone, and
+  address objects must use named fields, not numeric array-position keys.
+- If `followupboss_add_note` reports `Contact not found`, verify that `person_id` exists
+  in the connected account. For a newly created person, use `wait_for_person=true` to
+  wait for visibility before writing the note. The tool never retries a rejected note write.
 - Call `outcome` must be one of `Interested`, `Not Interested`, `Left Message`, `No Answer`,
   `Busy`, or `Bad Number`.
 - `followupboss_list_tasks` and the owned-task helpers expose task projections such as
