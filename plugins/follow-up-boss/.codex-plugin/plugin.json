@@ -1,0 +1,39 @@
+{
+  "name": "follow-up-boss",
+  "version": "0.1.0",
+  "description": "Search Follow Up Boss leads, review activity, and manage CRM tasks and deals through the hosted OAuth MCP server.",
+  "author": {
+    "name": "The Perry Group",
+    "url": "https://github.com/theperrygroup"
+  },
+  "homepage": "https://github.com/theperrygroup/Follow-Up-Boss-MCP",
+  "repository": "https://github.com/theperrygroup/Follow-Up-Boss-MCP",
+  "license": "MIT",
+  "keywords": [
+    "follow-up-boss",
+    "crm",
+    "real-estate",
+    "mcp"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Follow Up Boss",
+    "shortDescription": "Search leads and manage your Follow Up Boss CRM.",
+    "longDescription": "Connect to Follow Up Boss using your own OAuth authorization. Search leads, review activity, manage tasks and appointments, and work with deals. Includes guidance for account scope and verified CRM changes. Community integration operated by The Perry Group; not endorsed by Follow Up Boss.",
+    "developerName": "The Perry Group",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/theperrygroup/Follow-Up-Boss-MCP",
+    "defaultPrompt": [
+      "Who am I in Follow Up Boss?",
+      "Show my overdue Follow Up Boss tasks.",
+      "Find my newest lead and summarize recent activity."
+    ],
+    "composerIcon": "./assets/follow-up-boss-logo.png",
+    "logo": "./assets/follow-up-boss-logo.png"
+  }
+}

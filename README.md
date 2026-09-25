@@ -8,7 +8,7 @@
 
 # Follow Up Boss MCP Server
 
-Connect ChatGPT, Claude, Cursor, and other AI assistants to the Follow Up Boss real estate CRM
+Connect ChatGPT, Codex, Claude, Cursor, and other AI assistants to the Follow Up Boss real estate CRM
 through the Model Context Protocol (MCP). Search leads, review activity, manage tasks and
 appointments, work with deals, and run CRM workflows using natural language.
 
@@ -18,6 +18,10 @@ appointments, work with deals, and run CRM workflows using natural language.
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/LICENSE)
 
 ## Connect with one URL
+
+**Using Codex or Claude Code?** Install the [Follow Up Boss plugin](docs/plugins.md)
+for a bundled MCP connection and CRM workflow skill. Other clients can connect
+directly using the URL below.
 
 Most people only need the hosted MCP server. You do **not** need to clone this repository, install
 Python, run a server, or paste a Follow Up Boss API key into your AI client.

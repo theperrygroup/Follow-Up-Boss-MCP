@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "follow_up_boss": {
+      "type": "http",
+      "url": "https://fub.theperry.group/mcp"
+    }
+  }
+}
