@@ -707,7 +707,9 @@ def _register_people_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> 
         name="followupboss_update_person",
         description=(
             "Update a single Follow Up Boss person by explicit person_id. Do not "
-            "infer the person_id from vague natural-language intent."
+            "infer the person_id from vague natural-language intent. Contact/address objects "
+            "must use named fields, not numeric keys. custom_fields keys must be API names "
+            "beginning with 'custom'; use followupboss_list_custom_fields to discover names."
         ),
     )
     async def followupboss_update_person(

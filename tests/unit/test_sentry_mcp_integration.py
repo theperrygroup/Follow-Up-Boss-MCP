@@ -81,6 +81,65 @@ def _mcp_argument_values(payload: object) -> list[object]:
     return values
 
 
+@pytest.mark.parametrize("breadcrumb_count", [1, 11])
+def test_sentry_error_envelope_preserves_breadcrumb_data_object(
+    monkeypatch: pytest.MonkeyPatch,
+    breadcrumb_count: int,
+) -> None:
+    """The actual SDK envelope keeps redacted breadcrumbs schema-valid."""
+    captured_envelopes: list[Envelope] = []
+    original_init = cast(Callable[..., object], sentry_sdk.init)
+
+    class InMemorySentryTransport(Transport):
+        """Capture scrubbed events without sending any telemetry."""
+
+        def capture_envelope(self, envelope: Envelope) -> None:
+            """Keep the event at its real transport boundary."""
+            captured_envelopes.append(envelope)
+
+    def init_with_in_memory_transport(*args: object, **kwargs: Any) -> object:
+        """Use production initialization but force a local transport."""
+        kwargs["transport"] = InMemorySentryTransport
+        return original_init(*args, **kwargs)
+
+    monkeypatch.setattr(observability, "_SENTRY_INITIALIZED", False)
+    monkeypatch.setattr(sentry_sdk, "init", init_with_in_memory_transport)
+    try:
+        assert configure_sentry(
+            SentrySettings.model_validate({"dsn": "https://public@example.invalid/1"}),
+            entrypoint="sentry-breadcrumb-schema-test",
+        )
+        with sentry_sdk.isolation_scope():
+            for attempt in range(breadcrumb_count):
+                sentry_sdk.add_breadcrumb(
+                    category="followupboss.http.retry",
+                    message="Retrying Follow Up Boss request",
+                    data={"attempt": attempt, "private_value": "PRIVATE_CUSTOMER_PAYLOAD"},
+                )
+            sentry_sdk.capture_exception(RuntimeError("Transport error after retries"))
+        sentry_sdk.flush()
+
+        events = [
+            item.payload.json
+            for envelope in captured_envelopes
+            for item in envelope.items
+            if item.headers.get("type") == "event"
+        ]
+        assert len(events) == 1
+        event = events[0]
+        assert isinstance(event, dict)
+        breadcrumbs = event["breadcrumbs"]["values"]
+        retry_breadcrumbs = [
+            item for item in breadcrumbs if item["category"] == "followupboss.http.retry"
+        ]
+        assert len(retry_breadcrumbs) == breadcrumb_count
+        assert all(item["data"] == {} for item in retry_breadcrumbs)
+        assert "PRIVATE_CUSTOMER_PAYLOAD" not in str(event)
+    finally:
+        sentry_sdk.get_client().close()
+        original_init(dsn=None)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("tool_name", "arguments", "expected_message", "expected_calls"),

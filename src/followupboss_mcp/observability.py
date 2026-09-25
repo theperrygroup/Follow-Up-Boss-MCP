@@ -135,7 +135,18 @@ def sanitize_sentry_event(event: Mapping[str, object]) -> SentryEvent:
         payload fields redacted.
     """
     secret_redacted_event = redact_value(dict(event))
-    return cast(SentryEvent, _redact_sentry_payload(secret_redacted_event))
+    sanitized_event = cast(SentryEvent, _redact_sentry_payload(secret_redacted_event))
+    breadcrumbs = sanitized_event.get("breadcrumbs")
+    if isinstance(breadcrumbs, dict):
+        values = breadcrumbs.get("values")
+        if isinstance(values, list):
+            for breadcrumb in values:
+                if isinstance(breadcrumb, dict) and "data" in breadcrumb:
+                    # Sentry requires an object here, not the scalar redaction
+                    # marker used for arbitrary payloads. Keep every original
+                    # key and value private without discarding the breadcrumb.
+                    breadcrumb["data"] = {}
+    return sanitized_event
 
 
 def _is_mcp_request_argument_key(key: object) -> bool:
