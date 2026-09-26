@@ -153,6 +153,69 @@ def test_sanitize_sentry_event_redacts_secrets_and_customer_payloads() -> None:
     assert before_send(event, {"exc_info": object()}) == sanitized
 
 
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"email": "PRIVATE_EMAIL", "unrecognized_customer_field": "PRIVATE_CUSTOMER_VALUE"},
+        {"PRIVATE_CUSTOMER_KEY": {"token": "PRIVATE_TOKEN"}},
+        {},
+        "PRIVATE_CUSTOMER_VALUE",
+        ["PRIVATE_CUSTOMER_VALUE"],
+        None,
+    ],
+)
+def test_sanitize_sentry_event_drops_breadcrumb_data_without_breaking_its_schema(
+    data: object,
+) -> None:
+    """Breadcrumb data remains wholly private but has Sentry's required map type."""
+    event: dict[str, object] = {
+        "breadcrumbs": {
+            "values": [
+                {
+                    "category": "followupboss.http.retry",
+                    "message": "Retrying Follow Up Boss request",
+                    "level": "warning",
+                    "data": data,
+                },
+                {"message": "Breadcrumb without data"},
+                "malformed-breadcrumb",
+            ],
+        },
+        "request": {"data": {"email": "PRIVATE_REQUEST_EMAIL"}},
+        "extra": {"data": {"email": "PRIVATE_EXTRA_EMAIL"}},
+    }
+    original_json = json.dumps(event, sort_keys=True)
+
+    sanitized = sanitize_sentry_event(event)
+
+    assert sanitized == {
+        "breadcrumbs": {
+            "values": [
+                {
+                    "category": "followupboss.http.retry",
+                    "message": "Retrying Follow Up Boss request",
+                    "level": "warning",
+                    "data": {},
+                },
+                {"message": "Breadcrumb without data"},
+                "malformed-breadcrumb",
+            ],
+        },
+        "request": {"data": "***redacted***"},
+        "extra": {"data": "***redacted***"},
+    }
+    assert json.dumps(event, sort_keys=True) == original_json
+    assert "PRIVATE_" not in json.dumps(sanitized, sort_keys=True)
+
+
+@pytest.mark.parametrize("breadcrumbs", [None, "not-a-map", {}, {"values": "not-a-list"}])
+def test_sanitize_sentry_event_tolerates_absent_or_malformed_breadcrumb_values(
+    breadcrumbs: object,
+) -> None:
+    """Malformed breadcrumb containers must not crash privacy sanitization."""
+    assert sanitize_sentry_event({"breadcrumbs": breadcrumbs}) == {"breadcrumbs": breadcrumbs}
+
+
 def test_before_send_transaction_redacts_mcp_request_arguments_across_event_shape() -> None:
     """Transaction scrubbing should redact MCP input values without losing trace metadata."""
     event: dict[str, object] = {

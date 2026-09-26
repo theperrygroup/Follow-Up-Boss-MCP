@@ -60,7 +60,7 @@ from followupboss_mcp.models.calls import (
     CreateCallRequest,
     UpdateCallRequest,
 )
-from followupboss_mcp.models.common import RequestModel, ResponseModel
+from followupboss_mcp.models.common import JsonValue, RequestModel, ResponseModel
 from followupboss_mcp.models.custom_fields import (
     CreateCustomFieldRequest,
     CustomFieldListRequest,
@@ -820,6 +820,36 @@ class UpdatePersonToolInput(UpdatePersonRequest):
     """Tool input for updating a person."""
 
     person_id: int
+
+    @field_validator("addresses", "emails", "phones")
+    @classmethod
+    def _reject_numeric_contact_keys(
+        cls, value: list[ResponseModel] | None
+    ) -> list[ResponseModel] | None:
+        """Reject array-position keys in contact objects before making a write."""
+        if value is not None:
+            for item in value:
+                if any(name.isdecimal() for name in (item.model_extra or {})):
+                    raise ValueError(
+                        "Contact and address objects must use named fields, not numeric keys. "
+                        "Use value/type for emails or phones, and street/city/state/code/country "
+                        "for addresses. Pass multiple objects as a list."
+                    )
+        return value
+
+    @field_validator("custom_fields")
+    @classmethod
+    def _validate_custom_field_names(
+        cls, value: dict[str, JsonValue] | None
+    ) -> dict[str, JsonValue] | None:
+        """Return actionable input errors for labels or IDs used as custom-field keys."""
+        if value is not None and any(not name.startswith("custom") for name in value):
+            raise ValueError(
+                "Custom field keys must use Follow Up Boss API names beginning with 'custom'. "
+                "Use followupboss_list_custom_fields to discover valid names; do not use labels "
+                "or numeric IDs."
+            )
+        return value
 
 
 class GetUserToolInput(RequestModel):
