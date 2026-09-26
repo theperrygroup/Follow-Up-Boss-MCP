@@ -100,6 +100,15 @@ def test_mcp_connection_uses_hosted_oauth_without_packaged_credentials(
     assert not url.query and not url.fragment
 
 
+def test_packaged_logo_is_explicitly_excluded_from_mit_license(
+    standalone_plugin: Path,
+) -> None:
+    notice = (standalone_plugin / "NOTICE").read_text(encoding="utf-8")
+    assert "assets/follow-up-boss-logo.png" in notice
+    normalized_notice = re.sub(r"\s+", " ", notice)
+    assert "not covered by this project's MIT License" in normalized_notice
+
+
 @pytest.mark.asyncio
 async def test_workflow_tool_references_exist_in_the_registered_mcp_surface(
     standalone_plugin: Path,
