@@ -9,5 +9,6 @@
   "homepage": "https://github.com/theperrygroup/Follow-Up-Boss-MCP",
   "repository": "https://github.com/theperrygroup/Follow-Up-Boss-MCP",
   "license": "MIT",
+  "icon": "./assets/follow-up-boss-logo.png",
   "keywords": ["follow-up-boss", "crm", "real-estate", "mcp"]
 }
