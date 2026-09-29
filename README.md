@@ -227,6 +227,7 @@ Local transports are single-tenant developer paths, not shared production server
 
 - [MCP tool catalog and usage guide](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/docs/mcp-usage.md)
 - [Security model](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/docs/security.md)
+- [Hosted service privacy policy](PRIVACY.md)
 - [MCP validation checklist](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/docs/mcp-validation-checklist.md)
 
 ### Developing the project

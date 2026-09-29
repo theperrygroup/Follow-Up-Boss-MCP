@@ -28,6 +28,7 @@
       "Write"
     ],
     "websiteURL": "https://github.com/theperrygroup/Follow-Up-Boss-MCP",
+    "privacyPolicyURL": "https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/a565e2bbd3197c0440e6af2ff26c679d3e48f3e0/PRIVACY.md",
     "defaultPrompt": [
       "Who am I in Follow Up Boss?",
       "Show my overdue Follow Up Boss tasks.",

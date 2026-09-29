@@ -15,6 +15,8 @@ approval controls and your Follow Up Boss account permissions apply to changes.
 
 See the repository's [installation guide](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/docs/plugins.md)
 and [security policy](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/main/SECURITY.md).
+Read the [privacy policy](https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/a565e2bbd3197c0440e6af2ff26c679d3e48f3e0/PRIVACY.md)
+for data use, retention, and instructions to request deletion or revoke access.
 
 This is a community integration operated by The Perry Group, not an official
 Follow Up Boss product. Claude web/Desktop custom connectors use the same MCP URL;

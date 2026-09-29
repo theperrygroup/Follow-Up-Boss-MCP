@@ -6,6 +6,9 @@ for both clients, one remote MCP connection, and one shared CRM workflow skill.
 The existing MCP service remains available to other clients at
 `https://fub.theperry.group/mcp`.
 
+The [privacy policy](../PRIVACY.md) describes hosted data handling, retention,
+and user controls. Both native manifests link to the same published policy version.
+
 ## Codex
 
 Codex supports this repository's Claude-compatible marketplace catalog and loads
@@ -68,6 +71,12 @@ verify the installed copy before claiming an installation works.
 
 Local/GitHub marketplace distribution is separate from approval or listing in a
 public vendor directory. This repository does not claim either directory listing.
+
+When the privacy policy changes, publish the policy commit first, then update
+both manifest URLs and the package README to that commit's public `PRIVACY.md`
+permalink. Update the directory drafts as well. A commit permalink stays valid
+when the development branch is merged or removed and identifies the policy
+version offered with that package.
 
 Format references: [OpenAI plugin packaging](https://developers.openai.com/plugins/build/plugins),
 [Claude Code plugin reference](https://code.claude.com/docs/en/plugins-reference),

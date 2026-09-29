@@ -45,7 +45,8 @@ or access to your account.
 After connecting, ask for work such as “Show my overdue follow-up tasks” or “Find this contact and
 summarize their recent activity.” Changes to records require an authorized user request and remain
 subject to Claude Code's tool permissions and the connected Follow Up Boss account's access.
-See the [tool guide](mcp-usage.md) and [security guide](security.md).
+See the [tool guide](mcp-usage.md), [security guide](security.md), and
+[privacy policy](../PRIVACY.md).
 
 ## Claude chat, Desktop, and Cowork
 
