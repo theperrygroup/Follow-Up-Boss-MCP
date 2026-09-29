@@ -1,0 +1,14 @@
+{
+  "name": "follow-up-boss-mcp",
+  "description": "Follow Up Boss integration maintained by The Perry Group.",
+  "owner": {
+    "name": "The Perry Group"
+  },
+  "plugins": [
+    {
+      "name": "follow-up-boss",
+      "source": "./plugins/follow-up-boss",
+      "description": "Follow Up Boss CRM tools and workflow guidance with hosted OAuth authentication."
+    }
+  ]
+}

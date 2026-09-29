@@ -1,0 +1,15 @@
+{
+  "name": "follow-up-boss",
+  "version": "0.1.1",
+  "description": "Connect Claude Code to Follow Up Boss for lead search, activity, tasks, appointments, and deals through the hosted OAuth MCP server.",
+  "author": {
+    "name": "The Perry Group",
+    "url": "https://theperry.group"
+  },
+  "homepage": "https://github.com/theperrygroup/Follow-Up-Boss-MCP",
+  "repository": "https://github.com/theperrygroup/Follow-Up-Boss-MCP",
+  "license": "MIT",
+  "icon": "./assets/follow-up-boss-logo.png",
+  "privacyPolicyUrl": "https://github.com/theperrygroup/Follow-Up-Boss-MCP/blob/a565e2bbd3197c0440e6af2ff26c679d3e48f3e0/PRIVACY.md",
+  "keywords": ["follow-up-boss", "crm", "real-estate", "mcp"]
+}
