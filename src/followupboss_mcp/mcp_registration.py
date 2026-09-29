@@ -201,6 +201,7 @@ from followupboss_mcp.observability import capture_sentry_exception
 from followupboss_mcp.tenant_runtime import TenantRuntime, TenantRuntimeFactory
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
+from mcp.types import ToolAnnotations
 
 _API_COVERAGE_RESOURCE_URI = "followupboss://api-coverage-matrix"
 _API_COVERAGE_RESOURCE_PACKAGE = "followupboss_mcp.assets"
@@ -440,6 +441,9 @@ def _register_identity_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -
 
     @mcp.tool(
         name="followupboss_get_identity",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "Return identity information for the authenticated Follow Up Boss user and account."
         ),
@@ -458,6 +462,9 @@ def _register_people_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> 
 
     @mcp.tool(
         name="followupboss_search_people",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "Search Follow Up Boss people with documented query parameters "
             "and pagination metadata. By default this searches the authenticated "
@@ -528,6 +535,9 @@ def _register_people_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> 
 
     @mcp.tool(
         name="followupboss_list_uncontacted_leads",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "List Follow Up Boss leads with no recorded lastCommunication by using "
             "direct people search plus MCP-side filtering, never smart-list lookup. "
@@ -568,6 +578,9 @@ def _register_people_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> 
 
     @mcp.tool(
         name="followupboss_search_people_in_smart_list",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "Search people inside an exact named Follow Up Boss smart list. Use this "
             "for prompts such as 'Zillow leads in Eligible For Transfer' or any "
@@ -616,6 +629,9 @@ def _register_people_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> 
 
     @mcp.tool(
         name="followupboss_get_latest_lead",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "Return the single most recently created Follow Up Boss lead assigned "
             "to the authenticated user. Use this for requests like 'my latest lead', "
@@ -632,6 +648,9 @@ def _register_people_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> 
 
     @mcp.tool(
         name="followupboss_get_person",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss person by ID.",
     )
     async def followupboss_get_person(
@@ -643,6 +662,9 @@ def _register_people_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> 
 
     @mcp.tool(
         name="followupboss_list_person_activity",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "List communication and activity records for one explicit Follow Up Boss "
             "person_id. Use this for prompts like 'history for person 123', 'calls, "
@@ -670,6 +692,9 @@ def _register_people_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> 
 
     @mcp.tool(
         name="followupboss_create_person",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "Create a Follow Up Boss person directly. "
             "Use followupboss_send_event for canonical lead ingestion."
@@ -705,6 +730,9 @@ def _register_people_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> 
 
     @mcp.tool(
         name="followupboss_update_person",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=True
+        ),
         description=(
             "Update a single Follow Up Boss person by explicit person_id. Do not "
             "infer the person_id from vague natural-language intent. Contact/address objects "
@@ -739,6 +767,9 @@ def _register_people_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> 
 
     @mcp.tool(
         name="followupboss_check_duplicate_person",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Check whether a person already exists in Follow Up Boss by email or phone.",
     )
     async def followupboss_check_duplicate_person(
@@ -752,6 +783,9 @@ def _register_people_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> 
 
     @mcp.tool(
         name="followupboss_list_unclaimed_people",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="List unclaimed Follow Up Boss leads available to the authenticated user.",
     )
     async def followupboss_list_unclaimed_people(
@@ -765,6 +799,9 @@ def _register_people_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> 
 
     @mcp.tool(
         name="followupboss_claim_person",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Claim an unclaimed Follow Up Boss lead by person ID.",
     )
     async def followupboss_claim_person(person_id: int) -> dict[str, object]:
@@ -772,6 +809,9 @@ def _register_people_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> 
 
     @mcp.tool(
         name="followupboss_ignore_unclaimed_person",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Ignore an unclaimed Follow Up Boss lead offer by person ID.",
     )
     async def followupboss_ignore_unclaimed_person(person_id: int) -> dict[str, object]:
@@ -781,6 +821,9 @@ def _register_people_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> 
 
     @mcp.tool(
         name="followupboss_delete_person",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description=(
             "Delete a Follow Up Boss person by explicit person_id. Do not infer the "
             "person_id from vague natural-language intent."
@@ -803,6 +846,9 @@ def _register_people_relationship_tools(
 
     @mcp.tool(
         name="followupboss_list_people_relationships",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="List Follow Up Boss people relationships.",
     )
     async def followupboss_list_people_relationships(
@@ -819,6 +865,9 @@ def _register_people_relationship_tools(
 
     @mcp.tool(
         name="followupboss_get_people_relationship",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss people relationship by ID.",
     )
     async def followupboss_get_people_relationship(
@@ -830,6 +879,9 @@ def _register_people_relationship_tools(
 
     @mcp.tool(
         name="followupboss_create_people_relationship",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, open_world_hint=False
+        ),
         description="Create a Follow Up Boss people relationship for a person.",
     )
     async def followupboss_create_people_relationship(
@@ -848,6 +900,9 @@ def _register_people_relationship_tools(
 
     @mcp.tool(
         name="followupboss_update_people_relationship",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Update a Follow Up Boss people relationship by ID.",
     )
     async def followupboss_update_people_relationship(
@@ -866,6 +921,9 @@ def _register_people_relationship_tools(
 
     @mcp.tool(
         name="followupboss_delete_people_relationship",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Delete a Follow Up Boss people relationship by ID.",
     )
     async def followupboss_delete_people_relationship(
@@ -886,6 +944,9 @@ def _register_timeframe_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) 
 
     @mcp.tool(
         name="followupboss_list_timeframes",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="List Follow Up Boss timeframes with pagination metadata.",
     )
     async def followupboss_list_timeframes() -> dict[str, object]:
@@ -902,6 +963,9 @@ def _register_attachment_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter)
 
     @mcp.tool(
         name="followupboss_get_person_attachment",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss person attachment by ID.",
     )
     async def followupboss_get_person_attachment(person_attachment_id: int) -> dict[str, object]:
@@ -911,6 +975,9 @@ def _register_attachment_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter)
 
     @mcp.tool(
         name="followupboss_create_person_attachment",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, open_world_hint=False
+        ),
         description="Create a Follow Up Boss person attachment record.",
     )
     async def followupboss_create_person_attachment(
@@ -926,6 +993,9 @@ def _register_attachment_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter)
 
     @mcp.tool(
         name="followupboss_update_person_attachment",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Update a Follow Up Boss person attachment by ID.",
     )
     async def followupboss_update_person_attachment(
@@ -942,6 +1012,9 @@ def _register_attachment_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter)
 
     @mcp.tool(
         name="followupboss_delete_person_attachment",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Delete a Follow Up Boss person attachment by ID.",
     )
     async def followupboss_delete_person_attachment(person_attachment_id: int) -> dict[str, object]:
@@ -951,6 +1024,9 @@ def _register_attachment_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter)
 
     @mcp.tool(
         name="followupboss_get_deal_attachment",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss deal attachment by ID.",
     )
     async def followupboss_get_deal_attachment(deal_attachment_id: int) -> dict[str, object]:
@@ -960,6 +1036,9 @@ def _register_attachment_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter)
 
     @mcp.tool(
         name="followupboss_create_deal_attachment",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, open_world_hint=False
+        ),
         description="Create a Follow Up Boss deal attachment record.",
     )
     async def followupboss_create_deal_attachment(
@@ -975,6 +1054,9 @@ def _register_attachment_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter)
 
     @mcp.tool(
         name="followupboss_update_deal_attachment",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Update a Follow Up Boss deal attachment by ID.",
     )
     async def followupboss_update_deal_attachment(
@@ -991,6 +1073,9 @@ def _register_attachment_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter)
 
     @mcp.tool(
         name="followupboss_delete_deal_attachment",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Delete a Follow Up Boss deal attachment by ID.",
     )
     async def followupboss_delete_deal_attachment(deal_attachment_id: int) -> dict[str, object]:
@@ -1009,6 +1094,9 @@ def _register_reaction_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -
 
     @mcp.tool(
         name="followupboss_get_reaction",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss reaction by ID.",
     )
     async def followupboss_get_reaction(reaction_id: int) -> dict[str, object]:
@@ -1016,6 +1104,9 @@ def _register_reaction_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -
 
     @mcp.tool(
         name="followupboss_add_reaction",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, open_world_hint=False
+        ),
         description="Add a Follow Up Boss reaction to a note, call, or threaded reply.",
     )
     async def followupboss_add_reaction(
@@ -1027,6 +1118,9 @@ def _register_reaction_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -
 
     @mcp.tool(
         name="followupboss_delete_reaction",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Delete a Follow Up Boss reaction from a note, call, or threaded reply.",
     )
     async def followupboss_delete_reaction(
@@ -1048,6 +1142,9 @@ def _register_threaded_reply_tools(mcp: MCPServer, adapter: FollowUpBossToolAdap
 
     @mcp.tool(
         name="followupboss_get_threaded_reply",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss threaded reply by ID.",
     )
     async def followupboss_get_threaded_reply(threaded_reply_id: int) -> dict[str, object]:
@@ -1066,6 +1163,9 @@ def _register_event_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> N
 
     @mcp.tool(
         name="followupboss_search_events",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "Search Follow Up Boss events with pagination metadata. Do not use this to "
             "answer requests for notes associated with a person or lead ID; Follow Up Boss "
@@ -1088,6 +1188,9 @@ def _register_event_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> N
 
     @mcp.tool(
         name="followupboss_get_event",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss event by ID.",
     )
     async def followupboss_get_event(event_id: int) -> dict[str, object]:
@@ -1095,6 +1198,9 @@ def _register_event_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> N
 
     @mcp.tool(
         name="followupboss_send_event",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=True
+        ),
         description=(
             "Send a canonical Follow Up Boss lead or lead-activity event through POST /events."
         ),
@@ -1133,6 +1239,9 @@ def _register_email_marketing_tools(
 
     @mcp.tool(
         name="followupboss_list_email_campaigns",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="List Follow Up Boss email marketing campaigns.",
     )
     async def followupboss_list_email_campaigns(
@@ -1146,6 +1255,9 @@ def _register_email_marketing_tools(
 
     @mcp.tool(
         name="followupboss_create_email_campaign",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, open_world_hint=False
+        ),
         description="Create a Follow Up Boss email marketing campaign.",
     )
     async def followupboss_create_email_campaign(
@@ -1162,6 +1274,9 @@ def _register_email_marketing_tools(
 
     @mcp.tool(
         name="followupboss_update_email_campaign",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Update a Follow Up Boss email marketing campaign by ID.",
     )
     async def followupboss_update_email_campaign(
@@ -1177,6 +1292,9 @@ def _register_email_marketing_tools(
 
     @mcp.tool(
         name="followupboss_list_email_events",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="List Follow Up Boss email marketing events.",
     )
     async def followupboss_list_email_events(
@@ -1191,6 +1309,9 @@ def _register_email_marketing_tools(
 
     @mcp.tool(
         name="followupboss_send_email_events",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "Post batched Follow Up Boss email marketing events. Each event requires "
             "campaign_id, occurred, recipient, and type; use person_id/user_id for optional "
@@ -1215,6 +1336,9 @@ def _register_action_plan_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter
 
     @mcp.tool(
         name="followupboss_list_action_plans",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "List Follow Up Boss action plans with documented filters and pagination metadata."
         ),
@@ -1232,6 +1356,9 @@ def _register_action_plan_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter
 
     @mcp.tool(
         name="followupboss_list_action_plan_people",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="List Follow Up Boss action-plan-person relationships with documented filters.",
     )
     async def followupboss_list_action_plan_people(
@@ -1247,6 +1374,9 @@ def _register_action_plan_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter
 
     @mcp.tool(
         name="followupboss_apply_action_plan",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=True
+        ),
         description="Apply a Follow Up Boss action plan to a specific person.",
     )
     async def followupboss_apply_action_plan(
@@ -1259,6 +1389,9 @@ def _register_action_plan_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter
 
     @mcp.tool(
         name="followupboss_update_action_plan_person",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=True
+        ),
         description="Pause or resume a Follow Up Boss action-plan-person relationship by ID.",
     )
     async def followupboss_update_action_plan_person(
@@ -1281,6 +1414,9 @@ def _register_automation_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter)
 
     @mcp.tool(
         name="followupboss_list_automations",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "List Follow Up Boss automations with documented filters and pagination metadata."
         ),
@@ -1298,6 +1434,9 @@ def _register_automation_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter)
 
     @mcp.tool(
         name="followupboss_get_automation",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss automation by ID.",
     )
     async def followupboss_get_automation(automation_id: int) -> dict[str, object]:
@@ -1305,6 +1444,9 @@ def _register_automation_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter)
 
     @mcp.tool(
         name="followupboss_list_automation_people",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="List Follow Up Boss automation-person pairings with documented filters.",
     )
     async def followupboss_list_automation_people(
@@ -1319,6 +1461,9 @@ def _register_automation_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter)
 
     @mcp.tool(
         name="followupboss_get_automation_person",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss automation-person pairing by ID.",
     )
     async def followupboss_get_automation_person(automation_person_id: int) -> dict[str, object]:
@@ -1328,6 +1473,9 @@ def _register_automation_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter)
 
     @mcp.tool(
         name="followupboss_trigger_automation",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=True
+        ),
         description="Trigger a Follow Up Boss automation for a specific person.",
     )
     async def followupboss_trigger_automation(
@@ -1340,6 +1488,9 @@ def _register_automation_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter)
 
     @mcp.tool(
         name="followupboss_update_automation_person",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=True
+        ),
         description="Pause or resume a Follow Up Boss automation-person pairing by ID.",
     )
     async def followupboss_update_automation_person(
@@ -1362,6 +1513,9 @@ def _register_group_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> N
 
     @mcp.tool(
         name="followupboss_list_groups",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="List Follow Up Boss groups with documented filters and pagination metadata.",
     )
     async def followupboss_list_groups(
@@ -1373,6 +1527,9 @@ def _register_group_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> N
 
     @mcp.tool(
         name="followupboss_list_round_robin_groups",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="List Follow Up Boss groups including round-robin assignment details.",
     )
     async def followupboss_list_round_robin_groups(
@@ -1384,6 +1541,9 @@ def _register_group_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> N
 
     @mcp.tool(
         name="followupboss_get_group",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss group by ID.",
     )
     async def followupboss_get_group(group_id: int) -> dict[str, object]:
@@ -1391,6 +1551,9 @@ def _register_group_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> N
 
     @mcp.tool(
         name="followupboss_create_group",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, open_world_hint=False
+        ),
         description="Create a Follow Up Boss group.",
     )
     async def followupboss_create_group(
@@ -1408,6 +1571,9 @@ def _register_group_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> N
 
     @mcp.tool(
         name="followupboss_update_group",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Update a Follow Up Boss group by ID.",
     )
     async def followupboss_update_group(
@@ -1426,6 +1592,9 @@ def _register_group_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> N
 
     @mcp.tool(
         name="followupboss_delete_group",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Delete a Follow Up Boss group by ID.",
     )
     async def followupboss_delete_group(group_id: int) -> dict[str, object]:
@@ -1442,6 +1611,9 @@ def _register_inbox_app_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) 
 
     @mcp.tool(
         name="followupboss_list_inbox_app_installations",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "List installed Follow Up Boss inbox app installations for a published inbox app."
         ),
@@ -1455,6 +1627,9 @@ def _register_inbox_app_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) 
 
     @mcp.tool(
         name="followupboss_install_inbox_app",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=True
+        ),
         description="Install a Follow Up Boss inbox app for an account or user scope.",
     )
     async def followupboss_install_inbox_app(
@@ -1466,6 +1641,9 @@ def _register_inbox_app_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) 
 
     @mcp.tool(
         name="followupboss_deactivate_inbox_app",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=True
+        ),
         description="Deactivate a Follow Up Boss inbox app installation by ID.",
     )
     async def followupboss_deactivate_inbox_app(inbox_app_id: int) -> dict[str, object]:
@@ -1475,6 +1653,9 @@ def _register_inbox_app_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) 
 
     @mcp.tool(
         name="followupboss_add_inbox_app_message",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=True
+        ),
         description="Add a message to a Follow Up Boss inbox app conversation.",
     )
     async def followupboss_add_inbox_app_message(
@@ -1501,6 +1682,9 @@ def _register_inbox_app_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) 
 
     @mcp.tool(
         name="followupboss_add_inbox_app_note",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, open_world_hint=False
+        ),
         description="Add a note to a Follow Up Boss inbox app conversation.",
     )
     async def followupboss_add_inbox_app_note(
@@ -1515,6 +1699,9 @@ def _register_inbox_app_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) 
 
     @mcp.tool(
         name="followupboss_list_inbox_app_participants",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="List participants in a Follow Up Boss inbox app conversation.",
     )
     async def followupboss_list_inbox_app_participants(
@@ -1527,6 +1714,9 @@ def _register_inbox_app_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) 
 
     @mcp.tool(
         name="followupboss_add_inbox_app_participant",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, open_world_hint=False
+        ),
         description="Add a participant to a Follow Up Boss inbox app conversation.",
     )
     async def followupboss_add_inbox_app_participant(
@@ -1547,6 +1737,9 @@ def _register_inbox_app_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) 
 
     @mcp.tool(
         name="followupboss_update_inbox_app_conversation",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=True
+        ),
         description="Update a Follow Up Boss inbox app conversation by external conversation ID.",
     )
     async def followupboss_update_inbox_app_conversation(
@@ -1566,6 +1759,9 @@ def _register_inbox_app_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) 
 
     @mcp.tool(
         name="followupboss_update_inbox_app_message",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Update a Follow Up Boss inbox app message by ID or external message ID.",
     )
     async def followupboss_update_inbox_app_message(
@@ -1582,6 +1778,9 @@ def _register_inbox_app_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) 
 
     @mcp.tool(
         name="followupboss_remove_inbox_app_participant",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Remove a participant from a Follow Up Boss inbox app conversation.",
     )
     async def followupboss_remove_inbox_app_participant(
@@ -1604,6 +1803,9 @@ def _register_user_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_get_me",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "Retrieve the current Follow Up Boss user profile with sensitive keys redacted."
         ),
@@ -1613,6 +1815,9 @@ def _register_user_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_list_users",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "List Follow Up Boss users with pagination metadata. fields accepts an array or "
             "the documented comma-separated form. Project user fields such as id, name, "
@@ -1640,6 +1845,9 @@ def _register_user_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_get_user",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss user by ID.",
     )
     async def followupboss_get_user(user_id: int) -> dict[str, object]:
@@ -1647,6 +1855,9 @@ def _register_user_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_delete_user",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Delete a Follow Up Boss user by ID and reassign their leads.",
     )
     async def followupboss_delete_user(user_id: int, assign_to: int) -> dict[str, object]:
@@ -1666,6 +1877,9 @@ def _register_appointment_metadata_tools(
 
     @mcp.tool(
         name="followupboss_list_appointment_outcomes",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="List Follow Up Boss appointment outcomes with pagination metadata.",
     )
     async def followupboss_list_appointment_outcomes(
@@ -1680,6 +1894,9 @@ def _register_appointment_metadata_tools(
 
     @mcp.tool(
         name="followupboss_get_appointment_outcome",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss appointment outcome by ID.",
     )
     async def followupboss_get_appointment_outcome(
@@ -1691,6 +1908,9 @@ def _register_appointment_metadata_tools(
 
     @mcp.tool(
         name="followupboss_create_appointment_outcome",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, open_world_hint=False
+        ),
         description="Create a Follow Up Boss appointment outcome.",
     )
     async def followupboss_create_appointment_outcome(
@@ -1704,6 +1924,9 @@ def _register_appointment_metadata_tools(
 
     @mcp.tool(
         name="followupboss_update_appointment_outcome",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Update a Follow Up Boss appointment outcome by ID.",
     )
     async def followupboss_update_appointment_outcome(
@@ -1718,6 +1941,9 @@ def _register_appointment_metadata_tools(
 
     @mcp.tool(
         name="followupboss_delete_appointment_outcome",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Delete a Follow Up Boss appointment outcome by ID and reassign appointments.",
     )
     async def followupboss_delete_appointment_outcome(
@@ -1730,6 +1956,9 @@ def _register_appointment_metadata_tools(
 
     @mcp.tool(
         name="followupboss_list_appointment_types",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="List Follow Up Boss appointment types with pagination metadata.",
     )
     async def followupboss_list_appointment_types(
@@ -1744,6 +1973,9 @@ def _register_appointment_metadata_tools(
 
     @mcp.tool(
         name="followupboss_get_appointment_type",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss appointment type by ID.",
     )
     async def followupboss_get_appointment_type(
@@ -1755,6 +1987,9 @@ def _register_appointment_metadata_tools(
 
     @mcp.tool(
         name="followupboss_create_appointment_type",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, open_world_hint=False
+        ),
         description="Create a Follow Up Boss appointment type.",
     )
     async def followupboss_create_appointment_type(
@@ -1768,6 +2003,9 @@ def _register_appointment_metadata_tools(
 
     @mcp.tool(
         name="followupboss_update_appointment_type",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Update a Follow Up Boss appointment type by ID.",
     )
     async def followupboss_update_appointment_type(
@@ -1782,6 +2020,9 @@ def _register_appointment_metadata_tools(
 
     @mcp.tool(
         name="followupboss_delete_appointment_type",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Delete a Follow Up Boss appointment type by ID and reassign appointments.",
     )
     async def followupboss_delete_appointment_type(
@@ -1803,6 +2044,9 @@ def _register_custom_field_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapte
 
     @mcp.tool(
         name="followupboss_list_custom_fields",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="List custom fields for the authenticated Follow Up Boss account.",
     )
     async def followupboss_list_custom_fields(
@@ -1824,6 +2068,9 @@ def _register_custom_field_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapte
 
     @mcp.tool(
         name="followupboss_get_custom_field",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss custom field by ID.",
     )
     async def followupboss_get_custom_field(custom_field_id: int) -> dict[str, object]:
@@ -1831,6 +2078,9 @@ def _register_custom_field_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapte
 
     @mcp.tool(
         name="followupboss_create_custom_field",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, open_world_hint=False
+        ),
         description="Create a Follow Up Boss custom field.",
     )
     async def followupboss_create_custom_field(
@@ -1848,6 +2098,9 @@ def _register_custom_field_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapte
 
     @mcp.tool(
         name="followupboss_update_custom_field",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Update a Follow Up Boss custom field by ID.",
     )
     async def followupboss_update_custom_field(
@@ -1866,6 +2119,9 @@ def _register_custom_field_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapte
 
     @mcp.tool(
         name="followupboss_delete_custom_field",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Delete a Follow Up Boss custom field by ID.",
     )
     async def followupboss_delete_custom_field(custom_field_id: int) -> dict[str, object]:
@@ -1884,6 +2140,9 @@ def _register_deal_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_list_deals",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "List Follow Up Boss deals with documented filters and pagination metadata. "
             "For active deals tied to a specific lead/person, use "
@@ -1903,6 +2162,9 @@ def _register_deal_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_list_active_deals_for_person",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "List active, non-archived Follow Up Boss deals for a specific person/lead. "
             "Use this for requests like 'open deals for this lead' or "
@@ -1916,6 +2178,9 @@ def _register_deal_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_get_deal",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss deal by ID.",
     )
     async def followupboss_get_deal(deal_id: int) -> dict[str, object]:
@@ -1923,6 +2188,9 @@ def _register_deal_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_create_deal",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "Create a Follow Up Boss deal. custom_fields keys must begin with 'custom'; "
             "use followupboss_list_deal_custom_fields to discover valid names."
@@ -1952,6 +2220,9 @@ def _register_deal_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_update_deal",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=True
+        ),
         description=(
             "Update a Follow Up Boss deal by ID. custom_fields keys must begin with 'custom'; "
             "use followupboss_list_deal_custom_fields to discover valid names."
@@ -1981,6 +2252,9 @@ def _register_deal_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_delete_deal",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Delete a Follow Up Boss deal by ID.",
     )
     async def followupboss_delete_deal(deal_id: int) -> dict[str, object]:
@@ -1988,6 +2262,9 @@ def _register_deal_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_list_deal_custom_fields",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="List Follow Up Boss deal custom fields with pagination metadata.",
     )
     async def followupboss_list_deal_custom_fields(
@@ -2003,6 +2280,9 @@ def _register_deal_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_get_deal_custom_field",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss deal custom field by ID.",
     )
     async def followupboss_get_deal_custom_field(deal_custom_field_id: int) -> dict[str, object]:
@@ -2012,6 +2292,9 @@ def _register_deal_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_create_deal_custom_field",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, open_world_hint=False
+        ),
         description="Create a Follow Up Boss deal custom field.",
     )
     async def followupboss_create_deal_custom_field(
@@ -2030,6 +2313,9 @@ def _register_deal_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_update_deal_custom_field",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Update a Follow Up Boss deal custom field by ID.",
     )
     async def followupboss_update_deal_custom_field(
@@ -2050,6 +2336,9 @@ def _register_deal_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_delete_deal_custom_field",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Delete a Follow Up Boss deal custom field by ID.",
     )
     async def followupboss_delete_deal_custom_field(deal_custom_field_id: int) -> dict[str, object]:
@@ -2068,6 +2357,9 @@ def _register_appointment_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter
 
     @mcp.tool(
         name="followupboss_list_appointments",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "List Follow Up Boss appointments with documented filters and pagination metadata."
         ),
@@ -2086,6 +2378,9 @@ def _register_appointment_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter
 
     @mcp.tool(
         name="followupboss_get_appointment",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss appointment by ID.",
     )
     async def followupboss_get_appointment(appointment_id: int) -> dict[str, object]:
@@ -2093,6 +2388,9 @@ def _register_appointment_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter
 
     @mcp.tool(
         name="followupboss_create_appointment",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=True
+        ),
         description=(
             "Create a Follow Up Boss appointment. Follow Up Boss stores times in UTC "
             "and does not honor an offset suffix, so provide start and end as the "
@@ -2123,6 +2421,9 @@ def _register_appointment_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter
 
     @mcp.tool(
         name="followupboss_update_appointment",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=True
+        ),
         description=(
             "Update a Follow Up Boss appointment by ID. Follow Up Boss stores times in "
             "UTC and does not honor an offset suffix, so provide start and end as the "
@@ -2153,6 +2454,9 @@ def _register_appointment_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter
 
     @mcp.tool(
         name="followupboss_delete_appointment",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Delete a Follow Up Boss appointment by ID.",
     )
     async def followupboss_delete_appointment(appointment_id: int) -> dict[str, object]:
@@ -2171,6 +2475,9 @@ def _register_call_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_list_calls",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="List Follow Up Boss calls with documented filters and pagination metadata.",
     )
     async def followupboss_list_calls(
@@ -2186,6 +2493,9 @@ def _register_call_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_get_call",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss call by ID.",
     )
     async def followupboss_get_call(call_id: int) -> dict[str, object]:
@@ -2193,6 +2503,9 @@ def _register_call_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_create_call",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "Create a Follow Up Boss call log entry attributed to the authenticated user. "
             "Do not choose or invent another user_id; the server binds the call to the "
@@ -2216,6 +2529,9 @@ def _register_call_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_update_call",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description=(
             "Update a Follow Up Boss call log entry by ID. Do not reassign the log to "
             "another user; mismatched user_id values are rejected."
@@ -2248,6 +2564,9 @@ def _register_pipeline_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -
 
     @mcp.tool(
         name="followupboss_list_pipelines",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "List Follow Up Boss pipelines with exact-name filtering and pagination metadata."
         ),
@@ -2257,6 +2576,9 @@ def _register_pipeline_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -
 
     @mcp.tool(
         name="followupboss_get_pipeline",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss pipeline by ID.",
     )
     async def followupboss_get_pipeline(pipeline_id: int) -> dict[str, object]:
@@ -2264,6 +2586,9 @@ def _register_pipeline_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -
 
     @mcp.tool(
         name="followupboss_create_pipeline",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, open_world_hint=False
+        ),
         description="Create a Follow Up Boss pipeline. Owner permissions are required upstream.",
     )
     async def followupboss_create_pipeline(
@@ -2277,6 +2602,9 @@ def _register_pipeline_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -
 
     @mcp.tool(
         name="followupboss_update_pipeline",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description=(
             "Update a Follow Up Boss pipeline by ID. Owner permissions are required upstream."
         ),
@@ -2293,6 +2621,9 @@ def _register_pipeline_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -
 
     @mcp.tool(
         name="followupboss_delete_pipeline",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description=(
             "Delete a Follow Up Boss pipeline by ID. Owner permissions are required upstream."
         ),
@@ -2311,6 +2642,9 @@ def _register_pond_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_list_ponds",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="List Follow Up Boss ponds with pagination metadata.",
     )
     async def followupboss_list_ponds(
@@ -2322,6 +2656,9 @@ def _register_pond_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_get_pond",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss pond by ID.",
     )
     async def followupboss_get_pond(pond_id: int) -> dict[str, object]:
@@ -2329,6 +2666,9 @@ def _register_pond_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_create_pond",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, open_world_hint=False
+        ),
         description="Create a Follow Up Boss pond.",
     )
     async def followupboss_create_pond(
@@ -2340,6 +2680,9 @@ def _register_pond_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_update_pond",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Update a Follow Up Boss pond by ID.",
     )
     async def followupboss_update_pond(
@@ -2353,6 +2696,9 @@ def _register_pond_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_delete_pond",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Delete a Follow Up Boss pond by ID and reassign its contacts.",
     )
     async def followupboss_delete_pond(pond_id: int, assign_to: int) -> dict[str, object]:
@@ -2369,6 +2715,9 @@ def _register_smart_list_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter)
 
     @mcp.tool(
         name="followupboss_list_smart_lists",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "List Follow Up Boss smart lists with documented filters and pagination metadata. "
             "When resolving a user-provided smart list name, set include_all=true so both "
@@ -2389,6 +2738,9 @@ def _register_smart_list_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter)
 
     @mcp.tool(
         name="followupboss_get_smart_list",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss smart list by ID.",
     )
     async def followupboss_get_smart_list(smart_list_id: int) -> dict[str, object]:
@@ -2405,6 +2757,9 @@ def _register_stage_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> N
 
     @mcp.tool(
         name="followupboss_list_stages",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="List Follow Up Boss stages with documented filters and pagination metadata.",
     )
     async def followupboss_list_stages(
@@ -2417,6 +2772,9 @@ def _register_stage_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> N
 
     @mcp.tool(
         name="followupboss_get_stage",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss stage by ID.",
     )
     async def followupboss_get_stage(stage_id: int) -> dict[str, object]:
@@ -2424,6 +2782,9 @@ def _register_stage_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> N
 
     @mcp.tool(
         name="followupboss_create_stage",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, open_world_hint=False
+        ),
         description="Create a Follow Up Boss stage.",
     )
     async def followupboss_create_stage(
@@ -2435,6 +2796,9 @@ def _register_stage_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> N
 
     @mcp.tool(
         name="followupboss_update_stage",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Update a Follow Up Boss stage by ID.",
     )
     async def followupboss_update_stage(
@@ -2447,6 +2811,9 @@ def _register_stage_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> N
 
     @mcp.tool(
         name="followupboss_delete_stage",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Delete a Follow Up Boss stage by ID and reassign linked action plans.",
     )
     async def followupboss_delete_stage(
@@ -2466,6 +2833,9 @@ def _register_task_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_list_tasks",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "List Follow Up Boss tasks with documented filters and pagination metadata. "
             "Use this broad list only when the request provides explicit task filters "
@@ -2501,6 +2871,9 @@ def _register_task_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_list_my_overdue_tasks",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "List incomplete overdue Follow Up Boss tasks assigned to the authenticated user. "
             "Use this for requests like 'my overdue tasks' or 'what am I late on?'. "
@@ -2521,6 +2894,9 @@ def _register_task_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_list_my_tasks_due_today",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "List incomplete Follow Up Boss tasks due today and assigned to the "
             "authenticated user. Use this for requests like 'my tasks today' or "
@@ -2541,6 +2917,9 @@ def _register_task_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_list_my_upcoming_tasks",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "List incomplete Follow Up Boss tasks due after today and assigned to "
             "the authenticated user. Use this for requests like 'my upcoming tasks', "
@@ -2561,6 +2940,9 @@ def _register_task_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_get_task",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss task by ID.",
     )
     async def followupboss_get_task(task_id: int) -> dict[str, object]:
@@ -2568,6 +2950,9 @@ def _register_task_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_create_task",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description=(
             "Create a Follow Up Boss task. Follow Up Boss stores due_date_time in UTC "
             "and does not honor an offset suffix, so provide it as the user's local "
@@ -2596,6 +2981,9 @@ def _register_task_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_update_task",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description=(
             "Update a Follow Up Boss task by explicit task_id. Do not infer the "
             "task_id from vague natural-language intent. Follow Up Boss stores "
@@ -2624,6 +3012,9 @@ def _register_task_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_delete_task",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description=(
             "Delete a Follow Up Boss task by explicit task_id. Do not infer the "
             "task_id from vague natural-language intent."
@@ -2643,6 +3034,9 @@ def _register_team_inbox_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter)
 
     @mcp.tool(
         name="followupboss_list_team_inboxes",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="List Follow Up Boss team inboxes with pagination metadata.",
     )
     async def followupboss_list_team_inboxes() -> dict[str, object]:
@@ -2659,6 +3053,9 @@ def _register_team_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_list_teams",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="List Follow Up Boss teams with pagination metadata.",
     )
     async def followupboss_list_teams(
@@ -2670,6 +3067,9 @@ def _register_team_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_get_team",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss team by ID.",
     )
     async def followupboss_get_team(team_id: int) -> dict[str, object]:
@@ -2677,6 +3077,9 @@ def _register_team_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_create_team",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, open_world_hint=False
+        ),
         description="Create a Follow Up Boss team.",
     )
     async def followupboss_create_team(
@@ -2689,6 +3092,9 @@ def _register_team_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_update_team",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Update a Follow Up Boss team by ID.",
     )
     async def followupboss_update_team(
@@ -2702,6 +3108,9 @@ def _register_team_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_delete_team",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Delete a Follow Up Boss team by ID, optionally moving members first.",
     )
     async def followupboss_delete_team(
@@ -2721,6 +3130,9 @@ def _register_template_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -
 
     @mcp.tool(
         name="followupboss_list_templates",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="List Follow Up Boss email templates with pagination metadata.",
     )
     async def followupboss_list_templates(
@@ -2732,6 +3144,9 @@ def _register_template_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -
 
     @mcp.tool(
         name="followupboss_get_template",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss email template by ID.",
     )
     async def followupboss_get_template(
@@ -2743,6 +3158,9 @@ def _register_template_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -
 
     @mcp.tool(
         name="followupboss_merge_template",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Merge a Follow Up Boss email template with recipients.",
     )
     async def followupboss_merge_template(
@@ -2755,6 +3173,9 @@ def _register_template_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -
 
     @mcp.tool(
         name="followupboss_create_template",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, open_world_hint=False
+        ),
         description="Create a Follow Up Boss email template.",
     )
     async def followupboss_create_template(
@@ -2768,6 +3189,9 @@ def _register_template_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -
 
     @mcp.tool(
         name="followupboss_update_template",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Update a Follow Up Boss email template by ID.",
     )
     async def followupboss_update_template(
@@ -2781,6 +3205,9 @@ def _register_template_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -
 
     @mcp.tool(
         name="followupboss_delete_template",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Delete a Follow Up Boss email template by ID.",
     )
     async def followupboss_delete_template(template_id: int) -> dict[str, object]:
@@ -2797,6 +3224,9 @@ def _register_text_message_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapte
 
     @mcp.tool(
         name="followupboss_list_text_messages",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "List existing Follow Up Boss text messages with documented filters and "
             "pagination metadata. Provide at least one identifying filter: person_id, "
@@ -2816,6 +3246,9 @@ def _register_text_message_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapte
 
     @mcp.tool(
         name="followupboss_get_text_message",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss text message by ID.",
     )
     async def followupboss_get_text_message(text_message_id: int) -> dict[str, object]:
@@ -2823,6 +3256,9 @@ def _register_text_message_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapte
 
     @mcp.tool(
         name="followupboss_list_text_message_templates",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="List Follow Up Boss text message templates with pagination metadata.",
     )
     async def followupboss_list_text_message_templates(
@@ -2836,6 +3272,9 @@ def _register_text_message_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapte
 
     @mcp.tool(
         name="followupboss_get_text_message_template",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss text message template by ID.",
     )
     async def followupboss_get_text_message_template(template_id: int) -> dict[str, object]:
@@ -2845,6 +3284,9 @@ def _register_text_message_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapte
 
     @mcp.tool(
         name="followupboss_merge_text_message_template",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Merge a Follow Up Boss text message template with recipients.",
     )
     async def followupboss_merge_text_message_template(
@@ -2859,6 +3301,9 @@ def _register_text_message_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapte
 
     @mcp.tool(
         name="followupboss_create_text_message_template",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, open_world_hint=False
+        ),
         description="Create a Follow Up Boss text message template.",
     )
     async def followupboss_create_text_message_template(
@@ -2873,6 +3318,9 @@ def _register_text_message_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapte
 
     @mcp.tool(
         name="followupboss_update_text_message_template",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Update a Follow Up Boss text message template by ID.",
     )
     async def followupboss_update_text_message_template(
@@ -2888,6 +3336,9 @@ def _register_text_message_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapte
 
     @mcp.tool(
         name="followupboss_delete_text_message_template",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Delete a Follow Up Boss text message template by ID.",
     )
     async def followupboss_delete_text_message_template(template_id: int) -> dict[str, object]:
@@ -2906,6 +3357,9 @@ def _register_note_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_add_note",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "Create a Follow Up Boss note for a person, optionally waiting for person "
             "visibility first. Follow Up Boss does not provide API support to log or "
@@ -2929,6 +3383,9 @@ def _register_note_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_get_note",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description=(
             "Fetch a Follow Up Boss note by note ID only. Follow Up Boss has not made "
             "searching for notes associated with a FUB person ID available via the API; "
@@ -2941,6 +3398,9 @@ def _register_note_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_update_note",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Update a Follow Up Boss note by ID.",
     )
     async def followupboss_update_note(
@@ -2954,6 +3414,9 @@ def _register_note_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) -> No
 
     @mcp.tool(
         name="followupboss_delete_note",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Delete a Follow Up Boss note by ID.",
     )
     async def followupboss_delete_note(note_id: int) -> dict[str, object]:
@@ -2970,6 +3433,9 @@ def _register_webhook_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) ->
 
     @mcp.tool(
         name="followupboss_list_webhooks",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="List registered Follow Up Boss webhooks with pagination metadata.",
     )
     async def followupboss_list_webhooks(
@@ -2990,6 +3456,9 @@ def _register_webhook_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) ->
 
     @mcp.tool(
         name="followupboss_get_webhook",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss webhook by ID.",
     )
     async def followupboss_get_webhook(webhook_id: int) -> dict[str, object]:
@@ -2997,6 +3466,9 @@ def _register_webhook_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) ->
 
     @mcp.tool(
         name="followupboss_get_webhook_event",
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, open_world_hint=False
+        ),
         description="Fetch a single Follow Up Boss webhook event by ID.",
     )
     async def followupboss_get_webhook_event(webhook_event_id: str) -> dict[str, object]:
@@ -3006,6 +3478,9 @@ def _register_webhook_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) ->
 
     @mcp.tool(
         name="followupboss_create_webhook",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=True
+        ),
         description="Create a Follow Up Boss webhook for a documented event name.",
     )
     async def followupboss_create_webhook(event: str, url: str) -> dict[str, object]:
@@ -3013,6 +3488,9 @@ def _register_webhook_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) ->
 
     @mcp.tool(
         name="followupboss_update_webhook",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=True
+        ),
         description="Update a Follow Up Boss webhook by ID.",
     )
     async def followupboss_update_webhook(
@@ -3026,6 +3504,9 @@ def _register_webhook_tools(mcp: MCPServer, adapter: FollowUpBossToolAdapter) ->
 
     @mcp.tool(
         name="followupboss_delete_webhook",
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, open_world_hint=False
+        ),
         description="Delete a Follow Up Boss webhook by ID.",
     )
     async def followupboss_delete_webhook(webhook_id: int) -> dict[str, object]:
