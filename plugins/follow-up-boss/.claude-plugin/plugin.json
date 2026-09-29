@@ -1,6 +1,6 @@
 {
   "name": "follow-up-boss",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Connect Claude Code to Follow Up Boss for lead search, activity, tasks, appointments, and deals through the hosted OAuth MCP server.",
   "author": {
     "name": "The Perry Group",

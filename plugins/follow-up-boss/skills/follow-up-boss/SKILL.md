@@ -35,9 +35,11 @@ inventing arguments or relying on a cached tool catalog.
 - Note search by Follow Up Boss person ID is unavailable through this integration.
   Explain that limitation; event search is not a substitute. Known note IDs can be
   retrieved with the available note tool.
-- Text-message tools record or retrieve CRM activity; the Follow Up Boss API does
-  not send SMS. A logged text is not a delivered message. Sending requires a
-  separately available, explicitly authorized messaging provider.
+- Text-message tools retrieve existing CRM activity. This MCP currently has no
+  tool to send or log texts. Explain that limitation and offer supported note or
+  call-log alternatives only with the user's explicit choice; a call log affects
+  call reporting. Sending requires a separately available, explicitly authorized
+  messaging provider. A logged record is not a delivered message.
 - Follow pagination until the requested result is complete, or state the returned
   subset and remaining limit. Use returned pagination metadata for counts; the
   length of one page is not the account total.
