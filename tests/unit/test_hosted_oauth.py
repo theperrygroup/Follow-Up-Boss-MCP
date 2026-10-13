@@ -16,7 +16,12 @@ from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
 import followupboss_mcp.hosted_oauth as hosted_oauth
-from followupboss_mcp.cimd import ClientIdMetadataDocument, ClientIdMetadataDocumentError
+from followupboss_mcp.cimd import (
+    ClientIdMetadataDocument,
+    ClientIdMetadataDocumentError,
+    ClientIdMetadataDocumentFetcher,
+    ClientIdMetadataResolver,
+)
 from followupboss_mcp.hosted_oauth import (
     FollowUpBossOAuthClient,
     FollowUpBossOAuthIdentity,
@@ -249,7 +254,8 @@ def _app(
     store: FakeOAuthStore | None = None,
     provisioner: FakeTenantProvisioner | None = None,
     fub_client: FakeFubOAuthClient | None = None,
-    client_metadata_fetcher: FakeClientMetadataDocumentFetcher | None = None,
+    client_metadata_fetcher: ClientIdMetadataResolver | None = None,
+    settings: HostedOAuthSettings | None = None,
     now: int = 1000,
 ) -> tuple[TestClient, FakeOAuthStore, FakeTenantProvisioner, FakeFubOAuthClient]:
     """Build a TestClient around the hosted OAuth routes."""
@@ -270,7 +276,7 @@ def _app(
     resolved_provisioner = provisioner or FakeTenantProvisioner()
     resolved_fub_client = fub_client or FakeFubOAuthClient()
     oauth = HostedOAuthApplication(
-        settings=_settings(),
+        settings=settings or _settings(),
         store=resolved_store,
         tenant_provisioner=resolved_provisioner,
         fub_client=cast(Any, resolved_fub_client),
@@ -618,6 +624,139 @@ def test_cimd_client_completes_post_auth_code_and_token_flow() -> None:
     assert token.status_code == 200
     assert store.access_tokens[0].client_id == client_id
     assert store.access_tokens[0].resource == "https://mcp.example.com/mcp"
+
+
+@pytest.mark.parametrize("token_variant", ["valid", "wrong_verifier", "wrong_redirect"])
+@pytest.mark.asyncio
+async def test_chatgpt_supported_auth_metadata_completes_server_url_install_flow(
+    token_variant: str,
+) -> None:
+    """Real-shape ChatGPT metadata negotiates PKCE while codes retain exact binding."""
+    client_id = "https://chatgpt.com/oauth/client.json"
+    redirect_uri = "https://chatgpt.com/connector_platform_oauth_redirect"
+    resource = "https://fub.theperry.group/mcp"
+    metadata_payload = {
+        "client_id": client_id,
+        "client_uri": "https://chatgpt.com/",
+        "redirect_uris": [redirect_uri],
+        "token_endpoint_auth_method": "private_key_jwt",
+        "token_endpoint_auth_methods_supported": ["none", "private_key_jwt"],
+        "grant_types": ["authorization_code", "refresh_token"],
+        "response_types": ["code"],
+        "client_name": "ChatGPT",
+        "logo_uri": "https://persistent.oaistatic.com/sonic/misc/openai-logo.png",
+        "token_endpoint_auth_signing_alg": "RS256",
+        "jwks_uri": "https://chatgpt.com/oauth/jwks.json",
+    }
+    metadata_requests: list[httpx.Request] = []
+
+    async def resolve(host: str, port: int) -> tuple[str, ...]:
+        assert (host, port) == ("chatgpt.com", 443)
+        return ("93.184.216.34",)
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == "https://93.184.216.34/oauth/client.json"
+        assert request.headers["host"] == "chatgpt.com"
+        assert request.extensions["sni_hostname"] == "chatgpt.com"
+        metadata_requests.append(request)
+        return httpx.Response(
+            200,
+            headers={"Content-Type": "application/json", "Cache-Control": "no-store"},
+            json=metadata_payload,
+        )
+
+    settings = HostedOAuthSettings.model_validate(
+        {
+            **_settings().model_dump(),
+            "issuer_url": "https://fub.theperry.group",
+            "resource_server_url": resource,
+            "fub_callback_url": "https://fub.theperry.group/oauth/follow-up-boss/callback",
+        }
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as metadata_http:
+        metadata_fetcher = ClientIdMetadataDocumentFetcher(
+            http_client=metadata_http,
+            address_resolver=resolve,
+        )
+        client, store, provisioner, _ = _app(
+            client_metadata_fetcher=metadata_fetcher,
+            settings=settings,
+        )
+        verifier = "chatgpt-install-verifier"
+        authorize = client.get(
+            "/oauth/authorize",
+            params={
+                "response_type": "code",
+                "client_id": client_id,
+                "redirect_uri": redirect_uri,
+                "scope": "followupboss:mcp",
+                "state": "chatgpt-install-state",
+                "code_challenge": _s256(verifier),
+                "code_challenge_method": "S256",
+                "resource": resource,
+            },
+            follow_redirects=False,
+        )
+        assert authorize.status_code == 307, authorize.text
+        assert len(metadata_requests) == 1
+        assert client_id not in store.clients
+        fub_state = parse_qs(urlparse(authorize.headers["location"]).query)["state"][0]
+        pending = store.pending[fub_state]
+        assert pending.redirect_uri == redirect_uri
+        assert pending.code_challenge == _s256(verifier)
+        assert pending.code_challenge_method == "S256"
+        assert pending.resource == resource
+
+        callback = client.get(
+            "/oauth/follow-up-boss/callback",
+            params={"state": fub_state, "response": "approved", "code": "fub-code"},
+            follow_redirects=False,
+        )
+        assert callback.status_code == 200, callback.text
+        assert len(metadata_requests) == 2
+        assert callback.headers["cache-control"] == "no-store"
+        assert callback.headers["x-frame-options"] == "DENY"
+        assert len(provisioner.calls) == 1
+        continue_link = BeautifulSoup(callback.text, "html.parser").find(
+            "a", attrs={"data-testid": "continue"}
+        )
+        assert continue_link is not None
+        callback_url = urlparse(str(continue_link["href"]))
+        assert callback_url._replace(query="").geturl() == redirect_uri
+        callback_query = parse_qs(callback_url.query)
+        assert callback_query["state"] == ["chatgpt-install-state"]
+        assert callback_query["iss"] == ["https://fub.theperry.group/"]
+        code = next(iter(store.codes.values()))
+        assert code.client_id == client_id
+        assert code.redirect_uri == redirect_uri
+        assert code.resource == resource
+
+        token = client.post(
+            "/oauth/token",
+            data={
+                "grant_type": "authorization_code",
+                "code": callback_query["code"][0],
+                "client_id": client_id,
+                "redirect_uri": redirect_uri + "/"
+                if token_variant == "wrong_redirect"
+                else redirect_uri,
+                "code_verifier": "other-verifier"
+                if token_variant == "wrong_verifier"
+                else verifier,
+                "resource": resource,
+            },
+        )
+        if token_variant == "valid":
+            assert token.status_code == 200, token.text
+            assert token.json()["token_type"] == "Bearer"
+            assert token.json()["scope"] == "followupboss:mcp"
+            assert store.access_tokens[0].client_id == client_id
+            assert store.access_tokens[0].resource == resource
+        else:
+            assert token.status_code == 400
+            assert token.json()["error"] == "invalid_grant"
+            assert store.access_tokens == []
+            assert store.refresh_tokens == {}
 
 
 @pytest.mark.parametrize("host", ["127.0.0.1", "[::1]", "localhost"])

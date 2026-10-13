@@ -30,6 +30,66 @@ def _metadata_payload(client_id: str) -> dict[str, object]:
     }
 
 
+@pytest.mark.parametrize(
+    "auth_methods",
+    [["none", "private_key_jwt"], ["private_key_jwt", "none"]],
+)
+def test_metadata_negotiates_public_auth_from_chatgpt_supported_methods(
+    auth_methods: list[str],
+) -> None:
+    """ChatGPT offers public PKCE auth despite its legacy private-key preference."""
+    document = ClientIdMetadataDocument.model_validate(
+        {
+            **_metadata_payload("https://chatgpt.com/oauth/client.json"),
+            "client_name": "ChatGPT",
+            "redirect_uris": ["https://chatgpt.com/connector_platform_oauth_redirect"],
+            "token_endpoint_auth_method": "private_key_jwt",
+            "token_endpoint_auth_methods_supported": auth_methods,
+        }
+    )
+    assert document.token_endpoint_auth_method == "none"
+    assert document.allows_redirect_uri("https://chatgpt.com/connector_platform_oauth_redirect")
+    assert not document.allows_redirect_uri(
+        "https://chatgpt.com/connector_platform_oauth_redirect/"
+    )
+
+
+def test_metadata_accepts_public_auth_without_a_legacy_method() -> None:
+    """A plural-only document can negotiate the server's public-client method."""
+    payload = _metadata_payload("https://client.example.com/oauth/client.json")
+    del payload["token_endpoint_auth_method"]
+    payload["token_endpoint_auth_methods_supported"] = ["none"]
+    assert ClientIdMetadataDocument.model_validate(payload).token_endpoint_auth_method == "none"
+
+
+@pytest.mark.parametrize(
+    "auth_methods",
+    [
+        [],
+        ["private_key_jwt"],
+        ["client_secret_basic"],
+        "none",
+        None,
+        ["none", 1],
+        ["none", None],
+        ["none", ""],
+        ["none", " none "],
+        {"none": True},
+    ],
+)
+def test_metadata_rejects_unsupported_or_malformed_supported_auth_methods(
+    auth_methods: object,
+) -> None:
+    """Plural negotiation fails closed instead of falling back to the legacy field."""
+    with pytest.raises(ValidationError):
+        ClientIdMetadataDocument.model_validate(
+            {
+                **_metadata_payload("https://client.example.com/oauth/client.json"),
+                "token_endpoint_auth_methods_supported": auth_methods,
+            }
+        )
+
+
 @pytest.mark.parametrize("host", ["127.0.0.1", "[::1]", "localhost"])
 @pytest.mark.parametrize("registered_port", ["", ":54321"])
 def test_metadata_allows_native_loopback_port_variation(host: str, registered_port: str) -> None:
