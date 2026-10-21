@@ -429,6 +429,8 @@ class HostedAuthSettings(BaseModel):
             issuer_url=self.issuer_url,
             resource_server_url=self.resource_server_url,
             required_scopes=list(self.required_scopes) or None,
+            # Keep today's token acceptance; 3.0 defaults True; enable after NULL-resource migration
+            validate_token_resource=False,
         )
 
 

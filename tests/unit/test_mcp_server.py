@@ -40,6 +40,7 @@ from followupboss_mcp.tenant_store import (
 )
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.mcpserver import MCPServer
+from mcp.server.streamable_http_manager import DEFAULT_MAX_SESSIONS, DEFAULT_SESSION_IDLE_TIMEOUT
 from mcp.server.transport_security import TransportSecuritySettings
 
 
@@ -373,6 +374,25 @@ def test_streamable_http_app_leaves_non_matching_routes_unwrapped(
     assert not isinstance(route.app, HostedRateLimitMiddleware)
 
 
+def test_streamable_http_app_keeps_sdk_session_limits_and_forwards_overrides() -> None:
+    """The stateful app should keep the SDK idle expiry and session cap unless told otherwise."""
+    server = FollowUpBossMCPServer(
+        "Test MCP",
+        log_level="INFO",
+    )
+
+    server.streamable_http_app()
+
+    assert server.session_manager.stateless is False
+    assert server.session_manager.session_idle_timeout == DEFAULT_SESSION_IDLE_TIMEOUT == 30 * 60
+    assert server.session_manager.max_sessions == DEFAULT_MAX_SESSIONS == 10_000
+
+    server.streamable_http_app(session_idle_timeout=60, max_sessions=5)
+
+    assert server.session_manager.session_idle_timeout == 60
+    assert server.session_manager.max_sessions == 5
+
+
 def test_create_server_uses_explicit_server_settings_and_local_single_tenant_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -409,6 +429,7 @@ def test_create_server_requires_tenant_store_when_hosted_auth_resolution_is_forc
                 {
                     "issuer_url": "https://issuer.example.com",
                     "resource_server_url": "https://mcp.example.com/mcp",
+                    "validate_token_resource": False,
                 }
             ),
             object(),

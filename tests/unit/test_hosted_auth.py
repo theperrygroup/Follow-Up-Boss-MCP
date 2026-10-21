@@ -109,6 +109,7 @@ def test_hosted_verified_identity_and_auth_settings_validation() -> None:
     assert str(mcp_auth_settings.issuer_url) == "https://issuer.example.com/"
     assert str(mcp_auth_settings.resource_server_url) == "https://mcp.example.com/mcp"
     assert mcp_auth_settings.required_scopes == ["tools:read", "tools:write"]
+    assert mcp_auth_settings.validate_token_resource is False
 
     loopback_auth_settings = HostedAuthSettings.model_validate(
         {
