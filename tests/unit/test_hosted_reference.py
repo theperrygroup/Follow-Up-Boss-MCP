@@ -1363,7 +1363,7 @@ async def test_postgres_aws_tenant_store_uses_current_oauth_on_refresh_failure(
         (400, json.dumps({"error_description": "PRIVATE_DESCRIPTION"}).encode(), "other"),
         (400, json.dumps(["invalid_grant"]).encode(), "other"),
         (502, b"<html>PRIVATE_DESCRIPTION</html>", "other"),
-        (400, b"[" * 100_000, "other"),
+        pytest.param(400, b"[" * 100_000, "other", id="deeply-nested-json"),
     ],
 )
 async def test_postgres_aws_tenant_store_tags_oauth_refresh_rejections(
