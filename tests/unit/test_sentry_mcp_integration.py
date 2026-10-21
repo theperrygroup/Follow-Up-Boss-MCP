@@ -13,6 +13,7 @@ from sentry_sdk.transport import Transport
 
 from followupboss_mcp import observability
 from followupboss_mcp.config import FollowUpBossSettings, SentrySettings
+from followupboss_mcp.errors import FollowUpBossValidationError
 from followupboss_mcp.mcp_server import create_server
 from followupboss_mcp.observability import configure_sentry
 from mcp.client._memory import InMemoryTransport as MCPInMemoryTransport
@@ -41,7 +42,7 @@ class OfflineExpectedErrorClient:
         json_body: Mapping[str, object] | None = None,
         params: Mapping[str, str] | None = None,
     ) -> dict[str, object] | list[object]:
-        """Return only deterministic identity or empty-smart-list responses."""
+        """Return identity or empty-smart-list data, or a known Follow Up Boss 400."""
         del headers, json_body, params
         self.calls.append((method, path))
         if path == "/smartLists":
@@ -51,6 +52,14 @@ class OfflineExpectedErrorClient:
             }
         if path == "/identity":
             return {"id": 1}
+        if path == "/calls":
+            raise FollowUpBossValidationError(
+                "Deep pagination disabled, use 'nextLink' url", status_code=400
+            )
+        if path == "/people":
+            raise FollowUpBossValidationError(
+                "Invalid value for 'smartListId' parameter, no such list.", status_code=400
+            )
         raise AssertionError(f"Unexpected Follow Up Boss request: {method} {path}")
 
 
@@ -196,6 +205,24 @@ def test_sentry_error_envelope_preserves_breadcrumb_data_object(
             {"call_id": 12, "user_id": 999},
             "Call logs must remain attributed to the authenticated Follow Up Boss user.",
             [("GET", "/identity")],
+        ),
+        (
+            "followupboss_list_calls",
+            {"offset": 5000},
+            "Narrow the request with filters",
+            [("GET", "/calls")],
+        ),
+        (
+            "followupboss_search_people",
+            {"smart_list_id": 987654},
+            "Call followupboss_list_smart_lists to get a current smart list id.",
+            [("GET", "/identity"), ("GET", "/people")],
+        ),
+        (
+            "followupboss_list_custom_fields",
+            {"fields": ["id", "choices"]},
+            "followupboss_get_custom_field",
+            [],
         ),
     ],
 )

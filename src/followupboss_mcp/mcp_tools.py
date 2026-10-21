@@ -21,6 +21,7 @@ from followupboss_mcp.errors import (
     FollowUpBossForbiddenError,
     FollowUpBossNotFoundError,
     FollowUpBossRateLimitError,
+    FollowUpBossValidationError,
 )
 from followupboss_mcp.models.action_plans import (
     ActionPlanListRequest,
@@ -173,6 +174,7 @@ from followupboss_mcp.models.webhooks import (
     WebhookListRequest,
 )
 from followupboss_mcp.pagination import PageResult, PaginationMetadata
+from followupboss_mcp.task_intents import task_projection_fields as _task_projection_fields
 from followupboss_mcp.task_intents import upcoming_task_due_start as _upcoming_task_due_start
 from followupboss_mcp.tenant_runtime import ServiceBundle, ServiceBundleResolver
 from mcp.server.mcpserver.exceptions import ToolError
@@ -220,6 +222,18 @@ _UNCOMMUNICATED_LEAD_FILTER_FIELDS = frozenset({"id", "lastCommunication"})
 _UNCOMMUNICATED_LEAD_FETCH_LIMIT = 100
 _UNCOMMUNICATED_LEAD_MAX_SCAN_PAGES = 10
 _UNCOMMUNICATED_LEAD_TOKEN_PREFIX = "scan:"
+# Exact Follow Up Boss HTTP 400 messages that callers can fix, compared without
+# surrounding whitespace or a trailing period, mapped to tool-agnostic guidance.
+_KNOWN_VALIDATION_GUIDANCE: dict[str, str] = {
+    "Deep pagination disabled, use 'nextLink' url": (
+        "Follow Up Boss does not allow offset paging this deep. Narrow the request "
+        "with filters (for example a person or phone number, or a date range where "
+        "the tool has one) instead of paging deeper."
+    ),
+    "Invalid value for 'smartListId' parameter, no such list": (
+        "Call followupboss_list_smart_lists to get a current smart list id."
+    ),
+}
 
 
 class LocalInputError(ToolError, RuntimeError):
@@ -2909,9 +2923,12 @@ class FollowUpBossToolAdapter:
         return UpdateCallRequest.model_validate(tool_input.model_dump(exclude={"call_id"}))
 
     async def list_tasks(self, tool_input: TaskListRequest) -> dict[str, Any]:
-        """List tasks."""
+        """List tasks; a ``fields`` projection always includes the task id."""
+        request = tool_input.model_copy(
+            update={"fields": _task_projection_fields(tool_input.fields)}
+        )
         return await self._page_result(
-            lambda: self._services.tasks.list_tasks(tool_input),
+            lambda: self._services.tasks.list_tasks(request),
             key="tasks",
         )
 
@@ -2993,7 +3010,7 @@ class FollowUpBossToolAdapter:
         request = TaskListRequest(
             assigned_user_id=identity.id,
             due=due,
-            fields=cast(list[str] | None, tool_input.fields),
+            fields=_task_projection_fields(cast(list[str] | None, tool_input.fields)),
             is_completed=False,
             limit=tool_input.limit,
             next_token=tool_input.next_token,
@@ -3022,7 +3039,7 @@ class FollowUpBossToolAdapter:
         request = TaskListRequest(
             assigned_user_id=identity.id,
             due_start=_upcoming_task_due_start(),
-            fields=cast(list[str] | None, tool_input.fields),
+            fields=_task_projection_fields(cast(list[str] | None, tool_input.fields)),
             is_completed=False,
             limit=tool_input.limit,
             next_token=tool_input.next_token,
@@ -3469,12 +3486,28 @@ def _mcp_safe_error(exc: FollowUpBossError) -> str:
     return str(exc)
 
 
+def _known_validation_guidance(exc: FollowUpBossValidationError) -> str | None:
+    """Return caller guidance for a known, caller-fixable Follow Up Boss 400.
+
+    Args:
+        exc: The Follow Up Boss validation error to inspect.
+
+    Returns:
+        Guidance text when the provider message exactly matches a known caller
+        mistake, ignoring surrounding whitespace and a trailing period,
+        otherwise `None`.
+    """
+    return _KNOWN_VALIDATION_GUIDANCE.get(exc.message.strip().rstrip("."))
+
+
 def _raise_followupboss_mcp_error(exc: FollowUpBossError) -> NoReturn:
     """Raise the MCP-safe wrapper appropriate for a Follow Up Boss failure.
 
     FastMCP SDK v2 treats non-``ToolError`` exceptions as unexpected crashes and
     hides their messages from MCP clients. Typed not-found and forbidden responses
-    are anticipated client outcomes, so they surface as ``ToolError``. Other
+    are anticipated client outcomes, so they surface as ``ToolError``. Two known
+    caller-fixable HTTP 400 messages (deep offset paging and an unknown
+    ``smartListId``) also surface as ``ToolError`` with guidance. Other
     failures remain unexpected so authentication, validation, rate-limit,
     transport, and server errors keep their error-level observability.
 
@@ -3482,11 +3515,17 @@ def _raise_followupboss_mcp_error(exc: FollowUpBossError) -> NoReturn:
         exc: The Follow Up Boss error to translate.
 
     Raises:
-        ToolError: Raised for anticipated not-found and forbidden responses.
+        ToolError: Raised for anticipated not-found and forbidden responses and
+            for the known caller-fixable validation messages.
         RuntimeError: Raised for failures that still require operational triage.
     """
     if isinstance(exc, FollowUpBossForbiddenError | FollowUpBossNotFoundError):
         raise ToolError(_mcp_safe_error(exc)) from exc
+    if isinstance(exc, FollowUpBossValidationError):
+        guidance = _known_validation_guidance(exc)
+        if guidance is not None:
+            provider_message = _mcp_safe_error(exc).strip().rstrip(".")
+            raise ToolError(f"{provider_message}. {guidance}") from exc
     raise RuntimeError(_mcp_safe_error(exc)) from exc
 
 

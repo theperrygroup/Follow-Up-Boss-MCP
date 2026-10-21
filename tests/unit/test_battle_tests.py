@@ -1335,6 +1335,36 @@ async def test_upcoming_task_oracle_matches_future_task_ids() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("scenario_id", "tool_name"),
+    [
+        ("BT-READ-002", "followupboss_list_my_overdue_tasks"),
+        ("BT-READ-004", "followupboss_list_my_upcoming_tasks"),
+    ],
+)
+async def test_task_oracles_add_id_to_a_projection_like_the_tools(
+    scenario_id: str,
+    tool_name: str,
+) -> None:
+    """Task oracles ask for id like the tools do, so a projection without id still compares ids."""
+    scenario = scenario_by_id(scenario_id)
+    services = _services(tasks=_tasks_page(TaskRecord.model_validate({"id": 9})))
+    transcript = BattleTestTranscript(
+        scenario_id=scenario.id,
+        prompt=scenario.prompt_variants[0],
+        selected_tool=tool_name,
+        arguments={"fields": ["name", "dueDate"]},
+        response={"tasks": [{"id": 9}]},
+    )
+
+    evaluation = await ReadOnlyBattleTestOracle(services).evaluate(scenario, transcript)
+
+    assert evaluation.passed is True
+    assert len(services.tasks.requests) == 1
+    assert services.tasks.requests[0].fields == ["name", "dueDate", "id"]
+
+
+@pytest.mark.asyncio
 async def test_expanded_page_oracles_compare_response_ids() -> None:
     scenario = scenario_by_id("BT-READ-006")
     services = _services(

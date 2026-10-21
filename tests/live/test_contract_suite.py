@@ -942,6 +942,7 @@ async def test_live_person_and_note_write_contracts() -> None:
                 )
             )
             task_id = created_task.id
+            assert created_task.id is not None
             assert created_task.id > 0
             assert created_task.person_id == created_person.id
 
