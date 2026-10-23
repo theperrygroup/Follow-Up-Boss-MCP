@@ -409,6 +409,7 @@ def test_create_server_requires_tenant_store_when_hosted_auth_resolution_is_forc
                 {
                     "issuer_url": "https://issuer.example.com",
                     "resource_server_url": "https://mcp.example.com/mcp",
+                    "validate_token_resource": True,
                 }
             ),
             object(),

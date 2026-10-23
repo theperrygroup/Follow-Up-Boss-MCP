@@ -54,6 +54,49 @@ def _create_test_server() -> Any:
     )
 
 
+def test_streamable_http_accepts_sdk_session_limits() -> None:
+    """Reject excess stateful sessions and restore capacity after DELETE."""
+    server = _create_test_server()
+    app = server.streamable_http_app(session_idle_timeout=60.0, max_sessions=1)
+    headers = {
+        "Accept": "application/json, text/event-stream",
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": _LEGACY_PROTOCOL_VERSION,
+    }
+    initialize = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": _LEGACY_PROTOCOL_VERSION,
+            "capabilities": {},
+            "clientInfo": {"name": "session-limit-acceptance", "version": "1"},
+        },
+    }
+    with TestClient(app, base_url="http://127.0.0.1:8000") as client:
+        assert _post_modern(client, "tools/list").status_code == 200
+        first = client.post("/mcp", headers=headers, json=initialize)
+        assert first.status_code == 200, first.text
+        first_session = first.headers["mcp-session-id"]
+        first_headers = {**headers, "Mcp-Session-Id": first_session}
+        initialized = client.post(
+            "/mcp",
+            headers=first_headers,
+            json={"jsonrpc": "2.0", "method": "notifications/initialized"},
+        )
+        assert initialized.status_code == 202, initialized.text
+
+        over_capacity = client.post("/mcp", headers=headers, json=initialize)
+        assert over_capacity.status_code == 503, over_capacity.text
+        assert over_capacity.json()["error"]["message"] == "Too many open sessions"
+
+        closed = client.delete("/mcp", headers=first_headers)
+        assert closed.status_code == 200, closed.text
+        replacement = client.post("/mcp", headers=headers, json=initialize)
+        assert replacement.status_code == 200, replacement.text
+        assert replacement.headers["mcp-session-id"] != first_session
+
+
 @pytest.fixture
 def mcp_http_client() -> Iterator[TestClient]:
     """Serve the MCP application in-process with a transport-valid host header."""

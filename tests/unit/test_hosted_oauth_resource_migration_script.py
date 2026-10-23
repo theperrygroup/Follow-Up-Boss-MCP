@@ -426,7 +426,7 @@ def test_production_workflow_uses_a_least_privilege_migration_task() -> None:
     assert "deploymentCircuitBreaker={enable=true,rollback=true}" in workflow
     assert "task_definition=%s" in workflow
     assert 'issuer.path not in ("", "/")' in workflow
-    assert 'issuer = f"{issuer_split.scheme}://{issuer_split.netloc}/"' in workflow
+    assert "run: uv run --frozen python scripts/verify_public_oauth.py" in workflow
     assert "MIGRATION_RECEIPT=" in workflow
     assert "raw database output was suppressed" in workflow
     assert "postgresql-client" in dockerfile

@@ -263,6 +263,8 @@ class FollowUpBossMCPServer(MCPServer):
         event_store: EventStore | None = None,
         retry_interval: int | None = None,
         max_request_body_size: int = _DEFAULT_MAX_REQUEST_BODY_SIZE,
+        session_idle_timeout: float | None = 1800,
+        max_sessions: int | None = 10000,
         transport_security: TransportSecuritySettings | None = None,
         host: str | None = None,
     ) -> Starlette:
@@ -281,6 +283,8 @@ class FollowUpBossMCPServer(MCPServer):
             event_store=event_store,
             retry_interval=retry_interval,
             max_request_body_size=max_request_body_size,
+            session_idle_timeout=session_idle_timeout,
+            max_sessions=max_sessions,
             transport_security=transport_security or self._transport_security,
             host=host or self._streamable_http_host,
         )
