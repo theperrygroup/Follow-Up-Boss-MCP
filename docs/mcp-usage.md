@@ -454,7 +454,7 @@ MCP tools do not perform raw HTTP calls. They call the typed service layer, whic
 - auth failures, validation errors, not-found errors, rate-limit errors, and retryable server errors are mapped in one place
 - MCP callers receive predictable safe messages
 - `Retry-After` information is surfaced in the error message for rate limits when Follow Up Boss includes it
-- two Follow Up Boss validation messages return a tool error with a next step: the deep offset paging rejection (narrow the request with filters) and an unknown `smartListId` (call `followupboss_list_smart_lists` for a current ID); every other validation error stays an unexpected tool error
+- three Follow Up Boss validation messages return a tool error with a next step: the deep offset paging rejection (narrow the request with filters), an unknown `smartListId` (call `followupboss_list_smart_lists` for a current ID), and an unknown `assignedLenderName` on a person write (call `followupboss_list_users` for the lender's exact full name, or pass `assigned_lender_id`); every other validation error stays an unexpected tool error
 
 ## Inspector Workflow
 

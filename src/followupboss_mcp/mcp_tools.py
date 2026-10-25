@@ -233,6 +233,10 @@ _KNOWN_VALIDATION_GUIDANCE: dict[str, str] = {
     "Invalid value for 'smartListId' parameter, no such list": (
         "Call followupboss_list_smart_lists to get a current smart list id."
     ),
+    "Invalid value for 'assignedLenderName' field, no such user": (
+        "Call followupboss_list_users (role Lender lists lenders) to get the lender's "
+        "exact full name, or pass the lender's user id as assigned_lender_id."
+    ),
 }
 
 
@@ -3505,11 +3509,12 @@ def _raise_followupboss_mcp_error(exc: FollowUpBossError) -> NoReturn:
 
     FastMCP SDK v2 treats non-``ToolError`` exceptions as unexpected crashes and
     hides their messages from MCP clients. Typed not-found and forbidden responses
-    are anticipated client outcomes, so they surface as ``ToolError``. Two known
-    caller-fixable HTTP 400 messages (deep offset paging and an unknown
-    ``smartListId``) also surface as ``ToolError`` with guidance. Other
-    failures remain unexpected so authentication, validation, rate-limit,
-    transport, and server errors keep their error-level observability.
+    are anticipated client outcomes, so they surface as ``ToolError``. Three known
+    caller-fixable HTTP 400 messages (deep offset paging, an unknown
+    ``smartListId``, and an unknown ``assignedLenderName``) also surface as
+    ``ToolError`` with guidance. Other failures remain unexpected so
+    authentication, validation, rate-limit, transport, and server errors keep
+    their error-level observability.
 
     Args:
         exc: The Follow Up Boss error to translate.

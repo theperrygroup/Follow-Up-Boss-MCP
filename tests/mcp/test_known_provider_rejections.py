@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 
 import httpx
@@ -21,6 +22,7 @@ type Upstream = Callable[[httpx.Request], httpx.Response]
 
 _DEEP_PAGINATION_MESSAGE = "Deep pagination disabled, use 'nextLink' url"
 _NO_SUCH_SMART_LIST_MESSAGE = "Invalid value for 'smartListId' parameter, no such list."
+_NO_SUCH_LENDER_MESSAGE = "Invalid value for 'assignedLenderName' field, no such user."
 _TASK_TOOLS = (
     "followupboss_list_tasks",
     "followupboss_list_my_overdue_tasks",
@@ -169,16 +171,64 @@ async def test_search_people_unknown_smart_list_points_to_list_smart_lists() -> 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    ("tool_name", "arguments", "method", "path_suffix"),
+    [
+        (
+            "followupboss_update_person",
+            {"person_id": 101, "assigned_lender_name": "Pat Example"},
+            "PUT",
+            "/people/101",
+        ),
+        (
+            "followupboss_create_person",
+            {"first_name": "Sam", "assigned_lender_name": "Pat Example"},
+            "POST",
+            "/people",
+        ),
+    ],
+)
+async def test_person_write_unknown_lender_name_points_to_list_users(
+    tool_name: str,
+    arguments: dict[str, object],
+    method: str,
+    path_suffix: str,
+) -> None:
+    """FUB's unknown lender-name rejection tells callers how to find the lender."""
+    requests: list[httpx.Request] = []
+
+    with pytest.raises(ToolError) as exc_info:
+        await _call_tool(
+            tool_name,
+            arguments,
+            _rejecting_upstream(requests, _NO_SUCH_LENDER_MESSAGE),
+        )
+
+    assert not isinstance(exc_info.value, UnexpectedToolError)
+    assert (
+        "Invalid value for 'assignedLenderName' field, no such user. "
+        "Call followupboss_list_users (role Lender lists lenders) to get the lender's "
+        "exact full name, or pass the lender's user id as assigned_lender_id."
+    ) in str(exc_info.value)
+    assert any(isinstance(exc, FollowUpBossValidationError) for exc in _cause_chain(exc_info.value))
+    writes = [request for request in requests if request.method == method]
+    assert len(writes) == 1
+    assert writes[0].url.path.endswith(path_suffix)
+    assert json.loads(writes[0].content)["assignedLenderName"] == "Pat Example"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     "error_message",
     [
         "Invalid value for 'phone' parameter",
         f"Request failed: {_DEEP_PAGINATION_MESSAGE}",
         "Deep pagination disabled for this account, contact support",
         f"{_NO_SUCH_SMART_LIST_MESSAGE} Also bad sort",
+        "Invalid value for 'assignedTo' field, no such user.",
     ],
 )
 async def test_other_validation_errors_stay_unexpected(error_message: str) -> None:
-    """Only the two known messages change; every other 400 keeps its error-level path."""
+    """Only the known messages change; every other 400 keeps its error-level path."""
     requests: list[httpx.Request] = []
 
     with pytest.raises(UnexpectedToolError) as exc_info:
