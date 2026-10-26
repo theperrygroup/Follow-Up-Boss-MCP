@@ -211,7 +211,11 @@ On-call symptoms to watch during revocation or rotation:
 ## Rate Limits And Server Retries
 
 - `429` responses honor `Retry-After`
-- retryable `5xx` responses use truncated exponential backoff with jitter
+- retryable `5xx` responses use truncated exponential backoff with jitter for `GET`, `PUT`, and
+  `DELETE` requests
+- a `POST`, a `PATCH`, or a pipeline update that adds stages is sent only once after a `5xx` or a
+  lost response, because Follow Up Boss may already have saved it (see the Retry Strategy section
+  of [architecture.md](architecture.md))
 - error payloads are surfaced cleanly without leaking credentials
 
 ## Webhook Verification
