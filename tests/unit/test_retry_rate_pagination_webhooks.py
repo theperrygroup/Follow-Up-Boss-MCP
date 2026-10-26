@@ -49,6 +49,21 @@ def test_retry_policy() -> None:
     )
 
 
+def test_retry_policy_retries_server_errors_only_for_idempotent_methods() -> None:
+    """Server errors are retried for GET, PUT, and DELETE but never for POST or PATCH."""
+    policy = RetryPolicy(max_retries=2)
+    assert [policy.is_retryable_method(method) for method in ("GET", "put", "Delete")] == [
+        True,
+        True,
+        True,
+    ]
+    assert [policy.is_retryable_method(method) for method in ("POST", "PATCH", "post")] == [
+        False,
+        False,
+        False,
+    ]
+
+
 def test_parse_retry_after() -> None:
     """Retry-After should parse delta seconds, HTTP dates, and invalid values."""
     now = datetime(2026, 3, 28, tzinfo=UTC)

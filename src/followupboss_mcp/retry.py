@@ -6,7 +6,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from math import pow
 
-from followupboss_mcp.constants import DEFAULT_MAX_RETRY_BACKOFF_SECONDS, RETRYABLE_STATUS_CODES
+from followupboss_mcp.constants import (
+    DEFAULT_MAX_RETRY_BACKOFF_SECONDS,
+    RETRYABLE_SERVER_ERROR_METHODS,
+    RETRYABLE_STATUS_CODES,
+)
 
 
 @dataclass(frozen=True)
@@ -24,6 +28,15 @@ class RetryPolicy:
     def is_retryable_status(self, status_code: int) -> bool:
         """Return whether an HTTP status should be retried."""
         return status_code in RETRYABLE_STATUS_CODES
+
+    def is_retryable_method(self, method: str) -> bool:
+        """Return whether a server error may be retried for an HTTP method.
+
+        Only idempotent methods qualify. Follow Up Boss may already have saved a
+        POST or PATCH that failed with a server error, so resending it could
+        create a duplicate record.
+        """
+        return method.upper() in RETRYABLE_SERVER_ERROR_METHODS
 
     def backoff_seconds(
         self,

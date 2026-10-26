@@ -140,6 +140,9 @@ Never include credentials, tokens, or customer data in a public issue.
   or action, or the operation may require registered-system headers that are not available to the
   connection.
 - **A tool returns `429`:** Wait briefly, then retry with a narrower request.
+- **A tool that creates or sends something reports a server error:** Follow Up Boss may have
+  saved it before the error, so the request is not sent again automatically. Look it up before
+  trying again.
 
 ## FAQ
 
