@@ -502,6 +502,12 @@ The reference deployment assumes:
 - proxy idle timeouts are long enough for normal `streamable-http` client sessions
 - proxy or CDN buffering is disabled for MCP traffic
 
+The MCP SDK also limits stateful `streamable-http` sessions, the ones a client opens with the
+legacy session-id handshake. A session with no request in flight for 30 minutes is closed, its next
+request gets HTTP 404 `Session not found`, and the client must initialize again. Each server process
+holds at most 10,000 open sessions; past that, a request that would open a new session gets HTTP 503
+`Too many open sessions`. A longer proxy idle timeout does not keep an idle session open.
+
 Keep `FOLLOWUPBOSS_RATE_LIMIT_INCLUDE_CLIENT_IP=false` until both of these are true:
 
 1. every trusted proxy hop is explicitly known

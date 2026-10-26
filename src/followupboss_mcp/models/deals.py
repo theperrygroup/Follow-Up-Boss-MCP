@@ -183,7 +183,7 @@ class CreateDealRequest(RequestModel):
 class UpdateDealRequest(RequestModel):
     """Strict request model for updating a deal."""
 
-    agent_commission: int | None = Field(default=None, serialization_alias="agentCommision")
+    agent_commission: int | None = Field(default=None, serialization_alias="agentCommission")
     commission_value: int | None = Field(default=None, serialization_alias="commissionValue")
     custom_fields: DealCustomFieldsInput | None = None
     description: str | None = None
@@ -208,7 +208,7 @@ class UpdateDealRequest(RequestModel):
         default=None, serialization_alias="projectedCloseDate"
     )
     stage_id: int | None = Field(default=None, serialization_alias="stageId")
-    team_commission: int | None = Field(default=None, serialization_alias="teamComission")
+    team_commission: int | None = Field(default=None, serialization_alias="teamCommission")
     user_ids: list[int] | None = Field(default=None, serialization_alias="userIds")
 
     @field_validator("custom_fields")

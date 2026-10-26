@@ -6,6 +6,7 @@ import math
 
 import pytest
 from pydantic import ValidationError
+from starlette.requests import Request
 from starlette.types import Message, Receive, Scope, Send
 
 from followupboss_mcp.hosted_auth import (
@@ -417,3 +418,68 @@ async def test_hosted_rate_limit_middleware_omits_retry_after_without_backend_hi
     }
     assert response_start["status"] == 429
     assert "Retry-After" not in response_headers
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("authenticated", [True, False])
+async def test_hosted_rate_limit_middleware_returns_quietly_when_client_disconnects(
+    monkeypatch: pytest.MonkeyPatch,
+    authenticated: bool,
+) -> None:
+    """A client that hangs up before its body is read ends the request without a response."""
+    downstream_calls: list[str] = []
+    sent_messages: list[Message] = []
+
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        """Read the request body the way the MCP transport does."""
+        del send
+        downstream_calls.append(scope["path"])
+        await Request(scope, receive).body()
+
+    async def disconnect_receive() -> Message:
+        """Return the ASGI event a server sends after the client has gone away.
+
+        Returns:
+            One `http.disconnect` ASGI message.
+        """
+        return {"type": "http.disconnect"}
+
+    async def send(message: Message) -> None:
+        """Record emitted ASGI messages."""
+        sent_messages.append(message)
+
+    monkeypatch.setattr(
+        "followupboss_mcp.hosted_rate_limits.get_hosted_access_token",
+        lambda: _access_token() if authenticated else None,
+    )
+    middleware = HostedRateLimitMiddleware(app, rate_limiter=HostedEndpointRateLimiter())
+
+    await middleware(_http_scope(), disconnect_receive, send)
+
+    assert downstream_calls == ["/mcp"]
+    assert sent_messages == []
+
+
+@pytest.mark.asyncio
+async def test_hosted_rate_limit_middleware_propagates_other_downstream_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only a client disconnect is swallowed; other downstream failures still raise."""
+
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        """Fail the way a downstream bug would."""
+        del scope, receive, send
+        raise RuntimeError("downstream failure")
+
+    async def send(_: Message) -> None:
+        """Ignore emitted ASGI messages."""
+        return None
+
+    monkeypatch.setattr(
+        "followupboss_mcp.hosted_rate_limits.get_hosted_access_token",
+        lambda: _access_token(),
+    )
+    middleware = HostedRateLimitMiddleware(app, rate_limiter=HostedEndpointRateLimiter())
+
+    with pytest.raises(RuntimeError, match="downstream failure"):
+        await middleware(_http_scope(), _empty_receive, send)

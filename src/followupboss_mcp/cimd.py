@@ -71,6 +71,28 @@ class ClientIdMetadataDocument(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
+    def _select_token_endpoint_auth_method(cls, value: object) -> object:
+        """Select the implemented method from a client's advertised capabilities."""
+        if not isinstance(value, Mapping) or "token_endpoint_auth_methods_supported" not in value:
+            return value
+        methods = value["token_endpoint_auth_methods_supported"]
+        if (
+            not isinstance(methods, list)
+            or not methods
+            or any(
+                not isinstance(method, str) or not method or method != method.strip()
+                for method in methods
+            )
+        ):
+            raise ValueError(
+                "token_endpoint_auth_methods_supported must be a non-empty JSON array."
+            )
+        if "none" not in methods:
+            raise ValueError("token_endpoint_auth_method is not supported.")
+        return {**value, "token_endpoint_auth_method": "none"}
+
+    @model_validator(mode="before")
+    @classmethod
     def _reject_secret_fields(cls, value: object) -> object:
         """Reject symmetric credentials that a self-asserted document cannot establish."""
         if isinstance(value, Mapping):

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from typing import cast
 
 import pytest
+import uvicorn
 from starlette.applications import Starlette
 from starlette.responses import PlainTextResponse
 from starlette.routing import Route
@@ -40,6 +42,7 @@ from followupboss_mcp.tenant_store import (
 )
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.mcpserver import MCPServer
+from mcp.server.streamable_http_manager import DEFAULT_MAX_SESSIONS, DEFAULT_SESSION_IDLE_TIMEOUT
 from mcp.server.transport_security import TransportSecuritySettings
 
 
@@ -373,6 +376,80 @@ def test_streamable_http_app_leaves_non_matching_routes_unwrapped(
     assert not isinstance(route.app, HostedRateLimitMiddleware)
 
 
+def test_streamable_http_app_keeps_sdk_session_limits_and_forwards_overrides() -> None:
+    """The stateful app should keep the SDK idle expiry and session cap unless told otherwise."""
+    server = FollowUpBossMCPServer(
+        "Test MCP",
+        log_level="INFO",
+    )
+
+    server.streamable_http_app()
+
+    assert server.session_manager.stateless is False
+    assert server.session_manager.session_idle_timeout == DEFAULT_SESSION_IDLE_TIMEOUT == 30 * 60
+    assert server.session_manager.max_sessions == DEFAULT_MAX_SESSIONS == 10_000
+
+    server.streamable_http_app(session_idle_timeout=60, max_sessions=5)
+
+    assert server.session_manager.session_idle_timeout == 60
+    assert server.session_manager.max_sessions == 5
+
+
+def test_hosted_run_hands_the_sdk_session_limits_to_the_streamable_http_app(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The hosted run path should build a stateful app with the SDK session limits."""
+    served_apps: list[object] = []
+
+    def skip_logging_config(self: uvicorn.Config) -> None:
+        del self
+
+    async def fake_serve(self: uvicorn.Server, sockets: object = None) -> None:
+        del sockets
+        served_apps.append(self.config.app)
+
+    monkeypatch.setattr(uvicorn.Config, "configure_logging", skip_logging_config)
+    monkeypatch.setattr(uvicorn.Server, "serve", fake_serve)
+    monkeypatch.setattr(
+        "followupboss_mcp.mcp_server.register_server_surface",
+        _noop_register_server_surface,
+    )
+    server = create_server(
+        hosted_auth=_hosted_auth_settings(),
+        hosted_token_verifier=_hosted_token_verifier(),
+        tenant_store=_tenant_store(),
+    )
+
+    def run_hosted_server() -> None:
+        # The same call followupboss_mcp.hosted_reference.main() makes, with serve() stubbed.
+        server.run(
+            transport="streamable-http",
+            host="127.0.0.1",
+            port=8000,
+            streamable_http_path="/mcp",
+            json_response=True,
+        )
+
+    # A worker thread keeps anyio.run() from replacing this thread's current event loop.
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        executor.submit(run_hosted_server).result(timeout=30)
+
+    assert len(served_apps) == 1
+    app = served_apps[0]
+    assert isinstance(app, Starlette)
+    mcp_route = next(
+        route for route in app.routes if isinstance(route, Route) and route.path == "/mcp"
+    )
+    assert isinstance(mcp_route.app, HostedRateLimitMiddleware)
+    manager = server.session_manager
+    assert manager.stateless is False
+    assert manager.json_response is True
+    assert manager.session_idle_timeout == DEFAULT_SESSION_IDLE_TIMEOUT == 30 * 60
+    assert manager.max_sessions == DEFAULT_MAX_SESSIONS == 10_000
+    assert server.settings.auth is not None
+    assert server.settings.auth.validate_token_resource is False
+
+
 def test_create_server_uses_explicit_server_settings_and_local_single_tenant_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -409,6 +486,7 @@ def test_create_server_requires_tenant_store_when_hosted_auth_resolution_is_forc
                 {
                     "issuer_url": "https://issuer.example.com",
                     "resource_server_url": "https://mcp.example.com/mcp",
+                    "validate_token_resource": False,
                 }
             ),
             object(),
