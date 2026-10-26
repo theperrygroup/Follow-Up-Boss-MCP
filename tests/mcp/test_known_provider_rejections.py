@@ -23,6 +23,7 @@ type Upstream = Callable[[httpx.Request], httpx.Response]
 _DEEP_PAGINATION_MESSAGE = "Deep pagination disabled, use 'nextLink' url"
 _NO_SUCH_SMART_LIST_MESSAGE = "Invalid value for 'smartListId' parameter, no such list."
 _NO_SUCH_LENDER_MESSAGE = "Invalid value for 'assignedLenderName' field, no such user."
+_CLOSED_STAGE_MESSAGE = "You cannot delete a closed stage from a pipeline"
 _TASK_TOOLS = (
     "followupboss_list_tasks",
     "followupboss_list_my_overdue_tasks",
@@ -217,6 +218,37 @@ async def test_person_write_unknown_lender_name_points_to_list_users(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("error_message", [_CLOSED_STAGE_MESSAGE, f"{_CLOSED_STAGE_MESSAGE}."])
+async def test_update_pipeline_closed_stage_removal_points_to_get_pipeline(
+    error_message: str,
+) -> None:
+    """FUB's closed-stage rejection tells callers to keep the pipeline's closed stages."""
+    requests: list[httpx.Request] = []
+
+    with pytest.raises(ToolError) as exc_info:
+        await _call_tool(
+            "followupboss_update_pipeline",
+            {"pipeline_id": 63, "stages": [{"id": 401, "name": "Lead", "closed_stage": False}]},
+            _rejecting_upstream(requests, error_message),
+        )
+
+    assert not isinstance(exc_info.value, UnexpectedToolError)
+    assert (
+        "You cannot delete a closed stage from a pipeline. Follow Up Boss does not allow "
+        "deleting a closed stage. Before updating a pipeline's stages, call "
+        "followupboss_get_pipeline and keep every closed stage in stages (same id, "
+        "name, and closed_stage true)."
+    ) in str(exc_info.value)
+    assert any(isinstance(exc, FollowUpBossValidationError) for exc in _cause_chain(exc_info.value))
+    writes = [request for request in requests if request.method == "PUT"]
+    assert len(writes) == 1
+    assert writes[0].url.path.endswith("/pipelines/63")
+    assert json.loads(writes[0].content)["stages"] == [
+        {"closedStage": False, "id": 401, "name": "Lead"}
+    ]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "error_message",
     [
@@ -225,6 +257,7 @@ async def test_person_write_unknown_lender_name_points_to_list_users(
         "Deep pagination disabled for this account, contact support",
         f"{_NO_SUCH_SMART_LIST_MESSAGE} Also bad sort",
         "Invalid value for 'assignedTo' field, no such user.",
+        "You cannot delete the last stage from a pipeline",
     ],
 )
 async def test_other_validation_errors_stay_unexpected(error_message: str) -> None:

@@ -60,6 +60,10 @@ class OfflineExpectedErrorClient:
             raise FollowUpBossValidationError(
                 "Invalid value for 'smartListId' parameter, no such list.", status_code=400
             )
+        if path == "/pipelines/9":
+            raise FollowUpBossValidationError(
+                "You cannot delete a closed stage from a pipeline", status_code=400
+            )
         raise AssertionError(f"Unexpected Follow Up Boss request: {method} {path}")
 
 
@@ -188,6 +192,12 @@ def test_sentry_error_envelope_preserves_breadcrumb_data_object(
             {"pipeline_id": 9, "stages": [{"id": "not-an-int"}]},
             "stages.0.id",
             [],
+        ),
+        (
+            "followupboss_update_pipeline",
+            {"pipeline_id": 9, "stages": [{"id": 401, "name": "Lead", "closed_stage": False}]},
+            "call followupboss_get_pipeline and keep every closed stage in stages",
+            [("PUT", "/pipelines/9")],
         ),
         (
             "followupboss_create_call",
