@@ -21,6 +21,7 @@ from followupboss_mcp.errors import (
     FollowUpBossForbiddenError,
     FollowUpBossNotFoundError,
     FollowUpBossRateLimitError,
+    FollowUpBossUnconfirmedTransportError,
     FollowUpBossUnconfirmedWriteError,
     FollowUpBossValidationError,
 )
@@ -3567,10 +3568,11 @@ def _raise_followupboss_mcp_error(exc: FollowUpBossError) -> NoReturn:
 
     Raises:
         ToolError: Raised for anticipated not-found and forbidden responses, for
-            the known caller-fixable validation messages, and for a server error
-            on a POST or PATCH, which the HTTP client does not resend because
-            Follow Up Boss may already have saved it. That case is still
-            captured in Sentry.
+            the known caller-fixable validation messages, and for a write the HTTP
+            client does not resend because Follow Up Boss may already have saved
+            it: a server error, read timeout, read error, or remote protocol error
+            on a POST, a PATCH, or a pipeline update that adds stages. That case
+            is still captured in Sentry.
         RuntimeError: Raised for failures that still require operational triage.
     """
     if isinstance(exc, FollowUpBossForbiddenError | FollowUpBossNotFoundError):
@@ -3580,10 +3582,13 @@ def _raise_followupboss_mcp_error(exc: FollowUpBossError) -> NoReturn:
         if guidance is not None:
             provider_message = _mcp_safe_error(exc).strip().rstrip(".")
             raise ToolError(f"{provider_message}. {guidance}") from exc
-    if isinstance(exc, FollowUpBossUnconfirmedWriteError):
+    if isinstance(exc, FollowUpBossUnconfirmedWriteError | FollowUpBossUnconfirmedTransportError):
+        status_code = (
+            exc.status_code if isinstance(exc, FollowUpBossUnconfirmedWriteError) else None
+        )
         capture_sentry_exception(
             exc,
-            tags={"component": "mcp_tools", "followupboss_status_code": exc.status_code},
+            tags={"component": "mcp_tools", "followupboss_status_code": status_code},
         )
         provider_message = _mcp_safe_error(exc).strip().rstrip(".")
         raise ToolError(
