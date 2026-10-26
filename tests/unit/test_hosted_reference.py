@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
+import logging
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any, cast
 
+import httpx
 import pytest
 from pydantic import AnyHttpUrl, SecretStr, ValidationError
 
@@ -1341,6 +1344,132 @@ async def test_postgres_aws_tenant_store_uses_current_oauth_on_refresh_failure(
         "oauth_phase": "refresh",
     }
     assert captured[0][2] == {"credential_id": "credential-2", "tenant_id": "tenant-2"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status_code", "content", "expected_oauth_error"),
+    [
+        (
+            400,
+            json.dumps(
+                {"error": "invalid_grant", "error_description": "PRIVATE_DESCRIPTION"}
+            ).encode(),
+            "invalid_grant",
+        ),
+        (401, json.dumps({"error": "invalid_client"}).encode(), "invalid_client"),
+        (400, json.dumps({"error": "PRIVATE_CUSTOM_CODE"}).encode(), "other"),
+        (400, json.dumps({"error": ["invalid_grant"]}).encode(), "other"),
+        (400, json.dumps({"error_description": "PRIVATE_DESCRIPTION"}).encode(), "other"),
+        (400, json.dumps(["invalid_grant"]).encode(), "other"),
+        (502, b"<html>PRIVATE_DESCRIPTION</html>", "other"),
+        pytest.param(400, b"[" * 100_000, "other", id="deeply-nested-json"),
+    ],
+)
+async def test_postgres_aws_tenant_store_tags_oauth_refresh_rejections(
+    monkeypatch: pytest.MonkeyPatch,
+    status_code: int,
+    content: bytes,
+    expected_oauth_error: str,
+) -> None:
+    """A rejected token refresh is tagged with its HTTP status and safe OAuth error code."""
+    captured: list[tuple[Exception, Mapping[str, object] | None, Mapping[str, object] | None]] = []
+
+    def fake_capture_sentry_exception(
+        exc: Exception,
+        *,
+        tags: Mapping[str, object] | None = None,
+        extras: Mapping[str, object] | None = None,
+    ) -> str:
+        """Record captured refresh failures."""
+        captured.append((exc, tags, extras))
+        return "event-id"
+
+    monkeypatch.setattr(
+        hosted_reference,
+        "capture_sentry_exception",
+        fake_capture_sentry_exception,
+    )
+    token_request = httpx.Request("POST", "https://app.followupboss.com/oauth/token")
+    token_error = httpx.HTTPStatusError(
+        "token refresh rejected",
+        request=token_request,
+        response=httpx.Response(status_code, request=token_request, content=content),
+    )
+
+    class RejectingOAuthRefresher:
+        """OAuth refresher whose token endpoint rejects the refresh."""
+
+        async def refresh_if_needed(
+            self,
+            *,
+            secret_ref: str,
+            payload: ReferenceHostedSecretPayload,
+        ) -> ReferenceHostedSecretPayload:
+            """Raise the token endpoint rejection."""
+            del secret_ref, payload
+            raise token_error
+
+    factory = FakeConnectionFactory(
+        [
+            {
+                "tenant_id": "tenant-2",
+                "tenant_slug": "tenant-two",
+                "display_name": "Tenant Two",
+                "credential_id": "credential-2",
+                "status": "active",
+            },
+            {
+                "credential_id": "credential-2",
+                "tenant_id": "tenant-2",
+                "auth_mode": "oauth",
+                "system_name": None,
+                "secret_ref": "followupboss/prod/tenants/tenant-2/credential-2",
+                "status": "active",
+            },
+        ]
+    )
+    store = PostgresAwsTenantStore(
+        secret_store=FakeSecretStore(
+            ReferenceHostedSecretPayload.model_validate(
+                {
+                    "access_token": "current-token",
+                    "refresh_token": "refresh-token",
+                    "access_token_expires_at": 1240,
+                }
+            )
+        ),
+        pool=cast(hosted_reference.ReferenceHostedPostgresPool, factory),
+        oauth_refresher=cast(FollowUpBossTenantOAuthRefresher, RejectingOAuthRefresher()),
+    )
+    log_stream = io.StringIO()
+    log_handler = logging.StreamHandler(log_stream)
+    reference_logger = logging.getLogger(hosted_reference.__name__)
+    previous_level = reference_logger.level
+    reference_logger.setLevel(logging.DEBUG)
+    reference_logger.addHandler(log_handler)
+    try:
+        resolved = await store.resolve_tenant("tenant-2")
+    finally:
+        reference_logger.removeHandler(log_handler)
+        reference_logger.setLevel(previous_level)
+    log_text = log_stream.getvalue()
+
+    assert resolved.credential.access_token is not None
+    assert resolved.credential.access_token.get_secret_value() == "current-token"
+    assert len(captured) == 1
+    assert captured[0][0] is token_error
+    assert captured[0][1] == {
+        "component": "hosted_reference",
+        "oauth_phase": "refresh",
+        "oauth_http_status": str(status_code),
+        "oauth_error": expected_oauth_error,
+    }
+    assert captured[0][2] == {"credential_id": "credential-2", "tenant_id": "tenant-2"}
+    reported_text = f"{captured[0][1]!r} {captured[0][2]!r} {log_text}"
+    assert "OAuth credential refresh failed" in log_text
+    for private_text in ("PRIVATE", "current-token", "refresh-token"):
+        assert private_text not in reported_text
 
 
 @pytest.mark.asyncio
