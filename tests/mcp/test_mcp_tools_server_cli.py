@@ -2769,7 +2769,9 @@ async def test_tool_adapter_success_and_failure_paths() -> None:
     assert [request.offset for request in paginated_user_requests] == [0, 1]
     assert (await adapter.get_person(GetPersonToolInput(person_id=3)))["id"] == 3
     assert (await adapter.create_person(CreatePersonRequest(first_name="Tom")))["id"] == 3
-    assert (await adapter.update_person(UpdatePersonToolInput(person_id=4)))["id"] == 4
+    assert (await adapter.update_person(UpdatePersonToolInput(person_id=4, stage="Lead")))[
+        "id"
+    ] == 4
     assert (
         await adapter.check_duplicate_person(
             CheckDuplicatePersonToolInput(email="agent@example.com")

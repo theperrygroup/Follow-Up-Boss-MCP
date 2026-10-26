@@ -1895,6 +1895,12 @@ class FollowUpBossToolAdapter:
 
     async def update_person(self, tool_input: UpdatePersonToolInput) -> dict[str, Any]:
         """Update a person."""
+        _require_update_fields(
+            "followupboss_update_person",
+            tool_input,
+            identifier="person_id",
+            query_only=("merge_tags",),
+        )
         request = UpdatePersonRequest.model_validate(tool_input.model_dump(exclude={"person_id"}))
         return await self._single_result(
             lambda: self._services.people.update_person(tool_input.person_id, request)
@@ -3092,6 +3098,7 @@ class FollowUpBossToolAdapter:
 
     async def update_task(self, tool_input: UpdateTaskToolInput) -> dict[str, Any]:
         """Update a task after converting any assignee name to a stable user ID."""
+        _require_update_fields("followupboss_update_task", tool_input, identifier="task_id")
 
         async def update_resolved_task() -> TaskRecord:
             request = await self._resolved_task_update_request(tool_input)
@@ -3488,6 +3495,38 @@ def _mcp_safe_error(exc: FollowUpBossError) -> str:
     if isinstance(exc, FollowUpBossRateLimitError) and exc.retry_after_seconds is not None:
         return f"{exc} Retry after {exc.retry_after_seconds:.0f} seconds."
     return str(exc)
+
+
+def _require_update_fields(
+    tool_name: str,
+    tool_input: RequestModel,
+    *,
+    identifier: str,
+    query_only: tuple[str, ...] = (),
+) -> None:
+    """Reject an update that sets no field before any write is sent.
+
+    An update with every field unset would send an empty ``PUT`` body, so it
+    fails locally and names the fields the tool accepts.
+
+    Args:
+        tool_name: The public MCP tool name to show in the message.
+        tool_input: The validated update tool input.
+        identifier: The field that selects the record to update.
+        query_only: Fields sent as query parameters, which change nothing alone.
+
+    Raises:
+        LocalInputError: If no field outside ``identifier`` and ``query_only``
+            is set. An empty mapping such as ``custom_fields={}`` counts as unset.
+    """
+    fields = sorted(set(type(tool_input).model_fields) - {identifier, *query_only})
+    if any(getattr(tool_input, name) not in (None, {}) for name in fields):
+        return
+    accepted = ", ".join(fields)
+    message = f"{tool_name} needs at least one field to change. Set one of: {accepted}."
+    if query_only:
+        message += f" {', '.join(query_only)} alone changes nothing."
+    raise LocalInputError(message)
 
 
 def _known_validation_guidance(exc: FollowUpBossValidationError) -> str | None:

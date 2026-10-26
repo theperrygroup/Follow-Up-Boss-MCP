@@ -202,6 +202,10 @@ The MCP surface validates several Follow Up Boss contracts before making an upst
 - `followupboss_update_person` also requires API-native `custom_fields` names beginning
   with `custom`; discover them with `followupboss_list_custom_fields`. Email, phone, and
   address objects must use named fields, not numeric array-position keys.
+- `followupboss_update_person` and `followupboss_update_task` need at least one field to
+  change. A call that sets none returns a tool error that lists the accepted fields instead
+  of sending an empty update; for a person, `merge_tags` alone or an empty `custom_fields`
+  object sets none.
 - If `followupboss_add_note` reports `Contact not found`, verify that `person_id` exists
   in the connected account. For a newly created person, use `wait_for_person=true` to
   wait for visibility before writing the note. The tool never retries a rejected note write.

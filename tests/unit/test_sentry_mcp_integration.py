@@ -224,6 +224,12 @@ def test_sentry_error_envelope_preserves_breadcrumb_data_object(
             "followupboss_get_custom_field",
             [],
         ),
+        (
+            "followupboss_update_person",
+            {"person_id": 101},
+            "followupboss_update_person needs at least one field to change.",
+            [],
+        ),
     ],
 )
 async def test_sentry_mcp_integration_keeps_expected_caller_errors_event_free_over_the_protocol(
