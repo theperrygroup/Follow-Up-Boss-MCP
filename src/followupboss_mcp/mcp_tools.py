@@ -21,6 +21,7 @@ from followupboss_mcp.errors import (
     FollowUpBossForbiddenError,
     FollowUpBossNotFoundError,
     FollowUpBossRateLimitError,
+    FollowUpBossUnconfirmedWriteError,
     FollowUpBossValidationError,
 )
 from followupboss_mcp.models.action_plans import (
@@ -173,6 +174,7 @@ from followupboss_mcp.models.webhooks import (
     UpdateWebhookRequest,
     WebhookListRequest,
 )
+from followupboss_mcp.observability import capture_sentry_exception
 from followupboss_mcp.pagination import PageResult, PaginationMetadata
 from followupboss_mcp.task_intents import task_projection_fields as _task_projection_fields
 from followupboss_mcp.task_intents import upcoming_task_due_start as _upcoming_task_due_start
@@ -3564,8 +3566,11 @@ def _raise_followupboss_mcp_error(exc: FollowUpBossError) -> NoReturn:
         exc: The Follow Up Boss error to translate.
 
     Raises:
-        ToolError: Raised for anticipated not-found and forbidden responses and
-            for the known caller-fixable validation messages.
+        ToolError: Raised for anticipated not-found and forbidden responses, for
+            the known caller-fixable validation messages, and for a server error
+            on a POST or PATCH, which the HTTP client does not resend because
+            Follow Up Boss may already have saved it. That case is still
+            captured in Sentry.
         RuntimeError: Raised for failures that still require operational triage.
     """
     if isinstance(exc, FollowUpBossForbiddenError | FollowUpBossNotFoundError):
@@ -3575,6 +3580,17 @@ def _raise_followupboss_mcp_error(exc: FollowUpBossError) -> NoReturn:
         if guidance is not None:
             provider_message = _mcp_safe_error(exc).strip().rstrip(".")
             raise ToolError(f"{provider_message}. {guidance}") from exc
+    if isinstance(exc, FollowUpBossUnconfirmedWriteError):
+        capture_sentry_exception(
+            exc,
+            tags={"component": "mcp_tools", "followupboss_status_code": exc.status_code},
+        )
+        provider_message = _mcp_safe_error(exc).strip().rstrip(".")
+        raise ToolError(
+            f"{provider_message}. Follow Up Boss may have saved this request before the "
+            "error, so it was not sent again. If it creates or changes a record, look that "
+            "record up before trying again."
+        ) from exc
     raise RuntimeError(_mcp_safe_error(exc)) from exc
 
 

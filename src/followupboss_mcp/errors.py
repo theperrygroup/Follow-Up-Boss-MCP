@@ -67,6 +67,14 @@ class FollowUpBossRetryableServerError(FollowUpBossHTTPError):
     """Raised when a retryable server error is exhausted."""
 
 
+class FollowUpBossUnconfirmedWriteError(FollowUpBossHTTPError):
+    """Raised when a server error answers a request that is not safe to resend.
+
+    Follow Up Boss may have saved the request before it failed, so the client sends
+    it only once and the caller must check before trying again.
+    """
+
+
 class FollowUpBossWebhookSignatureError(FollowUpBossError):
     """Raised when webhook signature verification fails."""
 

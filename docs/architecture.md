@@ -229,7 +229,10 @@ retry logic in the HTTP client.
 The transport layer implements the retry rules centrally:
 
 - `429` responses respect `Retry-After` when present.
-- retryable `5xx` statuses use truncated exponential backoff with jitter.
+- retryable `5xx` statuses use truncated exponential backoff with jitter for `GET`, `PUT`, and
+  `DELETE` requests. A `POST` or `PATCH` that gets a `5xx` is sent only once, because Follow Up
+  Boss may already have saved it. The tool error tells the caller to look the record up before
+  trying again, and the failure is still captured in Sentry.
 - transport-level `httpx` failures share the same retry policy.
 - retries stop after `FOLLOWUPBOSS_MAX_RETRIES`.
 - retry state is never embedded in MCP tool handlers.

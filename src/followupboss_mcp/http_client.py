@@ -32,6 +32,7 @@ from followupboss_mcp.errors import (
     FollowUpBossNotFoundError,
     FollowUpBossRateLimitError,
     FollowUpBossRetryableServerError,
+    FollowUpBossUnconfirmedWriteError,
     FollowUpBossValidationError,
 )
 from followupboss_mcp.logging import configure_logging, redact_headers
@@ -237,6 +238,13 @@ class FollowUpBossAsyncClient:
                 )
 
             if self._retry_policy.is_retryable_status(response.status_code):
+                if not self._retry_policy.is_retryable_method(method_name):
+                    payload = self._error_payload(response)
+                    raise FollowUpBossUnconfirmedWriteError(
+                        self._error_message(response, payload),
+                        status_code=response.status_code,
+                        payload=payload,
+                    )
                 if self._retry_policy.can_retry(attempt):
                     delay = self._retry_policy.backoff_seconds(
                         attempt=attempt,

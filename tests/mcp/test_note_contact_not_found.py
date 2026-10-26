@@ -145,7 +145,7 @@ async def test_notes_missing_contact_preserves_provider_error_context() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("status_code", "message"),
-    [(400, "Invalid note body."), (422, "Contact not found."), (500, "Contact not found.")],
+    [(400, "Invalid note body."), (422, "Contact not found.")],
 )
 async def test_other_note_failures_remain_unexpected(status_code: int, message: str) -> None:
     calls: list[tuple[str, str]] = []
@@ -168,4 +168,34 @@ async def test_other_note_failures_remain_unexpected(status_code: int, message: 
             await server.call_tool(
                 "followupboss_add_note", {"person_id": 999, "body": "Example note"}
             )
+    assert calls.count(("POST", "/v1/notes")) == 1
+
+
+@pytest.mark.asyncio
+async def test_note_server_error_gets_saved_request_guidance_not_missing_contact() -> None:
+    """A 5xx on a note create says it may be saved and is not read as a missing contact."""
+    calls: list[tuple[str, str]] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        calls.append((request.method, request.url.path))
+        if request.url.path == "/v1/me":
+            return httpx.Response(200, json={"id": 1})
+        assert request.method == "POST"
+        assert request.url.path == "/v1/notes"
+        return httpx.Response(500, json={"errorMessage": "Contact not found."})
+
+    settings = FollowUpBossSettings.model_validate({"api_key": "test", "max_retries": 0})
+    async with httpx.AsyncClient(
+        base_url=str(settings.base_url), transport=httpx.MockTransport(respond)
+    ) as http_client:
+        client = FollowUpBossAsyncClient(settings, http_client=http_client)
+        server = create_server(settings, client=client)
+        with pytest.raises(ToolError) as exc_info:
+            await server.call_tool(
+                "followupboss_add_note", {"person_id": 999, "body": "Example note"}
+            )
+
+    assert not isinstance(exc_info.value, UnexpectedToolError)
+    assert "Follow Up Boss may have saved this request" in str(exc_info.value)
+    assert "Verify person_id" not in str(exc_info.value)
     assert calls.count(("POST", "/v1/notes")) == 1
