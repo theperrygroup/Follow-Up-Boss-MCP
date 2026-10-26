@@ -64,6 +64,21 @@ def test_retry_policy_retries_server_errors_only_for_idempotent_methods() -> Non
     ]
 
 
+def test_retry_policy_does_not_resend_pipeline_updates_that_add_stages() -> None:
+    """A pipeline update that lists a stage without an id creates it, so it is not resent."""
+    policy = RetryPolicy(max_retries=2)
+    adds_stage = {"stages": [{"id": 5, "name": "Lead"}, {"name": "Showing"}]}
+    assert policy.is_retryable_request("PUT", "/pipelines/63", adds_stage) is False
+    assert policy.is_retryable_request("put", "pipelines/63/", {"stages": ({"id": None},)}) is False
+    assert policy.is_retryable_request("PUT", "/pipelines/63", {"stages": ["Showing"]}) is False
+    assert policy.is_retryable_request("PUT", "/pipelines/63", {"stages": [{"id": 5}]}) is True
+    assert policy.is_retryable_request("PUT", "/pipelines/63", {"name": "Sellers"}) is True
+    assert policy.is_retryable_request("PUT", "/pipelines/63") is True
+    assert policy.is_retryable_request("PUT", "/stages/5", adds_stage) is True
+    assert policy.is_retryable_request("GET", "/pipelines/63", adds_stage) is True
+    assert policy.is_retryable_request("POST", "/pipelines", {"name": "Buyers"}) is False
+
+
 def test_parse_retry_after() -> None:
     """Retry-After should parse delta seconds, HTTP dates, and invalid values."""
     now = datetime(2026, 3, 28, tzinfo=UTC)

@@ -75,6 +75,15 @@ class FollowUpBossUnconfirmedWriteError(FollowUpBossHTTPError):
     """
 
 
+class FollowUpBossUnconfirmedTransportError(FollowUpBossError):
+    """Raised when a request that is not safe to resend loses its response.
+
+    The request may have reached Follow Up Boss and been saved before the connection
+    failed, so the client sends it only once and the caller must check before trying
+    again.
+    """
+
+
 class FollowUpBossWebhookSignatureError(FollowUpBossError):
     """Raised when webhook signature verification fails."""
 
