@@ -24,6 +24,12 @@ _DEEP_PAGINATION_MESSAGE = "Deep pagination disabled, use 'nextLink' url"
 _NO_SUCH_SMART_LIST_MESSAGE = "Invalid value for 'smartListId' parameter, no such list."
 _NO_SUCH_LENDER_MESSAGE = "Invalid value for 'assignedLenderName' field, no such user."
 _CLOSED_STAGE_MESSAGE = "You cannot delete a closed stage from a pipeline"
+_FOLLOWUPBOSS_DOCS_LINK = "https://docs.followupboss.com/pagination-guide"
+_DEEP_PAGINATION_TEXT = (
+    "Deep pagination disabled, use 'nextLink' url. Follow Up Boss does not allow offset "
+    "paging this deep. Narrow the request with filters (for example a person or phone "
+    "number, or a date range where the tool has one) instead of paging deeper."
+)
 _TASK_TOOLS = (
     "followupboss_list_tasks",
     "followupboss_list_my_overdue_tasks",
@@ -246,6 +252,117 @@ async def test_update_pipeline_closed_stage_removal_points_to_get_pipeline(
     assert json.loads(writes[0].content)["stages"] == [
         {"closedStage": False, "id": 401, "name": "Lead"}
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error_message",
+    [
+        f"{_DEEP_PAGINATION_MESSAGE} {_FOLLOWUPBOSS_DOCS_LINK}",
+        f"{_DEEP_PAGINATION_MESSAGE} {_FOLLOWUPBOSS_DOCS_LINK}.",
+        f" {_DEEP_PAGINATION_MESSAGE}.\n{_FOLLOWUPBOSS_DOCS_LINK} ",
+    ],
+)
+async def test_search_people_deep_pagination_with_docs_link_returns_filter_guidance(
+    error_message: str,
+) -> None:
+    """FUB's deep-offset rejection with a trailing docs link gets the same guidance."""
+    requests: list[httpx.Request] = []
+
+    with pytest.raises(ToolError) as exc_info:
+        await _call_tool(
+            "followupboss_search_people",
+            {"offset": 5000},
+            _rejecting_upstream(requests, error_message),
+        )
+
+    assert not isinstance(exc_info.value, UnexpectedToolError)
+    message = str(exc_info.value)
+    assert message.endswith(
+        f"{_DEEP_PAGINATION_TEXT} Follow Up Boss docs: {_FOLLOWUPBOSS_DOCS_LINK}"
+    )
+    assert message.count(_FOLLOWUPBOSS_DOCS_LINK) == 1
+    assert any(isinstance(exc, FollowUpBossValidationError) for exc in _cause_chain(exc_info.value))
+    assert [request.url.path.rsplit("/", 1)[-1] for request in requests] == ["identity", "people"]
+    assert requests[1].url.params["offset"] == "5000"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("error_message", "expected_text"),
+    [
+        (
+            f"{_NO_SUCH_SMART_LIST_MESSAGE} {_FOLLOWUPBOSS_DOCS_LINK}",
+            "Invalid value for 'smartListId' parameter, no such list. "
+            "Call followupboss_list_smart_lists to get a current smart list id.",
+        ),
+        (
+            f"{_NO_SUCH_LENDER_MESSAGE} {_FOLLOWUPBOSS_DOCS_LINK}",
+            "Invalid value for 'assignedLenderName' field, no such user. "
+            "Call followupboss_list_users (role Lender lists lenders) to get the lender's "
+            "exact full name, or pass the lender's user id as assigned_lender_id.",
+        ),
+        (
+            f"{_CLOSED_STAGE_MESSAGE} {_FOLLOWUPBOSS_DOCS_LINK}.",
+            "You cannot delete a closed stage from a pipeline. Follow Up Boss does not allow "
+            "deleting a closed stage. Before updating a pipeline's stages, call "
+            "followupboss_get_pipeline and keep every closed stage in stages (same id, "
+            "name, and closed_stage true).",
+        ),
+    ],
+)
+async def test_known_rejections_with_docs_link_keep_their_guidance(
+    error_message: str,
+    expected_text: str,
+) -> None:
+    """Every known message keeps its guidance, and the docs link comes last."""
+    requests: list[httpx.Request] = []
+
+    with pytest.raises(ToolError) as exc_info:
+        await _call_tool(
+            "followupboss_list_calls",
+            {"phone": "555-0100"},
+            _rejecting_upstream(requests, error_message),
+        )
+
+    assert not isinstance(exc_info.value, UnexpectedToolError)
+    assert str(exc_info.value).endswith(
+        f"{expected_text} Follow Up Boss docs: {_FOLLOWUPBOSS_DOCS_LINK}"
+    )
+    assert any(isinstance(exc, FollowUpBossValidationError) for exc in _cause_chain(exc_info.value))
+    assert len(requests) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error_message",
+    [
+        f"{_DEEP_PAGINATION_MESSAGE} https://example.com/pagination-guide",
+        f"{_DEEP_PAGINATION_MESSAGE} http://docs.followupboss.com/pagination-guide",
+        f"{_DEEP_PAGINATION_MESSAGE} {_FOLLOWUPBOSS_DOCS_LINK} for more detail",
+        f"{_DEEP_PAGINATION_MESSAGE}{_FOLLOWUPBOSS_DOCS_LINK}",
+        f"{_DEEP_PAGINATION_MESSAGE}.{_FOLLOWUPBOSS_DOCS_LINK}",
+        f"{_DEEP_PAGINATION_MESSAGE} https://docs.followupboss.com.example.net/pagination-guide",
+        f"{_DEEP_PAGINATION_MESSAGE} {_FOLLOWUPBOSS_DOCS_LINK} {_FOLLOWUPBOSS_DOCS_LINK}",
+        f"Request failed: {_DEEP_PAGINATION_MESSAGE} {_FOLLOWUPBOSS_DOCS_LINK}",
+        _FOLLOWUPBOSS_DOCS_LINK,
+    ],
+)
+async def test_known_message_with_other_trailing_text_stays_unexpected(error_message: str) -> None:
+    """Only one trailing https Follow Up Boss docs link is set aside; other text alerts."""
+    requests: list[httpx.Request] = []
+
+    with pytest.raises(UnexpectedToolError) as exc_info:
+        await _call_tool(
+            "followupboss_search_people",
+            {"offset": 5000},
+            _rejecting_upstream(requests, error_message),
+        )
+
+    chain = _cause_chain(exc_info.value)
+    assert any(type(exc) is RuntimeError and str(exc) == error_message for exc in chain)
+    assert any(isinstance(exc, FollowUpBossValidationError) for exc in chain)
+    assert [request.url.path.rsplit("/", 1)[-1] for request in requests] == ["identity", "people"]
 
 
 @pytest.mark.asyncio

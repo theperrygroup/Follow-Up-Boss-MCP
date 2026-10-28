@@ -227,6 +227,11 @@ _UNCOMMUNICATED_LEAD_MAX_SCAN_PAGES = 10
 _UNCOMMUNICATED_LEAD_TOKEN_PREFIX = "scan:"
 # Exact Follow Up Boss HTTP 400 messages that callers can fix, compared without
 # surrounding whitespace or a trailing period, mapped to tool-agnostic guidance.
+# Follow Up Boss can end such a message with one link to its docs. A last
+# whitespace-separated token that starts with _FOLLOWUPBOSS_DOCS_LINK_PREFIX is
+# set aside before the exact comparison and shown after the guidance; any other
+# extra text, including any other link, leaves the message unknown.
+_FOLLOWUPBOSS_DOCS_LINK_PREFIX = "https://docs.followupboss.com/"
 _KNOWN_VALIDATION_GUIDANCE: dict[str, str] = {
     "Deep pagination disabled, use 'nextLink' url": (
         "Follow Up Boss does not allow offset paging this deep. Narrow the request "
@@ -3537,18 +3542,46 @@ def _require_update_fields(
     raise LocalInputError(message)
 
 
+def _split_followupboss_docs_link(message: str) -> tuple[str, str | None]:
+    """Split one trailing Follow Up Boss docs link off a provider message.
+
+    Args:
+        message: The Follow Up Boss error message.
+
+    Returns:
+        A ``(text, docs_link)`` pair, after surrounding whitespace and a trailing
+        period are dropped. When the last whitespace-separated token starts with
+        ``_FOLLOWUPBOSS_DOCS_LINK_PREFIX``, ``text`` is everything before that
+        token, without a trailing period, and ``docs_link`` is the token.
+        Otherwise ``text`` is the whole message and ``docs_link`` is ``None``.
+    """
+    normalized = message.strip().rstrip(".")
+    parts = normalized.rsplit(maxsplit=1)
+    if len(parts) == 2 and parts[1].startswith(_FOLLOWUPBOSS_DOCS_LINK_PREFIX):
+        return parts[0].rstrip("."), parts[1]
+    return normalized, None
+
+
 def _known_validation_guidance(exc: FollowUpBossValidationError) -> str | None:
-    """Return caller guidance for a known, caller-fixable Follow Up Boss 400.
+    """Return the tool error text for a known, caller-fixable Follow Up Boss 400.
 
     Args:
         exc: The Follow Up Boss validation error to inspect.
 
     Returns:
-        Guidance text when the provider message exactly matches a known caller
-        mistake, ignoring surrounding whitespace and a trailing period,
-        otherwise `None`.
+        The provider message followed by its guidance when the message exactly
+        matches a known caller mistake, ignoring surrounding whitespace, a
+        trailing period, and one trailing Follow Up Boss docs link, otherwise
+        `None`. A docs link is moved after the guidance, so no sentence period
+        touches it.
     """
-    return _KNOWN_VALIDATION_GUIDANCE.get(exc.message.strip().rstrip("."))
+    provider_message, docs_link = _split_followupboss_docs_link(_mcp_safe_error(exc))
+    guidance = _KNOWN_VALIDATION_GUIDANCE.get(provider_message)
+    if guidance is None:
+        return None
+    if docs_link is None:
+        return f"{provider_message}. {guidance}"
+    return f"{provider_message}. {guidance} Follow Up Boss docs: {docs_link}"
 
 
 def _raise_followupboss_mcp_error(exc: FollowUpBossError) -> NoReturn:
@@ -3559,7 +3592,8 @@ def _raise_followupboss_mcp_error(exc: FollowUpBossError) -> NoReturn:
     are anticipated client outcomes, so they surface as ``ToolError``. Four known
     caller-fixable HTTP 400 messages (deep offset paging, an unknown
     ``smartListId``, an unknown ``assignedLenderName``, and deleting a closed
-    pipeline stage) also surface as ``ToolError`` with guidance. Other failures
+    pipeline stage) also surface as ``ToolError`` with guidance, including when
+    Follow Up Boss ends the message with one link to its docs. Other failures
     remain unexpected so authentication, validation, rate-limit, transport, and
     server errors keep their error-level observability.
 
@@ -3568,7 +3602,8 @@ def _raise_followupboss_mcp_error(exc: FollowUpBossError) -> NoReturn:
 
     Raises:
         ToolError: Raised for anticipated not-found and forbidden responses, for
-            the known caller-fixable validation messages, and for a write the HTTP
+            the known caller-fixable validation messages with or without one
+            trailing Follow Up Boss docs link, and for a write the HTTP
             client does not resend because Follow Up Boss may already have saved
             it: a server error, read timeout, read error, or remote protocol error
             on a POST, a PATCH, or a pipeline update that adds stages. That case
@@ -3580,8 +3615,7 @@ def _raise_followupboss_mcp_error(exc: FollowUpBossError) -> NoReturn:
     if isinstance(exc, FollowUpBossValidationError):
         guidance = _known_validation_guidance(exc)
         if guidance is not None:
-            provider_message = _mcp_safe_error(exc).strip().rstrip(".")
-            raise ToolError(f"{provider_message}. {guidance}") from exc
+            raise ToolError(guidance) from exc
     if isinstance(exc, FollowUpBossUnconfirmedWriteError | FollowUpBossUnconfirmedTransportError):
         status_code = (
             exc.status_code if isinstance(exc, FollowUpBossUnconfirmedWriteError) else None
