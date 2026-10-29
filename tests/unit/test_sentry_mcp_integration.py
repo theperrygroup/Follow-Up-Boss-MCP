@@ -77,6 +77,10 @@ class OfflineExpectedErrorClient:
             raise FollowUpBossValidationError(
                 "You cannot delete a closed stage from a pipeline", status_code=400
             )
+        if path == "/people/77":
+            raise FollowUpBossValidationError(
+                "Provided stage is not a valid Zillow Sync Stage", status_code=400
+            )
         raise AssertionError(f"Unexpected Follow Up Boss request: {method} {path}")
 
 
@@ -211,6 +215,12 @@ def test_sentry_error_envelope_preserves_breadcrumb_data_object(
             {"pipeline_id": 9, "stages": [{"id": 401, "name": "Lead", "closed_stage": False}]},
             "call followupboss_get_pipeline and keep every closed stage in stages",
             [("PUT", "/pipelines/9")],
+        ),
+        (
+            "followupboss_update_person",
+            {"person_id": 77, "stage": "Hot Prospect"},
+            "Call followupboss_list_stages for the exact stage names",
+            [("PUT", "/people/77")],
         ),
         (
             "followupboss_create_call",
