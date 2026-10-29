@@ -251,9 +251,15 @@ _KNOWN_VALIDATION_GUIDANCE: dict[str, str] = {
         "in stages (same id, name, and closed_stage true)."
     ),
     "Provided stage is not a valid Zillow Sync Stage": (
-        "Follow Up Boss accepts only a Zillow sync stage (a stage that matches a Zillow "
-        "contact status) for a person who syncs with Zillow. Call followupboss_list_stages "
-        "for the exact stage names, then pass a Zillow sync stage or leave stage out."
+        "Follow Up Boss accepts only a Zillow sync stage for a person who syncs with "
+        "Zillow. Its help center lists these stages for Zillow leads: Lead (New in "
+        "Zillow), Attempted Contact, Spoke with Customer, Appointment Set, Met with "
+        "Customer, Showing Homes, Listing Agreement, Active Listing, Submitting Offers, "
+        "Under Contract, Closed (Sale Closed in Zillow), Nurture, and Trash (Rejected "
+        "in Zillow). The list from followupboss_list_stages does not show which stages "
+        "sync with Zillow. Call followupboss_list_stages for the exact stage names, then "
+        "pass one of these stages, ask the user which Zillow stage they mean, or leave "
+        "stage out."
     ),
 }
 
