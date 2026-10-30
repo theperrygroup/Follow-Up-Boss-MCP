@@ -250,6 +250,17 @@ _KNOWN_VALIDATION_GUIDANCE: dict[str, str] = {
         "pipeline's stages, call followupboss_get_pipeline and keep every closed stage "
         "in stages (same id, name, and closed_stage true)."
     ),
+    "Provided stage is not a valid Zillow Sync Stage": (
+        "Follow Up Boss accepts only a Zillow sync stage for a person who syncs with "
+        "Zillow. Its help center lists these stages for Zillow leads: Lead (New in "
+        "Zillow), Attempted Contact, Spoke with Customer, Appointment Set, Met with "
+        "Customer, Showing Homes, Listing Agreement, Active Listing, Submitting Offers, "
+        "Under Contract, Closed (Sale Closed in Zillow), Nurture, and Trash (Rejected "
+        "in Zillow). The list from followupboss_list_stages does not show which stages "
+        "sync with Zillow. Call followupboss_list_stages for the exact stage names, then "
+        "pass one of these stages, ask the user which Zillow stage they mean, or leave "
+        "stage out."
+    ),
 }
 
 
@@ -3589,10 +3600,11 @@ def _raise_followupboss_mcp_error(exc: FollowUpBossError) -> NoReturn:
 
     FastMCP SDK v2 treats non-``ToolError`` exceptions as unexpected crashes and
     hides their messages from MCP clients. Typed not-found and forbidden responses
-    are anticipated client outcomes, so they surface as ``ToolError``. Four known
+    are anticipated client outcomes, so they surface as ``ToolError``. Five known
     caller-fixable HTTP 400 messages (deep offset paging, an unknown
-    ``smartListId``, an unknown ``assignedLenderName``, and deleting a closed
-    pipeline stage) also surface as ``ToolError`` with guidance, including when
+    ``smartListId``, an unknown ``assignedLenderName``, deleting a closed
+    pipeline stage, and a stage that is not a Zillow sync stage for a person who
+    syncs with Zillow) also surface as ``ToolError`` with guidance, including when
     Follow Up Boss ends the message with one link to its docs. Other failures
     remain unexpected so authentication, validation, rate-limit, transport, and
     server errors keep their error-level observability.

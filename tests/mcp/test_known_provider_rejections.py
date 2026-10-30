@@ -24,7 +24,19 @@ _DEEP_PAGINATION_MESSAGE = "Deep pagination disabled, use 'nextLink' url"
 _NO_SUCH_SMART_LIST_MESSAGE = "Invalid value for 'smartListId' parameter, no such list."
 _NO_SUCH_LENDER_MESSAGE = "Invalid value for 'assignedLenderName' field, no such user."
 _CLOSED_STAGE_MESSAGE = "You cannot delete a closed stage from a pipeline"
+_ZILLOW_SYNC_STAGE_MESSAGE = "Provided stage is not a valid Zillow Sync Stage"
 _FOLLOWUPBOSS_DOCS_LINK = "https://docs.followupboss.com/pagination-guide"
+_ZILLOW_SYNC_STAGE_TEXT = (
+    "Provided stage is not a valid Zillow Sync Stage. Follow Up Boss accepts only a Zillow "
+    "sync stage for a person who syncs with Zillow. Its help center lists these stages "
+    "for Zillow leads: Lead (New in Zillow), Attempted Contact, Spoke with Customer, "
+    "Appointment Set, Met with Customer, Showing Homes, Listing Agreement, Active "
+    "Listing, Submitting Offers, Under Contract, Closed (Sale Closed in Zillow), Nurture, "
+    "and Trash (Rejected in Zillow). The list from followupboss_list_stages does not "
+    "show which stages sync with Zillow. Call followupboss_list_stages for the exact "
+    "stage names, then pass one of these stages, ask the user which Zillow stage they "
+    "mean, or leave stage out."
+)
 _DEEP_PAGINATION_TEXT = (
     "Deep pagination disabled, use 'nextLink' url. Follow Up Boss does not allow offset "
     "paging this deep. Narrow the request with filters (for example a person or phone "
@@ -256,6 +268,49 @@ async def test_update_pipeline_closed_stage_removal_points_to_get_pipeline(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    "error_message", [_ZILLOW_SYNC_STAGE_MESSAGE, f"{_ZILLOW_SYNC_STAGE_MESSAGE}."]
+)
+@pytest.mark.parametrize(
+    ("tool_name", "arguments", "method", "path_suffix"),
+    [
+        (
+            "followupboss_update_person",
+            {"person_id": 101, "stage": "Hot Prospect"},
+            "PUT",
+            "/people/101",
+        ),
+        (
+            "followupboss_create_person",
+            {"first_name": "Sam", "stage": "Hot Prospect"},
+            "POST",
+            "/people",
+        ),
+    ],
+)
+async def test_person_write_non_zillow_sync_stage_points_to_list_stages(
+    tool_name: str,
+    arguments: dict[str, object],
+    method: str,
+    path_suffix: str,
+    error_message: str,
+) -> None:
+    """FUB's Zillow sync stage rejection tells callers how to pick a stage it accepts."""
+    requests: list[httpx.Request] = []
+
+    with pytest.raises(ToolError) as exc_info:
+        await _call_tool(tool_name, arguments, _rejecting_upstream(requests, error_message))
+
+    assert not isinstance(exc_info.value, UnexpectedToolError)
+    assert _ZILLOW_SYNC_STAGE_TEXT in str(exc_info.value)
+    assert any(isinstance(exc, FollowUpBossValidationError) for exc in _cause_chain(exc_info.value))
+    writes = [request for request in requests if request.method == method]
+    assert len(writes) == 1
+    assert writes[0].url.path.endswith(path_suffix)
+    assert json.loads(writes[0].content)["stage"] == "Hot Prospect"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     "error_message",
     [
         f"{_DEEP_PAGINATION_MESSAGE} {_FOLLOWUPBOSS_DOCS_LINK}",
@@ -309,6 +364,7 @@ async def test_search_people_deep_pagination_with_docs_link_returns_filter_guida
             "followupboss_get_pipeline and keep every closed stage in stages (same id, "
             "name, and closed_stage true).",
         ),
+        (f"{_ZILLOW_SYNC_STAGE_MESSAGE} {_FOLLOWUPBOSS_DOCS_LINK}", _ZILLOW_SYNC_STAGE_TEXT),
     ],
 )
 async def test_known_rejections_with_docs_link_keep_their_guidance(
@@ -375,6 +431,8 @@ async def test_known_message_with_other_trailing_text_stays_unexpected(error_mes
         f"{_NO_SUCH_SMART_LIST_MESSAGE} Also bad sort",
         "Invalid value for 'assignedTo' field, no such user.",
         "You cannot delete the last stage from a pipeline",
+        "Provided stage is not a valid stage",
+        f"{_ZILLOW_SYNC_STAGE_MESSAGE} for this person",
     ],
 )
 async def test_other_validation_errors_stay_unexpected(error_message: str) -> None:
