@@ -224,6 +224,10 @@ jobs:
       - name: Run release validation
         run: make release-validate
 
+      - name: Verify current OAuth client compatibility
+        if: github.event_name == 'push' || inputs.operation == 'deploy'
+        run: make auth-client-check
+
   record-live-acceptance:
     needs:
       - authorize-production-ref
@@ -2069,63 +2073,12 @@ jobs:
           printf "ECS deployment receipt: release=%s task_definition=%s desired=%s running=%s.\n" \
             "${GITHUB_SHA}" "${deployed_task_definition}" "${desired}" "${running}"
 
-      - name: Verify public OAuth metadata and bearer challenge
+      - name: Set up uv for deployed OAuth verification
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Verify public OAuth metadata and client authorization
         shell: bash
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          from urllib.error import HTTPError
-          from urllib.parse import urlsplit
-          from urllib.request import Request, urlopen
-
-          resource = os.environ["HOSTED_RESOURCE_SERVER_URL"]
-          raw_issuer = os.environ["HOSTED_ISSUER_URL"].strip()
-          split = urlsplit(resource)
-          issuer_split = urlsplit(raw_issuer)
-          if (
-              issuer_split.scheme != "https"
-              or issuer_split.netloc != split.netloc
-              or issuer_split.username is not None
-              or issuer_split.password is not None
-              or issuer_split.path not in ("", "/")
-              or issuer_split.query
-              or issuer_split.fragment
-          ):
-              raise SystemExit("Configured issuer is not the MCP HTTPS origin.")
-          origin = f"{split.scheme}://{split.netloc}"
-          issuer = f"{issuer_split.scheme}://{issuer_split.netloc}/"
-          protected_url = f"{origin}/.well-known/oauth-protected-resource{split.path}"
-          authorization_url = f"{issuer}.well-known/oauth-authorization-server"
-          probe_headers = {
-              "Accept": "application/json",
-              "User-Agent": "FollowUpBoss-MCP-Release-Validation/1.0",
-          }
-
-          try:
-              urlopen(Request(resource, headers=probe_headers), timeout=15)
-          except HTTPError as exc:
-              if exc.code != 401:
-                  raise SystemExit(f"MCP bearer challenge returned HTTP {exc.code}.") from exc
-              challenge = exc.headers.get("WWW-Authenticate", "")
-          else:
-              raise SystemExit("MCP endpoint did not require a bearer token.")
-          if protected_url not in challenge:
-              raise SystemExit("MCP bearer challenge advertised the wrong metadata URL.")
-
-          with urlopen(Request(protected_url, headers=probe_headers), timeout=15) as response:
-              protected = json.load(response)
-          with urlopen(Request(authorization_url, headers=probe_headers), timeout=15) as response:
-              authorization = json.load(response)
-          if protected.get("resource") != resource:
-              raise SystemExit("Protected-resource metadata advertised the wrong resource.")
-          if issuer not in protected.get("authorization_servers", []):
-              raise SystemExit("Protected-resource metadata advertised the wrong issuer.")
-          if authorization.get("issuer") != issuer:
-              raise SystemExit("Authorization metadata advertised the wrong issuer.")
-          if authorization.get("authorization_response_iss_parameter_supported") is not True:
-              raise SystemExit("Authorization metadata did not advertise RFC 9207 issuer binding.")
-          if authorization.get("client_id_metadata_document_supported") is not True:
-              raise SystemExit("Authorization metadata did not advertise CIMD support.")
-          print("Public OAuth metadata receipt: resource, issuer, RFC 9207, and CIMD verified.")
-          PY
+        run: uv run --frozen python scripts/verify_public_oauth.py
