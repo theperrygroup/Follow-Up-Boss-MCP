@@ -32,6 +32,8 @@ from followupboss_mcp.errors import (
     FollowUpBossNotFoundError,
     FollowUpBossRateLimitError,
     FollowUpBossRetryableServerError,
+    FollowUpBossUnconfirmedTransportError,
+    FollowUpBossUnconfirmedWriteError,
     FollowUpBossValidationError,
 )
 from followupboss_mcp.logging import configure_logging, redact_headers
@@ -47,6 +49,8 @@ _PROTECTED_REQUEST_HEADERS = frozenset(
         HEADER_SYSTEM_KEY.lower(),
     }
 )
+# Transport errors that can happen after Follow Up Boss received the request.
+_AMBIGUOUS_TRANSPORT_ERRORS = (httpx.ReadTimeout, httpx.ReadError, httpx.RemoteProtocolError)
 
 
 class FollowUpBossClientProtocol(Protocol):
@@ -159,6 +163,7 @@ class FollowUpBossAsyncClient:
         """Send a request with rate-limit and retry handling."""
         attempt = 0
         method_name = method.upper()
+        resend_safe = self._retry_policy.is_retryable_request(method_name, path, json_body)
         while True:
             request_headers = self._build_headers(
                 headers=headers, has_json_body=json_body is not None
@@ -184,6 +189,10 @@ class FollowUpBossAsyncClient:
                     params=params,
                 )
             except httpx.HTTPError as exc:
+                if isinstance(exc, _AMBIGUOUS_TRANSPORT_ERRORS) and not resend_safe:
+                    raise FollowUpBossUnconfirmedTransportError(
+                        "Transport error while calling Follow Up Boss."
+                    ) from exc
                 if self._retry_policy.can_retry(attempt):
                     delay = self._retry_policy.backoff_seconds(
                         attempt=attempt,
@@ -237,6 +246,13 @@ class FollowUpBossAsyncClient:
                 )
 
             if self._retry_policy.is_retryable_status(response.status_code):
+                if not resend_safe:
+                    payload = self._error_payload(response)
+                    raise FollowUpBossUnconfirmedWriteError(
+                        self._error_message(response, payload),
+                        status_code=response.status_code,
+                        payload=payload,
+                    )
                 if self._retry_policy.can_retry(attempt):
                     delay = self._retry_policy.backoff_seconds(
                         attempt=attempt,

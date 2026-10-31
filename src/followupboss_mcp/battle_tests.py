@@ -36,6 +36,7 @@ from followupboss_mcp.models.text_messages import (
 )
 from followupboss_mcp.models.users import UserListRequest, UserRecord
 from followupboss_mcp.pagination import PageResult
+from followupboss_mcp.task_intents import task_projection_fields as _task_projection_fields
 from followupboss_mcp.task_intents import upcoming_task_due_start as _upcoming_task_due_start
 
 type JsonObject = dict[str, JsonValue]
@@ -1746,7 +1747,9 @@ class ReadOnlyBattleTestOracle:
             TaskListRequest(
                 assigned_user_id=user_id,
                 due=due,
-                fields=_optional_string_list(transcript.arguments.get("fields")),
+                fields=_task_projection_fields(
+                    _optional_string_list(transcript.arguments.get("fields"))
+                ),
                 is_completed=False,
                 limit=_optional_int(transcript.arguments.get("limit")),
                 next_token=_optional_string(transcript.arguments.get("next_token")),
@@ -1777,7 +1780,9 @@ class ReadOnlyBattleTestOracle:
             TaskListRequest(
                 assigned_user_id=user_id,
                 due_start=due_start,
-                fields=_optional_string_list(transcript.arguments.get("fields")),
+                fields=_task_projection_fields(
+                    _optional_string_list(transcript.arguments.get("fields"))
+                ),
                 is_completed=False,
                 limit=_optional_int(transcript.arguments.get("limit")),
                 next_token=_optional_string(transcript.arguments.get("next_token")),

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from followupboss_mcp.models.common import CommonListQuery, RequestModel, ResponseModel
 
@@ -16,6 +16,32 @@ class CustomFieldListRequest(CommonListQuery):
     """Search filters for the custom fields collection."""
 
     label: str | None = None
+
+    @field_validator("fields")
+    @classmethod
+    def _reject_choices_projection(cls, value: list[str] | None) -> list[str] | None:
+        """Reject the ``choices`` projection before querying Follow Up Boss.
+
+        Follow Up Boss ``GET /customFields`` rejects ``choices`` in its
+        ``fields`` parameter. Dropdown choices come from the single custom
+        field lookup instead.
+
+        Args:
+            value: Optional field names requested by the caller.
+
+        Returns:
+            The original field list when it does not request ``choices``.
+
+        Raises:
+            ValueError: If the projection requests ``choices``.
+        """
+        if value is not None and "choices" in value:
+            raise ValueError(
+                "Invalid custom field list fields: choices. Follow Up Boss returns "
+                "choices only for one custom field; call followupboss_get_custom_field "
+                "with its id instead."
+            )
+        return value
 
 
 class CreateCustomFieldRequest(RequestModel):

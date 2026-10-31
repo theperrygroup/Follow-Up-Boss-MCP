@@ -802,6 +802,15 @@ def test_before_send_keeps_mixed_typed_client_error_chain() -> None:
             "followupboss_validation",
         ),
         ("Deep pagination disabled, use 'nextLink' url.", "followupboss_validation"),
+        (
+            "Deep pagination disabled, use 'nextLink' url "
+            "https://docs.followupboss.com/pagination-guide",
+            "followupboss_validation",
+        ),
+        (
+            "Deep pagination disabled, use 'nextLink' url https://example.com/pagination-guide",
+            "followupboss_validation",
+        ),
         ("Requested resource was not found.", "followupboss_not_found"),
         ("You do not have access to delete pipelines.", "followupboss_forbidden"),
     ],

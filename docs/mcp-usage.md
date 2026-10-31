@@ -202,6 +202,10 @@ The MCP surface validates several Follow Up Boss contracts before making an upst
 - `followupboss_update_person` also requires API-native `custom_fields` names beginning
   with `custom`; discover them with `followupboss_list_custom_fields`. Email, phone, and
   address objects must use named fields, not numeric array-position keys.
+- `followupboss_update_person` and `followupboss_update_task` need at least one field to
+  change. A call that sets none returns a tool error that lists the accepted fields instead
+  of sending an empty update; for a person, `merge_tags` alone or an empty `custom_fields`
+  object sets none.
 - If `followupboss_add_note` reports `Contact not found`, verify that `person_id` exists
   in the connected account. For a newly created person, use `wait_for_person=true` to
   wait for visibility before writing the note. The tool never retries a rejected note write.
@@ -211,6 +215,10 @@ The MCP surface validates several Follow Up Boss contracts before making an upst
   `created`, `dueDate`, and `personId`; they reject unsupported projections such as `person`,
   `dueDateTime`, and `personName`. Task writes accept either `assigned_user_id` or an assignee
   name, which is normalized and resolved to one exact active user ID before the write.
+- Task list tools always add `id` to a `fields` projection that leaves it out, so every
+  returned task can be acted on.
+- `followupboss_list_custom_fields` rejects `choices` in `fields`. Call
+  `followupboss_get_custom_field` with the field ID to read dropdown choices.
 - `followupboss_list_text_messages` requires at least one identifying filter: `person_id`,
   `from_number`, or `to_number`.
 - `followupboss_list_uncontacted_leads` supports `updated` in its response projection in addition
@@ -450,6 +458,7 @@ MCP tools do not perform raw HTTP calls. They call the typed service layer, whic
 - auth failures, validation errors, not-found errors, rate-limit errors, and retryable server errors are mapped in one place
 - MCP callers receive predictable safe messages
 - `Retry-After` information is surfaced in the error message for rate limits when Follow Up Boss includes it
+- five Follow Up Boss validation messages return a tool error with a next step: the deep offset paging rejection (narrow the request with filters), an unknown `smartListId` (call `followupboss_list_smart_lists` for a current ID), an unknown `assignedLenderName` on a person write (call `followupboss_list_users` for the lender's exact full name, or pass `assigned_lender_id`), a pipeline update that would delete a closed stage (call `followupboss_get_pipeline` and keep every closed stage in `stages`), and a person write whose `stage` is not a Zillow sync stage for a person who syncs with Zillow (Follow Up Boss's help center lists these stages for Zillow leads: Lead, Attempted Contact, Spoke with Customer, Appointment Set, Met with Customer, Showing Homes, Listing Agreement, Active Listing, Submitting Offers, Under Contract, Closed, Nurture, and Trash; `followupboss_list_stages` does not show which stages sync with Zillow, so call it for the exact stage names, then pass one of these stages, ask the user which Zillow stage they mean, or leave `stage` out). The same holds when Follow Up Boss ends one of these messages with one link to its docs (a last token that starts with `https://docs.followupboss.com/`); the tool error then puts the link after the next step. Every other validation error, including one of these messages followed by any other text or link, stays an unexpected tool error
 
 ## Inspector Workflow
 

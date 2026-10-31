@@ -428,8 +428,9 @@ class HostedAuthSettings(BaseModel):
         return AuthSettings(
             issuer_url=self.issuer_url,
             resource_server_url=self.resource_server_url,
-            validate_token_resource=True,
             required_scopes=list(self.required_scopes) or None,
+            # HostedTenantTokenVerifier already checks the token resource; SDK 3.0 defaults True
+            validate_token_resource=False,
         )
 
 

@@ -230,7 +230,8 @@ class TaskRecord(ResponseModel):
     created_by: JsonValue | None = Field(default=None, alias="createdBy")
     due_date: str | None = Field(default=None, alias="dueDate")
     due_date_time: str | None = Field(default=None, alias="dueDateTime")
-    id: int
+    # GET /tasks omits id when a fields projection excludes it.
+    id: int | None = None
     is_completed: bool | None = Field(default=None, alias="isCompleted")
     name: str | None = None
     person: TaskPersonSummary | None = None

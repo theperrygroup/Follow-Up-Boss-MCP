@@ -21,6 +21,9 @@ from followupboss_mcp.errors import (
     FollowUpBossForbiddenError,
     FollowUpBossNotFoundError,
     FollowUpBossRateLimitError,
+    FollowUpBossUnconfirmedTransportError,
+    FollowUpBossUnconfirmedWriteError,
+    FollowUpBossValidationError,
 )
 from followupboss_mcp.models.action_plans import (
     ActionPlanListRequest,
@@ -172,7 +175,9 @@ from followupboss_mcp.models.webhooks import (
     UpdateWebhookRequest,
     WebhookListRequest,
 )
+from followupboss_mcp.observability import capture_sentry_exception
 from followupboss_mcp.pagination import PageResult, PaginationMetadata
+from followupboss_mcp.task_intents import task_projection_fields as _task_projection_fields
 from followupboss_mcp.task_intents import upcoming_task_due_start as _upcoming_task_due_start
 from followupboss_mcp.tenant_runtime import ServiceBundle, ServiceBundleResolver
 from mcp.server.mcpserver.exceptions import ToolError
@@ -220,6 +225,43 @@ _UNCOMMUNICATED_LEAD_FILTER_FIELDS = frozenset({"id", "lastCommunication"})
 _UNCOMMUNICATED_LEAD_FETCH_LIMIT = 100
 _UNCOMMUNICATED_LEAD_MAX_SCAN_PAGES = 10
 _UNCOMMUNICATED_LEAD_TOKEN_PREFIX = "scan:"
+# Exact Follow Up Boss HTTP 400 messages that callers can fix, compared without
+# surrounding whitespace or a trailing period, mapped to tool-agnostic guidance.
+# Follow Up Boss can end such a message with one link to its docs. A last
+# whitespace-separated token that starts with _FOLLOWUPBOSS_DOCS_LINK_PREFIX is
+# set aside before the exact comparison and shown after the guidance; any other
+# extra text, including any other link, leaves the message unknown.
+_FOLLOWUPBOSS_DOCS_LINK_PREFIX = "https://docs.followupboss.com/"
+_KNOWN_VALIDATION_GUIDANCE: dict[str, str] = {
+    "Deep pagination disabled, use 'nextLink' url": (
+        "Follow Up Boss does not allow offset paging this deep. Narrow the request "
+        "with filters (for example a person or phone number, or a date range where "
+        "the tool has one) instead of paging deeper."
+    ),
+    "Invalid value for 'smartListId' parameter, no such list": (
+        "Call followupboss_list_smart_lists to get a current smart list id."
+    ),
+    "Invalid value for 'assignedLenderName' field, no such user": (
+        "Call followupboss_list_users (role Lender lists lenders) to get the lender's "
+        "exact full name, or pass the lender's user id as assigned_lender_id."
+    ),
+    "You cannot delete a closed stage from a pipeline": (
+        "Follow Up Boss does not allow deleting a closed stage. Before updating a "
+        "pipeline's stages, call followupboss_get_pipeline and keep every closed stage "
+        "in stages (same id, name, and closed_stage true)."
+    ),
+    "Provided stage is not a valid Zillow Sync Stage": (
+        "Follow Up Boss accepts only a Zillow sync stage for a person who syncs with "
+        "Zillow. Its help center lists these stages for Zillow leads: Lead (New in "
+        "Zillow), Attempted Contact, Spoke with Customer, Appointment Set, Met with "
+        "Customer, Showing Homes, Listing Agreement, Active Listing, Submitting Offers, "
+        "Under Contract, Closed (Sale Closed in Zillow), Nurture, and Trash (Rejected "
+        "in Zillow). The list from followupboss_list_stages does not show which stages "
+        "sync with Zillow. Call followupboss_list_stages for the exact stage names, then "
+        "pass one of these stages, ask the user which Zillow stage they mean, or leave "
+        "stage out."
+    ),
+}
 
 
 class LocalInputError(ToolError, RuntimeError):
@@ -1877,6 +1919,12 @@ class FollowUpBossToolAdapter:
 
     async def update_person(self, tool_input: UpdatePersonToolInput) -> dict[str, Any]:
         """Update a person."""
+        _require_update_fields(
+            "followupboss_update_person",
+            tool_input,
+            identifier="person_id",
+            query_only=("merge_tags",),
+        )
         request = UpdatePersonRequest.model_validate(tool_input.model_dump(exclude={"person_id"}))
         return await self._single_result(
             lambda: self._services.people.update_person(tool_input.person_id, request)
@@ -2909,9 +2957,12 @@ class FollowUpBossToolAdapter:
         return UpdateCallRequest.model_validate(tool_input.model_dump(exclude={"call_id"}))
 
     async def list_tasks(self, tool_input: TaskListRequest) -> dict[str, Any]:
-        """List tasks."""
+        """List tasks; a ``fields`` projection always includes the task id."""
+        request = tool_input.model_copy(
+            update={"fields": _task_projection_fields(tool_input.fields)}
+        )
         return await self._page_result(
-            lambda: self._services.tasks.list_tasks(tool_input),
+            lambda: self._services.tasks.list_tasks(request),
             key="tasks",
         )
 
@@ -2993,7 +3044,7 @@ class FollowUpBossToolAdapter:
         request = TaskListRequest(
             assigned_user_id=identity.id,
             due=due,
-            fields=cast(list[str] | None, tool_input.fields),
+            fields=_task_projection_fields(cast(list[str] | None, tool_input.fields)),
             is_completed=False,
             limit=tool_input.limit,
             next_token=tool_input.next_token,
@@ -3022,7 +3073,7 @@ class FollowUpBossToolAdapter:
         request = TaskListRequest(
             assigned_user_id=identity.id,
             due_start=_upcoming_task_due_start(),
-            fields=cast(list[str] | None, tool_input.fields),
+            fields=_task_projection_fields(cast(list[str] | None, tool_input.fields)),
             is_completed=False,
             limit=tool_input.limit,
             next_token=tool_input.next_token,
@@ -3071,6 +3122,7 @@ class FollowUpBossToolAdapter:
 
     async def update_task(self, tool_input: UpdateTaskToolInput) -> dict[str, Any]:
         """Update a task after converting any assignee name to a stable user ID."""
+        _require_update_fields("followupboss_update_task", tool_input, identifier="task_id")
 
         async def update_resolved_task() -> TaskRecord:
             request = await self._resolved_task_update_request(tool_input)
@@ -3469,24 +3521,127 @@ def _mcp_safe_error(exc: FollowUpBossError) -> str:
     return str(exc)
 
 
+def _require_update_fields(
+    tool_name: str,
+    tool_input: RequestModel,
+    *,
+    identifier: str,
+    query_only: tuple[str, ...] = (),
+) -> None:
+    """Reject an update that sets no field before any write is sent.
+
+    An update with every field unset would send an empty ``PUT`` body, so it
+    fails locally and names the fields the tool accepts.
+
+    Args:
+        tool_name: The public MCP tool name to show in the message.
+        tool_input: The validated update tool input.
+        identifier: The field that selects the record to update.
+        query_only: Fields sent as query parameters, which change nothing alone.
+
+    Raises:
+        LocalInputError: If no field outside ``identifier`` and ``query_only``
+            is set. An empty mapping such as ``custom_fields={}`` counts as unset.
+    """
+    fields = sorted(set(type(tool_input).model_fields) - {identifier, *query_only})
+    if any(getattr(tool_input, name) not in (None, {}) for name in fields):
+        return
+    accepted = ", ".join(fields)
+    message = f"{tool_name} needs at least one field to change. Set one of: {accepted}."
+    if query_only:
+        message += f" {', '.join(query_only)} alone changes nothing."
+    raise LocalInputError(message)
+
+
+def _split_followupboss_docs_link(message: str) -> tuple[str, str | None]:
+    """Split one trailing Follow Up Boss docs link off a provider message.
+
+    Args:
+        message: The Follow Up Boss error message.
+
+    Returns:
+        A ``(text, docs_link)`` pair, after surrounding whitespace and a trailing
+        period are dropped. When the last whitespace-separated token starts with
+        ``_FOLLOWUPBOSS_DOCS_LINK_PREFIX``, ``text`` is everything before that
+        token, without a trailing period, and ``docs_link`` is the token.
+        Otherwise ``text`` is the whole message and ``docs_link`` is ``None``.
+    """
+    normalized = message.strip().rstrip(".")
+    parts = normalized.rsplit(maxsplit=1)
+    if len(parts) == 2 and parts[1].startswith(_FOLLOWUPBOSS_DOCS_LINK_PREFIX):
+        return parts[0].rstrip("."), parts[1]
+    return normalized, None
+
+
+def _known_validation_guidance(exc: FollowUpBossValidationError) -> str | None:
+    """Return the tool error text for a known, caller-fixable Follow Up Boss 400.
+
+    Args:
+        exc: The Follow Up Boss validation error to inspect.
+
+    Returns:
+        The provider message followed by its guidance when the message exactly
+        matches a known caller mistake, ignoring surrounding whitespace, a
+        trailing period, and one trailing Follow Up Boss docs link, otherwise
+        `None`. A docs link is moved after the guidance, so no sentence period
+        touches it.
+    """
+    provider_message, docs_link = _split_followupboss_docs_link(_mcp_safe_error(exc))
+    guidance = _KNOWN_VALIDATION_GUIDANCE.get(provider_message)
+    if guidance is None:
+        return None
+    if docs_link is None:
+        return f"{provider_message}. {guidance}"
+    return f"{provider_message}. {guidance} Follow Up Boss docs: {docs_link}"
+
+
 def _raise_followupboss_mcp_error(exc: FollowUpBossError) -> NoReturn:
     """Raise the MCP-safe wrapper appropriate for a Follow Up Boss failure.
 
     FastMCP SDK v2 treats non-``ToolError`` exceptions as unexpected crashes and
     hides their messages from MCP clients. Typed not-found and forbidden responses
-    are anticipated client outcomes, so they surface as ``ToolError``. Other
-    failures remain unexpected so authentication, validation, rate-limit,
-    transport, and server errors keep their error-level observability.
+    are anticipated client outcomes, so they surface as ``ToolError``. Five known
+    caller-fixable HTTP 400 messages (deep offset paging, an unknown
+    ``smartListId``, an unknown ``assignedLenderName``, deleting a closed
+    pipeline stage, and a stage that is not a Zillow sync stage for a person who
+    syncs with Zillow) also surface as ``ToolError`` with guidance, including when
+    Follow Up Boss ends the message with one link to its docs. Other failures
+    remain unexpected so authentication, validation, rate-limit, transport, and
+    server errors keep their error-level observability.
 
     Args:
         exc: The Follow Up Boss error to translate.
 
     Raises:
-        ToolError: Raised for anticipated not-found and forbidden responses.
+        ToolError: Raised for anticipated not-found and forbidden responses, for
+            the known caller-fixable validation messages with or without one
+            trailing Follow Up Boss docs link, and for a write the HTTP
+            client does not resend because Follow Up Boss may already have saved
+            it: a server error, read timeout, read error, or remote protocol error
+            on a POST, a PATCH, or a pipeline update that adds stages. That case
+            is still captured in Sentry.
         RuntimeError: Raised for failures that still require operational triage.
     """
     if isinstance(exc, FollowUpBossForbiddenError | FollowUpBossNotFoundError):
         raise ToolError(_mcp_safe_error(exc)) from exc
+    if isinstance(exc, FollowUpBossValidationError):
+        guidance = _known_validation_guidance(exc)
+        if guidance is not None:
+            raise ToolError(guidance) from exc
+    if isinstance(exc, FollowUpBossUnconfirmedWriteError | FollowUpBossUnconfirmedTransportError):
+        status_code = (
+            exc.status_code if isinstance(exc, FollowUpBossUnconfirmedWriteError) else None
+        )
+        capture_sentry_exception(
+            exc,
+            tags={"component": "mcp_tools", "followupboss_status_code": status_code},
+        )
+        provider_message = _mcp_safe_error(exc).strip().rstrip(".")
+        raise ToolError(
+            f"{provider_message}. Follow Up Boss may have saved this request before the "
+            "error, so it was not sent again. If it creates or changes a record, look that "
+            "record up before trying again."
+        ) from exc
     raise RuntimeError(_mcp_safe_error(exc)) from exc
 
 

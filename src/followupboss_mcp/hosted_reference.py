@@ -14,6 +14,7 @@ from contextlib import AbstractAsyncContextManager
 from typing import Annotated, Literal, Protocol, Self, cast
 
 import boto3.session  # type: ignore[import-untyped]
+import httpx
 import psycopg
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
@@ -83,6 +84,17 @@ from mcp.server.mcpserver import MCPServer
 _DEFAULT_HOSTED_REQUIRED_SCOPE = "followupboss:mcp"
 _DEFAULT_REDIS_KEY_PREFIX = "followupboss:hosted_rate_limit"
 _LOGGER = logging.getLogger(__name__)
+# RFC 6749 section 5.2 token endpoint error codes that are safe to send as Sentry tags.
+_OAUTH_TOKEN_ERROR_CODES = frozenset(
+    {
+        "invalid_request",
+        "invalid_client",
+        "invalid_grant",
+        "unauthorized_client",
+        "unsupported_grant_type",
+        "invalid_scope",
+    }
+)
 
 _HOSTED_ACCESS_TOKEN_QUERY = """
 SELECT tenant_id, subject, client_id, scopes, expires_at, token_id, credential_id, resource
@@ -1524,6 +1536,38 @@ class PostgresHostedTokenVerifier(HostedIdentityVerifier):
             await self._pool.aclose()
 
 
+def _oauth_refresh_failure_tags(exc: httpx.HTTPStatusError) -> dict[str, str]:
+    """Return safe Sentry tags for a token endpoint that rejected a refresh.
+
+    Only the HTTP status and an allow-listed RFC 6749 section 5.2 error code
+    are kept. The response body, ``error_description`` and tokens never
+    reach the tags.
+
+    Args:
+        exc: The HTTP status error raised by the refresh-token request.
+
+    Returns:
+        The ``oauth_http_status`` and ``oauth_error`` tag values. The error
+        is ``other`` when the body is not JSON, has no ``error``, or names a
+        code outside the allow-list.
+    """
+    try:
+        body = exc.response.json()
+    except (ValueError, RecursionError):
+        # Deeply nested JSON raises RecursionError, not ValueError. A tag helper
+        # must never break the refresh failure handler that calls it.
+        body = None
+    oauth_error = "other"
+    if isinstance(body, dict):
+        error = body.get("error")
+        if isinstance(error, str) and error in _OAUTH_TOKEN_ERROR_CODES:
+            oauth_error = error
+    return {
+        "oauth_http_status": str(exc.response.status_code),
+        "oauth_error": oauth_error,
+    }
+
+
 class PostgresAwsTenantStore(TenantStore):
     """PostgreSQL metadata store plus AWS Secrets Manager credential resolver."""
 
@@ -1616,12 +1660,15 @@ class PostgresAwsTenantStore(TenantStore):
                     payload=secret_payload,
                 )
             except Exception as exc:
+                tags = {
+                    "component": "hosted_reference",
+                    "oauth_phase": "refresh",
+                }
+                if isinstance(exc, httpx.HTTPStatusError):
+                    tags.update(_oauth_refresh_failure_tags(exc))
                 capture_sentry_exception(
                     exc,
-                    tags={
-                        "component": "hosted_reference",
-                        "oauth_phase": "refresh",
-                    },
+                    tags=tags,
                     extras={
                         "credential_id": metadata.credential_id,
                         "tenant_id": metadata.tenant_id,

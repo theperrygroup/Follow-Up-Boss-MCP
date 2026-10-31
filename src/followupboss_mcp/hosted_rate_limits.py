@@ -12,6 +12,7 @@ from threading import Lock
 from typing import Literal, Protocol, cast
 
 from pydantic import BaseModel, ConfigDict, field_validator
+from starlette.requests import ClientDisconnect
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
@@ -337,7 +338,7 @@ class HostedRateLimitMiddleware:
 
         access_token = get_hosted_access_token()
         if access_token is None:
-            await self.app(scope, receive, send)
+            await self._forward_http(scope, receive, send)
             return
 
         client_ip = _client_ip_from_scope(scope)
@@ -367,7 +368,7 @@ class HostedRateLimitMiddleware:
                 },
             )
             if self._rate_limiter.settings.backend_failure_mode == "open":
-                await self.app(scope, receive, send)
+                await self._forward_http(scope, receive, send)
                 return
 
             response = JSONResponse(
@@ -384,7 +385,7 @@ class HostedRateLimitMiddleware:
             return
 
         if decision.allowed:
-            await self.app(scope, receive, send)
+            await self._forward_http(scope, receive, send)
             return
 
         emit_audit_event(
@@ -406,3 +407,24 @@ class HostedRateLimitMiddleware:
         if decision.retry_after_seconds is not None:
             response.headers["Retry-After"] = str(max(1, math.ceil(decision.retry_after_seconds)))
         await response(scope, receive, send)
+
+    async def _forward_http(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Forward one HTTP request downstream, ignoring a client that hung up.
+
+        The modern MCP streamable-HTTP handler reads the request body outside
+        its own error handling. When the client disconnects first, Starlette
+        raises ``ClientDisconnect`` through this middleware. Nobody is left to
+        read a response, so return without writing one instead of letting the
+        server log a crash and try to send a 500. The classic POST handler
+        catches the disconnect itself and logs an error, so that path is
+        unchanged.
+
+        Args:
+            scope: The ASGI request scope.
+            receive: The ASGI receive callable.
+            send: The ASGI send callable.
+        """
+        try:
+            await self.app(scope, receive, send)
+        except ClientDisconnect:
+            return

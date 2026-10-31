@@ -19,9 +19,18 @@ from followupboss_mcp.errors import (
     FollowUpBossNotFoundError,
     FollowUpBossRateLimitError,
     FollowUpBossRetryableServerError,
+    FollowUpBossUnconfirmedTransportError,
+    FollowUpBossUnconfirmedWriteError,
     FollowUpBossValidationError,
 )
 from followupboss_mcp.http_client import FollowUpBossAsyncClient
+
+_LOST_RESPONSE_ERRORS: list[type[httpx.TransportError]] = [
+    httpx.ReadTimeout,
+    httpx.ReadError,
+    httpx.RemoteProtocolError,
+]
+_ADDS_STAGE_UPDATE: dict[str, object] = {"stages": [{"id": 5, "name": "Lead"}, {"name": "Showing"}]}
 
 
 async def _record_sleep(calls: list[float], delay: float) -> None:
@@ -339,3 +348,242 @@ async def test_aclose_respects_owned_and_external_clients() -> None:
     await client.aclose()
     assert external.is_closed is False
     await external.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status_code", [500, 502, 503, 504])
+@pytest.mark.parametrize("method", ["POST", "PATCH"])
+async def test_server_errors_are_not_resent_for_non_idempotent_methods(
+    method: str,
+    status_code: int,
+) -> None:
+    """A POST or PATCH that gets a 5xx is sent once because Follow Up Boss may have saved it."""
+    sleep_calls: list[float] = []
+    with respx.mock(assert_all_called=True) as router:
+        route = router.route(method=method, url="https://api.followupboss.com/v1/pipelines").mock(
+            return_value=httpx.Response(status_code, json={"errorMessage": "boom"}),
+        )
+        async with FollowUpBossAsyncClient(
+            _settings(max_retries=3),
+            jitter_source=lambda: 0.0,
+            sleep=lambda delay: _record_sleep(sleep_calls, delay),
+        ) as client:
+            with pytest.raises(FollowUpBossHTTPError, match="boom") as exc_info:
+                await client.request_json(method, "/pipelines", json_body={"name": "Buyers"})
+    assert route.call_count == 1
+    assert sleep_calls == []
+    assert type(exc_info.value) is FollowUpBossUnconfirmedWriteError
+    assert exc_info.value.status_code == status_code
+    assert exc_info.value.payload == {"errorMessage": "boom"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status_code", [500, 502, 503, 504])
+@pytest.mark.parametrize("method", ["GET", "PUT", "DELETE"])
+async def test_server_errors_are_still_retried_for_idempotent_methods(
+    method: str,
+    status_code: int,
+) -> None:
+    """GET, PUT, and DELETE requests keep retrying 5xx responses with backoff."""
+    sleep_calls: list[float] = []
+    with respx.mock(assert_all_called=True) as router:
+        route = router.route(method=method, url="https://api.followupboss.com/v1/pipelines/7").mock(
+            side_effect=[
+                httpx.Response(status_code, json={"errorMessage": "boom"}),
+                httpx.Response(200, json={"id": 7}),
+            ]
+        )
+        async with FollowUpBossAsyncClient(
+            _settings(max_retries=1),
+            jitter_source=lambda: 0.0,
+            sleep=lambda delay: _record_sleep(sleep_calls, delay),
+        ) as client:
+            assert await client.request_json(method, "/pipelines/7") == {"id": 7}
+    assert route.call_count == 2
+    assert sleep_calls == [1.0]
+
+
+@pytest.mark.asyncio
+async def test_post_keeps_rate_limit_and_transport_retries() -> None:
+    """Only 5xx handling changes for a POST: 429 responses and transport errors still retry."""
+    sleep_calls: list[float] = []
+    with respx.mock(assert_all_called=True) as router:
+        route = router.post("https://api.followupboss.com/v1/pipelines").mock(
+            side_effect=[
+                httpx.Response(
+                    429, headers={"Retry-After": "2"}, json={"errorMessage": "slow down"}
+                ),
+                httpx.ConnectError("down"),
+                httpx.Response(201, json={"id": 9}),
+            ]
+        )
+        async with FollowUpBossAsyncClient(
+            _settings(max_retries=2),
+            jitter_source=lambda: 0.0,
+            sleep=lambda delay: _record_sleep(sleep_calls, delay),
+        ) as client:
+            payload = await client.request_json("POST", "/pipelines", json_body={"name": "Buyers"})
+    assert payload == {"id": 9}
+    assert route.call_count == 3
+    assert sleep_calls == [2.0, 2.0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error_type", _LOST_RESPONSE_ERRORS)
+@pytest.mark.parametrize("method", ["POST", "PATCH"])
+async def test_lost_responses_are_not_resent_for_non_idempotent_methods(
+    method: str,
+    error_type: type[httpx.TransportError],
+) -> None:
+    """A POST or PATCH that loses its response is sent once: Follow Up Boss may have saved it."""
+    sleep_calls: list[float] = []
+    with respx.mock(assert_all_called=True) as router:
+        route = router.route(method=method, url="https://api.followupboss.com/v1/pipelines").mock(
+            side_effect=error_type("lost"),
+        )
+        async with FollowUpBossAsyncClient(
+            _settings(max_retries=3),
+            jitter_source=lambda: 0.0,
+            sleep=lambda delay: _record_sleep(sleep_calls, delay),
+        ) as client:
+            with pytest.raises(
+                FollowUpBossUnconfirmedTransportError, match="Transport error"
+            ) as exc_info:
+                await client.request_json(method, "/pipelines", json_body={"name": "Buyers"})
+    assert route.call_count == 1
+    assert sleep_calls == []
+    assert isinstance(exc_info.value.__cause__, error_type)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error_type", [httpx.ConnectError, httpx.ConnectTimeout])
+@pytest.mark.parametrize("method", ["POST", "PATCH"])
+async def test_connection_failures_are_still_retried_for_non_idempotent_methods(
+    method: str,
+    error_type: type[httpx.TransportError],
+) -> None:
+    """A POST or PATCH that never reached Follow Up Boss is still retried."""
+    sleep_calls: list[float] = []
+    with respx.mock(assert_all_called=True) as router:
+        route = router.route(method=method, url="https://api.followupboss.com/v1/pipelines").mock(
+            side_effect=[error_type("down"), httpx.Response(201, json={"id": 9})],
+        )
+        async with FollowUpBossAsyncClient(
+            _settings(max_retries=1),
+            jitter_source=lambda: 0.0,
+            sleep=lambda delay: _record_sleep(sleep_calls, delay),
+        ) as client:
+            payload = await client.request_json(method, "/pipelines", json_body={"name": "Buyers"})
+    assert payload == {"id": 9}
+    assert route.call_count == 2
+    assert sleep_calls == [1.0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error_type", _LOST_RESPONSE_ERRORS)
+@pytest.mark.parametrize("method", ["GET", "PUT", "DELETE"])
+async def test_lost_responses_are_still_retried_for_idempotent_methods(
+    method: str,
+    error_type: type[httpx.TransportError],
+) -> None:
+    """GET, PUT, and DELETE requests keep retrying a lost response with backoff."""
+    sleep_calls: list[float] = []
+    with respx.mock(assert_all_called=True) as router:
+        route = router.route(method=method, url="https://api.followupboss.com/v1/pipelines/7").mock(
+            side_effect=[error_type("lost"), httpx.Response(200, json={"id": 7})],
+        )
+        async with FollowUpBossAsyncClient(
+            _settings(max_retries=1),
+            jitter_source=lambda: 0.0,
+            sleep=lambda delay: _record_sleep(sleep_calls, delay),
+        ) as client:
+            assert await client.request_json(method, "/pipelines/7") == {"id": 7}
+    assert route.call_count == 2
+    assert sleep_calls == [1.0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status_code", [500, 502, 503, 504])
+async def test_pipeline_update_that_adds_a_stage_is_not_resent_after_a_server_error(
+    status_code: int,
+) -> None:
+    """A pipeline update with a stage that has no id is sent once, because it creates that stage."""
+    sleep_calls: list[float] = []
+    with respx.mock(assert_all_called=True) as router:
+        route = router.put("https://api.followupboss.com/v1/pipelines/63").mock(
+            return_value=httpx.Response(status_code, json={"errorMessage": "boom"}),
+        )
+        async with FollowUpBossAsyncClient(
+            _settings(max_retries=3),
+            jitter_source=lambda: 0.0,
+            sleep=lambda delay: _record_sleep(sleep_calls, delay),
+        ) as client:
+            with pytest.raises(FollowUpBossUnconfirmedWriteError, match="boom") as exc_info:
+                await client.request_json("PUT", "/pipelines/63", json_body=_ADDS_STAGE_UPDATE)
+    assert route.call_count == 1
+    assert sleep_calls == []
+    assert exc_info.value.status_code == status_code
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error_type", _LOST_RESPONSE_ERRORS)
+async def test_pipeline_update_that_adds_a_stage_is_not_resent_after_a_lost_response(
+    error_type: type[httpx.TransportError],
+) -> None:
+    """A pipeline update with a stage that has no id is sent once when its response is lost."""
+    sleep_calls: list[float] = []
+    with respx.mock(assert_all_called=True) as router:
+        route = router.put("https://api.followupboss.com/v1/pipelines/63").mock(
+            side_effect=error_type("lost"),
+        )
+        async with FollowUpBossAsyncClient(
+            _settings(max_retries=3),
+            jitter_source=lambda: 0.0,
+            sleep=lambda delay: _record_sleep(sleep_calls, delay),
+        ) as client:
+            with pytest.raises(FollowUpBossUnconfirmedTransportError, match="Transport error"):
+                await client.request_json("PUT", "/pipelines/63", json_body=_ADDS_STAGE_UPDATE)
+    assert route.call_count == 1
+    assert sleep_calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("json_body", "failure"),
+    [
+        (
+            {"stages": [{"id": 5, "name": "Lead"}]},
+            httpx.Response(503, json={"errorMessage": "boom"}),
+        ),
+        ({"stages": [{"id": 5, "name": "Lead"}]}, httpx.ReadTimeout("lost")),
+        ({"name": "Sellers"}, httpx.Response(503, json={"errorMessage": "boom"})),
+        ({"name": "Sellers"}, httpx.ReadTimeout("lost")),
+        (_ADDS_STAGE_UPDATE, httpx.ConnectError("down")),
+    ],
+    ids=[
+        "stage-ids-503",
+        "stage-ids-ReadTimeout",
+        "no-stages-503",
+        "no-stages-ReadTimeout",
+        "adds-stage-ConnectError",
+    ],
+)
+async def test_other_pipeline_updates_keep_their_retries(
+    json_body: dict[str, object],
+    failure: httpx.Response | httpx.TransportError,
+) -> None:
+    """Pipeline updates that create no stage, and requests that never reached the API, retry."""
+    sleep_calls: list[float] = []
+    with respx.mock(assert_all_called=True) as router:
+        route = router.put("https://api.followupboss.com/v1/pipelines/63").mock(
+            side_effect=[failure, httpx.Response(200, json={"id": 63})],
+        )
+        async with FollowUpBossAsyncClient(
+            _settings(max_retries=1),
+            jitter_source=lambda: 0.0,
+            sleep=lambda delay: _record_sleep(sleep_calls, delay),
+        ) as client:
+            payload = await client.request_json("PUT", "/pipelines/63", json_body=json_body)
+    assert payload == {"id": 63}
+    assert route.call_count == 2
+    assert sleep_calls == [1.0]
