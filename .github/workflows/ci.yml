@@ -42,6 +42,19 @@ jobs:
           fi
           gitleaks detect --source . --log-opts="${log_opts}" --redact --verbose --config .gitleaks.toml
 
+  auth-client-compatibility:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Verify current public OAuth client metadata
+        run: make auth-client-check
+
   quality:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -107,6 +120,7 @@ jobs:
     needs:
       - secrets
       - quality
+      - auth-client-compatibility
     steps:
       - name: Check out repository
         uses: actions/checkout@v5

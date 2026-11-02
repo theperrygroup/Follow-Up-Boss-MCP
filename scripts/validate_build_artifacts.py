@@ -58,6 +58,11 @@ def _run(command: Sequence[str], *, cwd: Path | None = None) -> None:
         command,
         check=True,
         cwd=str(cwd) if cwd is not None else None,
+        env={
+            key: value
+            for key, value in os.environ.items()
+            if key != "PYTHONPATH" and not key.startswith(("SENTRY_", "PYTEST_"))
+        },
     )
 
 
@@ -80,7 +85,7 @@ def main() -> None:
         python_path = _python_command(bin_dir, "python")
         cli_path = _python_command(bin_dir, "followupboss-mcp")
 
-        _run([str(python_path), "-m", "pip", "install", str(wheel_path)])
+        _run([str(python_path), "-m", "pip", "install", f"{wheel_path}[dev]"])
         _run([str(cli_path), "--help"])
         _run(
             [
@@ -96,6 +101,25 @@ def main() -> None:
                     "print(followupboss_mcp.__version__)"
                 ),
             ]
+        )
+
+        # Execute the same public auth contract against the installed wheel,
+        # outside the checkout and without pytest adding source import paths.
+        _run(
+            [
+                str(python_path),
+                "-m",
+                "pytest",
+                "--import-mode=importlib",
+                "-c",
+                os.devnull,
+                "-q",
+                "-o",
+                f"cache_dir={Path(temp_dir) / 'pytest-cache'}",
+                f"--basetemp={Path(temp_dir) / 'pytest'}",
+                str(PROJECT_ROOT / "tests/integration/test_oauth_lifecycle.py"),
+            ],
+            cwd=Path(temp_dir),
         )
 
     print(

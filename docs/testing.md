@@ -2,7 +2,7 @@
 
 ## Testing Strategy
 
-The default local and CI suite is fully offline and deterministic. It covers every production file in `src/followupboss_mcp` at `100.00%` line coverage and `100.00%` branch coverage.
+The default pytest suite is fully offline and deterministic. It covers every production file in `src/followupboss_mcp` at `100.00%` line coverage and `100.00%` branch coverage. CI separately checks compatibility with current public OAuth client metadata.
 
 Test directories are organized by intent:
 
@@ -49,6 +49,8 @@ The default suite covers:
 - exact OAuth `resource` binding across authorization codes, access tokens, and refresh tokens
 - OAuth CIMD discovery, DNS/IP SSRF defenses, exact redirect matching, response-size limits,
   bounded success caching, failure non-caching, and DCR fallback compatibility
+- complete OAuth issuance through authenticated MCP identity, application restart, expiry,
+  refresh, replay rejection, and tenant/credential revocation for both protocol generations
 - CLI startup and `__main__` execution behavior
 
 ## Coverage Commands
@@ -71,7 +73,12 @@ Branch coverage matters here because most production risk lives in conditional b
 - error mapping branches
 - stdio versus streamable HTTP startup paths
 
-Requiring `100.00%` branch coverage ensures those code paths are exercised explicitly rather than only executing the happy path once.
+Requiring `100.00%` branch coverage ensures those code paths are exercised explicitly rather than only executing the happy path once. Coverage alone cannot establish that independently tested components work together; the [authentication release contracts](auth-regression-testing.md) also exercise complete lifecycles and the installed package.
+
+Run `make auth-test` for focused offline auth testing. `make auth-client-check` is a
+separate network check against current public ChatGPT and Codex metadata. It uses no
+customer credentials or CRM data. The production post-deploy probe additionally starts
+authorization without following the provider redirect or completing a user login.
 
 ## Typing And Lint Gates
 

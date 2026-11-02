@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help sync audit docs-check format-check lint typecheck test coverage cli-help live-identity-check live-contract-check validate build build-smoke release-validate
+.PHONY: help sync audit docs-check format-check lint typecheck test auth-test auth-client-check coverage cli-help live-identity-check live-contract-check validate build build-smoke release-validate
 
 help:
 	@printf "%s\n" \
@@ -11,6 +11,8 @@ help:
 		"make lint             Run Ruff lint checks" \
 		"make typecheck        Run mypy" \
 		"make test             Run pytest" \
+		"make auth-test        Run deterministic OAuth and authenticated MCP contracts" \
+		"make auth-client-check Check current public ChatGPT and Codex client metadata" \
 		"make coverage         Run branch coverage and enforce 100%%" \
 		"make cli-help         Check the CLI entrypoint" \
 		"make live-identity-check Run the optional live identity sandbox check" \
@@ -41,6 +43,12 @@ typecheck:
 
 test:
 	uv run pytest
+
+auth-test:
+	uv run --frozen pytest tests/integration/test_oauth_lifecycle.py tests/integration/test_hosted_auth_integration.py tests/unit/test_hosted_oauth.py tests/unit/test_cimd.py tests/unit/test_public_oauth_workflow.py
+
+auth-client-check:
+	uv run --frozen python scripts/verify_public_oauth.py --metadata-only
 
 coverage:
 	uv run coverage run --branch -m pytest

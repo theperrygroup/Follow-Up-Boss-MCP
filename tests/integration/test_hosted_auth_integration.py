@@ -25,6 +25,7 @@ from followupboss_mcp.hosted_rate_limits import (
     HostedRateLimitDecision,
     HostedRateLimitKey,
     HostedRateLimitSettings,
+    InMemoryHostedRateLimitBackend,
 )
 from followupboss_mcp.mcp_server import create_server
 from followupboss_mcp.tenant_store import (
@@ -445,7 +446,10 @@ def test_hosted_streamable_http_rate_limit_budgets_are_isolated_per_tenant_and_c
             settings=HostedRateLimitSettings(
                 requests_per_window=1,
                 window_seconds=60.0,
-            )
+            ),
+            # This contract asserts the full window; runner scheduling must not
+            # consume seconds between otherwise identical authenticated calls.
+            backend=InMemoryHostedRateLimitBackend(clock=lambda: 100.0),
         ),
     )
 
